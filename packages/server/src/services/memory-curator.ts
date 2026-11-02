@@ -69,12 +69,26 @@ export class MemoryCurator {
     return Math.min(1, c);
   }
 
+  /**
+   * L-F07: a merge is evidence bookkeeping, not corroboration, so it never changes confidence. Every episode that
+   * reaches a merge shares the existing record's source (findSimilar only matches the same source), so it is not
+   * independent evidence — a `verified:` label does not change that, nor does a fresh episode id. Re-ingesting an
+   * already merged episode id is a no-op, identical content is not appended again, and differing (including
+   * contradictory) content is appended so it stays visible. Merged episode ids are kept as provenance.
+   */
   private merge(existing: MemoryRecord, episode: RawEpisode): MemoryRecord {
-    const updatedContent = existing.content + '\n\n--- Update ---\n\n' + episode.content;
-    const newConfidence = Math.min(1, existing.confidence + 0.05);
-    this.db.prepare('UPDATE central_memories SET content = ?, confidence = ?, metadata_json = ? WHERE id = ?')
-      .run(updatedContent, newConfidence, JSON.stringify({ ...existing.metadata, lastMerge: episode.timestamp }), existing.id);
-    return { ...existing, content: updatedContent, confidence: newConfidence };
+    const meta = existing.metadata ?? {};
+    const episodeIds: string[] = Array.isArray(meta.episodeIds)
+      ? meta.episodeIds as string[]
+      : typeof meta.originalId === 'string' ? [meta.originalId] : [];
+    if (episodeIds.includes(episode.id)) return existing;
+
+    const repeatsContent = existing.content.split('\n\n--- Update ---\n\n').includes(episode.content);
+    const updatedContent = repeatsContent ? existing.content : existing.content + '\n\n--- Update ---\n\n' + episode.content;
+    const metadata = { ...meta, episodeIds: [...episodeIds, episode.id], lastMerge: episode.timestamp };
+    this.db.prepare('UPDATE central_memories SET content = ?, metadata_json = ? WHERE id = ?')
+      .run(updatedContent, JSON.stringify(metadata), existing.id);
+    return { ...existing, content: updatedContent, metadata };
   }
 
   private similarity(a: string, b: string): number {

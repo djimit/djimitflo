@@ -256,6 +256,7 @@ export function runEvolutionFeedback(db: Database, now = Date.now(), env: NodeJS
   const digest = JSON.parse(row.answers_json) as EvolutionDigest;
   try {
     if (!db.prepare('SELECT 1 FROM event_outbox WHERE event_type = ? AND aggregate_id = ? LIMIT 1').get(EVOLUTION_DIGEST_EVENT, subject)) {
+      // Best-effort (CODE-003): the stored judgment row is the record; a lost insert is retried next run (published=false).
       enqueueEvent(db, { type: EVOLUTION_DIGEST_EVENT, aggregateId: subject, payload: digestPayload(digest) });
       result.published = Boolean(db.prepare('SELECT 1 FROM event_outbox WHERE event_type = ? AND aggregate_id = ? LIMIT 1').get(EVOLUTION_DIGEST_EVENT, subject));
     }

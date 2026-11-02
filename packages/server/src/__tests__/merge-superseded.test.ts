@@ -73,6 +73,10 @@ describe('merge survival poller: a superseded close is settled, not scored', () 
     expect(supersedingProposal(db, 'r-0')).toBe('p-2');
     expect(supersedingProposal(db, 'r-2')).toBeNull(); // the successor itself has no successor
   });
+  it('returns null when the lineage tables are unreadable (catch path)', () => {
+    const bare = new Database(':memory:'); // no schema — prepare() throws
+    try { expect(supersedingProposal(bare, 'r-x')).toBeNull(); } finally { bare.close(); }
+  });
 });
 
 describe('readers of merge outcomes leave out historical superseded zeros (same rule)', () => {

@@ -143,4 +143,46 @@ describe('approval HTTP role visibility and independent decision', () => {
       vi.unstubAllEnvs();
     }
   });
+
+  it('DF-04: audit-logs Loop filter finds loop_run rows, pages with hasMore/total, and export honours the filter scope', async () => {
+    const audit = new AuditService(db);
+    for (const id of ['run-1', 'run-2', 'run-3']) {
+      audit.record({ event_type: 'integration.reviewed' as any, action: 'pr_reviewed', resource_type: 'loop_run', resource_id: id });
+    }
+    audit.record({ event_type: 'task.created' as any, action: 'task_created', resource_type: 'task', resource_id: 'task-x' });
+    const get = (path: string, role = UserRole.AUDITOR) => fetch(`${base}${path}`, { headers: { authorization: `Bearer ${tokens.get(role)}` } });
+
+    // Canonical type and the legacy UI alias `loop` both reach the stored loop_run rows.
+    for (const type of ['loop_run', 'loop']) {
+      const response = await get(`/audit-logs?resource_type=${type}`);
+      expect(response.status, type).toBe(200);
+      const rows = await response.json() as any[];
+      expect(rows.map(row => row.resource_id).sort(), type).toEqual(['run-1', 'run-2', 'run-3']);
+      expect(response.headers.get('x-total-count'), type).toBe('3');
+    }
+
+    const first = await get('/audit-logs?resource_type=loop_run&limit=2&offset=0');
+    expect((await first.json() as any[]).length).toBe(2);
+    expect(first.headers.get('x-has-more')).toBe('true');
+    const last = await get('/audit-logs?resource_type=loop_run&limit=2&offset=2');
+    expect((await last.json() as any[]).length).toBe(1);
+    expect(last.headers.get('x-has-more')).toBe('false');
+    const beyond = await get('/audit-logs?resource_type=loop_run&limit=2&offset=4');
+    expect(await beyond.json()).toEqual([]);
+    expect(beyond.headers.get('x-has-more')).toBe('false');
+
+    const filtered = await get('/audit-logs/export?format=json&resource_type=loop');
+    expect(filtered.status).toBe(200);
+    expect(filtered.headers.get('x-audit-export-scope')).toBe('filtered');
+    const filteredRows = await filtered.json() as any[];
+    expect(filteredRows.map(row => row.resource_id).sort()).toEqual(['run-1', 'run-2', 'run-3']);
+    const csv = await get('/audit-logs/export?format=csv&resource_type=loop_run&action=pr_reviewed');
+    expect((await csv.text()).trim().split('\n')).toHaveLength(4);
+    const full = await get('/audit-logs/export?format=json');
+    expect(full.headers.get('x-audit-export-scope')).toBe('full');
+    expect((await full.json() as any[]).some(row => row.resource_type === 'task')).toBe(true);
+
+    // Authorization unchanged: a filtered export is still audit-read gated.
+    expect((await get('/audit-logs/export?format=json&resource_type=loop_run', UserRole.VIEWER)).status).toBe(403);
+  });
 });

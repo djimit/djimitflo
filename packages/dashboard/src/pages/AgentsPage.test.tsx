@@ -94,3 +94,24 @@ it('UX-14: the agent card names its connection state and the evidence for it, an
   expect(shown).toHaveLength(1);
   expect(shown[0].textContent).toBe('Connection: token issued — token expired 26 h ago, never used');
 });
+
+it('SW-01: a zero-task agent is insufficient (no tasks), not 0 %, and lifetime counters are labelled apart from readiness', () => {
+  useStore.setState({ agents: [
+    { id: 'fresh', name: 'Fresh agent', status: 'active', liveness: 'live', capabilities: [], total_tasks: 0, completed_tasks: 0, failed_tasks: 0 },
+    { id: 'worked', name: 'Worked agent', status: 'active', liveness: 'live', capabilities: [], total_tasks: 4, completed_tasks: 3, failed_tasks: 1 },
+  ] as any });
+  render(<MemoryRouter><AgentsPage /></MemoryRouter>);
+  const rates = screen.getAllByTestId('agent-success-rate').map((n) => n.textContent);
+  expect(rates).toEqual(['insufficient — no tasks', '75 % (3/4)']);
+  expect(screen.queryByText('0%')).toBeNull();
+  expect(screen.getAllByText(/Lifetime reported counters/)).toHaveLength(2);
+});
+
+it('SW-02: the running task links to its execution', () => {
+  useStore.setState({
+    agents: [{ id: 'busy', name: 'Busy agent', status: 'active', capabilities: [], total_tasks: 1, completed_tasks: 0, failed_tasks: 0 }] as any,
+    tasks: [{ id: 'task-7', title: 'Fix the flake', status: 'running', agent_id: 'busy' }] as any,
+  });
+  render(<MemoryRouter><AgentsPage /></MemoryRouter>);
+  expect(screen.getByRole('link', { name: 'Fix the flake' }).getAttribute('href')).toBe('/tasks/task-7');
+});

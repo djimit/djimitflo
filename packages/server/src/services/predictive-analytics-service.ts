@@ -12,12 +12,18 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 
 interface Prediction {
   loopRunId?: string;
   successProbability: number;
   expectedDurationMs: number;
-  expectedCostDollars: number;
+  /** mean dated-price cost of matching completed runs; null when none has one (L-F04: never an invented $/Mtok) */
+  expectedCostDollars: number | null;
+  /** partial_price: a dated cost exists but some lease of each run is unpriced or only partially priced (cache tokens) */
+  expectedCostReason: 'no_history' | 'no_usage_reported' | 'no_dated_model_price' | 'partial_price' | null;
+  /** completed matching runs whose every lease has a complete dated price, of all completed matching runs */
+  costCoverage: { priced: number; total: number };
   riskFactors: string[];
   recommendations: string[];
   confidence: number;
@@ -55,10 +61,13 @@ export class PredictiveAnalyticsService {
       ? completedRuns.reduce((sum, h) => sum + h.durationMs, 0) / completedRuns.length
       : 600000; // Default 10 minutes
 
-    // Calculate expected cost
-    const avgCost = completedRuns.length > 0
-      ? completedRuns.reduce((sum, h) => sum + h.totalCost, 0) / completedRuns.length
-      : 0.05;
+    // Expected cost: only runs whose every lease carries a complete dated model price; unknown or partial stays unknown (#1051, L-F04)
+    const completed = historical.filter((h) => h.status === 'completed');
+    const priced = completed.filter((h): h is typeof h & { totalCost: number } => h.totalCost !== null);
+    const avgCost = priced.length ? priced.reduce((sum, h) => sum + h.totalCost, 0) / priced.length : null;
+    const expectedCostReason: Prediction['expectedCostReason'] = avgCost !== null ? null
+      : completed.length === 0 ? 'no_history' : completed.some((h) => h.anyDatedPrice) ? 'partial_price'
+        : completed.some((h) => h.tokensReported) ? 'no_dated_model_price' : 'no_usage_reported';
 
     // Identify risk factors
     const riskFactors = this.identifyRiskFactors(input, historical);
@@ -72,7 +81,9 @@ export class PredictiveAnalyticsService {
     return {
       successProbability: successRate,
       expectedDurationMs: Math.round(avgDuration),
-      expectedCostDollars: Math.round(avgCost * 100) / 100,
+      expectedCostDollars: avgCost === null ? null : Math.round(avgCost * 100) / 100,
+      expectedCostReason,
+      costCoverage: { priced: priced.length, total: completed.length },
       riskFactors,
       recommendations,
       confidence,
@@ -89,7 +100,7 @@ export class PredictiveAnalyticsService {
     const goalTypes = this.db.prepare(`
       SELECT json_extract(metadata, '$.goal_type') as goal_type, COUNT(*) as count
       FROM loop_runs
-      WHERE metadata IS NOT NULL
+      WHERE metadata IS NOT NULL AND ${realRunSql()}
       GROUP BY goal_type
     `).all() as any[];
 
@@ -101,7 +112,7 @@ export class PredictiveAnalyticsService {
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successes,
           AVG(CASE WHEN completed_at IS NOT NULL THEN (julianday(completed_at) - julianday(created_at)) * 86400000 ELSE NULL END) as avg_duration
         FROM loop_runs
-        WHERE json_extract(metadata, '$.goal_type') = ?
+        WHERE json_extract(metadata, '$.goal_type') = ? AND ${realRunSql()}
       `).get(gt.goal_type) as any;
 
       patterns.push({
@@ -116,6 +127,7 @@ export class PredictiveAnalyticsService {
     const runtimes = this.db.prepare(`
       SELECT runtime, COUNT(*) as count
       FROM worker_leases
+      WHERE ${realRunIdSql('loop_run_id')}
       GROUP BY runtime
     `).all() as any[];
 
@@ -125,7 +137,7 @@ export class PredictiveAnalyticsService {
           COUNT(*) as total,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successes
         FROM worker_leases
-        WHERE runtime = ?
+        WHERE runtime = ? AND ${realRunIdSql('loop_run_id')}
       `).get(rt.runtime) as any;
 
       patterns.push({
@@ -148,8 +160,8 @@ export class PredictiveAnalyticsService {
     totalPatterns: number;
     dataPoints: number;
   } {
-    const loops = (this.db.prepare('SELECT COUNT(*) as c FROM loop_runs').get() as any)?.c || 0;
-    const completed = (this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'completed'").get() as any)?.c || 0;
+    const loops = (this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE ${realRunSql()}`).get() as any)?.c || 0;
+    const completed = (this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'completed' AND ${realRunSql()}`).get() as any)?.c || 0;
     const patterns = this.analyzePatterns();
 
     return {
@@ -165,7 +177,10 @@ export class PredictiveAnalyticsService {
   private getHistoricalData(goalType: string, runtime: string, mode: string): Array<{
     status: string;
     durationMs: number;
-    totalCost: number;
+    /** sum of the leases' complete dated token_accounting cost (a mock lease is a known $0); null unless every lease has one */
+    totalCost: number | null;
+    tokensReported: boolean;
+    anyDatedPrice: boolean;
   }> {
     // Get historical loops with similar characteristics
     const runs = this.db.prepare(`
@@ -174,17 +189,16 @@ export class PredictiveAnalyticsService {
         CASE WHEN lr.completed_at IS NOT NULL
           THEN (julianday(lr.completed_at) - julianday(lr.created_at)) * 86400000
           ELSE NULL END as duration_ms,
-        COALESCE((
-          SELECT SUM(COALESCE(
-            json_extract(wl.metadata, '$.runtime_usage.total_tokens'),
-            json_extract(wl.metadata, '$.total_tokens'),
-            0
-          ))
-          FROM worker_leases wl
-          WHERE wl.loop_run_id = lr.id
-        ), 0) as total_tokens
+        (SELECT CASE WHEN SUM(c IS NULL) = 0 THEN SUM(c) END FROM (SELECT CASE WHEN wl.runtime = 'mock' THEN 0
+            WHEN json_extract(wl.metadata, '$.token_accounting.price_version') IS NOT NULL
+              AND json_extract(wl.metadata, '$.token_accounting.cost_completeness') = 'complete' THEN json_extract(wl.metadata, '$.token_accounting.estimated_cost_usd') END AS c
+          FROM worker_leases wl WHERE wl.loop_run_id = lr.id)) as total_cost,
+        EXISTS (SELECT 1 FROM worker_leases wl WHERE wl.loop_run_id = lr.id
+          AND COALESCE(json_extract(wl.metadata, '$.runtime_usage.total_tokens'), json_extract(wl.metadata, '$.total_tokens')) IS NOT NULL) as tokens_reported,
+        EXISTS (SELECT 1 FROM worker_leases wl WHERE wl.loop_run_id = lr.id
+          AND json_extract(wl.metadata, '$.token_accounting.price_version') IS NOT NULL) as any_dated_price
       FROM loop_runs lr
-      WHERE (? = '' OR json_extract(lr.metadata, '$.goal_type') = ?)
+      WHERE ${realRunSql('lr')} AND (? = '' OR json_extract(lr.metadata, '$.goal_type') = ?)
         AND (? = '' OR lr.mode = ?)
         AND (? = '' OR EXISTS (
           SELECT 1 FROM worker_leases runtime_lease
@@ -199,7 +213,9 @@ export class PredictiveAnalyticsService {
     return runs.map((r) => ({
       status: r.status,
       durationMs: r.duration_ms || 0,
-      totalCost: (r.total_tokens || 0) / 1000000 * 2, // $2/Mtok estimate
+      totalCost: typeof r.total_cost === 'number' ? r.total_cost : null,
+      tokensReported: r.tokens_reported === 1,
+      anyDatedPrice: r.any_dated_price === 1,
     }));
   }
 
@@ -273,10 +289,10 @@ export class PredictiveAnalyticsService {
     const recommendations: string[] = [];
 
     // Check failure metadata completeness
-    const failedLeases = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'failed'").get() as any;
+    const failedLeases = this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE status = 'failed' AND ${realRunIdSql('loop_run_id')}`).get() as any;
     const failedWithMetadata = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
-      WHERE status = 'failed'
+      WHERE status = 'failed' AND ${realRunIdSql('loop_run_id')}
       AND json_extract(metadata, '$.exit_status') IS NOT NULL
       AND json_extract(metadata, '$.exit_status') != ''
     `).get() as any;
@@ -287,10 +303,10 @@ export class PredictiveAnalyticsService {
     }
 
     // Check block reason completeness
-    const blockedLoops = this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'").get() as any;
+    const blockedLoops = this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked' AND ${realRunSql()}`).get() as any;
     const blockedWithReason = this.db.prepare(`
       SELECT COUNT(*) as c FROM loop_runs
-      WHERE status = 'blocked'
+      WHERE status = 'blocked' AND ${realRunSql()}
       AND json_extract(metadata, '$.block_reason') IS NOT NULL
       AND json_extract(metadata, '$.block_reason') != ''
     `).get() as any;
@@ -300,7 +316,7 @@ export class PredictiveAnalyticsService {
       recommendations.push(`Block reason completeness: ${(blockReasonCompleteness * 100).toFixed(0)}% — verifyLoopRun should record block reasons`);
     }
 
-    // Count stale leases
+    // Count stale leases (live state: every stale lease needs the cleanup, synthetic ones included)
     const stalePrepared = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
       WHERE status = 'prepared' AND created_at < datetime('now', '-24 hours')

@@ -1,0 +1,41 @@
+diff --git a/src/client.ts b/src/client.ts
+index 585f755..6ab6bf4 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -3,6 +3,7 @@ import {IKubernetesClientConfig} from "./config";
+ import {Selector, selectorToQueryString} from "./label";
+ import {isStatus, MetadataObject} from "./types/meta";
+ import {DeleteOptions, WatchEvent} from "./types/meta/v1";
++import {redactResponseBodyForLogging} from "./security";
+ 
+ const debug = require("debug")("kubernetes:client");
+ 
+@@ -90,7 +91,7 @@ export class KubernetesRESTClient implements IKubernetesRESTClient {
+                     return;
+                 }
+ 
+-                debug(`${method} request on ${opts.url} succeeded with status ${response.statusCode}: ${responseBody}`);
++                debug(`${method} request on ${opts.url} succeeded with status ${response.statusCode}: ${redactResponseBodyForLogging(responseBody)}`);
+                 res(responseBody);
+             });
+         });
+diff --git a/src/security.ts b/src/security.ts
+new file mode 100644
+index 0000000..b605733
+--- /dev/null
++++ b/src/security.ts
+@@ -0,0 +1,13 @@
++export function redactResponseBodyForLogging(body: any): any {
++    if ("kind" in body && body.kind === "Secret") {
++        const out = structuredClone(body);
++
++        for (const key of Object.keys(out.data)) {
++            out.data[key] = "[REDACTED]";
++        }
++
++        return out;
++    }
++
++    return body;
++}
+\ No newline at end of file

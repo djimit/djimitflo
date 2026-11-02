@@ -4,8 +4,14 @@ import type { JudgmentDef } from '../judgment-service';
 /**
  * G3: is a paper or repository that a fleet agent discovered worth Djimitflo's attention? The taxonomy match in
  * ingestDiscovery is only a topic gate; this asks whether the discovery touches an open Djimitflo problem (the evidence
- * pack's failing gates and failure causes) or a technique a loop lane could try. SHADOW ONLY: nothing acts on it yet;
- * the goal is to measure how much fleet input is relevant (plan G3: >= 50% of carded discoveries).
+ * pack's failing gates and failure causes) or a technique a loop lane could try. The goal was to measure how much fleet
+ * input is relevant (plan G3: >= 50% of carded discoveries).
+ *
+ * AUTHZ-F2: the rows are labelled 'shadow' but, under FRONTIER_UNITS_REQUIRE_RELEVANCE=true, expert-source-units creates an
+ * expert unit only on this verdict (FE2) and creates one against the keyword gate on a 'yes' (KE-2) — a promotion
+ * (DI-001 B), counted in GATE_READ_JUDGMENTS. jev must not decide promotions: before DISCOVERY_RELEVANCE_PAUSED is lifted,
+ * the operator classifies this decision against that rule (keep it advisory with a deterministic admission rule, or accept
+ * it as relevance/classification and record why).
  */
 export const discoveryRelevance: JudgmentDef = {
   id: 'discovery_relevance',

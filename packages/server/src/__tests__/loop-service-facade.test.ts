@@ -98,7 +98,10 @@ describe('LoopService delegation contract', () => {
       expect(metric).toHaveProperty('verifiedArtifacts');
       expect(metric).toHaveProperty('dollarsSpent');
       expect(metric).toHaveProperty('efficiency');
-      expect(typeof metric.efficiency).toBe('number');
+      // a fresh run has no leases: no usage reported, so dollars and efficiency are unknown (null), never 0
+      expect(metric.dollarsSpent).toBeNull();
+      expect(metric.efficiency).toBeNull();
+      expect(metric.efficiencyReason).toBe('no_usage_reported');
     });
   });
 
