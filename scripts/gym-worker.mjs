@@ -86,7 +86,10 @@ export function gymGoal(task, writeTest, lines = []) {
  */
 export function fireCheck(sent, lines = []) {
   const want = lines.map((l) => oneLine(`- ${String(l).slice(0, 300)}`));
-  return { goal_sha256: createHash('sha256').update(sent).digest('hex'), genome_lines: want.length, genome_lines_found: want.filter((l) => sent.includes(l)).length };
+  // PL-001 (server pl-001.ts, capability procedure_lines): lines_sha256 = sha256 of the lines as received, joined by '\n'
+  // (the procedure registry's digest); the server voids an arm whose received digest is not the protocol's
+  return { goal_sha256: createHash('sha256').update(sent).digest('hex'), genome_lines: want.length, genome_lines_found: want.filter((l) => sent.includes(l)).length,
+    lines_sha256: createHash('sha256').update(lines.map(String).join('\n')).digest('hex') };
 }
 
 /** Files the maker touched, like changedFiles() on the VPS. */
@@ -107,7 +110,7 @@ export function verdict(task, changed, green, makerOk = true) {
  * RX-11 (server #642): this worker can run canaries — a task whose extra test no source-only change can turn green; a solved
  * canary means the oracle or the sandbox is compromised. The server serves them only to workers that announce it.
  */
-export const CAPABILITIES = ['canary', 'write_test', 'prod_gates', 'prompt_override'];
+export const CAPABILITIES = ['canary', 'write_test', 'prod_gates', 'prompt_override', 'procedure_lines'];
 /**
  * TG-001 (server tg-001.ts): a claim may carry the experiment arm's full prompt. It is sent verbatim, flattened with the same
  * oneLine as a production remote maker job, so arm B (the production assignment) reaches the agent exactly as in production.
@@ -546,9 +549,9 @@ async function main() {
   const { runId, species, task } = claim;
   const started = Date.now();
   let fire = null; let tokens = null;
-  // TG-001: per-attempt measurements, filled as the attempt runs; anything not observed stays null
-  const tgm = claim.tg ? { prompt_sha256: null, prompt_chars: null, tokens: null, tool_calls: null, failed_tool_calls: null, files_inspected: null, files_modified: null, retries: 0, termination: null, model: null, oracle_green: null, maker_ms: null } : null;
-  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, resultPayload(r, { fire, tgm, tokens, durationMs: Date.now() - started })); console.log(`${species} ${task.commit.slice(0, 8)} ${claim.tg ? `tg ${claim.tg.arm} ` : ''}${r.status}: ${r.reason}`); };
+  // TG-001 / PL-001: per-attempt measurements, filled as the attempt runs; anything not observed stays null
+  const tgm = claim.tg || claim.pl ? { prompt_sha256: null, prompt_chars: null, tokens: null, tool_calls: null, failed_tool_calls: null, files_inspected: null, files_modified: null, retries: 0, termination: null, model: null, oracle_green: null, maker_ms: null } : null;
+  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, resultPayload(r, { fire, tgm, tokens, durationMs: Date.now() - started })); console.log(`${species} ${task.commit.slice(0, 8)} ${claim.tg ? `tg ${claim.tg.arm} ` : ''}${claim.pl ? `pl ${claim.pl.arm} ` : ''}${r.status}: ${r.reason}`); };
   fs.mkdirSync(WORK, { recursive: true });
   // D9: the runner image is pinned by digest, so the worker no longer builds it (a build would not match the pin)
   if (spawnSync('docker', ['image', 'inspect', IMAGE], { stdio: 'ignore' }).status !== 0) return report({ status: 'discarded', reason: `infra: runner image ${IMAGE.slice(0, 40)}… missing` });
@@ -625,6 +628,26 @@ export function npmCiFailure(out = '') {
   return /EUSAGE|in sync|does not satisfy|Missing: .* from lock file/.test(out)
     ? { status: 'discarded', reason: 'task: lock file out of sync at this commit (npm ci EUSAGE)' }
     : { status: 'discarded', reason: 'infra: npm ci failed' };
+}
+
+/**
+ * PL-001 (server pl-001.ts): arm B's claim carries the procedure lines as genome lines, arm A none. The goal and the fire check
+ * are the ordinary ones; lines_sha256 is the digest of the lines received (sha256 of '' for none). A claim with pl gets the
+ * per-attempt measurements (maker time, termination) like a TG-001 claim; any other claim keeps its result body as before.
+ */
+function procedureArmCheck() {
+  const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
+  const task = { commit: 'mut:abc:packages/server/src/services/a.ts:3:1', source: 'packages/server/src/services/a.ts', tests: ['packages/server/src/__tests__/a.test.ts'] };
+  const lines = ['Run the named test first.', 'Make the smallest edit.', 'Rerun the same test.'];
+  const b = { pl: { experiment: 'pl-001', arm: 'B' }, genome: { id: 'ts-build-error-repair-v1', lines } };
+  const a = { pl: { experiment: 'pl-001', arm: 'A' } };
+  const sentB = makerInput(b, task, false, b.genome.lines); const sentA = makerInput(a, task, false, []);
+  assert(sentB === `${gymGoal(task, false, lines)}\n` && sentB.includes('Strategy: - Run the named test first.'), 'PL-001 arm B: the lines are sent as Strategy lines of the gym goal');
+  assert(sentA === `${gymGoal(task, false, [])}\n` && !sentA.includes('Strategy:'), 'PL-001 arm A: the plain gym goal, no lines');
+  const fb = fireCheck(sentB, lines); const fa = fireCheck(sentA, []);
+  assert(fb.genome_lines === 3 && fb.genome_lines_found === 3 && fb.lines_sha256 === createHash('sha256').update(lines.join('\n')).digest('hex'), 'PL-001 arm B: all lines found, received digest reported');
+  assert(fa.genome_lines === 0 && fa.genome_lines_found === 0 && fa.lines_sha256 === createHash('sha256').update('').digest('hex'), 'PL-001 arm A: no lines, digest of the empty list');
+  assert(fb.goal_sha256 === createHash('sha256').update(sentB).digest('hex') && fa.goal_sha256 !== fb.goal_sha256, 'PL-001: the goal sha256 is of the exact input');
 }
 
 /** A committed canary test is not the maker's change; a maker that edits it is out of scope (real git, no docker). */
@@ -785,7 +808,7 @@ function selfcheck() {
   assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
   assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
   assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
-  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test","prod_gates","prompt_override"]}', 'claim announces the canary, write_test, prod_gates and prompt_override capabilities');
+  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test","prod_gates","prompt_override","procedure_lines"]}', 'claim announces the canary, write_test, prod_gates, prompt_override and procedure_lines capabilities');
   const ovTask = { source: 'packages/server/src/__tests__/w.test.ts', target: 'packages/server/src/services/w.ts', tests: ['packages/server/src/__tests__/w.test.ts'] };
   assert(makerInput({ prompt_override: '# Objective Assignment\n\nFile: a.ts\n  Change only this file.' }, ovTask, true) === '# Objective Assignment File: a.ts Change only this file.\n', 'TG-001: a prompt override is sent verbatim, flattened like a production maker job');
   assert(makerInput({}, ovTask, true) === `${gymGoal(ovTask, true, [])}\n` && makerInput({ prompt_override: '  ' }, ovTask, true) === `${gymGoal(ovTask, true, [])}\n`, 'TG-001: no (or a blank) override = the ordinary gym goal');
@@ -819,6 +842,7 @@ function selfcheck() {
   assert(fc.genome_lines === 2 && fc.genome_lines_found === 2 && /^[0-9a-f]{64}$/.test(fc.goal_sha256), 'fireCheck: every genome line is found in the goal sent');
   assert(fireCheck(`${gymGoal({ ...task, tests: ['t.test.ts'] }, false, [])}\n`, lines).genome_lines_found === 0, 'fireCheck: a goal without the lines finds 0 (VOID on the server)');
   assert(fireCheck(gymGoal(wTask, true, lines), lines).genome_lines_found === 2, 'fireCheck: write_test goals carry the lines too');
+  procedureArmCheck();
   canaryScopeCheck();
   writeTestScopeCheck();
   killMutantsCheck();

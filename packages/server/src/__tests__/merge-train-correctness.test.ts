@@ -304,6 +304,15 @@ describe('failure modes', () => {
     expect(s.calls()).toEqual(['update aaaa1111', 'checks aaaa1111-u', 'merge aaaa1111-u']);
   });
 
+  it('skip is not pass: a checks verdict that mentions skipping is never green → TIMEOUT HOLD, no merge (forensic rank 9)', () => {
+    for (const v of ['pass,skipping', 'skipping,pass', 'skipping']) {
+      const s = sim({ behind: false, ciNew: v });
+      const r = train(s, ['778'], [], { MT_CI_TIMEOUT_S: '90', MT_CI_POLL_S: '45' });
+      expect(r.status).toBe(7);
+      expect(s.calls().some((c) => c.startsWith('merge'))).toBe(false);
+    }
+  });
+
   it('required check missing on the head (real checks path, stub gh): never green → TIMEOUT HOLD', () => {
     const s = sim({ behind: false });
     const gh = stubGh({
@@ -314,6 +323,134 @@ describe('failure modes', () => {
     expect(r.status).toBe(7);
     expect(r.out).toContain('security-scan');
     expect(s.calls().some((c) => c.startsWith('merge'))).toBe(false);
+  });
+});
+
+// No false green (10-26): every REQUIRED context needs a success on the exact sha, the newest run per name decides, and
+// unreadable branch protection is HOLD — never a remembered list.
+describe('checks_verdict — no false green', () => {
+  const C = 'repos/djimit/djimitflo/commits/s1';
+  const verdict = (runs: unknown[], o: { statuses?: unknown[]; required?: string | null; protection?: unknown; summary?: unknown } = {}) => {
+    const f: Record<string, unknown> = { [`${C}/check-runs?per_page=100`]: { check_runs: runs }, [`${C}/status`]: { state: 'success', statuses: o.statuses ?? [] } };
+    if (o.protection !== undefined) f['repos/djimit/djimitflo/branches/main/protection/required_status_checks'] = o.protection;
+    if (o.summary !== undefined) f['repos/djimit/djimitflo/branches/main'] = o.summary;
+    const gh = stubGh(f);
+    const req = o.required === undefined ? 'build,sbom' : o.required;
+    const r = spawnSync('bash', ['-c', `source ${script}; checks_verdict s1; echo; mt_gh pr checks-at 1 --sha s1`], { encoding: 'utf8',
+      env: { ...process.env, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: req ?? '' } });
+    const [json, line] = r.stdout.split('\n').filter(Boolean);
+    return { ...(JSON.parse(json) as { verdict: string; red: string[]; reason?: string }), line };
+  };
+  const ok = (name: string, id = 1) => ({ id, name, status: 'completed', conclusion: 'success', completed_at: `2026-10-26T0${id}:00:00Z` });
+  const done = (name: string, conclusion: string, id = 1) => ({ ...ok(name, id), conclusion });
+
+  it('all required success: green (control)', () => {
+    expect(verdict([ok('build'), ok('sbom')]).verdict).toBe('green');
+  });
+  for (const c of ['skipped', 'neutral', 'cancelled', 'stale']) {
+    it(`a required check with ${c} is not green: red required_not_success`, () => {
+      const v = verdict([ok('build'), done('sbom', c)]);
+      expect(v.verdict).toBe('red');
+      expect(v.reason).toBe(`required_not_success:sbom=${c}`);
+      expect(v.line).toMatch(/^fail red:sbom/);
+    });
+  }
+  it('a newer red run next to an older green run of the same name is red (newest per name decides)', () => {
+    expect(verdict([ok('build', 1), ok('sbom', 2), done('sbom', 'failure', 3)]).verdict).toBe('red');
+    // newer green rerun of an older red run: green — the rerun replaced it
+    expect(verdict([ok('build', 1), done('sbom', 'failure', 2), ok('sbom', 3)]).verdict).toBe('green');
+    // newer skipped next to older success: not green
+    expect(verdict([ok('build', 1), ok('sbom', 2), done('sbom', 'skipped', 3)]).verdict).toBe('red');
+  });
+  it('a required check still running is pending, not red', () => {
+    expect(verdict([ok('build'), { id: 2, name: 'sbom', status: 'in_progress', conclusion: null, completed_at: null }]).verdict).toBe('pending');
+  });
+  it('a non-required skipped or neutral check is still fine', () => {
+    expect(verdict([ok('build'), ok('sbom'), done('docs', 'skipped', 2), done('lint-optional', 'neutral', 3)]).verdict).toBe('green');
+    // a non-required failure stays red
+    expect(verdict([ok('build'), ok('sbom'), done('docs', 'failure', 2)]).verdict).toBe('red');
+  });
+  it('unreadable branch protection without MT_REQUIRED_CHECKS: HOLD (pending required_checks_unavailable), never the old default list', () => {
+    const v = verdict([ok('build'), ok('sbom')], { required: null });
+    expect(v.verdict).toBe('pending');
+    expect(v.reason).toBe('required_checks_unavailable');
+    expect(v.line).toContain('required_checks_unavailable');
+    const r = spawnSync('bash', ['-c', `source ${script}; required_json`], { encoding: 'utf8',
+      env: { ...process.env, PATH: stubGh().PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
+    expect(JSON.parse(r.stdout)).toEqual({ source: 'unavailable', contexts: [], checks: [] });
+  });
+  it('readable branch protection is the source of the required contexts', () => {
+    const v = verdict([ok('build'), done('gitleaks', 'skipped', 2)], { required: null, protection: { contexts: ['build'], checks: [{ context: 'gitleaks' }] } });
+    expect(v).toMatchObject({ verdict: 'red', reason: 'required_not_success:gitleaks=skipped' });
+    // protection endpoint unreadable (no admin read): the branch summary's protection block is the same live source
+    const summary = { protection: { enabled: true, required_status_checks: { contexts: ['build', 'gitleaks'] } } };
+    expect(verdict([ok('build'), ok('gitleaks', 2)], { required: null, summary }).verdict).toBe('green');
+    expect(verdict([ok('build')], { required: null, summary }).verdict).toBe('pending');
+    // a branch without protection: unavailable, not "no required checks"
+    expect(verdict([ok('build')], { required: null, summary: { protection: { enabled: false, required_status_checks: { contexts: [] } } } }).reason).toBe('required_checks_unavailable');
+  });
+});
+
+// Codex review of #1061: the required producer (app_id) is part of the check identity.
+describe('checks_verdict — required producer identity', () => {
+  const C = 'repos/djimit/djimitflo/commits/s1';
+  const protection = { contexts: ['build', 'sbom'], checks: [{ context: 'build', app_id: 15368 }, { context: 'sbom', app_id: 15368 }] };
+  const verdict = (runs: unknown[], prot: unknown = protection) => {
+    const gh = stubGh({ [`${C}/check-runs?per_page=100`]: { check_runs: runs }, [`${C}/status`]: { state: 'pending', statuses: [] },
+      'repos/djimit/djimitflo/branches/main/protection/required_status_checks': prot });
+    const r = spawnSync('bash', ['-c', `source ${script}; checks_verdict s1`], { encoding: 'utf8',
+      env: { ...process.env, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
+    return JSON.parse(r.stdout) as { verdict: string; reason?: string; missing: string[] };
+  };
+  const r = (id: number, name: string, conclusion: string, app: number) => ({ id, name, status: 'completed', conclusion, app: { id: app }, completed_at: `2026-10-26T0${id}:00:00Z` });
+  it('Actions sbom=skipped then another app sbom=success is red, not green', () => {
+    expect(verdict([r(1, 'build', 'success', 15368), r(2, 'sbom', 'skipped', 15368), r(3, 'sbom', 'success', 999)]))
+      .toMatchObject({ verdict: 'red', reason: 'required_not_success:sbom=skipped' });
+  });
+  it('only another app reported the required context: pending, missing', () => {
+    expect(verdict([r(1, 'build', 'success', 15368), r(3, 'sbom', 'success', 999)])).toMatchObject({ verdict: 'pending', missing: ['sbom'] });
+  });
+  it('control: required producer success is green; app_id -1 accepts any producer', () => {
+    expect(verdict([r(1, 'build', 'success', 15368), r(2, 'sbom', 'success', 15368)]).verdict).toBe('green');
+    expect(verdict([r(1, 'build', 'success', 7), r(2, 'sbom', 'success', 999)], { checks: [{ context: 'build', app_id: -1 }, { context: 'sbom', app_id: -1 }] }).verdict).toBe('green');
+  });
+});
+
+// Operator decision (#1061): Dependabot auto-merge stays, but through the corrected gate. GitHub's native auto-merge counts a
+// skipped required check as passed, so dependabot-auto-merge.yml runs scripts/dependabot-merge.sh: merge-train's
+// checks_verdict on the exact head, then the REST merge pinned to that head.
+describe('dependabot-merge.sh — the Dependabot auto-merge path uses the corrected gate', () => {
+  const dm = path.resolve(__dirname, '../../../../scripts/dependabot-merge.sh');
+  const R = 'repos/djimitflo-test/r'; const HEAD = 'dep1';
+  const protection = { contexts: ['build', 'sbom'], checks: [{ context: 'build', app_id: 15368 }, { context: 'sbom', app_id: 15368 }] };
+  const r = (id: number, name: string, conclusion: string | null, app = 15368, status = 'completed') => ({ id, name, status, conclusion, app: { id: app } });
+  const attempt = (runs: unknown[], o: { head?: string } = {}) => {
+    const gh = stubGh({ [`${R}/pulls/504`]: { number: 504, head: { sha: o.head ?? HEAD } }, [`${R}/commits/${HEAD}/check-runs?per_page=100`]: { check_runs: runs },
+      [`${R}/commits/${HEAD}/status`]: { state: 'pending', statuses: [] }, [`${R}/branches/main/protection/required_status_checks`]: protection },
+      `case "$*" in *"-X PUT"*/pulls/504/merge*) echo '{"merged":true}'; exit 0 ;; esac`);
+    const out = spawnSync('bash', [dm, '504', HEAD], { encoding: 'utf8', env: { ...process.env, PATH: gh.PATH, MERGE_TRAIN_REPO: 'djimitflo-test/r',
+      MT_LEDGER: path.join(tmp('dm-led-'), 'l'), MT_REQUIRED_CHECKS: '', DM_TRIES: '1', DM_POLL_S: '0' } });
+    const merges = read(gh.log).split('\n').filter((l) => l.includes('-X PUT') && l.includes('/merge'));
+    return { status: out.status, out: `${out.stdout}${out.stderr}`, merges };
+  };
+  it('a Dependabot PR whose required check was skipped is not merged', () => {
+    const a = attempt([r(1, 'build', 'success'), r(2, 'sbom', 'skipped')]);
+    expect(a.status).toBe(0); expect(a.merges).toEqual([]); expect(a.out).toContain('required_not_success:sbom=skipped');
+  });
+  it('a skipped required Actions check next to another app reporting success is not merged', () => {
+    expect(attempt([r(1, 'build', 'success'), r(2, 'sbom', 'skipped'), r(3, 'sbom', 'success', 999)]).merges).toEqual([]);
+  });
+  it('a required check that has not reported (or is still running) is not merged', () => {
+    expect(attempt([r(1, 'build', 'success')]).merges).toEqual([]);
+    expect(attempt([r(1, 'build', 'success'), r(2, 'sbom', null, 15368, 'in_progress')]).merges).toEqual([]);
+  });
+  it('a head that moved is not merged', () => {
+    expect(attempt([r(1, 'build', 'success'), r(2, 'sbom', 'success')], { head: 'dep2' }).merges).toEqual([]);
+  });
+  it('green on the exact head: merged with sha pinned to that head; its own running auto-merge job does not block it', () => {
+    const a = attempt([r(1, 'build', 'success'), r(2, 'sbom', 'success'), r(3, 'auto-merge', null, 15368, 'in_progress')]);
+    expect(a.merges).toHaveLength(1);
+    expect(a.merges[0]).toContain(`sha=${HEAD}`);
   });
 });
 

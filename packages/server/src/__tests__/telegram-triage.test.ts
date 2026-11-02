@@ -145,7 +145,7 @@ it('D2 dismiss: write:governance only, 404 for a non-candidate, audited, and the
 const pushDb = () => { const d = new Database(':memory:'); d.exec(schema); runMigrations(d); d.pragma('foreign_keys = OFF'); return d; };
 const NOON = new Date('2026-10-07T12:00:00Z');
 
-it('triage push: off by default and without the sub-flag; then one message per item, capped per push, each once', async () => {
+it('triage push: off by default and without the sub-flag; human decisions first, then optional labels; capped per push, each once', async () => {
   const d = pushDb();
   const ins = d.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at)
     VALUES (?, 'test', ?, 'd', 'r', 'gap_analysis', 'needs_more_evidence', datetime('now'), datetime('now'))`);
@@ -159,15 +159,17 @@ it('triage push: off by default and without the sub-flag; then one message per i
   expect((await pushTriage(d, { TELEGRAM_PUSH_ENABLED: 'true' }, NOON)).result).toBe('disabled');
   const env = { ...TRIAGE_ON, TELEGRAM_TRIAGE_MAX_PER_PUSH: '2', TELEGRAM_PUSH_MAX_PER_HOUR: '10', TELEGRAM_QUIET_HOURS: '22-7', DJIMITFLO_PUBLIC_URL: 'https://djimitflo.example/' };
   expect((await pushTriage(d, env, new Date('2026-10-07T23:00:00Z'))).result).toBe('quiet');
-  expect(await pushTriage(d, env, NOON)).toEqual({ result: 'sent', sent: 2 });
-  expect(await pushTriage(d, env, NOON)).toEqual({ result: 'sent', sent: 1 });
+  // the memory review is a human decision and goes first; the D5 labels are optional labelling and say so
+  expect(await pushTriage(d, env, NOON)).toEqual({ result: 'sent', sent: 2, human: 1 });
+  expect(await pushTriage(d, env, NOON)).toEqual({ result: 'sent', sent: 1, human: 0 });
   expect((await pushTriage(d, env, NOON)).result).toBe('nothing');
-  expect(sent.map((s) => s.buttons.map((b) => b.data))).toEqual([['pl:p2:o', 'pl:p2:w'], ['pl:p1:o', 'pl:p1:w'], [`mp:${mid}`, `mr:${mid}`]]);
-  expect(sent[0].buttons.map((b) => b.text)).toEqual(['Correct rejection', 'Wrong rejection']);
-  expect(sent[0].url).toBe('https://djimitflo.example/decisions#prescreen');
-  expect(sent[2].url).toBe('https://djimitflo.example/decisions#memory');
-  expect(sent[0].text).toContain('Proposal: Proposal 2');
-  expect(sent[0].text).not.toContain('ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ'); // the reason leaves to Telegram redacted
+  expect(sent.map((s) => s.buttons.map((b) => b.data))).toEqual([[`mp:${mid}`, `mr:${mid}`], ['pl:p2:o', 'pl:p2:w'], ['pl:p1:o', 'pl:p1:w']]);
+  expect(sent[1].buttons.map((b) => b.text)).toEqual(['Correct rejection', 'Wrong rejection']);
+  expect(sent[1].url).toBe('https://djimitflo.example/decisions#prescreen');
+  expect(sent[0].url).toBe('https://djimitflo.example/decisions#memory');
+  expect(sent[1].text).toContain('Optional labelling');
+  expect(sent[1].text).toContain('Proposal: Proposal 2');
+  expect(sent[1].text).not.toContain('ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ'); // the reason leaves to Telegram redacted
   d.close();
 });
 
@@ -180,7 +182,7 @@ it('triage shares the hourly cap mechanism but never crowds out an approval push
   for (const i of [1, 2, 3]) { ins.run(`p${i}`); pj.run(`j${i}`, `p${i}`); }
   setPushSender({ requestApproval: vi.fn(async () => {}), broadcastAlert: vi.fn(async () => {}), requestTriage: vi.fn(async () => {}) });
   const env = { ...TRIAGE_ON, TELEGRAM_TRIAGE_MAX_PER_PUSH: '5', TELEGRAM_PUSH_MAX_PER_HOUR: '2' };
-  expect(await pushTriage(d, env, NOON)).toEqual({ result: 'sent', sent: 2 });
+  expect(await pushTriage(d, env, NOON)).toEqual({ result: 'sent', sent: 2, human: 0 });
   expect((await pushTriage(d, env, NOON)).result).toBe('capped');
   expect(await pushApproval(d, { id: 'a1', title: 'x' }, env, NOON)).toBe('sent');
   d.close();
@@ -192,4 +194,18 @@ it('callback data of every triage button fits Telegram\'s 64-byte limit; a longe
   const msgs = triageMessages(inbox);
   expect(msgs.map((m) => m.key)).toEqual(['triage:label:11111111-aaaa-4bbb-8ccc-000000000001']);
   for (const b of msgs.flatMap((m) => m.buttons)) expect(Buffer.byteLength(b.data)).toBeLessThanOrEqual(CALLBACK_DATA_MAX_BYTES);
+});
+
+it('triage push never sends a template-duplicate memory candidate (system dedup work, not a human decision)', async () => {
+  const d = pushDb();
+  const svc = new MemoryCandidateService(d);
+  const keep = svc.create({ title: 'rule', content: 'Keep diffs small', memory_type: 'engineering_rule' }).id;
+  const dup = svc.create({ title: 'rule 2', content: 'Keep diffs small again', memory_type: 'engineering_rule' }).id;
+  d.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('t1', 'memory_template_duplicate', 'memory_candidate', ?, 'tpl:x', 'shadow', 'would_skip', 'r', datetime('now'))`).run(dup);
+  const sent: string[][] = [];
+  setPushSender({ requestApproval: vi.fn(async () => {}), broadcastAlert: vi.fn(async () => {}), requestTriage: vi.fn(async (_t, buttons) => { sent.push(buttons.map((b) => b.data)); }) });
+  expect(await pushTriage(d, { ...TRIAGE_ON, TELEGRAM_TRIAGE_MAX_PER_PUSH: '5', TELEGRAM_PUSH_MAX_PER_HOUR: '10' }, NOON)).toEqual({ result: 'sent', sent: 1, human: 1 });
+  expect(sent).toEqual([[`mp:${keep}`, `mr:${keep}`]]);
+  d.close();
 });

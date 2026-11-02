@@ -4,7 +4,8 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { FleetCommands } from '../services/fleet-commands';
 import { LocalShadowQueue } from '../services/local-shadow-queue';
-import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenExpiresAt, spawnTokenRejection } from '../services/spawn-token';
+import { recordHostTokenOk, recordHostTokenRejection } from '../services/host-token-watch';
 import { recordPowerSample, resourceLedgerEnabled } from '../services/resource-ledger';
 import { hourBucket, recordPolicyViolation } from '../services/policy-violations';
 
@@ -24,15 +25,18 @@ export function createHostAgentRoutes(db: Database, auth: AuthMiddleware): Route
   const fleet = new FleetCommands(db);
   const host = (req: any, res: any): string | null => {
     const h = String(req.get('X-Host') || '');
-    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), String(req.get('X-Host-Token') || ''), h, HOST_AGENT_SCOPE) : 'wrong_subject';
+    const token = String(req.get('X-Host-Token') || '');
+    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), token, h, HOST_AGENT_SCOPE) : 'wrong_subject';
     if (rejection) {
       console.warn(`[host-agent] token rejected host=${JSON.stringify(h.slice(0, 100))} reason=${rejection}`);
+      if (h) recordHostTokenRejection(db, h, HOST_AGENT_SCOPE, rejection);
       // §16 step 8 (shadow, POLICY_VIOLATION_LOG): one row per host × reason × hour, never per request
       recordPolicyViolation(db, { kind: 'token_rejected', actor: `host:${h.slice(0, 100)}`, severity: 'medium', dedupe_key: `${HOST_AGENT_SCOPE}:${h.slice(0, 100)}:${rejection}:${hourBucket()}`,
         evidence_ref: `token:${HOST_AGENT_SCOPE}`, description: `${HOST_AGENT_SCOPE} token rejected: ${rejection}` });
       res.status(401).json({ error: { code: 'HOST_TOKEN_INVALID', message: 'Host token is invalid, expired, or scoped to another host' } });
       return null;
     }
+    recordHostTokenOk(db, h, HOST_AGENT_SCOPE, spawnTokenExpiresAt(token));
     return h;
   };
   router.post('/poll', (req, res) => {

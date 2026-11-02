@@ -12,9 +12,13 @@ interface CapabilityEconomy {
   success_rate: number;
   p50_tokens: number;
   p95_tokens: number;
-  p50_dollars: number;
-  p95_dollars: number;
+  /** null without a dated model price (CODE-007) */
+  p50_dollars: number | null;
+  p95_dollars: number | null;
   verified_artifacts_per_dollar: number | null;
+  /** the runtime-tariff or declared cost model, labelled as an estimate */
+  p50_dollars_estimate?: number | null;
+  p95_dollars_estimate?: number | null;
 }
 
 interface RunEconomy {
@@ -25,13 +29,17 @@ interface RunEconomy {
   /** completed maker leases that are not verified artifacts (older servers omit it) */
   completed_unverified?: number;
   run_verified?: boolean;
-  /** null = no lease reported usage (unknown, never $0) */
+  /** null = no dated model price for the run's usage (unknown, never $0) */
   dollars_spent: number | null;
-  /** only some leases reported usage: dollars_spent is a lower bound */
+  /** some leases unpriced or partially priced: dollars_spent is a lower bound */
   dollars_lower_bound?: boolean;
+  dollars_reason?: 'no_usage_reported' | 'no_dated_model_price' | null;
   usage_coverage?: { reported: number; total: number; ratio: number | null };
+  price_coverage?: { priced: number; partial: number; total: number; ratio: number | null };
   efficiency: number | null;
-  efficiency_reason?: 'no_usage_reported' | 'zero_dollars' | 'partial_usage_upper_bound' | null;
+  efficiency_reason?: 'no_usage_reported' | 'no_dated_model_price' | 'zero_dollars' | 'partial_usage_upper_bound' | null;
+  /** old runtime-tariff figure, an estimate only */
+  runtime_tariff_estimate?: { usd: number | null; lower_bound: boolean };
 }
 
 type EconomyResponse = {
@@ -49,6 +57,7 @@ type EconomyResponse = {
 
 type AllocationResponse = {
   budget: number;
+  cost_basis?: 'estimate';
   budget_insufficient: boolean;
   allocated: CapabilityEconomy[];
   deferred: CapabilityEconomy[];
@@ -58,6 +67,24 @@ type AllocationResponse = {
 function dollars(value: number | null | undefined, lowerBound = false): string {
   if (value === null || value === undefined) return 'unknown';
   return `${lowerBound ? '≥ ' : ''}$${value.toFixed(4)}`;
+}
+
+/** A tariff/declared estimate is marked ~ and never shown as a plain dollar figure. */
+function estimateText(value: number | null | undefined): string {
+  return value === null || value === undefined ? 'unknown' : `~$${value.toFixed(4)}`;
+}
+
+/** Capability dollars: a dated price when the server has one, else the labelled estimate. */
+const capDollars = (priced: number | null, est: number | null | undefined): string => (priced !== null ? dollars(priced) : estimateText(est));
+
+function dollarsTitle(run: RunEconomy): string | undefined {
+  const parts = [
+    run.usage_coverage ? `usage reported by ${run.usage_coverage.reported}/${run.usage_coverage.total} lease(s)` : null,
+    run.price_coverage ? `dated model price on ${run.price_coverage.priced}/${run.price_coverage.total} lease(s)` : null,
+    run.dollars_reason === 'no_dated_model_price' ? 'no dated model price' : null,
+    run.runtime_tariff_estimate?.usd != null ? `runtime tariff estimate ${run.runtime_tariff_estimate.lower_bound ? '≥ ' : ''}~$${run.runtime_tariff_estimate.usd.toFixed(4)}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join('; ') : undefined;
 }
 
 /** Null efficiency: unknown when usage was not reported, — when the run cost $0 (per-dollar undefined). */
@@ -130,7 +157,7 @@ export function EconomyPage() {
           <div className="text-sm text-foreground-secondary mb-2">Total Dollars Spent</div>
           <div className="text-3xl font-bold text-foreground">{dollars(data.summary.total_dollars_spent, data.summary.total_dollars_lower_bound)}</div>
           {!!data.summary.runs_with_unknown_dollars && (
-            <div className="text-xs text-foreground-tertiary mt-1">{data.summary.runs_with_unknown_dollars} run(s) reported no usage</div>
+            <div className="text-xs text-foreground-tertiary mt-1">{data.summary.runs_with_unknown_dollars} run(s) without a dated model price</div>
           )}
         </div>
       </div>
@@ -139,7 +166,7 @@ export function EconomyPage() {
       <div className="bg-background-secondary border border-border rounded-lg p-6">
         <h2 className="text-xl font-semibold text-foreground mb-1">Budget Allocation</h2>
         <p className="text-sm text-foreground-secondary mb-4">
-          Given a dollar budget, which validated capabilities are worth funding right now? Ranked by competence per dollar.
+          Given a dollar budget, which validated capabilities are worth funding right now? Ranked by competence per estimated dollar (runtime tariff or declared cost, not a dated price).
         </p>
         <form onSubmit={handleAllocate} className="flex items-center gap-3 mb-4">
           <span className="text-foreground-secondary">$</span>
@@ -168,7 +195,7 @@ export function EconomyPage() {
                 {allocation.allocated.map((cap) => (
                   <li key={cap.capability_id} className="text-xs font-mono text-foreground-secondary flex justify-between">
                     <span>{cap.capability_id.slice(0, 16)}</span>
-                    <span>${cap.p50_dollars.toFixed(4)}</span>
+                    <span>{capDollars(cap.p50_dollars, cap.p50_dollars_estimate)}</span>
                   </li>
                 ))}
               </ul>
@@ -179,7 +206,7 @@ export function EconomyPage() {
                 {allocation.deferred.map((cap) => (
                   <li key={cap.capability_id} className="text-xs font-mono text-foreground-tertiary flex justify-between">
                     <span>{cap.capability_id.slice(0, 16)}</span>
-                    <span>${cap.p50_dollars.toFixed(4)}</span>
+                    <span>{capDollars(cap.p50_dollars, cap.p50_dollars_estimate)}</span>
                   </li>
                 ))}
               </ul>
@@ -211,8 +238,8 @@ export function EconomyPage() {
                   <td className="py-3 pr-4"><span className="px-2 py-0.5 rounded-full text-xs bg-accent/10 text-accent-secondary">{cap.status}</span></td>
                   <td className="py-3 pr-4">{cap.n_runs}</td>
                   <td className="py-3 pr-4">{(cap.success_rate * 100).toFixed(0)}%</td>
-                  <td className="py-3 pr-4">${cap.p50_dollars?.toFixed(4) || '0'}</td>
-                  <td className="py-3 pr-4">${cap.p95_dollars?.toFixed(4) || '0'}</td>
+                  <td className="py-3 pr-4">{capDollars(cap.p50_dollars, cap.p50_dollars_estimate)}</td>
+                  <td className="py-3 pr-4">{capDollars(cap.p95_dollars, cap.p95_dollars_estimate)}</td>
                   <td className="py-3 pr-4">{cap.verified_artifacts_per_dollar ? cap.verified_artifacts_per_dollar.toFixed(2) : '—'}</td>
                 </tr>
               ))}
@@ -243,7 +270,7 @@ export function EconomyPage() {
                   <td className="py-3 pr-4">{run.status}</td>
                   <td className="py-3 pr-4">{run.verified_artifacts}</td>
                   <td className="py-3 pr-4">{run.completed_unverified ?? '—'}</td>
-                  <td className="py-3 pr-4" title={run.usage_coverage ? `usage reported by ${run.usage_coverage.reported}/${run.usage_coverage.total} lease(s)` : undefined}>
+                  <td className="py-3 pr-4" title={dollarsTitle(run)}>
                     {dollars(run.dollars_spent, run.dollars_lower_bound)}
                   </td>
                   <td className="py-3 pr-4">{efficiencyText(run)}</td>

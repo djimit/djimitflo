@@ -14,14 +14,19 @@ export function AgentsPage() {
   const tasks = useStore((state) => state.tasks);
   const visibleAgents = agentId ? agents.filter(agent => agent.id === agentId) : agents;
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  // UX-007: 'loading' and 'failed' are not an empty inventory; only a completed read (or a filled store) may say "none"
+  const [inventory, setInventory] = useState<'loading' | 'loaded' | 'failed'>(agents.length ? 'loaded' : 'loading');
 
   // D4: REST fallback — load agents via API when WebSocket store is empty.
   useEffect(() => {
     if (agents.length === 0) {
       const failed: string[] = [];
-      api.getAgents().then((res) => useStore.setState({ agents: res.agents })).catch(softFail(failed, 'agents', undefined)).finally(() => setLoadErrors(failed));
+      api.getAgents().then((res) => { useStore.setState({ agents: res.agents }); setInventory('loaded'); })
+        .catch((err) => { softFail(failed, 'agents', undefined)(err); setInventory('failed'); })
+        .finally(() => setLoadErrors(failed));
     }
   }, []);
+  const state = agents.length ? 'loaded' : inventory;
 
   return (
     <div className="p-8 space-y-6">
@@ -38,8 +43,10 @@ export function AgentsPage() {
       {/* Agent Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {visibleAgents.length === 0 ? (
-          <div className="col-span-2 bg-background-secondary border border-border rounded-lg p-12 text-center">
-            <p className="text-foreground-muted">{agentId ? 'Agent not found' : 'No agents configured'}</p>
+          <div className="col-span-2 bg-background-secondary border border-border rounded-lg p-12 text-center" aria-live="polite">
+            <p className="text-foreground-muted">{state === 'loading' ? 'Loading agents…'
+              : state === 'failed' ? 'Agent inventory unavailable — the agent list could not be read, so it is unknown whether any are configured.'
+              : agentId ? 'Agent not found' : 'No agents configured'}</p>
           </div>
         ) : (
           visibleAgents.map((agent) => {

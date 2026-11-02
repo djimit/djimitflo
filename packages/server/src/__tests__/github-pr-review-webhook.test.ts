@@ -23,8 +23,15 @@ let lastCommentBody: string | undefined;
 function mockGh(prStat: { additions: number; deletions: number; changedFiles: number; files: string[] }, options: { commentFails?: boolean } = {}) {
   lastCommentBody = undefined;
   vi.mocked(execFileSync).mockImplementation(((command: string, args: string[] = []) => {
-    if (args[0] === 'pr' && args[1] === 'view') {
-      return JSON.stringify({ title: 'Test PR', url: 'https://github.com/owner/repo/pull/7', ...prStat, files: prStat.files.map((path) => ({ path })) });
+    if (args[0] === 'pr' && args[1] === 'view' && args.includes('headRefOid')) return JSON.stringify({ headRefOid: HEAD_SHA });
+    if (args[0] === 'api' && args[1] === `repos/owner/repo/compare/main...${HEAD_SHA}`) {
+      // the diff stats are read by the exact head SHA (CODE-005); spread over files so the totals match prStat
+      const files = prStat.files.map((filename, i) => ({
+        filename,
+        additions: i === 0 ? prStat.additions : 0,
+        deletions: i === 0 ? prStat.deletions : 0,
+      }));
+      return JSON.stringify({ merge_base: 'c'.repeat(40), files });
     }
     if (args[0] === 'pr' && args[1] === 'comment') {
       if (options.commentFails) throw new Error('gh: authentication required');
@@ -32,7 +39,7 @@ function mockGh(prStat: { additions: number; deletions: number; changedFiles: nu
       if (bodyFileIndex !== -1) lastCommentBody = readFileSync(args[bodyFileIndex + 1], 'utf8');
       return '';
     }
-    if (args[0] === 'api') {
+    if (args[0] === 'api' && args[1] === `repos/owner/repo/statuses/${HEAD_SHA}`) {
       return JSON.stringify({ id: 123456 });
     }
     throw new Error(`unexpected gh invocation: ${command} ${args.join(' ')}`);
@@ -108,6 +115,17 @@ describe('GitHub pull_request review webhook', () => {
     // the bookkeeping run is settled once the verdict is posted, not left 'blocked'
     expect(db.prepare("SELECT status, json_extract(metadata, '$.settled_by') AS by FROM loop_runs WHERE id = ?").get(reviewRow.loop_run_id))
       .toEqual({ status: 'completed', by: 'github-pr-review' });
+    db.close();
+  });
+
+  it('U3: the review run is marked synthetic at write time (reason pr_review), so loop KPIs leave it out', async () => {
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+    const response = await post(prBody(), 'delivery-pr-u3');
+    expect(response.status).toBe(202);
+    const { loop_run_id } = await response.json() as { loop_run_id: string };
+    expect(db.prepare("SELECT json_extract(metadata, '$.synthetic') AS synthetic, json_extract(metadata, '$.synthetic_reason') AS reason FROM loop_runs WHERE id = ?").get(loop_run_id))
+      .toEqual({ synthetic: 1, reason: 'pr_review' });
     db.close();
   });
 

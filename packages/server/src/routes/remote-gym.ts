@@ -2,9 +2,10 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { GymRunSettledError, RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
-import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenExpiresAt, spawnTokenRejection } from '../services/spawn-token';
+import { recordHostTokenOk, recordHostTokenRejection } from '../services/host-token-watch';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
-import { ingestKbPages, kbPendingSafety } from '../services/kb-corpus';
+import { ingestKbPages, kbPendingSafety, releaseKbPage } from '../services/kb-corpus';
 import { claimCommittee, recordCommittee } from '../services/committee-swarm';
 
 /**
@@ -19,12 +20,15 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
 
   function host(req: any, res: any): string | null {
     const h = String(req.get('X-Gym-Host') || '');
-    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), String(req.get('X-Gym-Worker-Token') || ''), h, REMOTE_GYM_SCOPE) : 'wrong_subject';
+    const token = String(req.get('X-Gym-Worker-Token') || '');
+    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), token, h, REMOTE_GYM_SCOPE) : 'wrong_subject';
     if (rejection) {
       console.warn(`[gym-worker] token rejected host=${JSON.stringify(h.slice(0, 100))} reason=${rejection}`);
+      if (h) recordHostTokenRejection(db, h, REMOTE_GYM_SCOPE, rejection);
       res.status(401).json({ error: { code: 'GYM_WORKER_TOKEN_INVALID', message: 'Gym worker token is invalid, expired, or scoped to another host' } });
       return null;
     }
+    recordHostTokenOk(db, h, REMOTE_GYM_SCOPE, spawnTokenExpiresAt(token));
     return h;
   }
   const fail = (res: any, error: unknown) => {
@@ -64,7 +68,7 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
     try { res.json({ recorded: recordCommittee(db, String(req.params.jobId), h, req.body?.answers) }); } catch (error) { fail(res, error); }
   });
 
-  // plan L2: the workstation pushes changed DjimitKBWiki pages; stored after an embedding, unsafe deleted, unverdicted reported 'pending'
+  // plan L2: the workstation pushes changed DjimitKBWiki pages; stored after an embedding, unsafe quarantined, unverdicted reported 'pending'
   router.post('/kb', async (req, res) => {
     const h = host(req, res); if (!h) return;
     try { res.json(await ingestKbPages(db, h, req.body?.pages)); } catch (error) { const code = error instanceof Error ? error.message : 'KB_ERROR'; res.status(code.startsWith('KB_PAGES_INVALID') ? 400 : 500).json({ error: { code, message: code } }); }
@@ -74,6 +78,16 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   router.get('/kb/pending', (req, res) => {
     const h = host(req, res); if (!h) return;
     try { res.json(kbPendingSafety(db, h, Number(req.query.limit) || 50)); } catch (error) { fail(res, error); }
+  });
+
+  // operator decision 31-10: release a quarantined KB page after review (an operator 'safe' verdict for its current text)
+  router.post('/kb/release', auth.requireAuth, auth.requirePermission('write:governance'), (req: any, res) => {
+    const path = String(req.body?.path || ''); const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!path || !reason) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'path and reason are required' } }); return; }
+    try { res.json(releaseKbPage(db, path, String(req.user?.email || req.user?.sub || 'operator'), reason.slice(0, 300))); } catch (error) {
+      const code = error instanceof Error ? error.message : 'KB_ERROR';
+      res.status(code === 'KB_PAGE_NOT_FOUND' ? 404 : code === 'KB_PAGE_NOT_QUARANTINED' ? 409 : 500).json({ error: { code, message: code } });
+    }
   });
 
   router.post('/tokens', auth.requireAuth, auth.requirePermission('manage:tokens'), (req, res) => {

@@ -56,8 +56,9 @@ it('shows the error when the endpoint fails', async () => {
 
 it('W3: shows what needs the operator with links into /decisions, and a calm line when nothing does', () => {
   const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 2, requeue: 0, labels: 22, memory_review: 1 }} /></MemoryRouter>);
-  expect(html).toContain('Needs you (25)');
+  expect(html).toContain('Needs you (3)'); // the 22 labels are optional labelling, not decisions
   expect(html).toContain('href="/decisions#approvals"');
+  expect(html).toContain('Optional labelling (22)');
   expect(html).toContain('22 pre-screen labels');
   expect(html).not.toContain('requeue candidates');
   expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Nothing needs you right now');
@@ -66,7 +67,7 @@ it('W3: shows what needs the operator with links into /decisions, and a calm lin
 it('UX-6: shows every blocking category with a deep link; /decisions links point at ids that exist on the Decisions page', async () => {
   const n = { approvals: 2, requeue: 1, labels: 0, memory_review: 1, proposals: 3, draft_prs: 4, stalls: 1, approvals_expiring: 1, join_requests: 1, shell_requests: 2 };
   const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
-  expect(html).toContain('Needs you (11)'); // 2+1+1+3+1+1+2 — expiring and unsettled PRs are not double-counted
+  expect(html).toContain('Needs you (10)'); // 2+1+1+3+1+2 — expiring and unsettled PRs are not double-counted; a stall is system health
   for (const t of ['3 proposals awaiting approval', '4 loop PRs unsettled', '1 silent stalls', '1 Commons join requests', '2 fleet shell requests', '1 approvals expiring within 1 h']) expect(html).toContain(t);
   const anchors = [...html.matchAll(/href="\/decisions#([a-z-]+)"/g)].map((m) => m[1]);
   expect(new Set(anchors)).toEqual(new Set(['approvals', 'requeue', 'memory', 'draft-prs']));
@@ -267,4 +268,22 @@ it('SOUL subtraction: lines, ratio and route delta per ISO week; unknown with th
   const none = renderToStaticMarkup(<SubtractionSection kpi={{ status: 'unavailable', reason: 'git is not installed in this environment', repo: '/repo', head: null, weeks: null, note: '' }} />);
   expect(none).toContain('Unknown — git is not installed in this environment');
   expect(none).not.toContain('>0<');
+});
+
+it('human-only needs-you: labelling has its own count, system work is shown apart, and the audit batch links to its card', async () => {
+  const n = { approvals: 1, requeue: 0, labels: 3, memory_review: 1, open_prs: 4, audit_batch: 3, flagged_prs: 1, dependency_human: 2, dependency_tracked: true,
+    proposals: 5, stalls: 2, total: 8, optional_labelling: { d5: 3, car: 2, e1: 0, di001: null, total: null },
+    system: { requeue_will_handle: 40, requeue_mode: 'on', proposals_auto_reviewed: true } };
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
+  expect(html).toContain('Needs you (8)');
+  for (const t of ['3 PRs in the weekly audit batch', '1 flagged loop PRs', '2 Dependabot PRs the lane leaves to you', '1 memory reviews']) expect(html).toContain(t);
+  expect(html).toContain('href="/decisions#audit-batch"');
+  // optional labelling: own count; an unknown part makes it unknown, never 0
+  expect(html).toContain('Optional labelling (unknown)'); expect(html).toContain('2 CAR audits'); expect(html).toContain('unknown DI-001 relevance labels');
+  // system handles: shown, never in the headline
+  expect(html).toContain('40 requeue rows the system will handle'); expect(html).toContain('5 proposals in panel review'); expect(html).toContain('2 silent stalls');
+  expect(html).not.toContain('proposals awaiting approval');
+  const fs = await import('node:fs'); const path = await import('node:path');
+  const src = fs.readFileSync(path.join(process.cwd(), 'src/pages', 'DecisionsInboxPage.tsx'), 'utf8');
+  for (const a of ['audit-batch', 'dependency-lane', 'attribution-audit']) expect(src).toContain(`id="${a}"`);
 });
