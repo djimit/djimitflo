@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+// admission is judged at a fixed instant, not the wall clock (helpers/admission-now.ts; ledger expiries 2026-11-27 / 2026-12-31)
+vi.mock('../execution/runtime-admission', () => import('./helpers/admission-now').then((m) => m.admissionAtFixedNow()));
 import type { Task } from '@djimitflo/shared';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';

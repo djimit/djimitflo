@@ -60,6 +60,7 @@ import { createExplainerRoutes } from './explainer';
 import { createApexRoutes } from './apex';
 import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
+import { createCapabilityRoutes } from './capabilities';
 import { createAgiRoutes } from './agi';
 import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
@@ -113,7 +114,8 @@ export function createRoutes(
   router.use(telemetry.middleware());
   router.get('/telemetry/usage', requireAuth, (req, res) => {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 14));
-    res.json({ days, rows: telemetry.summary(days) });
+    const rows = telemetry.summary(days);
+    res.json({ days, rows, ...telemetry.coverage(days) }); // OPS-003: never imply complete usage when counts were lost
   });
   router.post('/telemetry/pageview', requireAuth, (req, res) => {
     const page = typeof req.body?.path === 'string' ? req.body.path.replace(/\/[0-9a-f-]{8,}(?=\/|$)/gi, '/:id').slice(0, 120) : '';
@@ -206,6 +208,7 @@ export function createRoutes(
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/swarm', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
+    { prefix: '/capabilities', middleware: [requireAuth], router: createCapabilityRoutes(db, auth) },
     { prefix: '/agi', middleware: [requireAuth], router: createAgiRoutes(db, auth) },
     { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
