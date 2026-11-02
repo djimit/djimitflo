@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { realRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { failureCause } from './judgments/failure-cause';
@@ -93,6 +94,8 @@ export class DreamStateService {
         -- classified once, except that an 'uncertain' result gets one more try (the state was enriched on 2026-09-24)
         -- a run that never leased a worker has nothing to diagnose (13/32 'uncertain' on prod 2026-09-24)
         AND EXISTS (SELECT 1 FROM worker_leases WHERE loop_run_id = loop_runs.id)
+        -- a synthetic PR-review run is bookkeeping; its failure (e.g. github_unavailable) is no loop failure to diagnose
+        AND ${realRunSql()}
         AND id NOT IN (SELECT subject_id FROM judgments WHERE judgment = 'failure_cause' AND subject_type = 'loop_run'
           GROUP BY subject_id HAVING SUM(decision != 'uncertain') > 0 OR COUNT(*) >= 2)
       ORDER BY updated_at DESC LIMIT ?`).all(since, limit) as Array<{ id: string; loop_name: string; status: string; gates_json: string | null; goal_id: string | null }>;

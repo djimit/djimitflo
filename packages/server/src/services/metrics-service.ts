@@ -6,6 +6,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 
 interface MetricSnapshot {
   timestamp: string;
@@ -54,8 +55,8 @@ export class MetricsService {
         SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
-      FROM loop_runs
-    `).get() as any;
+      FROM loop_runs WHERE ${realRunSql()}
+    `).get() as any; // U3: synthetic PR-review bookkeeping runs (and their leases below) are not loop work
 
     const workers = this.db.prepare(`
       SELECT
@@ -63,7 +64,7 @@ export class MetricsService {
         SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running,
         SUM(CASE WHEN status = 'prepared' THEN 1 ELSE 0 END) as prepared,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
-      FROM worker_leases
+      FROM worker_leases WHERE ${realRunIdSql('worker_leases.loop_run_id')}
     `).get() as any;
 
     const tokens = this.db.prepare(`
@@ -73,7 +74,7 @@ export class MetricsService {
           THEN CAST(json_extract(metadata, '$.total_tokens') AS INTEGER)
           ELSE 0 END
         ), 0) as total_used
-      FROM worker_leases
+      FROM worker_leases WHERE ${realRunIdSql('worker_leases.loop_run_id')}
     `).get() as any;
 
     return {

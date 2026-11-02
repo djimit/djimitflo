@@ -94,6 +94,7 @@ it('the hooks return nothing and nothing outside the controller reads a decision
   }
   expect(importers).toEqual({
     'services/evolution-evidence.ts': ['effortX1Evidence'],
+    'services/experiment-registry.ts': ['effortX1Evidence'], // read-only n per arm (know-when-to-stop registry)
     'services/judgment-service.ts': ['recordEffortJudgment'],
     'services/loop-daemon.ts': ['assignSiblingArm', 'recordEffortSibling', 'siblingRandomiseEnabled'],
     'services/remote-gym-service.ts': ['recordEffortGym'],

@@ -159,7 +159,8 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
         return;
       }
       await llm.refreshProviderHealth();
-      res.json(llm.route(request));
+      const decision = llm.route(request);
+      res.status(decision.available ? 200 : 503).json(decision);
     } catch (error) {
       next(error);
     }

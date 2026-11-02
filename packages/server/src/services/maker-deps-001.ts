@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { LoopEventService } from './loop-event-service';
 import { TG_LOOP } from './tg-001';
+import { notFallbackGoalSql } from './ollama-outage-fallback';
 
 /**
  * MAKER-DEPS-001 v1 (pre-registered: docs/research/di-001/MAKER_DEPS_001_PREREG.md, sha256 in MAKER_DEPS_001_PREREG.sha256).
@@ -63,13 +64,15 @@ export function makerDeps001Evidence(db: Database, since: string, env: NodeJS.Pr
   try {
     goals = db.prepare(`SELECT json_extract(e.metadata, '$.arm') AS arm, json_extract(e.metadata, '$.goal_id') AS goal, MAX(s.status) AS status
       FROM loop_events e LEFT JOIN goals g ON g.id = json_extract(e.metadata, '$.goal_id') LEFT JOIN self_improvements s ON s.id = g.improvement_id
-      WHERE e.event_type = 'maker_deps_arm' AND json_extract(e.metadata, '$.experiment') = ? AND e.created_at >= ? GROUP BY 1, 2`).all(MAKER_DEPS_001.id, since) as typeof goals;
+      WHERE e.event_type = 'maker_deps_arm' AND json_extract(e.metadata, '$.experiment') = ? AND e.created_at >= ?
+        AND ${notFallbackGoalSql("json_extract(e.metadata, '$.goal_id')")} GROUP BY 1, 2`).all(MAKER_DEPS_001.id, since) as typeof goals;
     preps = db.prepare(`SELECT json_extract(metadata, '$.arm') AS arm,
         (COALESCE(json_extract(metadata, '$.install_failed'), 0) OR COALESCE(json_extract(metadata, '$.shared_failed'), 0)) AS failed
       FROM loop_events WHERE event_type = 'maker_worktree_prepared' AND created_at >= ?`).all(since) as typeof preps;
     leases = db.prepare(`SELECT json_extract(metadata, '$.maker_deps_001.arm') AS arm, status, json_extract(metadata, '$.runtime_usage.total_tokens') AS tokens,
         COALESCE(json_extract(metadata, '$.timed_out'), 0) AS timed_out
-      FROM worker_leases WHERE role = 'maker' AND json_extract(metadata, '$.maker_deps_001.experiment') = ? AND created_at >= ?`).all(MAKER_DEPS_001.id, since) as typeof leases;
+      FROM worker_leases WHERE role = 'maker' AND json_extract(metadata, '$.maker_deps_001.experiment') = ? AND created_at >= ?
+        AND json_extract(metadata, '$.runtime_fallback') IS NULL`).all(MAKER_DEPS_001.id, since) as typeof leases;
   } catch { /* missing tables */ }
   const outcomes = (a: MakerDepsArm) => goals.filter((g) => g.arm === a && g.status && TERMINAL.has(g.status)).map((g) => (g.status === 'verified' ? 1 : 0));
   const arm = (a: MakerDepsArm) => {

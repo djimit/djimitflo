@@ -1,0 +1,1447 @@
+{
+  "at": "2026-10-24T23:41:41.939Z",
+  "source_sha": "e8d0de33bbae8736d7ab0b4f9195292a2e9f56aa",
+  "mode": "readonly/query_only schema metadata",
+  "tables": {
+    "cognitive_meta_learning": [
+      {
+        "name": "goal_type",
+        "type": "TEXT"
+      },
+      {
+        "name": "best_strategy",
+        "type": "TEXT"
+      },
+      {
+        "name": "best_success_rate",
+        "type": "REAL"
+      },
+      {
+        "name": "total_episodes",
+        "type": "INTEGER"
+      },
+      {
+        "name": "total_strategies",
+        "type": "INTEGER"
+      },
+      {
+        "name": "last_updated",
+        "type": "TEXT"
+      }
+    ],
+    "committee_genomes": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "parent_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "persona",
+        "type": "TEXT"
+      },
+      {
+        "name": "knowledge",
+        "type": "TEXT"
+      },
+      {
+        "name": "lines_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "origin",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "committee_jobs": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "subject_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "question_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "as_of",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "host",
+        "type": "TEXT"
+      },
+      {
+        "name": "claimed_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "finished_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "context_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "outcome_known_at_context",
+        "type": "INTEGER"
+      }
+    ],
+    "council_evaluations": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "session_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "evaluator_model",
+        "type": "TEXT"
+      },
+      {
+        "name": "candidate_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "correctness",
+        "type": "REAL"
+      },
+      {
+        "name": "evidence_quality",
+        "type": "REAL"
+      },
+      {
+        "name": "completeness",
+        "type": "REAL"
+      },
+      {
+        "name": "risk_score",
+        "type": "REAL"
+      },
+      {
+        "name": "policy_compliance",
+        "type": "REAL"
+      },
+      {
+        "name": "reasoning",
+        "type": "TEXT"
+      },
+      {
+        "name": "confidence",
+        "type": "REAL"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "expert_swarm_history": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "result_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "genome_trial_results": [
+      {
+        "name": "trial_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "parent_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "tier_set",
+        "type": "TEXT"
+      },
+      {
+        "name": "deciding_n",
+        "type": "INTEGER"
+      },
+      {
+        "name": "f_parent_failures",
+        "type": "INTEGER"
+      },
+      {
+        "name": "b",
+        "type": "INTEGER"
+      },
+      {
+        "name": "c",
+        "type": "INTEGER"
+      },
+      {
+        "name": "p",
+        "type": "REAL"
+      },
+      {
+        "name": "mined_b",
+        "type": "INTEGER"
+      },
+      {
+        "name": "mined_c",
+        "type": "INTEGER"
+      },
+      {
+        "name": "power_q8_l05",
+        "type": "REAL"
+      },
+      {
+        "name": "state",
+        "type": "TEXT"
+      },
+      {
+        "name": "recorded_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "epoch",
+        "type": "INTEGER"
+      },
+      {
+        "name": "e_value",
+        "type": "REAL"
+      },
+      {
+        "name": "n_discordant",
+        "type": "INTEGER"
+      },
+      {
+        "name": "e_rule_decision",
+        "type": "TEXT"
+      },
+      {
+        "name": "graded_mean_parent",
+        "type": "REAL"
+      },
+      {
+        "name": "graded_mean_mutant",
+        "type": "REAL"
+      },
+      {
+        "name": "graded_p",
+        "type": "REAL"
+      },
+      {
+        "name": "graded_decision",
+        "type": "TEXT"
+      },
+      {
+        "name": "graded_refs",
+        "type": "INTEGER"
+      },
+      {
+        "name": "gate_policy",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_json",
+        "type": "TEXT"
+      }
+    ],
+    "gym_evaluations": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "skill_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "score",
+        "type": "REAL"
+      },
+      {
+        "name": "metrics_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "eval_type",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "host_power_samples": [
+      {
+        "name": "host",
+        "type": "TEXT"
+      },
+      {
+        "name": "at",
+        "type": "TEXT"
+      },
+      {
+        "name": "gpu_watts",
+        "type": "REAL"
+      }
+    ],
+    "learning_cycles": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "result_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "llm_model_calls": [
+      {
+        "name": "id",
+        "type": "INTEGER"
+      },
+      {
+        "name": "consumer",
+        "type": "TEXT"
+      },
+      {
+        "name": "model",
+        "type": "TEXT"
+      },
+      {
+        "name": "ok",
+        "type": "INTEGER"
+      },
+      {
+        "name": "latency_ms",
+        "type": "INTEGER"
+      },
+      {
+        "name": "out_chars",
+        "type": "INTEGER"
+      },
+      {
+        "name": "shadow",
+        "type": "INTEGER"
+      },
+      {
+        "name": "agree",
+        "type": "INTEGER"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "provider",
+        "type": "TEXT"
+      },
+      {
+        "name": "tokens_in",
+        "type": "INTEGER"
+      },
+      {
+        "name": "tokens_out",
+        "type": "INTEGER"
+      },
+      {
+        "name": "task_kind",
+        "type": "TEXT"
+      },
+      {
+        "name": "run_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "attempts",
+        "type": "INTEGER"
+      },
+      {
+        "name": "purpose",
+        "type": "TEXT"
+      },
+      {
+        "name": "experiment_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "cost_basis",
+        "type": "TEXT"
+      },
+      {
+        "name": "list_price_cost",
+        "type": "REAL"
+      },
+      {
+        "name": "marginal_cost",
+        "type": "REAL"
+      }
+    ],
+    "loop_learning_closures": [
+      {
+        "name": "loop_run_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "eval_run_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "reflection_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "memory_candidate_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "previous_score",
+        "type": "REAL"
+      },
+      {
+        "name": "score_delta",
+        "type": "REAL"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "loop_runs": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "goal_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "loop_name",
+        "type": "TEXT"
+      },
+      {
+        "name": "mode",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "repository_path",
+        "type": "TEXT"
+      },
+      {
+        "name": "state_file",
+        "type": "TEXT"
+      },
+      {
+        "name": "findings_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "plan_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "gates_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "next_actions_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "organization_id",
+        "type": "TEXT"
+      }
+    ],
+    "maker_genomes": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "parent_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "gene",
+        "type": "TEXT"
+      },
+      {
+        "name": "lines_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "origin",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "note",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_clusters",
+        "type": "TEXT"
+      },
+      {
+        "name": "knowledge_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_sources_json",
+        "type": "TEXT"
+      }
+    ],
+    "memory_candidates": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "title",
+        "type": "TEXT"
+      },
+      {
+        "name": "content",
+        "type": "TEXT"
+      },
+      {
+        "name": "memory_type",
+        "type": "TEXT"
+      },
+      {
+        "name": "source_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "promotion_status",
+        "type": "TEXT"
+      },
+      {
+        "name": "human_required",
+        "type": "INTEGER"
+      },
+      {
+        "name": "sensitivity",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "store",
+        "type": "TEXT"
+      },
+      {
+        "name": "content_hash",
+        "type": "TEXT"
+      }
+    ],
+    "outcome_learning_assessments": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "candidate_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "capability_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "metric",
+        "type": "TEXT"
+      },
+      {
+        "name": "direction",
+        "type": "TEXT"
+      },
+      {
+        "name": "observation_window",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "signal_status",
+        "type": "TEXT"
+      },
+      {
+        "name": "replications",
+        "type": "INTEGER"
+      },
+      {
+        "name": "mean_value",
+        "type": "REAL"
+      },
+      {
+        "name": "baseline_value",
+        "type": "REAL"
+      },
+      {
+        "name": "confidence_low",
+        "type": "REAL"
+      },
+      {
+        "name": "confidence_high",
+        "type": "REAL"
+      },
+      {
+        "name": "causal_support",
+        "type": "INTEGER"
+      },
+      {
+        "name": "event_ids_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "result_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "work_item_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "remote_maker_jobs": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "host",
+        "type": "TEXT"
+      },
+      {
+        "name": "species",
+        "type": "TEXT"
+      },
+      {
+        "name": "base_commit",
+        "type": "TEXT"
+      },
+      {
+        "name": "prompt",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "patch",
+        "type": "TEXT"
+      },
+      {
+        "name": "reason",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "claimed_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "finished_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "loop_run_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "lease_id",
+        "type": "TEXT"
+      }
+    ],
+    "skill_genomes": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "skill_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "generation",
+        "type": "INTEGER"
+      },
+      {
+        "name": "parents_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "traits_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "fitness",
+        "type": "REAL"
+      },
+      {
+        "name": "mutations_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "skill_outcomes": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "skill_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "success",
+        "type": "INTEGER"
+      },
+      {
+        "name": "tokens_used",
+        "type": "INTEGER"
+      },
+      {
+        "name": "duration_ms",
+        "type": "INTEGER"
+      },
+      {
+        "name": "domain",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "task_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "agent_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "skill_version",
+        "type": "TEXT"
+      },
+      {
+        "name": "skill_content_hash",
+        "type": "TEXT"
+      },
+      {
+        "name": "model",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_refs_json",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_capabilities": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "kind",
+        "type": "TEXT"
+      },
+      {
+        "name": "owner",
+        "type": "TEXT"
+      },
+      {
+        "name": "version",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "risk_ceiling",
+        "type": "TEXT"
+      },
+      {
+        "name": "input_schema_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "output_schema_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "allowed_actions_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "forbidden_actions_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "required_evidence_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "eval_score",
+        "type": "REAL"
+      },
+      {
+        "name": "eval_threshold",
+        "type": "REAL"
+      },
+      {
+        "name": "cost_model_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "removal_strategy",
+        "type": "TEXT"
+      },
+      {
+        "name": "latest_validation_report",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_claims": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "claim",
+        "type": "TEXT"
+      },
+      {
+        "name": "claim_type",
+        "type": "TEXT"
+      },
+      {
+        "name": "subject_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "predicate",
+        "type": "TEXT"
+      },
+      {
+        "name": "object",
+        "type": "TEXT"
+      },
+      {
+        "name": "scope",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "confidence",
+        "type": "REAL"
+      },
+      {
+        "name": "valid_until",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "supports_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "contradicts_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "verified_by_gate",
+        "type": "TEXT"
+      },
+      {
+        "name": "invalidated_by",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_from",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_decisions": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "mission_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "task_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "decision_type",
+        "type": "TEXT"
+      },
+      {
+        "name": "decision",
+        "type": "TEXT"
+      },
+      {
+        "name": "reason",
+        "type": "TEXT"
+      },
+      {
+        "name": "actor",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "gate_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "blocked_reasons_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_evidence_edges": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "from_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "to_ref",
+        "type": "TEXT"
+      },
+      {
+        "name": "relation",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_hypotheses": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "question",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_plan_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "falsification_signal",
+        "type": "TEXT"
+      },
+      {
+        "name": "stop_condition",
+        "type": "TEXT"
+      },
+      {
+        "name": "owner_capability_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "projection_state",
+        "type": "TEXT"
+      },
+      {
+        "name": "panel_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_learning": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "category",
+        "type": "TEXT"
+      },
+      {
+        "name": "title",
+        "type": "TEXT"
+      },
+      {
+        "name": "description",
+        "type": "TEXT"
+      },
+      {
+        "name": "source_task_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "source_discussion_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "lesson_learned",
+        "type": "TEXT"
+      },
+      {
+        "name": "action_taken",
+        "type": "TEXT"
+      },
+      {
+        "name": "effectiveness",
+        "type": "INTEGER"
+      },
+      {
+        "name": "times_applied",
+        "type": "INTEGER"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_missions": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "goal_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "title",
+        "type": "TEXT"
+      },
+      {
+        "name": "description",
+        "type": "TEXT"
+      },
+      {
+        "name": "risk_class",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "panel_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_runner_manifests": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "decision_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "lease_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "loop_run_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "action",
+        "type": "TEXT"
+      },
+      {
+        "name": "policy_version",
+        "type": "TEXT"
+      },
+      {
+        "name": "runtime_contract_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "capacity_snapshot_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "budget_snapshot_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "gate_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "blocked_reasons_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_sessions": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "goal",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "subtasks_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "agent_pool_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT"
+      }
+    ],
+    "swarm_tasks": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "mission_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "title",
+        "type": "TEXT"
+      },
+      {
+        "name": "description",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "assigned_lease_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "capability_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "evidence_refs_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      }
+    ],
+    "tg_experiments": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "frozen_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "manifest_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "analysis_sha256",
+        "type": "TEXT"
+      }
+    ],
+    "worker_leases": [
+      {
+        "name": "id",
+        "type": "TEXT"
+      },
+      {
+        "name": "loop_run_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "role",
+        "type": "TEXT"
+      },
+      {
+        "name": "runtime",
+        "type": "TEXT"
+      },
+      {
+        "name": "status",
+        "type": "TEXT"
+      },
+      {
+        "name": "finding_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "worktree_path",
+        "type": "TEXT"
+      },
+      {
+        "name": "branch_name",
+        "type": "TEXT"
+      },
+      {
+        "name": "budget_json",
+        "type": "TEXT"
+      },
+      {
+        "name": "metadata",
+        "type": "TEXT"
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT"
+      },
+      {
+        "name": "parent_lease_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "spawn_tree_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "depth",
+        "type": "INTEGER"
+      },
+      {
+        "name": "spawned_by_agent_id",
+        "type": "TEXT"
+      },
+      {
+        "name": "capability_id",
+        "type": "TEXT"
+      }
+    ]
+  }
+}

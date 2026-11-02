@@ -25,6 +25,15 @@ describe('UX-5: one locale and shared formatters', () => {
     expect(since('2026-10-06T07:00:00Z', now)).toBe('5 h ago');
     expect(since('2026-10-01T12:00:00Z', now)).toBe('5 d ago');
   });
+
+  it('DF-05: a future timestamp reads as scheduled, never as elapsed', () => {
+    const now = Date.parse('2026-10-23T12:00:00Z');
+    expect(since('2026-10-27T00:00:00Z', now)).toBe('scheduled in 4 d');
+    expect(since('2026-10-23T17:00:00Z', now)).toBe('scheduled in 5 h');
+    expect(since('2026-10-23T12:20:00Z', now)).toBe('scheduled in < 1 h');
+    expect(since('not-a-date', now)).toBe('unknown');
+    expect(since('2026-10-23T12:02:00Z', now)).toBe('< 1 h ago'); // server clock a little ahead is not a schedule
+  });
 });
 
 /** UX-5: the UI is English-only; these Dutch fragments were translated and must not come back. */
