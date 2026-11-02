@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
+import {redactSecrets} from '/app/packages/server/dist/services/secret-patterns.js';
+const db=new Database('/data/djimitflo.sqlite',{readonly:true,fileMustExist:true});db.pragma('query_only=ON');db.exec('BEGIN');
+const at=new Date().toISOString(),results={};
+function q(name,sql,...params){try{results[name]={sql,params,rows:db.prepare(sql).all(...params)}}catch(e){results[name]={sql,params,error:e.message}}}
+const children="SELECT s.id FROM self_improvements s WHERE s.refined_from_id IN (SELECT DISTINCT subject_id FROM judgments WHERE judgment='commons_grounding' AND decision='yes')";
+q('review_reasons',`SELECT r.panel_id,r.specialist_id,r.stance,r.status,r.confidence,r.model,r.limitations,r.findings_json,r.recommendations_json FROM specialist_reviews r JOIN self_improvements s ON s.panel_id=r.panel_id WHERE s.id IN (${children}) ORDER BY r.panel_id,r.specialist_id`);
+q('child_consensus',`SELECT p.id,json_extract(p.consensus_json,'$.decision') decision,json_extract(p.consensus_json,'$.next_actions') next_actions,json_extract(p.consensus_json,'$.dissent') dissent FROM specialist_panels p JOIN self_improvements s ON s.panel_id=p.id WHERE s.id IN (${children})`);
+q('archival_judgments',`SELECT judgment,decision,reason,COUNT(*) n FROM judgments WHERE subject_id IN (${children}) AND judgment NOT LIKE 'commons_%' GROUP BY 1,2,3 ORDER BY n DESC LIMIT 30`);
+q('lures',"SELECT id,topic_ref,created_at,expires_at,json_array_length(invited_json) invited FROM social_lures ORDER BY created_at DESC LIMIT 30");
+q('lure_events',"SELECT transition,reason,COUNT(*) n,MAX(at) last_at FROM lure_events GROUP BY 1,2");
+q('expired_pending_review',"SELECT improvement_id,thread_id,status,reply_count,posted_at,completed_at FROM commons_proposal_reviews WHERE status='pending'");
+q('campaign_events',"SELECT event_type,occurred_at,json_extract(payload,'$.status') status,json_extract(payload,'$.pairs') pairs,json_extract(payload,'$.peer_signal') peer_signal,json_extract(payload,'$.outcome_signal') outcome_signal,json_extract(payload,'$.checker') checker,json_extract(payload,'$.worldlab') worldlab FROM external_events WHERE source='djimitflo-social-campaign' ORDER BY occurred_at DESC LIMIT 12");
+q('interest_7d_provenance',"SELECT from_agent,to_agent,COUNT(DISTINCT json_extract(payload_json,'$.thread_id')) threads,MIN(timestamp) first_at,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.question' AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1,2");
+q('interests_without_grounding_7d',"SELECT COUNT(*) n,SUM(json_extract(payload_json,'$.params.proposed_improvement')<>'') proposed_improvement,SUM(json_type(payload_json,'$.params.improvement_id')='text') registered_improvement,SUM(EXISTS(SELECT 1 FROM json_each(json_extract(payload_json,'$.evidence')) WHERE value NOT LIKE 'message:%' AND value NOT LIKE 'runtime:%' AND value NOT LIKE 'ecosystem:%')) outside_conversation_evidence FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.response','social.learning') AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%'");
+q('external_usage_7d',"SELECT from_agent,COUNT(*) n,SUM(json_type(payload_json,'$.params.runtime_run_id')='text') run_ids,SUM(json_type(payload_json,'$.params.usage')='object') usage_objects,SUM(json_extract(payload_json,'$.params.usage.total_tokens')) reported_total_tokens,SUM(CASE WHEN json_type(payload_json,'$.params.usage.total_tokens') IN ('integer','real') THEN 1 ELSE 0 END) measured_total_token_rows,MIN(timestamp) first_at,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.response','social.learning') AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1");
+q('usage_keys',"SELECT m.from_agent,u.key,COUNT(*) n FROM agent_messages m JOIN json_each(json_extract(m.payload_json,'$.params.usage')) u WHERE json_extract(m.payload_json,'$.action') IN ('social.response','social.learning') AND julianday(m.timestamp)>=julianday('now','-7 days') AND json_extract(m.payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1,2");
+q('evidence_room_unknowns',"SELECT json_extract(payload_json,'$.params.summary.lane') lane,COUNT(*) n,SUM(json_type(payload_json,'$.params.summary.goal')='null') missing_goal,SUM(json_type(payload_json,'$.params.summary.target_file')='null') missing_target,SUM(json_type(payload_json,'$.params.summary.gates')='null') missing_gates,SUM(json_type(payload_json,'$.params.summary.maker.effective_runtime')='null') missing_runtime FROM agent_messages WHERE json_extract(payload_json,'$.params.evidence_room_kind')='summary' GROUP BY 1");
+q('chain_depth_7d',`WITH RECURSIVE thread_roots AS (
+ SELECT json_extract(payload_json,'$.thread_id') thread_id,MIN(json_extract(payload_json,'$.params.topic_ref')) ref FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.question' AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1),
+ chain(thread_id,ref,depth) AS (SELECT thread_id,ref,0 FROM thread_roots UNION ALL SELECT c.thread_id,json_extract(m.payload_json,'$.params.topic_ref'),c.depth+1 FROM chain c JOIN agent_messages m ON c.ref='message:'||m.id WHERE c.depth<200),
+ final AS (SELECT thread_id,MAX(depth) depth FROM chain GROUP BY 1)
+ SELECT COUNT(*) threads,MIN(depth) min_hops,MAX(depth) max_hops,ROUND(AVG(depth),1) mean_hops,SUM(depth>=200) capped FROM final`);
+assert.equal(db.pragma('query_only',{simple:true}),1);db.exec('COMMIT');db.close();
+// Model text is untrusted diagnostic data. Redact potential credentials before retention.
+const freeText=new Set(['limitations','findings_json','recommendations_json','next_actions','dissent','reason']);
+for(const query of Object.values(results)) for(const row of query.rows??[]) for(const [key,value] of Object.entries(row)) {
+  if(freeText.has(key)&&typeof value==='string') row[key]=redactSecrets(value).redacted;
+}
+const clean={captured_at:at,source_sha:process.env.DJIMITFLO_COMMIT_SHA,mode:'readonly/query_only consistent transaction; model review text retained as untrusted data',results};
+console.log(JSON.stringify(clean,null,2));

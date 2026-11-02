@@ -1,6 +1,8 @@
 import type { Database } from 'better-sqlite3';
 import { emptySettlementCounts, loopPrSettlements, survivalCounts } from './merge-survival';
+import { supersededMergeOutcomeSql } from './merge-superseded';
 import { failureTaskEvidence } from './gym-failure-tasks';
+import { specGapEvidence } from './spec-gap-source';
 import { forecastScoresV2 } from './forecast-scoring';
 import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
@@ -11,10 +13,15 @@ import { egressEvidence } from './egress-classification';
 import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
+import { effectiveFallbackRuntime, notFallbackRunSql, outageFallbackEvidence, panelInferenceStatus } from './ollama-outage-fallback';
+import { autoFailoverEvidence, PANEL_FALLBACK_PREFIX, panelFallbackModel, panelFallbackRuntime } from './inference-failover';
+import { budgetEvidence } from './inference-budget';
 import { effortX1Evidence } from './effort-controller';
 import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
+import { failBeforePassAfterEvidence } from './fail-before-pass-after';
 import { wilson } from './evolution-estimators';
+import { subscriptionGymEvidence } from './subscription-gym';
 import { evolutionLineage } from './evolution-lineage';
 import { provenanceSummary } from './provenance-dag';
 import { panelAttemptMetrics } from './panel-attempt-metrics';
@@ -28,8 +35,27 @@ import { makerTokenAccountingEvidence } from './maker-token-accounting';
 import { negativeEvidenceEvidence } from './negative-evidence-check';
 import { knowledgeGapEvidence } from './knowledge-gaps';
 import { jevChallengerEvidence } from './jev-challenger';
+import { dreamSourcesEvidence } from './dream-evidence-sources';
+import { playbookGeneEvidence } from './lane-playbook';
 import type { ForecasterScoreV2 } from './forecast-scoring';
+import { extraRepos } from './repo-registry';
+import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
+import { experimentsReport } from './experiment-registry';
+import { learningLedger } from './learning-ledger';
+import { fleetSignatureEvidence } from './fleet-event-signatures';
+import { makerWarmDepsEvidence } from './maker-warm-deps';
+import { falsifierEvidence } from './commons-falsifier';
+import { runLanes, settlementExecutionEvidence, settlementValueEvidence, survivalByLane } from './settlement-execution';
+import { schedulerCapacityEvidence } from './resource-scheduler';
+import { procedureSelectionEvidence } from './procedure-selector';
+import { pl001Evidence } from './pl-001';
+import { memoryDeliveryEvidence } from './memory-delivery-receipts';
+import { realRunSql } from './synthetic-runs';
+import { fleetRepairEvidence } from './fleet-repair';
+import { advisoryExposureEvidence } from './advisory-exposure';
+import { contentDraftsEvidence } from './content-drafts';
+import { capabilityFactoryEvidence } from './capability-factory';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -38,40 +64,77 @@ import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
+  { name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: true },
+  { name: 'SKILL_FIRST_MODE', acting: true },
+  { name: 'DJIMITSEC_SCAN_MODE', acting: true },
+  { name: 'DJIMITSEC_SCAN_TRIGGERS', acting: true },
+  { name: 'RUNTIME_PROCESS_GROUP_KILL', acting: true },
   { name: 'LOOP_BANDIT_ENABLED', acting: true }, { name: 'LOOP_BANDIT_SPECIES', acting: true }, { name: 'LOOP_BANDIT_MAX_SHARE', acting: true },
   { name: 'LOOP_EVOLVE_ENABLED', acting: true }, { name: 'LOOP_EVOLVE_SPECIES', acting: true },
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },
+  { name: 'LOOP_RESUME_INTERRUPTED', acting: true },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
   { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
-  { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true },
-  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
+  { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
+  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
+  { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
+  { name: 'LOOP_PR_CI_WATCH', acting: false }, { name: 'LOOP_PR_CI_WATCH_MINUTES', acting: false },
+  { name: 'WORK_ITEM_OUTCOME_SYNC', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
-  { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false }, { name: 'GYM_FAILURE_TASKS_ENABLED', acting: false },
+  { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false }, { name: 'GYM_FAILURE_TASKS_ENABLED', acting: false }, { name: 'SPEC_GAP_LANE', acting: false },
   { name: 'MODEL_SELECTOR_MODE', acting: true }, { name: 'EVOLUTION_ESTIMATORS_ENABLED', acting: false }, { name: 'GYM_IRT_SELECTION', acting: true },
   { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
+  { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
+  { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
+  { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
   { name: 'GYM_PROD_GATES', acting: false },
+  { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
+  { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
+  { name: 'INFERENCE_BUDGET_THROTTLE', acting: true }, { name: 'OLLAMA_WEEKLY_TOKEN_BUDGET', acting: true }, { name: 'OLLAMA_THROTTLE_AT', acting: true },
+  { name: 'OLLAMA_BALANCE_MODE', acting: false }, { name: 'OLLAMA_ACCOUNT_KEY_ENV', acting: false },
   { name: 'GENOME_FIRE_CHECK', acting: true }, { name: 'MEMORY_HOLDOUT_RATE', acting: true },
   { name: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', acting: true },
-  { name: 'RESOURCE_LEDGER_ENABLED', acting: false },
+  { name: 'RESOURCE_LEDGER_ENABLED', acting: false }, { name: 'RESOURCE_SCHEDULER_MODE', acting: false },
   { name: 'OUTCOME_ATTRIBUTION_ENABLED', acting: true },
   { name: 'EFFORT_CONTROLLER_MODE', acting: false }, { name: 'EFFORT_LAMBDA_TOK', acting: false }, { name: 'EFFORT_LAMBDA_KWH', acting: false }, { name: 'EFFORT_EXPLORATION', acting: false },
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
-  { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true },
-  { name: 'POLICY_VIOLATION_LOG', acting: false },
+  { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
+  { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true },
+  { name: 'POLICY_VIOLATION_LOG', acting: false }, { name: 'HOST_TOKEN_WATCH_MODE', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
+  { name: 'CHECKER_FAMILY_VERSION', acting: true },
   { name: 'ACE_001_MODE', acting: true },
   { name: 'STE_001_MODE', acting: true },
   { name: 'TG_001_MODE', acting: true },
+  { name: 'PL_001_MODE', acting: true }, { name: 'PL_001_CAP_SHARE', acting: true },
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
   { name: 'KNOWLEDGE_GAP_MODE', acting: false },
   { name: 'EVOLUTION_FEEDBACK_MODE', acting: false },
+  { name: 'COMMONS_EVIDENCE_ROOM_MODE', acting: false },
+  { name: 'COMMONS_FALSIFIER_MODE', acting: false },
+  { name: 'COMMONS_INVESTIGATION_MODE', acting: false },
+  { name: 'ASG_MODE', acting: true },
+  { name: 'SETTLEMENT_EXECUTION_MODE', acting: false },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
+  { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
+  { name: 'DREAM_PLAYBOOK_GENE', acting: false },
+  { name: 'TRAINING_DATASET_EXPORT', acting: false },
+  { name: 'VALUE_ALLOCATOR_MODE', acting: false },
+  { name: 'VALUE_ANOMALY_ALARM', acting: false },
+  { name: 'FLEET_EVENT_SIGNATURES', acting: true },
+  { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
+  { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
+  { name: 'FLEET_REPAIR_MODE', acting: false },
+  { name: 'CONTENT_DRAFTS_MODE', acting: true },
+  { name: 'CAPABILITY_FACTORY_MODE', acting: true },
+  { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
+  { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -155,6 +218,63 @@ export function holdoutExposure(db: Database, env: NodeJS.ProcessEnv = process.e
 /** MS-2: the expert runner's model from FRONTIER_EXPERTS_RUNTIME ('ollama:kimi-k3:cloud' → 'kimi-k3:cloud'), parsed like the runner does. */
 const frontierIncumbent = (runtime?: string): string | undefined => (runtime || '').trim() ? parseRuntimeSpec(runtime, { runtime: 'ollama', model: '' }).model : undefined;
 
+/**
+ * `inference`: OLLAMA_AUTO_FAILOVER state (effective = the runtime opencode leases fail over to, manual flag first),
+ * PANEL_FALLBACK_RUNTIME reviews / quarantined attempts on claude in the window (null = table missing; excluded from panel
+ * calibration), and the INFERENCE_BUDGET_THROTTLE usage % of OLLAMA_WEEKLY_CALL_BUDGET.
+ */
+export function inferenceEvidence(db: Database, since: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
+  const count = (sql: string): number | null => { try { return (db.prepare(sql).get(`${PANEL_FALLBACK_PREFIX}%`, since) as { n: number }).n; } catch { return null; } };
+  return {
+    failover: { ...autoFailoverEvidence(db, since, env), effective: effectiveFallbackRuntime(db, env) ?? 'off' },
+    panel_fallback: { mode: panelFallbackRuntime(env) ?? 'off', model: `${PANEL_FALLBACK_PREFIX}${panelFallbackModel(env)}`, ...panelInferenceStatus(db, env, now),
+      reviews: count("SELECT COUNT(*) AS n FROM specialist_reviews WHERE model LIKE ? AND created_at >= ?"),
+      quarantined: count('SELECT COUNT(*) AS n FROM specialist_review_quarantine WHERE model LIKE ? AND created_at >= ?'),
+      note: `fallback reviews (model ${PANEL_FALLBACK_PREFIX}<model>, reviewer ':panel_fallback') pass the same validation/quarantine and are excluded from panel calibration` },
+    budget: budgetEvidence(db, env, now),
+  };
+}
+
+/** MEMORY_HOLDOUT_RATE: proposal outcome (verified / regressed) of maker runs that got rules vs runs held out (read-only) */
+export function memoryHoldoutEvidence(db: Database, since: string, env: NodeJS.ProcessEnv = process.env) {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const arms = all<{ arm: string; status: string; n: number }>(`SELECT CASE WHEN json_extract(e.metadata, '$.memory_holdout') = 1 THEN 'holdout' ELSE 'rules' END AS arm,
+      s.status AS status, COUNT(DISTINCT e.loop_run_id) AS n
+    FROM loop_events e JOIN loop_runs r ON r.id = e.loop_run_id JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
+    WHERE e.event_type = 'assignment_context' AND e.created_at >= ? AND s.status IN ('verified', 'regressed')
+      AND (json_extract(e.metadata, '$.memory_holdout') = 1 OR json_array_length(json_extract(e.metadata, '$.rule_ids')) > 0)
+      AND NOT (s.status = 'regressed' AND ${nonMakerRunSql('e.loop_run_id', env)}) AND ${notFallbackRunSql('e.loop_run_id')}
+    GROUP BY 1, 2`, since);
+  const arm = (name: string) => {
+    const verified = arms.filter((r) => r.arm === name && r.status === 'verified').reduce((a, r) => a + r.n, 0);
+    const regressed = arms.filter((r) => r.arm === name && r.status === 'regressed').reduce((a, r) => a + r.n, 0);
+    return { n: verified + regressed, verified, regressed, verified_rate: verified + regressed ? +(verified / (verified + regressed)).toFixed(3) : null };
+  };
+  const withRules = arm('rules'); const heldOut = arm('holdout');
+  return { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
+    fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
+    note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
+}
+
+/**
+ * P0-8 (read-only): loop runs since `since` whose recorded gates the old daemon rule (every gate 'pass') and certification's
+ * rule (a skipped security review passes) judge differently — before the fix such a run was 'regressed' for the bandit and
+ * skill_outcomes but 'verified' in outcome_credits. null when loop_runs cannot be read (unknown, never 0).
+ */
+export function gateRuleDisagreements(db: Database, since: string): number | null {
+  let rows: Array<{ gates_json: string | null }>;
+  try { rows = db.prepare(`SELECT gates_json FROM loop_runs WHERE created_at >= ? AND gates_json LIKE '%security_checker_verdict%' AND ${realRunSql()}`).all(since) as typeof rows; } catch { return null; }
+  let n = 0;
+  for (const r of rows) {
+    let gates: Array<{ name: string; status: string }>;
+    try { gates = JSON.parse(r.gates_json || '[]'); } catch { continue; }
+    if (!Array.isArray(gates)) continue;
+    const strict = gates.length > 0 && (gates as Parameters<typeof allGatesPassed>[0]).every(gatePassesStrict);
+    if (strict !== allGatesPassed(gates as Parameters<typeof allGatesPassed>[0])) n++;
+  }
+  return n;
+}
+
 export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
   const window = Math.min(90, Math.max(1, Math.floor(days) || 30));
   const since = new Date(now - window * 86_400_000).toISOString();
@@ -176,24 +296,37 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       OR evidence_refs_json LIKE '%"evolve:lost_eligible"%') THEN 1 ELSE 0 END) AS tagged
     FROM skill_outcomes WHERE skill_id LIKE 'loop-maker:%' AND domain NOT IN ('gym', 'merge') AND created_at >= ? GROUP BY 1 ORDER BY total DESC LIMIT 30`, since)
     .map((r) => ({ ...r, share: r.total ? +(r.tagged / r.total).toFixed(3) : 0 }));
+  // repo dimension: default numbers are the primary repo's; registered extra repos (EXTRA_REPOS_ENABLED=on) are reported apart
+  const extras = extraRepos(env);
   const settled = all<{ state: string; survived: number | null; n: number }>(`SELECT json_extract(metadata, '$.pr_outcome.state') AS state,
     json_extract(metadata, '$.pr_outcome.survived') AS survived, COUNT(*) AS n FROM loop_runs
-    WHERE json_extract(metadata, '$.pr_outcome.settled_at') IS NOT NULL GROUP BY 1, 2`);
+    WHERE json_extract(metadata, '$.pr_outcome.settled_at') IS NOT NULL${extras.map(() => " AND lower(json_extract(metadata, '$.pr_url')) NOT LIKE ?").join('')} GROUP BY 1, 2`,
+  ...extras.map((r) => `https://github.com/${r.slug.toLowerCase()}/pull/%`));
   let prs: ReturnType<typeof loopPrSettlements> | null = null;
-  try { prs = loopPrSettlements(db, now); } catch { /* loop_runs absent: settlement unknown */ }
+  try { prs = loopPrSettlements(db, now, undefined, env); } catch { /* loop_runs absent: settlement unknown */ }
   // E1: not settled yet = OPEN_BLOCKED (not closed) + MERGED_SURVIVAL_PENDING; anomalies are reported apart, never as waiting
   const openDrafts = (prs ?? []).filter((p) => (p.settlement.state === 'OPEN_BLOCKED' && !p.settlement.terminal) || p.settlement.state === 'MERGED_SURVIVAL_PENDING');
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
   const q = (p: number) => (ages.length ? +ages[Math.min(ages.length - 1, Math.floor(p * ages.length))].toFixed(1) : null);
   // E1: survival only over SETTLED_SURVIVED / SETTLED_REGRESSED — pending and anomalous PRs are in neither numerator nor denominator
+  // U1: the oracle lane of each loop PR run (survival per lane, settlement_value)
+  const lanes = runLanes(db);
   const settlement = (() => {
     if (!prs) return null; // unknown, not 0
     const by_state = emptySettlementCounts(); const anomalies: Record<string, number> = {};
     for (const p of prs) { by_state[p.settlement.state]++; if (p.settlement.state === 'PIPELINE_ANOMALY') anomalies[p.settlement.reason] = (anomalies[p.settlement.reason] ?? 0) + 1; }
     const c = survivalCounts(prs.map((p) => p.settlement.state));
-    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate };
+    // U1: per lane, informative:false where 0 regressions at >= 30 settled (the label cannot fail there); report only
+    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, by_lane: survivalByLane(prs, lanes) };
   })();
-  const merge = { settled, settlement, merge_outcomes: one("SELECT COUNT(*) FROM skill_outcomes WHERE domain = 'merge'"), first_settled: all<{ at: string }>("SELECT MIN(created_at) AS at FROM skill_outcomes WHERE domain = 'merge'")[0]?.at ?? null };
+  const byRepo = extras.length ? extras.map((r) => {
+    try { const c = survivalCounts(loopPrSettlements(db, now, r.slug, env).map((p) => p.settlement.state)); return { repo: r.slug, ...c }; } catch { return { repo: r.slug, survived: null, regressed: null, settled: null, rate: null }; }
+  }) : undefined;
+  // merge outcomes of PRs closed as superseded by a requeue are no verdict (merge-superseded.ts): counted apart, never in merge_outcomes
+  const scoredMerge = `FROM skill_outcomes o WHERE o.domain = 'merge' AND o.skill_id LIKE 'loop-maker:%' AND NOT ${supersededMergeOutcomeSql('o')}`;
+  const merge = { settled, settlement, ...(byRepo ? { extra_repos: byRepo } : {}), merge_outcomes: one(`SELECT COUNT(*) ${scoredMerge}`),
+    merge_outcomes_superseded: one(`SELECT COUNT(*) FROM skill_outcomes o WHERE o.domain = 'merge' AND o.skill_id LIKE 'loop-maker:%' AND ${supersededMergeOutcomeSql('o')}`),
+    first_settled: all<{ at: string }>(`SELECT MIN(o.created_at) AS at ${scoredMerge}`)[0]?.at ?? null };
   const drafts = { unsettled: openDrafts.length, unsettled_open_or_recent: openDrafts.length, anomalous: settlement ? settlement.by_state.PIPELINE_ANOMALY : null,
     age_days_p50: q(0.5), age_days_max: ages.length ? +ages[ages.length - 1].toFixed(1) : null,
     note: 'unsettled_open_or_recent = settlement OPEN_BLOCKED (not closed) or MERGED_SURVIVAL_PENDING: still open, or merged < 14 d ago (E1 settlementState). anomalous = PIPELINE_ANOMALY, counted apart. The open count is the draft throttle\'s (RX-6, draft_pr_throttle* events)' };
@@ -202,6 +335,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     by_status: all<{ status: string; origin: string; n: number }>('SELECT status, origin, COUNT(*) AS n FROM maker_genomes GROUP BY 1, 2'),
     recent: all<{ id: string; status: string; note: string | null; updated_at: string; evidence_clusters: string | null }>("SELECT id, status, note, updated_at, evidence_clusters FROM maker_genomes WHERE status IN ('active', 'retired', 'trial') AND id <> 'baseline' ORDER BY updated_at DESC LIMIT 8"),
     holdout: { mined: one('SELECT COUNT(*) FROM gym_holdout'), mutant: one('SELECT COUNT(*) FROM gym_mutant_holdout'), write_test: one('SELECT COUNT(*) FROM gym_write_test_holdout') },
+    // EVO-K (DREAM_EVIDENCE_SOURCES): mutants per cited source, dropped uncited lines, per-source trial outcomes; null = no dream with sources yet
+    evidence_sources: dreamSourcesEvidence(db, env),
+    // EVO-K inheritance (DREAM_PLAYBOOK_GENE): playbook genes proposed / promoted / retired; null = none proposed yet
+    playbook: playbookGeneEvidence(db, env),
   };
   const gym = all<{ kind: string; tier: number | null; status: string | null; n: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind,
     json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.status') AS status, COUNT(*) AS n
@@ -220,6 +357,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       .map((r) => ({ ...r, proxy_rate: r.scored ? +(r.proxy_success / r.scored).toFixed(3) : null, prod_gate_rate: r.scored ? +(r.prod_gate_success / r.scored).toFixed(3) : null })),
     failed_checks: all<{ check: string; n: number }>(`SELECT g.key AS "check", COUNT(*) AS n FROM loop_runs r, json_each(json_extract(r.metadata, '$.gym_result.prod_gates')) g
       WHERE r.loop_name = 'evolution-gym' AND json_extract(r.metadata, '$.gym.prod_gates') = 1 AND g.value = 'fail' AND r.created_at >= ? GROUP BY 1 ORDER BY n DESC, 1`, since),
+
+    // SUBSCRIPTION_GYM_SPECIES: claude/codex on flat subscriptions in the local gym — attempts, successes (Wilson), limit hits
+    subscription_species: subscriptionGymEvidence(db, since, env),
   };
   // GYM_STORE_DIFFS: stored (task, redacted diff, oracle result) pairs — all time, the training corpus is cumulative
   const diffRow = all<{ stored: number; distinct_tasks: number; successes: number | null; failures: number | null; redacted_attempts: number | null }>(`SELECT COUNT(*) AS stored,
@@ -315,25 +455,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       WHERE json_extract(metadata, '$.evidence_freshness.state') IS NOT NULL AND created_at >= ? GROUP BY 1`, since),
     stale_events: one("SELECT COUNT(*) FROM loop_events WHERE event_type IN ('evidence_stale', 'evidence_stale_shadow') AND created_at >= ?", since),
   };
-  // MEMORY_HOLDOUT_RATE: proposal outcome (verified / regressed) of maker runs that got rules vs runs held out (read-only)
-  const arms = all<{ arm: string; status: string; n: number }>(`SELECT CASE WHEN json_extract(e.metadata, '$.memory_holdout') = 1 THEN 'holdout' ELSE 'rules' END AS arm,
-      s.status AS status, COUNT(DISTINCT e.loop_run_id) AS n
-    FROM loop_events e JOIN loop_runs r ON r.id = e.loop_run_id JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
-    WHERE e.event_type = 'assignment_context' AND e.created_at >= ? AND s.status IN ('verified', 'regressed')
-      AND (json_extract(e.metadata, '$.memory_holdout') = 1 OR json_array_length(json_extract(e.metadata, '$.rule_ids')) > 0)
-      AND NOT (s.status = 'regressed' AND ${nonMakerRunSql('e.loop_run_id', env)})
-    GROUP BY 1, 2`, since);
-  const arm = (name: string) => {
-    const verified = arms.filter((r) => r.arm === name && r.status === 'verified').reduce((a, r) => a + r.n, 0);
-    const regressed = arms.filter((r) => r.arm === name && r.status === 'regressed').reduce((a, r) => a + r.n, 0);
-    return { n: verified + regressed, verified, regressed, verified_rate: verified + regressed ? +(verified / (verified + regressed)).toFixed(3) : null };
-  };
-  const withRules = arm('rules'); const heldOut = arm('holdout');
-  const memory_holdout = { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
-    fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
-    note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
+  const memory_holdout = memoryHoldoutEvidence(db, since, env);
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
+  const experiments = experimentsReport(db, env, now);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -341,21 +466,29 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     egress: egressEvidence(db, env, now),
     // UX-21: vectors compared across dimensions since boot, per store (resampled by default; skipped under VECTOR_STRICT_DIM)
     // Batch-8: gym tasks from real production failures (git lookups skipped here; 'available' is computed at claim time)
-    failure_tasks: failureTaskEvidence(db, null, env),
+    // SPEC_GAP_LANE: OpenSpec scenarios without a test as write_test tasks (latest shadow scan; nested, no new top-level key)
+    failure_tasks: { ...failureTaskEvidence(db, null, env), spec_gap: specGapEvidence(db, env) },
     embedding_dim_mismatch: { strict: vectorStrictDim(env), by_store: embeddingDimMismatch() }, freshness,
     // earned auto-merge: mode, class state (active / revoked + why) and counts
     auto_merge: autoMergeEvidence(db, env, now), memory_holdout,
+    // OLLAMA_OUTAGE_FALLBACK_RUNTIME: opencode production leases run on claude (subscription); excluded from the experiments above/below
+    runtime_fallback: outageFallbackEvidence(db, since, env),
+    // OLLAMA_AUTO_FAILOVER / PANEL_FALLBACK_RUNTIME / INFERENCE_BUDGET_THROTTLE: limit state, panel reviews on claude, Ollama budget use
+    inference: inferenceEvidence(db, since, env),
     // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
     effort_x1,
     // F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts, outcome agreement and kappa per checker-family arm
     checker_family: checkerFamilyEvidence(db, since, env, fisherExact, now),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
     graded: gradedEvidence(db, since, env),
+    // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
+    fail_before_pass_after: failBeforePassAfterEvidence(db, env, fisherExact, now),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
-    ace_001: ace001Evidence(db, since, env),
+    ace_001: ace001Evidence(db, since, env, now),
     ste_001: ste001Evidence(db, since, env),
     // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
-    maker_deps_001: makerDeps001Evidence(db, since, env),
+    // MAKER_WARM_DEPS (nested; blocked_by_experiment while MAKER-DEPS-001 runs): leases per deps_source
+    maker_deps_001: { ...makerDeps001Evidence(db, since, env), warm_deps: makerWarmDepsEvidence(db, since, env) },
     // H-D5NO (prescreen in shadow): prospective false-rejection risk of jev confident-NO; never mixed with JC (NE-001)
     d5_no: d5NoEvidence(db),
     // TG-001 (TG_001_MODE): gym → production transfer gap — the same frozen write_test tasks under four prompt representations
@@ -385,5 +518,37 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps by source, recurrences, oldest age; insufficient while off
     knowledge_gaps: knowledgeGapEvidence(db, env, now),
     // JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev — agreement and accuracy vs ground truth; null below 20 pairs
-    jev_challenger: jevChallengerEvidence(db, env) };
+    jev_challenger: jevChallengerEvidence(db, env),
+    // P0-8: runs the old daemon pass rule and certification would have judged differently (skipped security review), 30 d
+    gate_rule_disagreements: gateRuleDisagreements(db, since),
+    // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
+    experiments,
+    // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
+    learning_ledger: learningLedger(db, experiments.experiments, ope),
+    // P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host (window) and the host key list, no secrets (read-only)
+    fleet_signatures: fleetSignatureEvidence(db, env, since),
+    // AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main, per agent; insufficient below n 5
+    falsifier: falsifierEvidence(db, env, now),
+    // L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): settled loop PRs' tests re-run at origin/main + fresh-mutant kill share; graded vs verified/survived (report only)
+    settlement_execution: settlementExecutionEvidence(db, env, now),
+    // U1: per lane fresh-mutant kill share at settlement (median, share < 0.2, Wilson) — a value label that can fail (report only)
+    settlement_value: settlementValueEvidence(db, wilson, lanes),
+    // RESOURCE_SCHEDULER_MODE (shadow): observed-capacity would-defer counts 24 h / 7 d + latest observed capacity (report only)
+    scheduler_capacity: schedulerCapacityEvidence(db, env, now),
+    // PL-001 (PROCEDURE_SELECTOR_MODE, shadow): applies / does_not_apply per ordinary gym claim 24 h / 7 d + top failed clauses (nothing delivered)
+    procedure_selection: procedureSelectionEvidence(db, env, now),
+    // PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks — pairs, per-arm
+    // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
+    pl_001: pl001Evidence(db, env, now),
+    // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
+    memory_delivery: memoryDeliveryEvidence(db, env),
+    // Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after success rate around a linked merged fix (read-only)
+    fleet_repair: fleetRepairEvidence(db, env, now),
+    // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory (affected / not_affected / unknown), the affected list,
+    // ids not fetched yet and bump proposals by status; null counts before the first judgment (read-only)
+    advisory_exposure: advisoryExposureEvidence(db, env),
+    // track C (CONTENT_DRAFTS_MODE): content_draft judgments by decision, verifier pass rate per check, draft PRs opened, tokens (read-only)
+    content_drafts: contentDraftsEvidence(db, env, since),
+    // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
+    capability_factory: capabilityFactoryEvidence(db, env) };
 }

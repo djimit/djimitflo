@@ -118,7 +118,7 @@ it('a reviewer retry of a cross-arm checker keeps the cross model', async () => 
   outcomes = [['failed', { verdict: 'insufficient_evidence', failure_reason: 'checker_runtime_failed:exit=1,timed_out=true: ' }]];
   await tick();
   const retry = seen.find((s) => s.metadata.retry_of === 'checker-1');
-  expect(retry?.metadata).toMatchObject({ model: 'ollama/kimi-k3:cloud', checker_family_arm: 'cross' });
+  expect(retry?.metadata).toMatchObject({ model: 'ollama/kimi-k3:cloud', checker_family_arm: 'cross', checker_family_version: 'v1' });
 });
 
 it('a non-opencode reviewer runtime is not randomised (the cross model is an opencode provider/model)', async () => {

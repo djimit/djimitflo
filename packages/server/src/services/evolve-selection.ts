@@ -2,7 +2,10 @@ import type { Database } from 'better-sqlite3';
 import { rankEvolveCandidates, evolveWinner, type EvolveCandidate } from './evolve-fitness-service';
 import { LoopEventService } from './loop-event-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
+import { extraRepoByPath, repoSkillPrefix } from './repo-registry';
 import { gradedContestMode, leaseGraded, leaseGradedRefs, mutationScoreOf } from './graded-fitness';
+import { leaseRanOn } from './outcome-attribution';
+import { CANCEL_LEASE_METADATA_SQL, cancelFailure, cancelLeaseBind } from './lease-failure';
 
 /**
  * E13 steps 2–3 (docs/design/evolve-loop.md): several makers on one objective, the fittest (computed in code) wins.
@@ -109,8 +112,8 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       db.prepare(`UPDATE worker_leases SET metadata = ${meta}, updated_at = ? WHERE id = ?`)
         .run(JSON.stringify({ rank: r.rank, species: r.species, reason: reasonOf(r) }), now, r.makerLeaseId);
       if (r.makerLeaseId !== winner.makerLeaseId) {
-        db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
-          AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, runId, r.makerLeaseId);
+        db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
+          AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, ...cancelLeaseBind('maker_lost_evolve_contest', now), runId, r.makerLeaseId);
       }
     }
     // prod 2026-10-09 (run 161f7840): a retry maker whose execution never got going stayed 'prepared' and non-superseded
@@ -120,24 +123,28 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       .all(runId, winner.makerLeaseId) as Array<{ id: string }>).map((l) => l.id));
     for (const id of leftovers) {
       db.prepare(`UPDATE worker_leases SET status = 'cancelled', metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.superseded_by_maker_lease_id', ?,
-        '$.superseded_at', ?, '$.cancellation_reason', 'superseded_by_evolve_winner'), updated_at = ? WHERE id = ?`).run(winner.makerLeaseId, now, now, id);
-      db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
-        AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, runId, id);
+        '$.superseded_at', ?, '$.cancellation_reason', 'superseded_by_evolve_winner', '$.failure', json(?)), updated_at = ? WHERE id = ?`)
+        .run(winner.makerLeaseId, now, JSON.stringify(cancelFailure('superseded_by_evolve_winner')), now, id);
+      db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
+        AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, ...cancelLeaseBind('maker_superseded_by_evolve_winner', now), runId, id);
     }
   })();
   // N7 lineage: a species that lost the head-to-head is an outcome too (success 0), or the bandit would only ever see
   // winners. The winner's own outcome is recorded when the run finishes (loop-daemon 9a'').
   try {
-    const loop = (db.prepare('SELECT loop_name FROM loop_runs WHERE id = ?').get(runId) as { loop_name: string } | undefined)?.loop_name ?? 'unknown';
+    const runRow = db.prepare('SELECT loop_name, repository_path FROM loop_runs WHERE id = ?').get(runId) as { loop_name: string; repository_path: string | null } | undefined;
+    const loop = runRow?.loop_name ?? 'unknown';
+    const prefix = repoSkillPrefix(extraRepoByPath(runRow?.repository_path)); // an extra repo's outcomes stay out of primary views
     const skills = new SkillEvolutionEngine(db);
     for (const r of ranked.filter((x) => x.makerLeaseId !== winner.makerLeaseId)) {
       const lease = leases.find((l) => l.id === r.makerLeaseId)!;
       // a maker that never finished (still prepared/running) did not compete: no fitness verdict, only an event
       if (lease.status !== 'completed' && lease.status !== 'failed') continue;
-      const model = (JSON.parse(lease.metadata || '{}') as { model?: unknown }).model;
+      const ran = leaseRanOn(lease.runtime, JSON.parse(lease.metadata || '{}')); // P0-7: the runtime that ran, not the one requested
+      const model = ran.model;
       // SI-B act: a maker that passed every gate and lost the contest did the work — success, tagged contest:passed_lost
       const passedLost = contest === 'act' && r.eligible;
-      skills.recordOutcome(`loop-maker:${loop}:${lease.runtime}`, {
+      skills.recordOutcome(`${prefix}loop-maker:${loop}:${ran.runtime}`, {
         success: passedLost, tokensUsed: r.tokens ?? 0, durationMs: 0, domain: loop, taskId: runId, agentId: r.makerLeaseId,
         ...(typeof model === 'string' ? { model } : {}), evidenceRefs: [`loop_run:${runId}`, `evolve:lost_to:${winner.species}`, `evolve:reason:${reasonOf(r)}`,
           passedLost ? 'contest:passed_lost' : `evolve:lost_${r.eligible ? 'eligible' : 'ineligible'}`, ...leaseGradedRefs(JSON.parse(lease.metadata || '{}'))],

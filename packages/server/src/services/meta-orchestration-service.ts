@@ -36,10 +36,14 @@ interface FailurePrediction {
   suggestedMitigations: string[];
 }
 
+/** Fewest episodes (and, for the token cap, fewest episodes with token data) a tuning recommendation is based on. */
+const MIN_TUNING_EPISODES = 3;
+
 export interface LoopTuning {
   goalType: string;
   recommendedConcurrency: number;
-  recommendedBudget: { maxTokens: number; maxRuntimeMs: number };
+  /** maxTokens is omitted when too few episodes carry token data (UNKNOWN is never 0): the gate then uses the goal budget or skips */
+  recommendedBudget: { maxTokens?: number; maxRuntimeMs: number };
   recommendedGateThresholds: { diffMaxLines: number; minSuccessRate: number };
   confidence: number;
 }
@@ -52,7 +56,14 @@ interface RoutingOptimization {
   expectedCostSavings: number;
 }
 
+/** The highest confidence getLoopTuning can report (min(0.9, 0.3 + 0.03 · episodes)): a higher minimum can never be met */
+export const META_TUNING_MAX_CONFIDENCE = 0.9;
+
+/** re-20261030 B candidate 4: whether applied tunings are consumed, and why not */
+interface MetaTuningState { active: boolean; min_confidence: number; max_reachable_confidence: number; reason: string | null }
+
 interface MetaStats {
+  tuning: MetaTuningState;
   totalDecisions: number;
   autoTuningsApplied: number;
   failuresPredicted: number;
@@ -179,7 +190,7 @@ export class MetaOrchestrationService {
     // are not independent evidence; retain the same first-row identity it uses.
     const episodes = this.getTuningEpisodes(goalType);
 
-    if (episodes.length < 3) {
+    if (episodes.length < MIN_TUNING_EPISODES) {
       return {
         goalType,
         recommendedConcurrency: 2,
@@ -199,10 +210,15 @@ export class MetaOrchestrationService {
 
     // Token budgets use recorded tokens, never a fabricated dollars-to-tokens
     // conversion. This remains bounded observational tuning, not causal proof.
-    const successfulEpisodes = episodes.filter(e => e.outcome === 'success');
-    const budgetEpisodes = successfulEpisodes.length > 0 ? successfulEpisodes : episodes;
-    const avgTokens = budgetEpisodes.reduce((sum, e) => sum + e.totalTokens, 0) / budgetEpisodes.length;
-    const maxTokens = Math.round(avgTokens * 1.5);
+    // An episode without token data records 0 (runtime reported no usage, manual lease); that is UNKNOWN, not zero
+    // usage. Prod 19-10: such episodes averaged to ~0 → maxTokens clamped to the 1000 floor → every runtime that
+    // does report usage (claude makers, 10/10) failed token_budget. Without enough measured episodes: no token cap.
+    const measured = episodes.filter(e => e.totalTokens > 0);
+    const successfulEpisodes = measured.filter(e => e.outcome === 'success');
+    const budgetEpisodes = successfulEpisodes.length > 0 ? successfulEpisodes : measured;
+    const maxTokens = measured.length >= MIN_TUNING_EPISODES
+      ? Math.round(budgetEpisodes.reduce((sum, e) => sum + e.totalTokens, 0) / budgetEpisodes.length * 1.5)
+      : undefined;
     const maxRuntimeMs = Math.max(600000, Math.round(avgDuration * 2));
 
     // Tune gate thresholds: tighten if too many failures, loosen if too conservative
@@ -213,9 +229,9 @@ export class MetaOrchestrationService {
     return {
       goalType,
       recommendedConcurrency: concurrency,
-      recommendedBudget: { maxTokens, maxRuntimeMs },
+      recommendedBudget: { ...(maxTokens !== undefined ? { maxTokens } : {}), maxRuntimeMs },
       recommendedGateThresholds: { diffMaxLines, minSuccessRate: Math.max(0.5, successRate - 0.1) },
-      confidence: Number(Math.min(0.9, 0.3 + episodes.length * 0.03).toFixed(3)),
+      confidence: Number(Math.min(META_TUNING_MAX_CONFIDENCE, 0.3 + episodes.length * 0.03).toFixed(3)),
     };
   }
 
@@ -411,7 +427,7 @@ export class MetaOrchestrationService {
     for (const { goal_type } of goalTypes) {
       const tuning = this.boundTuning(this.getLoopTuning(goal_type));
       const shouldApply = tuning.confidence >= this.minimumTuningConfidence();
-      const previous = this.getActiveLoopTuning(goal_type);
+      const previous = this.storedTuning(goal_type);
       const now = new Date().toISOString();
 
       this.db.transaction(() => {
@@ -445,7 +461,24 @@ export class MetaOrchestrationService {
     return { evaluated: goalTypes.length, applied };
   }
 
+  /**
+   * re-20261030 (B §3, candidate 4): META_TUNING_MIN_CONFIDENCE above META_TUNING_MAX_CONFIDENCE means no tuning can apply —
+   * the tuner is off, so the last applied row (kept as evidence) is not consumed either; before, it stayed the default maker
+   * concurrency and wall-clock budget (frozen, not off).
+   */
+  tuningState(): MetaTuningState {
+    const min = this.minimumTuningConfidence();
+    const active = min <= META_TUNING_MAX_CONFIDENCE;
+    return { active, min_confidence: min, max_reachable_confidence: META_TUNING_MAX_CONFIDENCE,
+      reason: active ? null : `off: META_TUNING_MIN_CONFIDENCE ${min} > reachable ${META_TUNING_MAX_CONFIDENCE}; applied tunings are not consumed` };
+  }
+
   getActiveLoopTuning(goalType: string): LoopTuning | null {
+    return this.tuningState().active ? this.storedTuning(goalType) : null;
+  }
+
+  /** the stored row, consumed or not (the tuning log's previous_value) */
+  private storedTuning(goalType: string): LoopTuning | null {
     const row = this.db.prepare('SELECT tuning_json FROM meta_active_loop_parameters WHERE goal_type = ?').get(goalType) as { tuning_json?: string } | undefined;
     return row?.tuning_json ? JSON.parse(row.tuning_json) as LoopTuning : null;
   }
@@ -460,7 +493,8 @@ export class MetaOrchestrationService {
       ...tuning,
       recommendedConcurrency: Math.max(1, Math.min(20, Math.floor(tuning.recommendedConcurrency))),
       recommendedBudget: {
-        maxTokens: Math.max(1_000, Math.min(2_000_000, Math.floor(tuning.recommendedBudget.maxTokens))),
+        ...(tuning.recommendedBudget.maxTokens !== undefined
+          ? { maxTokens: Math.max(1_000, Math.min(2_000_000, Math.floor(tuning.recommendedBudget.maxTokens))) } : {}),
         maxRuntimeMs: Math.max(60_000, Math.min(86_400_000, Math.floor(tuning.recommendedBudget.maxRuntimeMs))),
       },
       recommendedGateThresholds: {
@@ -474,6 +508,7 @@ export class MetaOrchestrationService {
 
   getStats(): MetaStats {
     return {
+      tuning: this.tuningState(),
       totalDecisions: this.totalDecisions,
       autoTuningsApplied: this.autoTuningsApplied,
       failuresPredicted: this.failuresPredicted,

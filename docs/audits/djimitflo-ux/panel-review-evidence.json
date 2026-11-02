@@ -1,0 +1,133 @@
+{
+  "captured_at": "2026-10-23T20:17:40.035Z",
+  "db_mode": "readonly + query_only",
+  "results": {
+    "panel_statuses": {
+      "sql": "SELECT status,COUNT(*) n FROM specialist_panels GROUP BY status",
+      "params": [],
+      "rows": [
+        {
+          "status": "backlog_created",
+          "n": 63
+        },
+        {
+          "status": "cancelled",
+          "n": 520
+        },
+        {
+          "status": "consensus_ready",
+          "n": 753
+        },
+        {
+          "status": "goal_created",
+          "n": 242
+        },
+        {
+          "status": "planned",
+          "n": 3
+        }
+      ]
+    },
+    "review_coverage": {
+      "sql": "SELECT p.status,json_extract(p.consensus_json,'$.decision') decision,CASE WHEN EXISTS(SELECT 1 FROM specialist_reviews r WHERE r.panel_id=p.id) THEN 'has_reviews' ELSE 'no_reviews' END coverage,COUNT(*) n FROM specialist_panels p GROUP BY 1,2,3",
+      "params": [],
+      "rows": [
+        {
+          "status": "backlog_created",
+          "decision": "backlog",
+          "coverage": "has_reviews",
+          "n": 56
+        },
+        {
+          "status": "backlog_created",
+          "decision": "goal",
+          "coverage": "has_reviews",
+          "n": 5
+        },
+        {
+          "status": "backlog_created",
+          "decision": "needs_more_evidence",
+          "coverage": "has_reviews",
+          "n": 2
+        },
+        {
+          "status": "cancelled",
+          "decision": "blocked",
+          "coverage": "has_reviews",
+          "n": 14
+        },
+        {
+          "status": "cancelled",
+          "decision": "needs_more_evidence",
+          "coverage": "has_reviews",
+          "n": 506
+        },
+        {
+          "status": "consensus_ready",
+          "decision": "backlog",
+          "coverage": "has_reviews",
+          "n": 12
+        },
+        {
+          "status": "consensus_ready",
+          "decision": "blocked",
+          "coverage": "has_reviews",
+          "n": 43
+        },
+        {
+          "status": "consensus_ready",
+          "decision": "needs_more_evidence",
+          "coverage": "has_reviews",
+          "n": 698
+        },
+        {
+          "status": "goal_created",
+          "decision": "goal",
+          "coverage": "has_reviews",
+          "n": 50
+        },
+        {
+          "status": "goal_created",
+          "decision": "needs_more_evidence",
+          "coverage": "no_reviews",
+          "n": 192
+        },
+        {
+          "status": "planned",
+          "decision": "needs_more_evidence",
+          "coverage": "no_reviews",
+          "n": 3
+        }
+      ]
+    },
+    "recent_panels": {
+      "sql": "SELECT p.status,json_extract(p.consensus_json,'$.decision') decision,(SELECT COUNT(*) FROM specialist_reviews r WHERE r.panel_id=p.id) reviews,p.created_at,p.completed_at FROM specialist_panels p WHERE created_at>=? ORDER BY created_at DESC",
+      "params": [
+        "2026-10-22T20:17:40.025Z"
+      ],
+      "rows": [
+        {
+          "status": "goal_created",
+          "decision": "needs_more_evidence",
+          "reviews": 0,
+          "created_at": "2026-10-23T15:09:48.783Z",
+          "completed_at": null
+        },
+        {
+          "status": "goal_created",
+          "decision": "needs_more_evidence",
+          "reviews": 0,
+          "created_at": "2026-10-23T06:26:27.496Z",
+          "completed_at": null
+        },
+        {
+          "status": "goal_created",
+          "decision": "needs_more_evidence",
+          "reviews": 0,
+          "created_at": "2026-10-23T00:27:57.647Z",
+          "completed_at": null
+        }
+      ]
+    }
+  }
+}
