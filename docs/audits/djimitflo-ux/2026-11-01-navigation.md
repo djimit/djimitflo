@@ -65,3 +65,11 @@ Existing navigation now filters by page, route, group and bounded domain aliases
 ## Release validation, 2026-11-02
 
 PR #1137 was reconstructed directly on main (`63b7fb749f56a888c89110531f30dca310eeb138`), preserving its original implementation diff. The ten navigation discovery tests passed again on that baseline. It no longer depends on the OMEGA backend PR. The first automated review of the reconstructed head used the previous stacked base and counted 60 files; that result is not a review of the current three-file main-relative change. The next head must be reviewed against main, without overriding the previous status.
+
+## Rollout control correction, 2026-11-02
+
+`UX_NAVIGATION_DISCOVERY_MODE` now defaults to `off`; `shadow` retains the same baseline navigation without speculative telemetry. Only `on` enables page search, aliases, matching Lab expansion and empty-group removal. The existing public `/api/health` returns a normalized enum only; the dashboard starts off and remains off on missing/invalid values or request failures. The health client does not use authenticated refresh/logout handling. Reload after changing server configuration. No production flag was changed.
+
+The nested Suspense boundary remains an independent loading defect correction in every mode: a lazy page must not remove navigation or prevent its health-loading effect from mounting. No loading-state success is treated as runtime or backend proof.
+
+Validation: five off/shadow/missing/error cases failed before the rollout fix; full dashboard suite passed 435 tests, scoped health/evolution suites passed 21 tests. API tests assert the public health URL and rejection of unsuccessful responses even when their body claims mode `on`. Generated configuration defaults were refreshed from the runbook with the existing generator.

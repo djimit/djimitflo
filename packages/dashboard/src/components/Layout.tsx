@@ -70,6 +70,14 @@ export function Layout() {
   const { user, logout, hasPermission } = useAuthStore();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [navigationQuery, setNavigationQuery] = useState('');
+  const [discoveryEnabled, setDiscoveryEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void api.getHealth().then(health => {
+      if (active) setDiscoveryEnabled(health?.ui?.navigation_discovery_mode === 'on');
+    }).catch(() => { if (active) setDiscoveryEnabled(false); });
+    return () => { active = false; };
+  }, []);
   const openButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
 
@@ -112,14 +120,14 @@ export function Layout() {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
   
-  const query = navigationQuery.trim().toLocaleLowerCase();
+  const query = (discoveryEnabled ? navigationQuery : '').trim().toLocaleLowerCase();
   const queryWords = query.split(/[\s/_-]+/).filter(Boolean);
   const visibleSections = NAV_SECTIONS.map(section => ({
     ...section,
     items: section.items.filter(item => (item.to !== '/authority' || authorityAvailable)
       && (!NAV_PERMISSIONS[item.to] || hasPermission(NAV_PERMISSIONS[item.to]))
       && queryWords.every(term => `${section.title} ${item.label} ${item.to} ${item.keywords ?? ''}`.toLocaleLowerCase().split(/[\s/_-]+/).some(word => word.startsWith(term)))),
-  })).filter(section => section.items.length > 0);
+  })).filter(section => !discoveryEnabled || section.items.length > 0);
   const resultCount = visibleSections.reduce((count, section) => count + section.items.length, 0);
 
   return (
@@ -159,7 +167,7 @@ export function Layout() {
         
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4" aria-label="Main">
-          <div className="mb-4 space-y-2">
+          {discoveryEnabled && <div className="mb-4 space-y-2">
             <label htmlFor="navigation-search" className="block text-xs font-medium text-foreground-secondary">Find a function</label>
             <input id="navigation-search" type="search" value={navigationQuery}
               placeholder="Pages, skills, memory, providers…" aria-controls="navigation-results"
@@ -167,7 +175,7 @@ export function Layout() {
               onChange={event => setNavigationQuery(event.target.value)}
               onKeyDown={event => { if (event.key === 'Escape' && navigationQuery) { event.stopPropagation(); setNavigationQuery(''); } }} />
             {query && <p role="status" className="text-xs text-foreground-secondary">{resultCount ? `${resultCount} matching ${resultCount === 1 ? 'page' : 'pages'}` : 'No matching pages. Try a page name or group.'}</p>}
-          </div>
+          </div>}
           <div id="navigation-results">
           {visibleSections.map((section) => {
             const links = (
@@ -186,7 +194,7 @@ export function Layout() {
             );
             // Lab: native <details>, collapsed unless the current page lives in it (no state, no storage)
             return section.lab ? (
-              <details key={section.title} className="mb-4" open={Boolean(query) || section.items.some((item) => isActive(item.to))}>
+              <details key={section.title} className="mb-4" open={Boolean(query) || (discoveryEnabled ? section.items : NAV_SECTIONS.find(original => original.title === section.title)!.items).some((item) => isActive(item.to))}>
                 <summary className="cursor-pointer px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground-muted">{section.title} · experimental</summary>
                 {links}
               </details>
