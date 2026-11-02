@@ -105,7 +105,7 @@ describe('loop recovery on restart', () => {
     insertLease('lease-done', 'run-done', 'completed', null);
     const service = new LoopService(db, path.join(tempDir, 'agent-evidence'));
     const result = service.recoverInterruptedRuns();
-    expect(result).toEqual({ interruptedRuns: 0, failedLeases: 0, prunedWorktrees: 0 });
+    expect(result).toEqual({ interruptedRuns: 0, failedLeases: 0, settledRuns: 0, prunedWorktrees: 0 });
   });
 });
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { evolveEligible, evolveSpecies, mutationScoreOf, selectEvolveWinner } from '../services/evolve-selection';
+import { LoopService } from '../services/loop-service';
 
 let db: Database.Database;
 const now = new Date().toISOString();
@@ -96,6 +97,20 @@ it('D0: a measured mutation score of 0 stays 0 (it used to become null = not mea
   expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBeNull();
 });
 
+it('OPS-001: a fail-closed mutation-gain line (unknown score = null) is not measured, never 0', () => {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mut-')), 'out.log');
+  for (const line of [
+    '{"mutation_gain":{"status":"baseline_unavailable","file":"x","test":"y","before":null,"after":null,"gain":null,"min_gain":10,"rule":null,"pass":false}}',
+    '{"mutation_gain":{"status":"baseline_history_unreadable","file":"x","test":"y","before":null,"after":null,"gain":null,"min_gain":10,"rule":null,"pass":false}}',
+    '{"mutation_gain":{"status":"candidate_unavailable","file":"x","test":"y","before":0,"after":null,"gain":null,"min_gain":10,"rule":null,"pass":false}}',
+  ]) {
+    fs.writeFileSync(f, `stryker noise\n${line}\n`);
+    expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBeNull();
+  }
+  fs.writeFileSync(f, '{"mutation_gain":{"status":"ok","file":"x","test":"y","before":95,"after":90,"gain":-5,"min_gain":10,"rule":"absolute_90","pass":true}}\n');
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBe(90);
+});
+
 it('RX-3: an evolve loser that was eligible (lost on rank) is tagged, an ineligible one too, so the reward can tell them apart', () => {
   maker('m-a', 'opencode', ok(80)); reviewer('c-a', 'checker', 'm-a');
   maker('m-b', 'codex', ok(40)); reviewer('c-b', 'checker', 'm-b');
@@ -104,4 +119,98 @@ it('RX-3: an evolve loser that was eligible (lost on rank) is tagged, an ineligi
   const refs = (agent: string) => JSON.parse((db.prepare('SELECT evidence_refs_json AS r FROM skill_outcomes WHERE agent_id = ?').get(agent) as { r: string }).r) as string[];
   expect(refs('m-a')).toContain('evolve:lost_eligible');
   expect(refs('m-c')).toContain('evolve:lost_ineligible');
+});
+
+describe('SI-B graded contest (GRADED_CONTEST_MODE)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const refs = (agent: string) => JSON.parse((db.prepare('SELECT evidence_refs_json AS r FROM skill_outcomes WHERE agent_id = ?').get(agent) as { r: string }).r) as string[];
+  const outcome = (agent: string) => db.prepare('SELECT success FROM skill_outcomes WHERE agent_id = ?').get(agent) as { success: number } | undefined;
+  const graded = (score: number) => ({ graded: { score, kind: 'mutant_kill', lane: 'test-gap', killed: Math.round(score * 3), total: 3 } });
+  // the current rule picks m-small (smaller diff); graded picks m-strong (kills 3/3 vs 1/3); m-bad failed its checks
+  const seedContest = () => {
+    maker('m-small', 'opencode', ok(30, graded(1 / 3))); reviewer('c-small', 'checker', 'm-small');
+    maker('m-strong', 'codex', ok(80, { ...graded(1), model: 'gpt-5' })); reviewer('c-strong', 'checker', 'm-strong');
+    maker('m-bad', 'pi', { ...ok(10, graded(1)), deterministic_checks: [{ name: 'test', status: 'fail' }] }); reviewer('c-bad', 'checker', 'm-bad');
+  };
+  const contestEvent = () => db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = 'run-1' AND event_type = 'contest_graded'").get() as { metadata: string } | undefined;
+
+  it('off: no contest event, losers as before (success 0), graded refs ride along on the loser outcomes', () => {
+    seedContest();
+    expect(selectEvolveWinner(db, 'run-1', ['m-small', 'm-strong', 'm-bad'])).toBe('m-small');
+    expect(contestEvent()).toBeUndefined();
+    expect(outcome('m-strong')).toEqual({ success: 0 });
+    expect(refs('m-strong')).toEqual(expect.arrayContaining(['evolve:lost_eligible', 'graded:1.000', 'graded_kind:mutant_kill', 'graded_lane:test-gap']));
+  });
+
+  it('shadow: logs contest_graded {current_winner, graded_winner, scores, agree}; nothing changes', () => {
+    vi.stubEnv('GRADED_CONTEST_MODE', 'shadow');
+    seedContest();
+    expect(selectEvolveWinner(db, 'run-1', ['m-small', 'm-strong', 'm-bad'])).toBe('m-small');
+    const ev = JSON.parse(contestEvent()!.metadata);
+    expect(ev).toEqual({ current_winner: 'm-small', graded_winner: 'm-strong', scores: { 'm-small': 0.333, 'm-strong': 1 }, agree: false });
+    expect(meta('m-strong').superseded_by_maker_lease_id).toBe('m-small');
+    expect([status('c-small'), status('c-strong')]).toEqual(['prepared', 'cancelled']);
+    expect(outcome('m-strong')).toEqual({ success: 0 });
+    expect(refs('m-strong')).toContain('evolve:lost_eligible');
+  });
+
+  it('shadow: fewer than two gate-passing makers is no contest', () => {
+    vi.stubEnv('GRADED_CONTEST_MODE', 'shadow');
+    maker('m-small', 'opencode', ok(30, graded(1 / 3)));
+    maker('m-bad', 'pi', { ...ok(10, graded(1)), exit_status: 1 });
+    expect(selectEvolveWinner(db, 'run-1', ['m-small', 'm-bad'])).toBe('m-small');
+    expect(contestEvent()).toBeUndefined();
+  });
+
+  it('shadow: a tie (or no graded score) keeps the current rule and agrees', () => {
+    vi.stubEnv('GRADED_CONTEST_MODE', 'shadow');
+    maker('m-small', 'opencode', ok(30, graded(1))); maker('m-big', 'codex', ok(80, graded(1))); maker('m-none', 'pi', ok(50));
+    expect(selectEvolveWinner(db, 'run-1', ['m-big', 'm-none', 'm-small'])).toBe('m-small');
+    expect(JSON.parse(contestEvent()!.metadata)).toMatchObject({ current_winner: 'm-small', graded_winner: 'm-small', agree: true, scores: { 'm-small': 1, 'm-big': 1, 'm-none': null } });
+  });
+
+  it('act: the graded winner wins; a gate-passing loser is success=1 with contest:passed_lost; a failed one stays success=0', () => {
+    vi.stubEnv('GRADED_CONTEST_MODE', 'act');
+    seedContest();
+    expect(selectEvolveWinner(db, 'run-1', ['m-small', 'm-strong', 'm-bad'])).toBe('m-strong');
+    expect(meta('m-strong').superseded_by_maker_lease_id).toBeUndefined();
+    expect(meta('m-small').superseded_by_maker_lease_id).toBe('m-strong');
+    expect([status('c-strong'), status('c-small'), status('c-bad')]).toEqual(['prepared', 'cancelled', 'cancelled']);
+    expect(outcome('m-small')).toEqual({ success: 1 });
+    expect(refs('m-small')).toEqual(expect.arrayContaining(['contest:passed_lost', 'evolve:lost_to:codex@gpt-5', 'graded:0.333']));
+    expect(refs('m-small')).not.toContain('evolve:lost_eligible');
+    expect(outcome('m-bad')).toEqual({ success: 0 });
+    expect(refs('m-bad')).toContain('evolve:lost_ineligible');
+    expect(refs('m-bad')).not.toContain('contest:passed_lost');
+    expect(outcome('m-strong')).toBeUndefined(); // the winner's own outcome is the daemon's (9a'')
+    expect(JSON.parse(contestEvent()!.metadata)).toMatchObject({ current_winner: 'm-small', graded_winner: 'm-strong', agree: false });
+  });
+});
+
+it('prod 2026-10-09 run 161f7840: a retry maker still prepared when the winner is chosen is superseded, so maker_completion judges the winner only', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'evolve-leftover-'));
+  const loops = new LoopService(db, path.join(root, 'evidence'));
+  const worktree = path.join(root, 'wt'); fs.mkdirSync(worktree); fs.writeFileSync(path.join(worktree, 'LOOP_WORK.md'), 'assignment');
+  db.prepare("UPDATE loop_runs SET repository_path = ?, findings_json = '[]', metadata = '{}' WHERE id = 'run-1'").run(root);
+  // the first maker failed its checks; retryLoopRun made a retry (whose execution never got going) and then the evolve sibling
+  maker('m-first', 'opencode', { exit_status: 1, superseded_by_maker_lease_id: 'm-sib' }); reviewer('c-first', 'checker', 'm-first');
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('m-retry', 'run-1', 'maker', 'opencode', 'prepared', ?, ?, ?)`)
+    .run(JSON.stringify({ retry_of_maker_lease_id: 'm-first', retry_attempt: 1 }), now, now);
+  reviewer('c-retry', 'checker', 'm-retry'); reviewer('s-retry', 'security_checker', 'm-retry');
+  maker('m-sib', 'remote', ok(30, { retry_of_maker_lease_id: 'm-first', evolve_sibling_of: 'm-first', retry_attempt: 2, assignment_file: path.join(worktree, 'LOOP_WORK.md') }));
+  db.prepare("UPDATE worker_leases SET worktree_path = ? WHERE id = 'm-sib'").run(worktree);
+  reviewer('c-sib', 'checker', 'm-sib');
+
+  expect(selectEvolveWinner(db, 'run-1', ['m-first', 'm-sib'])).toBe('m-sib');
+  expect(loops.verifyLoopRun('run-1').gates.find((g) => g.name === 'maker_completion')).toMatchObject({ status: 'pass', evidence: expect.stringMatching(/^1\/1 /) });
+  expect(meta('m-retry')).toMatchObject({ superseded_by_maker_lease_id: 'm-sib', cancellation_reason: 'superseded_by_evolve_winner' });
+  expect([status('m-retry'), status('c-retry'), status('s-retry'), status('c-sib')]).toEqual(['cancelled', 'cancelled', 'cancelled', 'prepared']);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+it('a maker of the run that is already running when the winner is chosen is left alone', () => {
+  maker('m-a', 'opencode', ok(20)); maker('m-b', 'codex', ok(40));
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('m-run', 'run-1', 'maker', 'opencode', 'running', '{}', ?, ?)`).run(now, now);
+  expect(selectEvolveWinner(db, 'run-1', ['m-a', 'm-b'])).toBe('m-a');
+  expect([status('m-run'), meta('m-run').superseded_by_maker_lease_id]).toEqual(['running', undefined]);
 });

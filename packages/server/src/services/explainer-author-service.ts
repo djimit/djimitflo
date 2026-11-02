@@ -97,6 +97,7 @@ export class ExplainerAuthorService {
         temperature: 0.2,
         response_format: { type: 'json_object' },
       }),
+      signal: AbortSignal.timeout(120_000),
     });
     if (!response.ok) return null;
     const payload = await response.json() as any;

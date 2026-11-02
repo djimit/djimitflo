@@ -9,6 +9,7 @@
  */
 
 import { createHash, randomUUID } from 'crypto';
+import { realRunIdSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { GovernanceGateService } from './governance-gate-service';
 
@@ -349,8 +350,8 @@ export class ComplianceAuditService {
     let totalDeployments = 0;
     let approvedDeployments = 0;
     try {
-      totalDeployments = (this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ?").get(start, end) as any)?.c || 0;
-      approvedDeployments = (this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ? AND status != 'created'").get(start, end) as any)?.c || 0;
+      totalDeployments = (this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ? AND ${realRunIdSql('loop_run_id')}`).get(start, end) as any)?.c || 0;
+      approvedDeployments = (this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ? AND status != 'created' AND ${realRunIdSql('loop_run_id')}`).get(start, end) as any)?.c || 0;
     } catch {
       // Tables may not exist yet
     }

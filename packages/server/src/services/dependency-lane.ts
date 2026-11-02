@@ -4,6 +4,7 @@ import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 import { AuditService } from './audit-service';
 import { LoopEventService } from './loop-event-service';
 import { markRun } from './scheduler-registry';
+import { newestRuns, requiredChecksOf, requiredRun, type ProtectionChecks, type RequiredCheck } from './required-checks';
 
 /**
  * Dependency lane (operator-approved class, 2026-10-07). Dependabot PRs piled up unseen (18 open, oldest 2026-09-14).
@@ -11,7 +12,8 @@ import { markRun } from './scheduler-registry';
  * per PR, oldest first:
  * - only npm (`dependabot/npm_and_yarn/…`), only patch/minor — a major, a 0.x minor (breaking under ^), a grouped update
  *   touching a major or any update it cannot parse stays human;
- * - pending or absent checks wait; failing checks are skipped only when the branch is up to date with its base;
+ * - pending or absent checks wait; failing checks are skipped only when the branch is up to date with its base; a required
+ *   context of the base's branch protection counts only on success (skipped/neutral is failing, unreported is pending);
  * - behind its base (green or red — red is often just an outdated base): one `@dependabot rebase` comment per PR per 24 h (never update-branch — that breaks Dependabot's own
  *   rebase and once caused 37 spam comments);
  * - green + mergeable + up to date: shadow records `would_merge`; act squash-merges ONE PR per tick (CI and auto-deploy see
@@ -100,6 +102,13 @@ export function githubLaneClient(env: NodeJS.ProcessEnv = process.env, fetchImpl
     if (!res.ok) throw Object.assign(new Error(`GitHub ${init.method ?? 'GET'} ${path}: ${res.status} ${json.message ?? ''}`.trim()), { status: res.status, body: json });
     return json;
   };
+  const base = env.LOOP_DRAFT_PR_BASE || 'main';
+  const requiredContexts = async (): Promise<RequiredCheck[] | null> => {
+    let ctx = requiredChecksOf(await call<ProtectionChecks>(`branches/${encodeURIComponent(base)}/protection/required_status_checks`).catch(() => null));
+    // the branch summary carries the same checks and needs read access only
+    if (!ctx.length) ctx = requiredChecksOf((await call<{ protection?: { required_status_checks?: ProtectionChecks } }>(`branches/${encodeURIComponent(base)}`).catch(() => null))?.protection?.required_status_checks);
+    return ctx.length ? ctx : null;
+  };
   type ApiPr = { number: number; title: string; body: string | null; user?: { login?: string }; head: { ref: string; sha: string }; base: { ref: string }; created_at: string; html_url: string };
   return {
     async listDependabotPrs() {
@@ -117,9 +126,20 @@ export function githubLaneClient(env: NodeJS.ProcessEnv = process.env, fetchImpl
     },
     async behindBy(base, sha) { return (await call<{ behind_by: number }>(`compare/${encodeURIComponent(base)}...${sha}`)).behind_by; },
     async checkState(sha) {
-      const runs = (await call<{ check_runs: Array<{ status: string; conclusion: string | null }> }>(`commits/${sha}/check-runs?per_page=100`)).check_runs;
+      type Run = { id?: number; name?: string; status: string; conclusion: string | null; app?: { id?: number } | null };
+      const all = (await call<{ check_runs: Run[] }>(`commits/${sha}/check-runs?per_page=100`)).check_runs;
       const status = await call<{ state: string; statuses: unknown[] }>(`commits/${sha}/status`);
+      // the newest run per producer and name decides: a rerun replaces the run it re-ran
+      const runs = newestRuns(all);
       if (runs.some((r) => r.status === 'completed' && RED.has(String(r.conclusion))) || (status.statuses.length && ['failure', 'error'].includes(status.state))) return 'failure';
+      // forensic 2026-10-26 rank 9 (as loop-auto-merge.ts, #1031): every required context of the base's branch protection
+      // needs a success on this sha from its required producer (app_id) — skipped/neutral never ran, so it is a failure;
+      // unreported by that producer is pending; unreadable protection is pending, never a remembered list.
+      const required = await requiredContexts();
+      if (!required) return 'pending';
+      const req = required.map((r) => requiredRun(all, r));
+      if (req.some((r) => r && r.status === 'completed' && r.conclusion !== 'success')) return 'failure';
+      if (req.some((r) => !r)) return 'pending';
       if (runs.some((r) => r.status !== 'completed') || (status.statuses.length && status.state === 'pending')) return 'pending';
       return runs.length || status.statuses.length ? 'success' : 'none';
     },

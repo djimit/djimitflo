@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { notPanelFallbackReviewSql } from './inference-failover';
 
 /**
  * Calibration of specialist stances against what their proposals later achieved.
@@ -32,7 +33,7 @@ export class PanelCalibrationService {
       SELECT r.specialist_id, r.stance, r.confidence, s.status
       FROM specialist_reviews r
       JOIN self_improvements s ON s.panel_id = r.panel_id
-      WHERE r.status = 'submitted' AND r.stance IN ('support', 'oppose')
+      WHERE r.status = 'submitted' AND r.stance IN ('support', 'oppose') AND ${notPanelFallbackReviewSql('r')}
         AND s.status IN (${[...SUCCESS, ...FAILURE].map(() => '?').join(',')})
     `).all(...SUCCESS, ...FAILURE) as Array<{ specialist_id: string; stance: string; confidence: number; status: string }>;
 

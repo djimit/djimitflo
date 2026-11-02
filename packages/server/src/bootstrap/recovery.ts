@@ -26,7 +26,7 @@ export function recoverInterruptedRuns(db: ReturnType<typeof initializeDatabase>
     const recovery = recoverySvc.recoverInterruptedRuns();
     if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {
       console.log(
-        `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
+        `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), settled ${recovery.settledRuns} deploy-restart zombie run(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
       );
     }
   } catch (error) {
