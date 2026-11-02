@@ -160,3 +160,46 @@ unchanged; this fixes the analysis.
 - **Known, not changed (operator rule):** INCONCLUSIVE at 20 tasks extends to 40 and re-applies α = 0.05 — two looks, so the
   overall false-SUPPORTED rate is above 0.05 (Bonferroni bound 0.10). Reported, not corrected, because the stopping rule is
   pre-registered by the operator.
+
+## Amendment 2026-10-19: stop condition
+
+Stop condition added; verdict rules unchanged. Operator-approved 2026-10-19. The text above is frozen and is not edited.
+
+- **State:** the 20-task result (r2) is INCONCLUSIVE, so the stopping rule extends once to 40 tasks. The second frozen set waits
+  on task supply: accrual of new tasks is ~0.
+- **Rule for ~0 accrual:** stop_by = today + 30 days. **stop_by: 2026-11-18** (the start + 90-day cap is 2027-01-09).
+- **Action at stop_by: decide: extend or close INCONCLUSIVE.** If the 40-task extension has not started by then, the operator
+  either starts it or closes TG-001 as INCONCLUSIVE at 20 tasks. The registry treats INCONCLUSIVE at 20 as not yet closed.
+- **Unchanged:** arms, task-set rules, the single extension to 40, analysis, interval method and verdict rules.
+- **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports TG-001
+  after this date while no closing verdict is recorded.
+
+## Amendment 2026-10-26: closed INCONCLUSIVE at 20 tasks
+
+Closing decision; verdict rules unchanged. Operator-approved 2026-10-26. The text above is frozen and is not edited.
+
+- **Decision:** TG-001 is closed as **INCONCLUSIVE at 20 tasks**. There is no 40-task extension. This takes the "decide: extend
+  or close INCONCLUSIVE" option of the 2026-10-19 amendment before stop_by (2026-11-18). The registry treats it as closed.
+- **Reason (task supply):** on 2026-10-17 only 12 fresh failure-derived `write_test` tasks existed. A second frozen set must be
+  disjoint and needs 20, and accrual was about 6 per 5 days, so the extension could not be built before stop_by.
+- **Result (r2, `tg_001` evidence, unchanged):** scored successes A 14/19, B 11/20, C 10/20, D 11/18 (A has 1 and D has 2
+  INFRA_CENSORED). Primary A − B on 19 pairs (9 both pass, 5 A only, 2 B only, 3 both fail): **+0.158**, Tango 95 % CI
+  **[−0.128, 0.422]**, exact two-sided McNemar **p 0.45** (0.453125). The CI spans both 0 and the 20-point MDE, so the frozen
+  rule gives inconclusive. Secondary: Cochran's Q 4.94, df 3, p 0.18 (17 complete blocks, chi-square approximation).
+  C − B −0.05 [−0.266, 0.161], D − B +0.056 [−0.213, 0.319], both p 1, both descriptive.
+- **What this means:** the experiment neither supports nor rejects H1. Assignment representation is not shown to cause the
+  gym → production collapse, and it is not ruled out as a contributor of ≥ 20 points. 19 of 20 tasks had prior arm-A exposure.
+- **Not tested:** step budget (gym max-steps 40 vs production 60); production harness, runtime, tools and checker; unseen-task
+  generalization; model routing; task distribution. TG-001 also did not test the 40-task extension, so the second look and its
+  α inflation (Bonferroni bound 0.10) never happened.
+- **Next experiment:** the harness ablation this protocol names (§ "Next experiment if H1 is falsified" and the frozen
+  interpretation rule for a rejected representation): **40 vs 60 max-steps** on the same tasks, with prompt, model, worker,
+  runtime and evaluator fixed. Here H1 is not falsified; the step-budget ablation is next because it is the largest untested
+  harness difference. It needs its own pre-registration. TG-001's result is not a prior for it.
+- **Frozen surface released:** `packages/server/src/services/tg-001.ts`, `remote-gym-service.ts` and `scripts/gym-worker.mjs`
+  are no longer a frozen TG-001 surface. Changes there no longer have to wait for TG-001. The finding-fix lane's maker
+  exclusion of these files (`finding-fix-source.ts`, `FROZEN`) is code, not this protocol; this amendment does not change it.
+- **Unchanged:** arms, analysis, interval method, verdict rules and the recorded result. No evolutionary fitness change
+  follows from TG-001 alone.
+- **Recorded:** `experiment-registry.ts` (`TG_001_CLOSED`). `status()` returns `verdict: 'INCONCLUSIVE'`, so the stall watch
+  `experiment_overdue` no longer reports TG-001 after stop_by.

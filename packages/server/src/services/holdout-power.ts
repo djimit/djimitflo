@@ -55,22 +55,29 @@ export function designEffect(clusterSizes: number[], icc: number): number {
 }
 
 export interface PairedPowerInput { n: number; p0: number; p1: number; alpha?: number; rho?: number; clusterSizes?: number[]; icc?: number; target?: number; maxN?: number }
+/**
+ * E-assumptions A4/C13 (re-20261030): rho and ICC are assumptions the caller states; a missing one is unknown, never 0. Without
+ * rho no discordance, power or n is reported (null); with task families (clusterSizes) but no ICC the clustered numbers are null.
+ * No clusterSizes = no task families declared: design effect 1. missing_assumptions names what is missing.
+ */
 export function pairedPowerReport(i: PairedPowerInput) {
   const alpha = i.alpha ?? 0.05; const target = i.target ?? 0.8;
-  const { p10, p01 } = discordantRates(i.p0, i.p1, i.rho ?? 0);
-  const deff = i.clusterSizes ? designEffect(i.clusterSizes, i.icc ?? 0) : 1;
-  const nEff = Math.max(1, Math.floor(i.n / deff));
-  const power = mcnemarExactPower(i.n, p10, p01, alpha);
+  const missing = [...(i.rho === undefined ? ['rho'] : []), ...(i.clusterSizes && i.icc === undefined ? ['icc'] : [])];
+  const rates = i.rho === undefined ? null : discordantRates(i.p0, i.p1, i.rho);
+  const deff = !i.clusterSizes ? 1 : i.icc === undefined ? null : designEffect(i.clusterSizes, i.icc);
+  const nEff = deff === null ? null : Math.max(1, Math.floor(i.n / deff));
   let nForTarget: number | null = null;
   // exact power is saw-toothed in n: report the smallest n from which it stays ≥ target over the next 10
-  for (let n = 1; n <= (i.maxN ?? 400) && nForTarget === null; n++) {
-    let ok = true; for (let k = n; k < n + 10 && ok; k++) ok = mcnemarExactPower(k, p10, p01, alpha) >= target;
+  if (rates) for (let n = 1; n <= (i.maxN ?? 400) && nForTarget === null; n++) {
+    let ok = true; for (let k = n; k < n + 10 && ok; k++) ok = mcnemarExactPower(k, rates.p10, rates.p01, alpha) >= target;
     if (ok) nForTarget = n;
   }
   return {
-    n: i.n, p0: i.p0, p1: i.p1, alpha, rho: i.rho ?? 0, p10: +p10.toFixed(10), p01: +p01.toFixed(10),
-    expected_discordant: +(i.n * (p10 + p01)).toFixed(10), power: +power.toFixed(4),
-    design_effect: +deff.toFixed(4), n_effective: nEff, power_effective: +mcnemarExactPower(nEff, p10, p01, alpha).toFixed(4),
-    target, n_for_target: nForTarget, n_for_target_clustered: nForTarget === null ? null : Math.ceil(nForTarget * deff),
+    n: i.n, p0: i.p0, p1: i.p1, alpha, rho: i.rho ?? null, icc: i.icc ?? null, missing_assumptions: missing,
+    p10: rates ? +rates.p10.toFixed(10) : null, p01: rates ? +rates.p01.toFixed(10) : null,
+    expected_discordant: rates ? +(i.n * (rates.p10 + rates.p01)).toFixed(10) : null, power: rates ? +mcnemarExactPower(i.n, rates.p10, rates.p01, alpha).toFixed(4) : null,
+    design_effect: deff === null ? null : +deff.toFixed(4), n_effective: nEff,
+    power_effective: rates && nEff !== null ? +mcnemarExactPower(nEff, rates.p10, rates.p01, alpha).toFixed(4) : null,
+    target, n_for_target: nForTarget, n_for_target_clustered: nForTarget === null || deff === null ? null : Math.ceil(nForTarget * deff),
   };
 }

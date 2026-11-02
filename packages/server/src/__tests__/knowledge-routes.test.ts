@@ -6,14 +6,22 @@ import { createKnowledgeRoutes } from '../routes/knowledge';
 import { knowledgeBus } from '../services/knowledge-bus';
 import { errorHandler } from '../middleware/error-handler';
 import { createTestDb } from './helpers/test-db';
+import { createAuthMiddleware } from '../middleware/auth';
+
+/** Real middleware; the bearer token names the caller's role (stub verifier, no JWT needed). */
+function roleAuth() {
+  return createAuthMiddleware({
+    verifyToken: (token: string) => ({ sub: token, email: `${token}@test`, role: token, iat: 0, exp: 9999999999 }),
+    findUserById: (id: string) => ({ id, email: `${id}@test`, role: id, isActive: true }),
+  } as any);
+}
 
 describe('knowledge bus HTTP publish contract', () => {
   afterEach(() => knowledgeBus.removeAllListeners('claim'));
 
   function app() {
     const db = createTestDb();
-    const auth = { requireAuth: (_req: any, _res: any, next: any) => next() } as any;
-    const instance = express().use(express.json()).use('/knowledge', createKnowledgeRoutes(auth, db)).use(errorHandler);
+    const instance = express().use(express.json()).use('/knowledge', createKnowledgeRoutes(roleAuth(), db)).use(errorHandler);
     return { instance, db };
   }
 
@@ -27,7 +35,7 @@ describe('knowledge bus HTTP publish contract', () => {
       { claim_id: 'claim', subject_ref: 'subject', trust: 'high' },
       { claim_id: 'claim', subject_ref: 'subject', evidence_refs: ['ok', 7] },
     ]) {
-      const response = await request(instance).post('/knowledge/publish').send(body);
+      const response = await request(instance).post('/knowledge/publish').set('Authorization', 'Bearer maker').send(body);
       expect(response.status).toBe(400);
       expect(response.body.error.code).toBe('VALIDATION_ERROR');
     }
@@ -39,11 +47,28 @@ describe('knowledge bus HTTP publish contract', () => {
     const { instance, db } = app();
     const published: any[] = [];
     knowledgeBus.on('claim', claim => published.push(claim));
-    const response = await request(instance).post('/knowledge/publish').send({
+    const response = await request(instance).post('/knowledge/publish').set('Authorization', 'Bearer maker').send({
       claim_id: 'claim-1', subject_ref: 'subject-1', confidence: 0, trust: 0, evidence_refs: [],
     });
     expect(response.status).toBe(200);
     expect(published[0]).toMatchObject({ claim_id: 'claim-1', subject_ref: 'subject-1', confidence: 0, trust: 0 });
+    db.close();
+  });
+
+  it('refuses a claim from a caller without write:claim, since claims create capabilities and request spawns', async () => {
+    // docs/research/mcp-a2a/SECURITY_GAPS.md S4: on main any authenticated role (viewer included) could publish.
+    const { instance, db } = app();
+    const published: unknown[] = [];
+    knowledgeBus.on('claim', claim => published.push(claim));
+    const body = { claim_id: 'gap-1', subject_ref: 'capability:x', predicate: 'capability_gap', confidence: 0.9 };
+    expect((await request(instance).post('/knowledge/publish').send(body)).status).toBe(401);
+    for (const role of ['viewer', 'auditor', 'approver', 'platform_admin']) {
+      const response = await request(instance).post('/knowledge/publish').set('Authorization', `Bearer ${role}`).send(body);
+      expect(response.status, role).toBe(403);
+    }
+    expect(published).toHaveLength(0);
+    expect((await request(instance).post('/knowledge/publish').set('Authorization', 'Bearer maker').send(body)).status).toBe(200);
+    expect(published).toHaveLength(1);
     db.close();
   });
 
@@ -53,13 +78,13 @@ describe('knowledge bus HTTP publish contract', () => {
       (id, claim, claim_type, subject_ref, predicate, confidence, status, created_from)
       VALUES ('claim-event-1', 'Fixture claim', 'observation', 'subject-1', 'supports', 0.8, 'supported', 'route-test')`).run();
 
-    const response = await request(instance).get('/knowledge/events?limit=1');
+    const response = await request(instance).get('/knowledge/events?limit=1').set('Authorization', 'Bearer viewer');
     expect(response.status).toBe(200);
     expect(response.body.events).toHaveLength(1);
     expect(response.body.events[0]).toMatchObject({
       subject_ref: 'subject-1', predicate: 'supports', confidence: 0.8, status: 'supported',
     });
-    expect((await request(instance).get('/knowledge/events?limit=0')).status).toBe(400);
+    expect((await request(instance).get('/knowledge/events?limit=0').set('Authorization', 'Bearer viewer')).status).toBe(400);
     db.close();
   });
 
@@ -70,7 +95,7 @@ describe('knowledge bus HTTP publish contract', () => {
       await new Promise<void>((resolve) => server.once('listening', resolve));
       const address = server.address() as { port: number };
       const controller = new AbortController();
-      const response = await fetch(`http://127.0.0.1:${address.port}/knowledge/subscribe/capability-a`, { signal: controller.signal });
+      const response = await fetch(`http://127.0.0.1:${address.port}/knowledge/subscribe/capability-a`, { signal: controller.signal, headers: { authorization: 'Bearer viewer' } });
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('text/event-stream');
       const reader = response.body!.getReader();

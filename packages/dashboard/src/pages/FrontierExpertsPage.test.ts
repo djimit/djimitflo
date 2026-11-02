@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ExpertSummary, ExpertSwarmRun } from '../lib/api';
-import { funnelCounts, groupDisagreements, NEXT_STATES, STATE_TONE, stateCounts, summarizeRun, tierLabel } from './FrontierExpertsPage';
+import type { ExpertDedupeReport, ExpertSummary, ExpertSwarmRun } from '../lib/api';
+import { dedupeLines, funnelCounts, groupDisagreements, NEXT_STATES, STATE_TONE, stateCounts, summarizeRun, tierLabel } from './FrontierExpertsPage';
 
 const expert = (id: string, state: ExpertSummary['lifecycle_state']): ExpertSummary => ({ id, canonical_name: id, lifecycle_state: state, identity_confidence: 0.9, version: 1, updated_at: '', capabilities: [], provenance_json: '{}' });
 
@@ -31,5 +31,14 @@ describe('frontier experts page helpers (§36: tentative never shown as verified
     const funnel = [{ kind: 'person', state: 'ACTIVE' as const, count: 8 }, { kind: 'paper', state: 'CAPABILITY_INFERRED' as const, count: 900 }, { kind: 'person', state: 'CAPABILITY_INFERRED' as const, count: 311 }];
     expect(funnelCounts(funnel, '')).toEqual([{ state: 'CAPABILITY_INFERRED', count: 1211 }, { state: 'ACTIVE', count: 8 }]);
     expect(funnelCounts(funnel, 'paper')).toEqual([{ state: 'CAPABILITY_INFERRED', count: 900 }]);
+  });
+
+  it('FE-DEDUPE section shows counts only and keeps unknown metrics unknown (never 0)', () => {
+    const report: ExpertDedupeReport = { at: '', writes: 0,
+      totals: { units: 13, clusters: 8, duplicate_units: 5, inflation_factor: 1.625, duplicate_clusters: 4, distinct_titles: 8 },
+      by_kind: [{ kind: 'paper', units: 10, clusters: 6, duplicate_units: 4, inflation_factor: 1.667 }], by_key_type: [],
+      metrics_if_collapsed: { funnel: { units_before: 13, units_after: 8, cells_changed: 2 }, gap_demand: null, knowledge_fitness: null } };
+    expect(dedupeLines(report)).toEqual(['13 units → 8 distinct works (5 duplicates in 4 clusters, ×1.625)', 'paper 10→6',
+      'if collapsed: funnel 13→8 (2 cells change) · fitness inventory unknown · gap demand unknown']);
   });
 });

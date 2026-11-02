@@ -21,6 +21,7 @@ import { AuditService } from './audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 import { normalizeName } from './expert-evidence-enrichment-service';
 import { selectingRunner } from './model-selector';
+import { recordAbstentionGap } from './knowledge-gaps';
 
 /** purpose: the caller's identity on the model-call ledger row (default 'frontier_experts:<role>'). */
 export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string, purpose?: string) => Promise<unknown>;
@@ -141,6 +142,7 @@ export class ExpertCouncilService {
 
   async convene(question: string, selection: ResolveOptions = {}, options: { maxParallel?: number; adversarial?: boolean; language?: 'en' | 'nl' } = {}): Promise<CouncilResult> {
     const resolution = this.resolver.resolve(question, selection);
+    recordAbstentionGap(this.db, resolution); // K2: KNOWLEDGE_GAP_MODE=shadow, never throws
     const empty = (reason: string): CouncilResult => ({ abstained: true, reason, resolution, perspectives: [], claims: [], relations: [], agreements: [], disagreements: [], uncertainties: [], adversarial: null, unsupported_attribution_count: 0, rejected_perspectives: [] });
     if (resolution.abstained) return empty(resolution.reason ?? 'no_experts');
     if (!this.modelRunnerResolved) {
