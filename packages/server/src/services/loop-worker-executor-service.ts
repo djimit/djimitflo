@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { skillAssignment } from './executable-skills';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { createError } from '../middleware/error-handler';
 import type { ExecutionResult, ExecutorKind } from '../execution/types';
@@ -714,9 +715,13 @@ export class LoopWorkerExecutorService {
     // spawn time (only the marker is stored here, never the token); opencode = an opencode-free:<model> species (keys dropped, no login)
     // OLLAMA_OUTAGE_FALLBACK_RUNTIME: every role of a fallback lease (maker, checker, security checker) runs the same way
     if ((lease.role === 'maker' || isFallbackLease(lease)) && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex' || runtime === 'opencode')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
+    const factoryGoal = run.goal_id ? this.db.prepare("SELECT owner_user_id FROM goals WHERE id = ? AND json_type(metadata, '$.skill_factory_key') = 'text'").get(run.goal_id) as { owner_user_id: string | null } | undefined : undefined;
+    const selected = skillAssignment(this.db, prompt, lease.role === 'maker' && lease.metadata.skill_execution ? { skill_execution: lease.metadata.skill_execution } : {});
+    prompt = selected.description;
+    riskAssessmentText += selected.metadata.skill_package_receipts ? `\n${prompt}` : '';
     this.db.prepare(`
-      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at, owner_user_id)
+      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?, ?)
     `).run(
       taskId,
       `${lease.role} worker for ${run.loop_name}`,
@@ -725,13 +730,14 @@ export class LoopWorkerExecutorService {
       this.loopService.isHighRiskRun(run) ? 'high' : 'low',
       agentId,
       JSON.stringify(['loop-worker', lease.role, runtime]),
-      JSON.stringify({ loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment,
+      JSON.stringify({ ...selected.metadata, loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment,
         ...(typeof lease.metadata.model === 'string' ? { model: lease.metadata.model } : {}),
         ...(runtime === 'codex' && typeof lease.metadata.reasoningEffort === 'string' ? { reasoningEffort: lease.metadata.reasoningEffort } : {}),
         ...(runtime === 'codex' ? { codexSandbox: lease.role === 'maker' ? 'workspace-write' : 'read-only' } : {}),
       }),
       now,
       now,
+      factoryGoal?.owner_user_id ?? null,
     );
     this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId,
       ...leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt) });
