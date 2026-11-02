@@ -29,6 +29,7 @@ Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-
 | Item | What | State |
 |---|---|---|
 | UXE-00 | Value-gate decision card + settlement value by lane on `/evolution` (read-only); UI fitness ratchet v0 (`scripts/ui-fitness.mjs`, baseline `ui-fitness-baseline.json`) | draft PR |
+| UXE-02a | Ratchet v1a: `operator_routes_ui_called` / `unmatched_calls` (a2, wraps `ux-coverage.mjs`; `unavailable` without `typescript`, never 0), `contrast_pairs_below_4_5` (a4), `max_page_lines`, `dead_ws_subscriptions`; baseline = base measurement 155 / 0 / 10 / 1301 / 6 | draft PR (stacked on UXE-00) |
 | UXE-09 | Visible errors: load and action failures render as text on Policy Center, Federation, MCP Permissions, Tasks and Task detail (no `alert()`, `native_alert` 3 → 0); `useDialog` confirmation before proof-run rollback (Mission Control, proof-run detail) and worker drain / lease stop (Fleet Cockpit) | draft PR |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
