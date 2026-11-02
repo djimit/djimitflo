@@ -22,8 +22,10 @@ export function TaskDetailPage() {
   const [executionEvents, setExecutionEvents] = useState<ExecutionEvent[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<{ task: string | null; events: string | null; approvals: string | null }>({ task: null, events: null, approvals: null });
   const [executing, setExecuting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [executor, setExecutor] = useState('');
@@ -58,22 +60,19 @@ export function TaskDetailPage() {
       setTask(storeTask);
     }
 
-    // Load full details from API
+    // Load full details from API; each source reports its own failure so a failed read never looks like "not found" or "no events"
     async function loadTaskDetails() {
-      try {
-        const [taskData, eventsData, approvalsData] = await Promise.all([
-          api.getTask(taskId!),
-          api.getExecutionEvents(taskId!),
-          api.getApprovals(taskId!),
-        ]);
-        setTask(taskData);
-        setExecutionEvents(eventsData.events);
-        setApprovals(approvalsData.approvals);
-      } catch (error) {
-        console.error('Failed to load task details:', error);
-      } finally {
-        setLoading(false);
-      }
+      const message = (result: PromiseSettledResult<unknown>) => result.status === 'rejected' ? (result.reason instanceof Error ? result.reason.message : String(result.reason)) : null;
+      const [taskResult, eventsResult, approvalsResult] = await Promise.allSettled([
+        api.getTask(taskId!),
+        api.getExecutionEvents(taskId!),
+        api.getApprovals(taskId!),
+      ]);
+      if (taskResult.status === 'fulfilled') setTask(taskResult.value);
+      if (eventsResult.status === 'fulfilled') setExecutionEvents(eventsResult.value.events);
+      if (approvalsResult.status === 'fulfilled') setApprovals(approvalsResult.value.approvals);
+      setLoadErrors({ task: message(taskResult), events: message(eventsResult), approvals: message(approvalsResult) });
+      setLoading(false);
     }
 
     loadTaskDetails();
@@ -124,6 +123,7 @@ export function TaskDetailPage() {
     if (!taskId || recoveryHold) return;
     
     setExecuting(true);
+    setActionError(null);
     try {
       const selectedExecutor = executor || String(task?.metadata?.executor || 'opencode');
       const result = await api.executeTask(taskId, selectedExecutor);
@@ -133,8 +133,7 @@ export function TaskDetailPage() {
         setTask((prev) => prev ? { ...prev, status: TaskStatus.CANCELLED } : prev);
       }
     } catch (error) {
-      console.error('Failed to execute task:', error);
-      alert(`Failed to execute task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setActionError(`Could not execute task: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setExecuting(false);
     }
@@ -148,12 +147,12 @@ export function TaskDetailPage() {
     }
     
     setCancelling(true);
+    setActionError(null);
     try {
       await api.cancelTask(taskId);
       // Task status will be updated via WebSocket
     } catch (error) {
-      console.error('Failed to cancel task:', error);
-      alert(`Failed to cancel task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setActionError(`Could not cancel task: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setCancelling(false);
     }
@@ -175,10 +174,19 @@ export function TaskDetailPage() {
       <div className="p-8">
         <div className="bg-background-secondary border border-border rounded-lg p-12 text-center">
           <XCircle className="w-16 h-16 text-status-error mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">Task Not Found</h2>
-          <p className="text-foreground-secondary mb-6">
-            The task you're looking for doesn't exist or has been deleted.
-          </p>
+          {loadErrors.task && loadErrors.task !== 'Not found' ? (
+            <div role="alert">
+              <h2 className="text-2xl font-bold text-foreground mb-2">Could not load task</h2>
+              <p className="text-foreground-secondary mb-6">{loadErrors.task} — the task may still exist; reload to retry.</p>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Task Not Found</h2>
+              <p className="text-foreground-secondary mb-6">
+                The task you're looking for doesn't exist or has been deleted.
+              </p>
+            </>
+          )}
           <button
             onClick={() => navigate('/tasks')}
             className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
@@ -248,6 +256,7 @@ export function TaskDetailPage() {
               </label>
             )}
             {runtimeError && <span role="alert" className="text-sm text-status-error">{runtimeError}</span>}
+            {actionError && <span role="alert" className="text-sm text-status-error">{actionError}</span>}
             {task.status === 'awaiting_approval' && (
               <span className="flex items-center gap-2 px-4 py-2 bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg">
                 <AlertTriangle className="w-4 h-4" />
@@ -341,6 +350,15 @@ export function TaskDetailPage() {
                   {task.execution_mode.replace('_', ' ')}
                 </div>
               </div>
+              {/* UX-005: task → loop run → its review bundle, gates and evidence (existing /goals-loops?run= deep link) */}
+              {typeof task.metadata?.loop_run_id === 'string' && task.metadata.loop_run_id && (
+                <div>
+                  <div className="text-sm text-foreground-tertiary mb-1">Loop run</div>
+                  <Link to={`/goals-loops?run=${encodeURIComponent(task.metadata.loop_run_id)}`} className="text-sm text-accent underline">
+                    <code>{task.metadata.loop_run_id}</code> · review bundle, gates and evidence
+                  </Link>
+                </div>
+              )}
               {task.started_at && (
                 <div>
                   <div className="text-sm text-foreground-tertiary mb-1">Started At</div>
@@ -396,6 +414,7 @@ export function TaskDetailPage() {
 
         {/* Right Column: Timeline & Approvals */}
         <div className="lg:col-span-2 space-y-6">
+          {loadErrors.approvals && <p role="alert" className="text-sm text-status-error">Approvals could not be loaded: {loadErrors.approvals}. Pending approvals are unknown.</p>}
           {/* Approvals */}
           {approvals.length > 0 && (
             <div className="bg-background-secondary border border-border rounded-lg p-6">
@@ -420,7 +439,9 @@ export function TaskDetailPage() {
           {/* Execution Timeline */}
           <div className="bg-background-secondary border border-border rounded-lg p-6">
             <h2 className="text-lg font-semibold text-foreground mb-4">Execution Timeline</h2>
-            <ExecutionTimeline events={executionEvents} />
+            {/* the history read failure stays visible even after live events arrive: those are only events since page load */}
+            {loadErrors.events && <p role="alert" className="mb-4 text-sm text-status-error">Execution events could not be loaded: {loadErrors.events}. Earlier history is unknown{executionEvents.length ? '; only live events received since this page opened are shown' : ', not empty'}.</p>}
+            {(!loadErrors.events || executionEvents.length > 0) && <ExecutionTimeline events={executionEvents} />}
           </div>
         </div>
       </div>

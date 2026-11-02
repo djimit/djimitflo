@@ -22,8 +22,8 @@ export interface JudgmentDef {
   policyVersion?: string;
 }
 
-export const judgmentMode = (id: string): JudgmentMode => {
-  const v = (process.env[`TYPESAFE_${id.toUpperCase()}_MODE`] || 'off').toLowerCase();
+export const judgmentMode = (id: string, env: NodeJS.ProcessEnv = process.env): JudgmentMode => {
+  const v = (env[`TYPESAFE_${id.toUpperCase()}_MODE`] || 'off').toLowerCase();
   return v === 'shadow' || v === 'enforce' ? v : 'off';
 };
 

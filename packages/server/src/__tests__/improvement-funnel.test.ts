@@ -81,3 +81,53 @@ it('E11/5: calibrates each panel specialist against what the proposal became', (
   ]);
   db3.close();
 });
+
+describe('funnel metric truth (DF-01/02/03)', () => {
+  let db: Database.Database;
+  beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); });
+  afterEach(() => db.close());
+  const now = () => new Date().toISOString();
+  const proposal = (id: string, status: string, extra: { refinedFrom?: string; panel?: string } = {}) => db.prepare(
+    "INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, refined_from_id, panel_id, created_at, updated_at) VALUES (?, 'feature', 't', 'd', 'r', 'reflection', ?, 0.5, ?, ?, ?, ?)")
+    .run(id, status, extra.refinedFrom ?? null, extra.panel ?? null, now(), now());
+  const goal = (id: string, improvementId: string, status: string) => db.prepare(
+    "INSERT INTO goals (id, objective, risk_class, status, improvement_id, metadata, created_at, updated_at) VALUES (?, 'o', 'low', ?, ?, '{}', ?, ?)").run(id, status, improvementId, now(), now());
+  const panel = (id: string, decision: string, createdAt = now()) => db.prepare(
+    "INSERT INTO specialist_panels (id, topic, question, status, risk_class, panel_json, context_json, consensus_json, metadata, created_at, updated_at) VALUES (?, 't', 'q', 'consensus_ready', 'low', '[]', '{}', ?, '{}', ?, ?)")
+    .run(id, JSON.stringify({ decision }), createdAt, createdAt);
+
+  it('DF-01: refinement conversion counts children that reached a goal via goals.improvement_id, not the child status', () => {
+    // prod shape: the children's own status stayed archived / no_change / regressed although 18 of them got a goal
+    for (let i = 0; i < 20; i += 1) proposal(`child-${i}`, i < 14 ? 'no_change' : i < 15 ? 'regressed' : 'archived', { refinedFrom: 'parent' });
+    for (let i = 0; i < 18; i += 1) goal(`g-${i}`, `child-${i}`, i < 14 ? 'completed' : 'failed');
+    proposal('plain', 'scheduled'); goal('g-plain', 'plain', 'completed'); // not a refinement: must not count
+    const { refinement } = new ImprovementFunnelService(db).compute();
+    expect(refinement.children).toBe(20);
+    expect(refinement.childGoals).toEqual({ reachedGoal: 18, completed: 14, failed: 4, other: 0 });
+    expect(refinement.childOutcomes).toMatchObject({ no_change: 14, regressed: 1, archived: 5 }); // kept for existing readers
+  });
+
+  it('DF-02: panel goal rate is over proposal-linked panels only, each counted once, with its denominator', () => {
+    panel('p-goal', 'goal'); panel('p-park', 'needs_more_evidence');
+    proposal('a', 'scheduled', { panel: 'p-goal' }); proposal('a2', 'archived', { panel: 'p-goal' }); // two rows, one panel
+    proposal('b', 'needs_more_evidence', { panel: 'p-park' });
+    const before = new ImprovementFunnelService(db).compute().panel;
+    expect(before).toMatchObject({ goalRate: 0.5, linkedPanels: 2, linkedDecided: 2, linkedDecisions: { goal: 1, needs_more_evidence: 1 } });
+    for (let i = 0; i < 5; i += 1) panel(`unlinked-${i}`, 'needs_more_evidence'); // panels no proposal points at
+    const after = new ImprovementFunnelService(db).compute().panel;
+    expect(after.goalRate).toBe(0.5);
+    expect(after.linkedDecided).toBe(2);
+    expect(after.decisions).toMatchObject({ goal: 1, needs_more_evidence: 6 }); // all-panel breakdown stays
+  });
+
+  it('DF-03: specialist reviews are counted from specialist_reviews, next to the panels created', () => {
+    const DAY = 86_400_000; const at = (ms: number) => new Date(Date.now() - ms).toISOString();
+    panel('p1', 'goal', at(2 * DAY));
+    const review = (id: string, createdAt: string, status = 'submitted') => db.prepare(
+      "INSERT INTO specialist_reviews (id, panel_id, specialist_id, specialist_title, stance, confidence, status, created_at, updated_at) VALUES (?, 'p1', ?, 's', 'support', 0.5, ?, ?, ?)")
+      .run(id, id, status, createdAt, createdAt);
+    review('r1', at(3_600_000)); review('r2', at(3 * DAY)); review('r3', at(10 * DAY)); review('r4', at(3_600_000), 'draft');
+    const { kpi } = new ImprovementFunnelService(db).compute();
+    expect(kpi).toMatchObject({ panels24h: 0, panels7d: 1, reviews24h: 1, reviews7d: 2 });
+  });
+});

@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "source_sha": "bf6f647c49b70a65ab795b113f512b9c84ca08a1",
+  "source_identity": "live build matches retained evidence",
+  "read_queries": 43,
+  "existing_focused_tests": 60,
+  "audit_replay_tests": 4,
+  "local_links": 27,
+  "application_changes": 0,
+  "production_mutations": 0,
+  "limits": "Offline consistency and focused fixture checks; not full CI, native repair, independent efficacy or causal benefit proof."
+}

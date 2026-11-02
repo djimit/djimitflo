@@ -3,6 +3,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import Database from "better-sqlite3";
 import { registerExplainerTools } from "../tools/explainer";
 import { fullSchema } from "../database/schema";
+import { runWithMcpAuth } from "../auth-context";
+import { UserRole } from "@djimitflo/shared";
+
+function asRole<T>(role: UserRole, work: () => T): T {
+  return runWithMcpAuth({ payload: { sub: "explainer-test-actor", role, email: "actor@test", iat: 0, exp: 9999999999 }, token: "fixture" }, work);
+}
 
 describe("Explainer MCP tools", () => {
   let db: Database.Database;
@@ -35,18 +41,18 @@ describe("Explainer MCP tools", () => {
   it("creates a task via MCP", async () => {
     const tool = getTool("explainer_create_task");
     expect(tool).toBeDefined();
-    const res = await tool({ title: "Test" });
+    const res = await asRole(UserRole.ADMIN, () => tool({ title: "Test" }));
     const body = JSON.parse(res.content[0].text);
     expect(body.id).toBeDefined();
   });
 
   it("runs a task via MCP", async () => {
     const create = getTool("explainer_create_task");
-    const created = await create({ title: "Test" });
+    const created = await asRole(UserRole.ADMIN, () => create({ title: "Test" }));
     const { id } = JSON.parse(created.content[0].text);
     const run = getTool("explainer_run_task");
     expect(run).toBeDefined();
-    const res = await run({ id });
+    const res = await asRole(UserRole.ADMIN, () => run({ id }));
     expect(res.isError).toBeFalsy();
     const body = JSON.parse(res.content[0].text);
     // Without EXPLAINER_SERVER_URL the tool queues the task for the server worker.

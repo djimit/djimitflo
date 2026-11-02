@@ -1,8 +1,9 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { UsagePage } from './UsagePage';
+import { useAuthStore } from '../lib/auth-store';
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); useAuthStore.setState({ user: null, token: null, isAuthenticated: false }); });
 
 const win = (calls: number, tokens: number | null, unknown = 0) => ({ calls, tokens, calls_without_tokens: unknown });
 const limit = (o: Record<string, unknown>) => ({ account: 'x', plan: 'P', window: 'weekly', unit: 'unknown', limit: null, limit_text: '', source_url: null, checked_at: null,
@@ -44,4 +45,109 @@ it('renders per-account windows, the limited state, null limits as text and unit
   expect(meters).toHaveLength(1); // only the tokens-vs-tokens limit gets a bar
   expect(meters[0].getAttribute('aria-label')).toBe('Max 5x · weekly');
   expect(screen.queryByText(/Legacy token_usage_log/)).toBeNull(); // legacy panel hidden while empty
+});
+
+const stub = (accounts: unknown[]) => vi.stubGlobal('fetch', vi.fn(async (url: string) => (String(url).includes('/usage/accounts')
+  ? { ok: true, status: 200, json: async () => ({ ...body, accounts }) }
+  : { ok: true, status: 200, json: async () => ({ total_tokens: 0, total_cost: 0, breakdown: [] }) })));
+const accountWide = (o: Record<string, unknown>) => ({ source: 'ollama_balance_api', mode: 'on', fetched_at: '2026-10-25T12:00:00Z', session: null, weekly: null,
+  credits: null, week: null, ...o });
+
+it('shows the account-wide session %, weekly %, resets and credits next to the Djimitflo share', async () => {
+  stub([account({ id: 'ollama_cloud', label: 'Ollama Cloud (subscription)', scope: 'djimitflo_ledger',
+    windows: { '5h': win(10, 100), today: win(20, 200), '7d': win(118, 1000), month: win(200, 2000) }, lease_sessions: { '5h': 2, today: 4, '7d': 40, month: 60 },
+    state: { state: 'limit_reached', since: '2026-10-25T12:00:00Z', until: '2026-10-25T15:00:00Z', reason: 'Ollama balance API: session 100 % used' },
+    account_usage: accountWide({ session: { used_pct: 100, resets_at: '2026-10-25T15:00:00Z' }, weekly: { used_pct: 89.7, resets_at: '2026-10-27T00:00:00Z' },
+      credits: { balance_usd: 15.31 }, week: { request_count: 6612, usage_value_usd: 3.99, from: null, until: null } }),
+    plan: 'Legacy Max', limits: [limit({ plan: 'Legacy Max', window: 'weekly', limit: null, active: true, comparable: true, used_pct: 89.7, pct_source: 'ollama_balance_api',
+      resets_at: '2026-10-27T00:00:00Z' })] })]);
+  render(<UsagePage />);
+  const o = await screen.findByRole('region', { name: 'Ollama Cloud (subscription)' });
+  expect(within(o).getByText(/limit reached/)).toBeTruthy();
+  expect(within(o).getByText(/^session: 100 % used/)).toBeTruthy();
+  expect(within(o).getByText(/^weekly: 89\.7 % used/)).toBeTruthy();
+  expect(within(o).getByText(/purchased usage credits: \$15\.31 left/)).toBeTruthy();
+  expect(within(o).getByText(/account requests \(7 d\): 6,612/)).toBeTruthy();
+  expect(within(o).getByText(/Djimitflo's share: 118 calls/)).toBeTruthy();
+  expect(within(o).getAllByText(/Djimitflo's share, as recorded/).length).toBeGreaterThan(0);
+  expect(within(o).getAllByText(/counts once/).length).toBeGreaterThan(0);
+  const meter = within(o).getByRole('meter');
+  expect(meter.getAttribute('aria-valuenow')).toBe('89.7'); // the API percent draws a bar although the plan publishes no number
+});
+
+it('shows unknown with the reason when the balance API is off or failed, never 0', async () => {
+  stub([account({ id: 'ollama_cloud', label: 'Ollama Cloud (subscription)', scope: 'djimitflo_ledger', lease_sessions: { '5h': 0, today: 0, '7d': 0, month: 0 },
+    account_usage: accountWide({ mode: 'off', fetched_at: null, error: 'OLLAMA_BALANCE_MODE is not on' }) })]);
+  render(<UsagePage />);
+  const o = await screen.findByRole('region', { name: 'Ollama Cloud (subscription)' });
+  expect(within(o).getByText('Account-wide (Ollama): unknown — balance API off (OLLAMA_BALANCE_MODE is not on)')).toBeTruthy();
+  expect(within(o).queryByText(/% used/)).toBeNull();
+  expect(within(o).queryByText(/\$0/)).toBeNull();
+  cleanup();
+  stub([account({ id: 'ollama_cloud', label: 'Ollama Cloud (subscription)', account_usage: accountWide({ error: 'balance: HTTP 503; usage: timeout' }) })]);
+  render(<UsagePage />);
+  const o2 = await screen.findByRole('region', { name: 'Ollama Cloud (subscription)' });
+  expect(within(o2).getByText(/unknown — balance API unavailable \(balance: HTTP 503; usage: timeout\)/)).toBeTruthy();
+});
+
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+const hoursAhead = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+
+it('shows the operator snapshot with its age and a stale badge after 24 h; unreported fields stay unknown, never 0', async () => {
+  stub([account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', plan: 'Max 5x',
+    operator_snapshot: { reported_at: hoursAgo(30), age_hours: 30, stale: true, plan: 'Max 5x', session: { used_pct: 42, resets_at: hoursAhead(2) },
+      model_weekly: [{ model: 'Opus', used_pct: 80, cap_note: 'separate cap' }], credits: [{ label: 'extra usage', remaining: 12.5, total: 50, currency: 'USD' }],
+      spend_limit: { spent: 37.5, limit: 50, currency: 'USD', period: 'monthly', auto_reload: false }, by_product: [{ product: 'Claude Code', share_pct: 90 }], note: 'from the usage page' },
+    limits: [limit({ plan: 'Max 5x', window: '5h', active: true, comparable: true, used_pct: 42, pct_source: 'operator_snapshot', reported_at: hoursAgo(30), resets_at: hoursAhead(2) })] })]);
+  render(<UsagePage />);
+  const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  const snap = within(c).getByRole('group', { name: 'Operator snapshot' });
+  expect(within(snap).getByText(/^operator-reported 30 h ago/)).toBeTruthy();
+  expect(within(snap).getByText('stale')).toBeTruthy();
+  expect(within(snap).getByRole('meter', { name: 'operator snapshot · session' }).getAttribute('aria-valuenow')).toBe('42');
+  expect(within(snap).getByText('weekly: unknown (not reported)')).toBeTruthy();
+  expect(within(snap).getByText(/^Opus \(weekly\): 80 % used · separate cap/)).toBeTruthy();
+  expect(within(snap).getByText(/extra usage: US\$12\.50 of US\$50\.00 left/)).toBeTruthy();
+  expect(within(snap).getByText('spend limit: US$37.50 of US$50.00 (monthly) · auto-reload off')).toBeTruthy();
+  expect(within(snap).getByText('Claude Code: 90 %')).toBeTruthy();
+  expect(within(snap).queryByText(/\b0 %/)).toBeNull();
+  expect(within(c).getByText(/42 % used \(operator-reported 30 h ago\)/)).toBeTruthy(); // plan row filled from the snapshot, labelled
+});
+
+it('a fresh snapshot has no stale badge; an account without one says so', async () => {
+  stub([account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', operator_snapshot: { reported_at: hoursAgo(2), age_hours: 2, stale: false, weekly: { used_pct: 55 } } }),
+    account({ id: 'chatgpt_pro', label: 'ChatGPT Pro (Codex)', operator_snapshot: null })]);
+  render(<UsagePage />);
+  const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  expect(within(c).getByText(/^operator-reported 2 h ago/)).toBeTruthy();
+  expect(within(c).queryByText('stale')).toBeNull();
+  expect(within(c).getByText('session: unknown (not reported)')).toBeTruthy();
+  expect(within(screen.getByRole('region', { name: 'ChatGPT Pro (Codex)' })).getByText('Operator snapshot: none reported')).toBeTruthy();
+});
+
+it('the snapshot form is hidden without manage:config and posts the reported figures with it', async () => {
+  stub([account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', operator_snapshot: null })]);
+  render(<UsagePage />);
+  const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  expect(within(c).queryByText('Report a usage snapshot')).toBeNull();
+  expect(within(c).queryByRole('button', { name: /save snapshot/i })).toBeNull();
+  cleanup();
+
+  useAuthStore.setState({ user: { id: 'fixture-admin', role: 'admin' } as never, token: 'fixture-token', isAuthenticated: true });
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => (String(url).includes('/snapshot')
+    ? { ok: true, status: 201, json: async () => ({ id: 's1', account: 'claude_max', reported_at: hoursAgo(0), source: 'operator_snapshot', payload: JSON.parse(String(init?.body)) }) }
+    : String(url).includes('/usage/accounts')
+      ? { ok: true, status: 200, json: async () => ({ ...body, accounts: [account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', operator_snapshot: null })] }) }
+      : { ok: true, status: 200, json: async () => ({ total_tokens: 0, total_cost: 0, breakdown: [] }) }));
+  vi.stubGlobal('fetch', fetch);
+  render(<UsagePage />);
+  const c2 = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  fireEvent.click(within(c2).getByText('Report a usage snapshot'));
+  fireEvent.change(within(c2).getByLabelText('weekly % used'), { target: { value: '55' } });
+  fireEvent.change(within(c2).getByLabelText('note'), { target: { value: 'from the usage page' } });
+  fireEvent.click(within(c2).getByRole('button', { name: /save snapshot/i }));
+  await waitFor(() => expect(fetch.mock.calls.some(([u]) => String(u).includes('/usage/accounts/claude_max/snapshot'))).toBe(true));
+  const [, init] = fetch.mock.calls.find(([u]) => String(u).includes('/snapshot'))!;
+  expect(init?.method).toBe('POST');
+  expect(JSON.parse(String(init?.body))).toEqual({ weekly: { used_pct: 55 }, note: 'from the usage page' });
 });
