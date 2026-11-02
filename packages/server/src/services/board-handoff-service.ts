@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { boardProtocolError, boardReplyTargetError } from './board-protocol';
 import { BOARD_HANDOFF_AUTHORITY, WorkItemService } from './work-item-service';
+import { fleetBusAuthHeaders } from './fleet-bus-auth';
 
 export interface BoardHandoffResult {
   scanned: number;
@@ -201,7 +202,7 @@ export class BoardHandoffService {
       try {
         const response = await fetch(`${busUrl}/events/${encodeURIComponent(process.env.DJIMIT_EVENT_STREAM || 'djimit.events')}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...fleetBusAuthHeaders() },
           body: row.payload,
           signal: AbortSignal.timeout(10_000),
         });

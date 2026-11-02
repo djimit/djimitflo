@@ -6,7 +6,7 @@ import { AgentCommunicationService, type AgentMessage } from '../services/agent-
 import { threadGated } from '../services/agent-social-autopilot-service';
 
 let db: Database.Database;
-const ON = { COMMONS_THREAD_GATE_ENABLED: 'true' };
+const ON = { COMMONS_THREAD_GATE_ENABLED: 'true', TYPESAFE_COMMONS_CONTRIBUTION_MODE: 'shadow' };
 const msg = { id: 'q', payload: { thread_id: 't1' } } as unknown as AgentMessage;
 let n = 0;
 const reply = (thread: string, decision: string) => {
@@ -29,4 +29,11 @@ it('keeps a thread open while one of the last two replies was useful or uncertai
   reply('t1', 'uncertain'); expect(threadGated(db, msg, ON)).toBe(false);
   reply('t1', 'no'); reply('t1', 'yes'); expect(threadGated(db, msg, ON)).toBe(false);
   reply('t2', 'no'); reply('t2', 'no'); expect(threadGated(db, msg, ON)).toBe(false); // other thread
+});
+
+it('AUTHZ-F3: a switched-off commons_contribution judgment gates nothing — its stale verdicts are not read', () => {
+  reply('t1', 'no'); reply('t1', 'no');
+  expect(threadGated(db, msg, ON)).toBe(true);
+  expect(threadGated(db, msg, { COMMONS_THREAD_GATE_ENABLED: 'true' })).toBe(false); // judgment mode unset = off
+  expect(threadGated(db, msg, { COMMONS_THREAD_GATE_ENABLED: 'true', TYPESAFE_COMMONS_CONTRIBUTION_MODE: 'off' })).toBe(false);
 });

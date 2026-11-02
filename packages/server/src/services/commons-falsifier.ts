@@ -111,9 +111,11 @@ export function listSubmissions(db: Database, now: number, env: NodeJS.ProcessEn
   let rows: Array<{ id: string; from_agent: string; timestamp: string; artefact: string | null }> = [];
   try {
     rows = db.prepare(`SELECT id, from_agent, timestamp, json_extract(payload_json, '$.params.artefact') AS artefact FROM agent_messages
-      WHERE json_extract(payload_json, '$.params.evidence_room_kind') = 'reply' AND json_extract(payload_json, '$.thread_id') LIKE ? || '%'
+      WHERE ((json_extract(payload_json, '$.params.evidence_room_kind') = 'reply' AND json_extract(payload_json, '$.thread_id') LIKE ? || '%')
+          -- AC-06: a test artefact on a Commons investigation thread, only while COMMONS_INVESTIGATION_MODE=on
+          OR (? = 'on' AND json_extract(payload_json, '$.params.artefact_origin') = 'investigation' AND json_extract(payload_json, '$.params.evidence_status') = 'artefact'))
         AND json_extract(payload_json, '$.params.artefact.kind') = 'test' AND json_type(payload_json, '$.params.artefact.content') = 'text'
-        AND timestamp >= ? ORDER BY timestamp, rowid`).all(EVIDENCE_ROOM_PREFIX, iso(now - WINDOW_DAYS * DAY)) as typeof rows;
+        AND timestamp >= ? ORDER BY timestamp, rowid`).all(EVIDENCE_ROOM_PREFIX, env.COMMONS_INVESTIGATION_MODE === 'on' ? 'on' : 'off', iso(now - WINDOW_DAYS * DAY)) as typeof rows;
   } catch { return []; } // agent_messages absent
   return rows.flatMap((r) => {
     if (!agentAllowed(r.from_agent, env)) return [];

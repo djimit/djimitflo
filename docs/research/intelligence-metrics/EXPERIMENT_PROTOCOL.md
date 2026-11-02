@@ -162,3 +162,15 @@ start + 90 days). Accrual: prod, read-only (`experimentsReport` on `/data/djimit
 - **Unchanged:** arms, endpoints, safety/harm stops, analysis and decision rules. Only a stop condition is added.
 - **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports the experiment
   after this date while it has no verdict.
+
+## Amendment 2026-10-27: period boundary (EXP-1 F2 v2)
+
+A period boundary is added to the EXP-1 F2 v2 analysis; verdict rules are unchanged. The registrations above are frozen and
+are not edited.
+
+- **Period boundary: 2026-10-27T05:52:42Z.** Memory rules were switched off in production at this instant
+  (`LOOP_MEMORY_RULES_ENABLED=false`, following the EXP-3 memory-holdout result). From then on no maker receives memory rules,
+  so the work the checkers judge changed for both checker arms at once. The F2 v2 analysis reports settled goals created
+  before and from this instant as two periods next to the registered whole-window analysis; the periods are never pooled
+  silently.
+- **Unchanged:** arms (`checker-family:v2:` salt), endpoints, target 93 settled per arm, falsifier, stop_by 2027-01-15.

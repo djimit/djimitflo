@@ -34,10 +34,25 @@ it('task-family clustering: design effect 1 + (m_w - 1)·ICC with a size-weighte
 });
 
 it('the report: power at n, at the cluster-effective n, and the n reaching the target', () => {
-  const r = pairedPowerReport({ n: 20, p0: 0.37, p1: 0.57, alpha: 0.05, clusterSizes: [3, 2, ...Array(15).fill(1)], icc: 0.1 });
+  const r = pairedPowerReport({ n: 20, p0: 0.37, p1: 0.57, alpha: 0.05, rho: 0, clusterSizes: [3, 2, ...Array(15).fill(1)], icc: 0.1 });
   expect(r.expected_discordant).toBeCloseTo(20 * (0.57 * 0.63 + 0.37 * 0.43), 6);
   expect(r.n_effective).toBeLessThan(20);
   expect(r.power_effective).toBeLessThanOrEqual(r.power);
   expect(r.n_for_target).not.toBeNull();
   expect(mcnemarExactPower(r.n_for_target!, r.p10, r.p01, 0.05)).toBeGreaterThanOrEqual(0.8);
+});
+
+// E-assumptions A4/C13 (re-20261030): holdout-power.ts read a missing rho or ICC as 0 (independent outcomes, no clustering) —
+// an assumption reported as a power. Unknown is not 0: the power that depends on it is null and the report names what is missing.
+it('a missing rho gives no power; a missing ICC with task families gives no clustered power (null, never the rho/ICC = 0 numbers)', () => {
+  const noRho = pairedPowerReport({ n: 20, p0: 0.37, p1: 0.57 });
+  expect(noRho).toMatchObject({ rho: null, p10: null, p01: null, expected_discordant: null, power: null, power_effective: null, n_for_target: null, n_for_target_clustered: null });
+  expect(noRho.missing_assumptions).toEqual(['rho']);
+  const noIcc = pairedPowerReport({ n: 20, p0: 0.37, p1: 0.57, rho: 0, clusterSizes: [3, 2, ...Array(15).fill(1)] });
+  expect(noIcc.power).toBeGreaterThan(0); // rho stated: the unclustered power is known
+  expect(noIcc).toMatchObject({ icc: null, design_effect: null, n_effective: null, power_effective: null, n_for_target_clustered: null });
+  expect(noIcc.n_for_target).not.toBeNull();
+  expect(noIcc.missing_assumptions).toEqual(['icc']);
+  // no task families declared: no clustering to correct for (design effect 1), nothing missing
+  expect(pairedPowerReport({ n: 20, p0: 0.37, p1: 0.57, rho: 0 })).toMatchObject({ design_effect: 1, n_effective: 20, missing_assumptions: [] });
 });
