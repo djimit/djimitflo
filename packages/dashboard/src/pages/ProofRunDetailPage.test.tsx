@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProofRunDetailPage } from './ProofRunDetailPage';
@@ -20,6 +20,7 @@ it('loads a proof run and refreshes to the returned rollback state', async () =>
   expect(await screen.findByText('Proof Run Detail')).toBeTruthy();
   expect(screen.getByText('Rollback this proof run')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Rollback this proof run' }));
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Roll back' })); // UXE-09: rollback asks first
   await waitFor(() => expect(screen.getByText('rolled back')).toBeTruthy());
   expect(fetch).toHaveBeenLastCalledWith('/api/swarms/proof-runs/proof-fixture/rollback', expect.objectContaining({ method: 'POST' }));
 });

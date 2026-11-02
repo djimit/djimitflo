@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { betaSample } from './self-improvement-service';
 import type { Species } from './evolve-selection';
+import { nonMakerRunSql } from './outcome-attribution';
 
 /**
  * E12: which maker species (runtime[@model]) does a loop's work — chosen by outcome, not by config. Thompson sampling
@@ -10,6 +11,14 @@ import type { Species } from './evolve-selection';
  *   LOOP_BANDIT_ENABLED=true   LOOP_BANDIT_SPECIES=opencode,opencode@ollama/kimi-k2.6:cloud   (first = incumbent)
  */
 export const PROMOTE_AFTER = 20;
+
+/**
+ * RX-3 tags on a zero that is not the species' failure: an infra failure, a run that changed nothing, or a maker that passed
+ * every gate and only lost evolve on rank. Fitness audit 11-10: the bandit counted them as losses (prod: opencode 17, the
+ * workstation 6 of its 53 zeros) while fitness-view's mean_clean (shadow) already left them out. Same set as UNFAIR_ZERO.
+ */
+export const UNFAIR_ZERO_SQL = `(evidence_refs_json LIKE '%"outcome_class:infra_failed"%' OR evidence_refs_json LIKE '%"outcome_class:no_change"%'
+  OR evidence_refs_json LIKE '%"evolve:lost_eligible"%')`;
 
 export function banditSpecies(env: NodeJS.ProcessEnv = process.env): Species[] {
   if (env.LOOP_BANDIT_ENABLED !== 'true') return [];
@@ -28,7 +37,9 @@ export function chooseSpecies(db: Database, loopName: string, species: Species[]
   if (species.length < 2) return null;
   let stats: Array<{ runs: number; ok: number }>;
   try {
-    const q = db.prepare(`SELECT COUNT(*) AS runs, COALESCE(SUM(success), 0) AS ok FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, '') = ?`);
+    // OUTCOME_ATTRIBUTION_ENABLED: a run lost to a reviewer or the environment is neither a win nor a loss for the maker
+    const q = db.prepare(`SELECT COUNT(*) AS runs, COALESCE(SUM(success), 0) AS ok FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, '') = ?
+      AND NOT (success = 0 AND ${nonMakerRunSql('skill_outcomes.task_id')}) AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL})`);
     stats = species.map((s) => q.get(`loop-maker:${loopName}:${s.runtime}`, s.model ?? '') as { runs: number; ok: number });
   } catch { return null; } // skill_outcomes is created lazily
   const posterior = species.map((s, i) => ({ species: speciesKey(s), runs: stats[i].runs, ok: stats[i].ok,

@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import { createExplainerRoutes } from '../routes/explainer';
 import { createGymRoutes } from '../routes/gym';
-import { createSegmlRoutes } from '../routes/segml';
 import { createSwarmIntelRoutes } from '../routes/swarm-intel';
 import { createApexRoutes } from '../routes/apex';
 import { createExplorePublicRoutes } from '../routes/explore-public';
@@ -26,7 +25,6 @@ describe('remaining module-covered route boundaries', () => {
     const app = express().use(express.json());
     app.use('/api/explainer', createExplainerRoutes(db, auth));
     app.use('/api/gym', createGymRoutes(db, auth));
-    app.use('/api/segml', createSegmlRoutes(db, auth));
     app.use('/api/swarms', createSwarmIntelRoutes(db, auth));
     app.use('/api/apex', createApexRoutes(db, auth, false));
     app.use('/api/goals', createGoalRoutes(db, auth));
@@ -36,7 +34,6 @@ describe('remaining module-covered route boundaries', () => {
     await request(app).post('/api/explainer/fleet/regenerate').send({ full_name: 'fixture/repo' }).expect(403);
     await request(app).post('/api/gym/governance/fixture-skill/run').send({}).expect(403);
     await request(app).post('/api/gym/governance/fixture-skill/retest').send({}).expect(403);
-    await request(app).post('/api/segml/run/fixture-agent').send({}).expect(403);
     await request(app).post('/api/swarms/intelligence/outcome-learning/capabilities/fixture/release').send({}).expect(403);
     await request(app).post('/api/swarms/intelligence/capabilities/fixture/promote').send({}).expect(403);
     await request(app).post('/api/apex/plugins/fixture/enable').send({}).expect(403);

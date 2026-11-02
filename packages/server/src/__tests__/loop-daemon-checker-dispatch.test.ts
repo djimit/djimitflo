@@ -5,6 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { LoopDaemon } from '../services/loop-daemon';
 import { GoalService } from '../services/goal-service';
 import { LoopService } from '../services/loop-service';
+import { runGenome, skillContentHash } from '../services/maker-genome';
 
 /**
  * Regression coverage for the fix to the root cause found 2026-09-20/21:
@@ -153,6 +154,55 @@ describe('LoopDaemon checker dispatch', () => {
     await runOneTick(daemon);
     const rows = db.prepare('SELECT skill_id, success, task_id, agent_id, domain FROM skill_outcomes').all();
     expect(rows).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:codex', success: 0, task_id: 'run-1', agent_id: 'maker-1', domain: 'doc-drift-and-small-fix-loop' }]);
+  });
+
+  it('§16 step 9: the maker outcome carries the skill content hash of the genome that shaped the run', async () => {
+    seedQualifyingGoal();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT skill_content_hash AS hash FROM skill_outcomes').get() as { hash: string | null };
+    expect(row.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(row.hash).toBe(skillContentHash(runGenome(db, 'run-1'), null));
+  });
+
+  it('SI-A: the maker outcome carries the graded refs stored on its lease (graded:<score>, graded_kind, graded_lane)', async () => {
+    seedQualifyingGoal();
+    db.pragma('foreign_keys = OFF');
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', ?, ?, ?)`)
+      .run(JSON.stringify({ graded: { score: 2 / 3, kind: 'mutant_kill', lane: 'test-gap', killed: 2, total: 3 } }), now, now);
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT evidence_refs_json AS refs FROM skill_outcomes').get() as { refs: string };
+    expect(JSON.parse(row.refs)).toEqual(expect.arrayContaining(['graded:0.667', 'graded_kind:mutant_kill', 'graded_lane:test-gap']));
+  });
+
+  it('P0-8: a non-high-risk run whose only non-pass gate is the skipped security review is a verified maker outcome (certification rule); completion unchanged', async () => {
+    const goal = seedQualifyingGoal();
+    stubLoops.verifyLoopRun.mockImplementation(() => ({ gates: [
+      { name: 'checker_verdict', status: 'pass', evidence: '' }, { name: 'tests_lint_typecheck', status: 'pass', evidence: '' },
+      { name: 'security_checker_verdict', status: 'skipped', evidence: 'Run is not high-risk.' }] }));
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT success, evidence_refs_json AS refs FROM skill_outcomes').get() as { success: number; refs: string };
+    expect(row.success).toBe(1);
+    expect(JSON.parse(row.refs).some((r: string) => r.startsWith('outcome_class:'))).toBe(false);
+    // completion authorization keeps the strict every-gate-'pass' rule (operator decision, not changed here)
+    expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).toBe('failed');
+  });
+
+  it('P0-7: an engine fallback (effective_runtime on the lease) is the maker skill of the runtime that ran, tagged with the requested one', async () => {
+    seedQualifyingGoal();
+    db.pragma('foreign_keys = OFF');
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', ?, ?, ?)`)
+      .run(JSON.stringify({ model: 'gpt-x', requested_runtime: 'codex', effective_runtime: 'claude', effective_model: null }), now, now);
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT skill_id, model, evidence_refs_json AS refs FROM skill_outcomes').get() as { skill_id: string; model: string | null; refs: string };
+    expect(row.skill_id).toBe('loop-maker:doc-drift-and-small-fix-loop:claude');
+    expect(row.model ?? null).toBeNull(); // the requested runtime's model is not the fallback's
+    expect(JSON.parse(row.refs)).toContain('requested_runtime:codex');
   });
 
   it('RX-3: a failed run tags its maker outcome with why it failed (here: the maker never ran → infra), success unchanged', async () => {
@@ -309,7 +359,8 @@ describe('LoopDaemon checker dispatch', () => {
     process.env.LOOP_EVOLVE_ENABLED = 'true'; process.env.LOOP_EVOLVE_SPECIES = 'remote@workstation/atomic@llama-router';
     try {
       await runOneTick(new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 }));
-      expect(wait).toHaveBeenCalledWith('maker-2', 1_860_000);
+      // queue wait (45 min) + work from the claim (30 min) + executor margin + daemon margin (prod 2026-10-08)
+      expect(wait).toHaveBeenCalledWith('maker-2', 2_700_000 + 1_800_000 + 60_000 + 60_000);
     } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
   });
 

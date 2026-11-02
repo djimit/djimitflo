@@ -89,3 +89,22 @@ it('B8-JEV: shadow judgments do not retry; enforce judgments keep their retries'
   expect(await runJudgment(db, proposalPrescreen, { type: 't', id: 'e1' }, {}, new TypeSafeClient(enforceFetch as unknown as typeof fetch))).toBeNull();
   expect(enforceFetch).toHaveBeenCalledTimes(3);
 }, 10_000);
+
+it('JEV-BURST: a 400-call burst (the 07:xx discovery batch) waits in the default queue instead of failing with queue_full', async () => {
+  const { f, peak } = slowFetch(1);
+  const c = new TypeSafeClient(f);
+  const results = await Promise.allSettled(Array.from({ length: 400 }, () => c.systemOne({ a: 1 }, Q, { retries: 0 })));
+  expect(results.filter((r) => r.status === 'rejected')).toHaveLength(0);
+  expect(peak()).toBeLessThanOrEqual(6);
+  expect(rows().filter((r) => (r as { status: string }).status === 'queue_full')).toHaveLength(0);
+});
+
+it('JEV-BURST: latency_ms is the request time, not the time spent waiting for a slot', async () => {
+  vi.stubEnv('TYPESAFE_MAX_CONCURRENCY', '1');
+  const { f } = slowFetch(30);
+  const c = new TypeSafeClient(f);
+  await Promise.all(Array.from({ length: 6 }, () => c.systemOne({ a: 1 }, Q, { retries: 0 })));
+  const lat = (db.prepare("SELECT latency_ms FROM llm_model_calls WHERE consumer = 'jev'").all() as Array<{ latency_ms: number }>).map((r) => r.latency_ms);
+  expect(lat).toHaveLength(6);
+  expect(Math.max(...lat)).toBeLessThan(120); // the last call waited ~150 ms for its slot; its request took ~30 ms
+});

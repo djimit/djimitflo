@@ -1,0 +1,1010 @@
+{
+ "protocol": "docs/research/di-001/relevance/PREREG.md",
+ "snapshot_at": "2026-10-13T22:51:11.737Z",
+ "scope": [
+  "djimitflo-scout",
+  "operator-chatgpt"
+ ],
+ "population": {
+  "refs_all": 7325,
+  "refs_primary": 6245,
+  "by_source": {
+   "hermes-macmini": 643,
+   "hermes-eve-v": 47,
+   "djimitflo-scout": 5227,
+   "djimit-kbwiki": 390,
+   "operator-chatgpt": 1018
+  },
+  "primary_decisions_label_free": {
+   "A": {
+    "abstain": 2919,
+    "admit": 1471,
+    "reject": 1855
+   },
+   "B": {
+    "not_computable": 6245
+   },
+   "C": {
+    "abstain": 5728,
+    "admit": 239,
+    "reject": 278
+   },
+   "C_star": {
+    "abstain": 2930,
+    "reject": 3076,
+    "admit": 239
+   },
+   "D": {
+    "abstain": 2919,
+    "admit": 1368,
+    "reject": 1958
+   }
+  },
+  "admitted_units_primary": 929
+ },
+ "labels": {
+  "L1_human_units_any_kind": 9,
+  "L2_rows": 0,
+  "L3_cited_refs_raw": [
+   {
+    "ref": "github:djimit/djimitflo",
+    "si": "0af2650c-57af-4fba-8e25-87dae0bc3d73",
+    "excluded": "self repository (deviation 2)"
+   }
+  ],
+  "verified_self_improvements_scanned": 73,
+  "labelled_primary": 7,
+  "labelled_all_sources": 8,
+  "by_label": {
+   "positive": 6,
+   "negative": 1
+  },
+  "by_source": {
+   "operator-chatgpt": 2,
+   "djimitflo-scout": 5
+  },
+  "by_session": {
+   "2026-09-30": 2,
+   "2026-09-28": 1,
+   "2026-10-04": 1,
+   "2026-10-06": 2,
+   "2026-10-13": 1
+  },
+  "conflicts": [],
+  "labelled_items": [
+   {
+    "ref": "github:usestrix/strix",
+    "src": "hermes-macmini",
+    "senders": [
+     "hermes-macmini"
+    ],
+    "kind": "repository",
+    "at": "2026-09-26T07:00:29.905Z",
+    "classification": {
+     "A": "reject",
+     "B": "not_computable",
+     "C": "abstain",
+     "C_star": "reject",
+     "D": "reject",
+     "jev": {
+      "decision": "uncertain",
+      "cls": "adjacent",
+      "conf": 0.27,
+      "p": 0.73,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:f5126939-fae6-4902-8e4d-d1ea06eb63e8",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "CHECKED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "positive",
+     "source": "L1",
+     "session": "2026-09-30"
+    }
+   },
+   {
+    "ref": "github:zhengkid/dream-rsi",
+    "src": "operator-chatgpt",
+    "senders": [
+     "operator-chatgpt"
+    ],
+    "kind": "repository",
+    "at": "2026-09-27T22:11:30.155Z",
+    "classification": {
+     "A": "admit",
+     "B": "not_computable",
+     "C": "reject",
+     "C_star": "reject",
+     "D": "reject",
+     "jev": {
+      "decision": "no",
+      "cls": "adjacent",
+      "conf": 0.61,
+      "p": 0.39,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:958c7bb0-3e47-4572-9ffb-84527a5c749f",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "CHECKED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "positive",
+     "source": "L1",
+     "session": "2026-09-30"
+    }
+   },
+   {
+    "ref": "github:zachgoldberg/startup-cto-handbook",
+    "src": "operator-chatgpt",
+    "senders": [
+     "operator-chatgpt"
+    ],
+    "kind": "repository",
+    "at": "2026-09-27T22:11:30.161Z",
+    "classification": {
+     "A": "admit",
+     "B": "not_computable",
+     "C": "abstain",
+     "C_star": "reject",
+     "D": "admit",
+     "jev": {
+      "decision": "uncertain",
+      "cls": "off_topic",
+      "conf": 0.45,
+      "p": 0.55,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:7d1532cf-12e6-47a1-8e07-8b0175c159ef",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "CHECKED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "positive",
+     "source": "L1",
+     "session": "2026-09-30"
+    }
+   },
+   {
+    "ref": "arxiv:2609.30725",
+    "src": "djimitflo-scout",
+    "senders": [
+     "djimitflo-scout"
+    ],
+    "kind": "paper",
+    "at": "2026-09-28T07:20:26.059Z",
+    "classification": {
+     "A": "admit",
+     "B": "not_computable",
+     "C": "abstain",
+     "C_star": "reject",
+     "D": "admit",
+     "jev": {
+      "decision": "uncertain",
+      "cls": "lane_technique",
+      "conf": 0.53,
+      "p": 0.53,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:bf715108-e9d5-49a2-b5c2-95d5c1d30e3f",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "REJECTED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "negative",
+     "source": "L1",
+     "session": "2026-09-28"
+    }
+   },
+   {
+    "ref": "github:rle-bench/rle-bench",
+    "src": "djimitflo-scout",
+    "senders": [
+     "djimitflo-scout"
+    ],
+    "kind": "repository",
+    "at": "2026-10-03T07:20:34.111Z",
+    "classification": {
+     "A": "admit",
+     "B": "not_computable",
+     "C": "abstain",
+     "C_star": "reject",
+     "D": "admit",
+     "jev": {
+      "decision": "uncertain",
+      "cls": "lane_technique",
+      "conf": 0.22,
+      "p": 0.22,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:fbd2c46b-0705-48e0-9f8c-c8bec8ed7680",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "CHECKED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "positive",
+     "source": "L1",
+     "session": "2026-10-04"
+    }
+   },
+   {
+    "ref": "arxiv:2610.05303",
+    "src": "djimitflo-scout",
+    "senders": [
+     "djimitflo-scout"
+    ],
+    "kind": "paper",
+    "at": "2026-10-06T07:25:45.050Z",
+    "classification": {
+     "A": "admit",
+     "B": "not_computable",
+     "C": "abstain",
+     "C_star": "reject",
+     "D": "admit",
+     "jev": {
+      "decision": "uncertain",
+      "cls": "lane_technique",
+      "conf": 0.37,
+      "p": 0.37,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:fe605650-acf8-429b-8bea-925d719f7ed5",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "CHECKED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "positive",
+     "source": "L1",
+     "session": "2026-10-06"
+    }
+   },
+   {
+    "ref": "arxiv:2610.06401",
+    "src": "djimitflo-scout",
+    "senders": [
+     "djimitflo-scout"
+    ],
+    "kind": "paper",
+    "at": "2026-10-06T07:28:33.400Z",
+    "classification": {
+     "A": "admit",
+     "B": "not_computable",
+     "C": "admit",
+     "C_star": "admit",
+     "D": "admit",
+     "jev": {
+      "decision": "yes",
+      "cls": "lane_technique",
+      "conf": 0.61,
+      "p": 0.61,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:0b032408-f49c-402c-a745-a61d76ea7e67",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "CHECKED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "positive",
+     "source": "L1",
+     "session": "2026-10-06"
+    }
+   },
+   {
+    "ref": "arxiv:2610.13395",
+    "src": "djimitflo-scout",
+    "senders": [
+     "djimitflo-scout"
+    ],
+    "kind": "paper",
+    "at": "2026-10-13T07:21:03.820Z",
+    "classification": {
+     "A": "admit",
+     "B": "not_computable",
+     "C": "abstain",
+     "C_star": "reject",
+     "D": "admit",
+     "jev": {
+      "decision": "uncertain",
+      "cls": "lane_technique",
+      "conf": 0.35,
+      "p": 0.35,
+      "subject_type": "expert_unit"
+     },
+     "jev_errors": 0
+    },
+    "admission": {
+     "unit": "expert:19385846-e435-46af-96a5-92a50f68b0ef",
+     "derived": "fleet-discovery",
+     "lifecycle_state": "CHECKED",
+     "usrc": "fleet-discovery"
+    },
+    "verification": {
+     "label": "positive",
+     "source": "L1",
+     "session": "2026-10-13"
+    }
+   }
+  ]
+ },
+ "representativeness": {
+  "source": {
+   "labelled": {
+    "operator-chatgpt": 2,
+    "djimitflo-scout": 5
+   },
+   "population": {
+    "djimitflo-scout": 5227,
+    "operator-chatgpt": 1018
+   }
+  },
+  "jev_decision": {
+   "labelled": {
+    "no": 1,
+    "uncertain": 5,
+    "yes": 1
+   },
+   "population": {
+    "unjudged": 2930,
+    "uncertain": 2798,
+    "yes": 239,
+    "no": 278
+   }
+  },
+  "A": {
+   "labelled": {
+    "admit": 7
+   },
+   "population": {
+    "abstain": 2919,
+    "admit": 1471,
+    "reject": 1855
+   }
+  },
+  "admission": {
+   "labelled": {
+    "unit": 7
+   },
+   "population": {
+    "no_unit": 5316,
+    "unit": 929
+   }
+  },
+  "kind": {
+   "labelled": {
+    "repository": 3,
+    "paper": 4
+   },
+   "population": {
+    "paper": 5316,
+    "repository": 929
+   }
+  }
+ },
+ "scores_primary": {
+  "A": {
+   "counts": {
+    "tp": 6,
+    "fp": 1,
+    "fn": 0,
+    "tn": 0,
+    "abstain": 0,
+    "not_computable": 0
+   },
+   "coverage": {
+    "k": 7,
+    "n": 7,
+    "p": 1,
+    "lo": 0.6457,
+    "hi": 1
+   },
+   "precision": {
+    "k": 6,
+    "n": 7,
+    "p": 0.8571,
+    "lo": 0.4869,
+    "hi": 0.9743
+   },
+   "recall_within_labelled": {
+    "k": 6,
+    "n": 6,
+    "p": 1,
+    "lo": 0.6097,
+    "hi": 1
+   },
+   "loss_default": 0.4286,
+   "loss_ci_session_bootstrap": {
+    "lo": 0,
+    "hi": 1.5,
+    "b": 2000
+   },
+   "loss_ci_item_bootstrap": {
+    "lo": 0,
+    "hi": 1.2857,
+    "b": 2000
+   },
+   "loss_grid": [
+    {
+     "fa": 1,
+     "fr": 0.5,
+     "loss": 0.1429
+    },
+    {
+     "fa": 1,
+     "fr": 1,
+     "loss": 0.1429
+    },
+    {
+     "fa": 1,
+     "fr": 2,
+     "loss": 0.1429
+    },
+    {
+     "fa": 1,
+     "fr": 5,
+     "loss": 0.1429
+    },
+    {
+     "fa": 3,
+     "fr": 0.5,
+     "loss": 0.4286
+    },
+    {
+     "fa": 3,
+     "fr": 1,
+     "loss": 0.4286
+    },
+    {
+     "fa": 3,
+     "fr": 2,
+     "loss": 0.4286
+    },
+    {
+     "fa": 3,
+     "fr": 5,
+     "loss": 0.4286
+    },
+    {
+     "fa": 10,
+     "fr": 0.5,
+     "loss": 1.4286
+    },
+    {
+     "fa": 10,
+     "fr": 1,
+     "loss": 1.4286
+    },
+    {
+     "fa": 10,
+     "fr": 2,
+     "loss": 1.4286
+    },
+    {
+     "fa": 10,
+     "fr": 5,
+     "loss": 1.4286
+    }
+   ],
+   "downstream_verified_yield": {
+    "k": 0,
+    "n": 7,
+    "p": 0,
+    "lo": 0,
+    "hi": 0.3543
+   }
+  },
+  "B": {
+   "counts": {
+    "tp": 0,
+    "fp": 0,
+    "fn": 0,
+    "tn": 0,
+    "abstain": 0,
+    "not_computable": 7
+   },
+   "status": "NOT_COMPUTABLE"
+  },
+  "C": {
+   "counts": {
+    "tp": 1,
+    "fp": 0,
+    "fn": 1,
+    "tn": 0,
+    "abstain": 5,
+    "not_computable": 0
+   },
+   "coverage": {
+    "k": 2,
+    "n": 7,
+    "p": 0.2857,
+    "lo": 0.0822,
+    "hi": 0.6411
+   },
+   "precision": {
+    "k": 1,
+    "n": 1,
+    "p": 1,
+    "lo": 0.2065,
+    "hi": 1
+   },
+   "recall_within_labelled": {
+    "k": 1,
+    "n": 2,
+    "p": 0.5,
+    "lo": 0.0945,
+    "hi": 0.9055
+   },
+   "loss_default": 0.5,
+   "loss_ci_session_bootstrap": {
+    "lo": 0,
+    "hi": 1,
+    "b": 1869
+   },
+   "loss_ci_item_bootstrap": {
+    "lo": 0,
+    "hi": 1,
+    "b": 1848
+   },
+   "loss_grid": [
+    {
+     "fa": 1,
+     "fr": 0.5,
+     "loss": 0.25
+    },
+    {
+     "fa": 1,
+     "fr": 1,
+     "loss": 0.5
+    },
+    {
+     "fa": 1,
+     "fr": 2,
+     "loss": 1
+    },
+    {
+     "fa": 1,
+     "fr": 5,
+     "loss": 2.5
+    },
+    {
+     "fa": 3,
+     "fr": 0.5,
+     "loss": 0.25
+    },
+    {
+     "fa": 3,
+     "fr": 1,
+     "loss": 0.5
+    },
+    {
+     "fa": 3,
+     "fr": 2,
+     "loss": 1
+    },
+    {
+     "fa": 3,
+     "fr": 5,
+     "loss": 2.5
+    },
+    {
+     "fa": 10,
+     "fr": 0.5,
+     "loss": 0.25
+    },
+    {
+     "fa": 10,
+     "fr": 1,
+     "loss": 0.5
+    },
+    {
+     "fa": 10,
+     "fr": 2,
+     "loss": 1
+    },
+    {
+     "fa": 10,
+     "fr": 5,
+     "loss": 2.5
+    }
+   ],
+   "downstream_verified_yield": {
+    "k": 0,
+    "n": 1,
+    "p": 0,
+    "lo": 0,
+    "hi": 0.7935
+   },
+   "brier": {
+    "n": 7,
+    "brier": 0.3479,
+    "ci_item": {
+     "lo": 0.2473,
+     "hi": 0.4587,
+     "b": 2000
+    },
+    "ece": "n < 50: not computed (PREREG §4)"
+   }
+  },
+  "C_star": {
+   "counts": {
+    "tp": 1,
+    "fp": 0,
+    "fn": 5,
+    "tn": 1,
+    "abstain": 0,
+    "not_computable": 0
+   },
+   "coverage": {
+    "k": 7,
+    "n": 7,
+    "p": 1,
+    "lo": 0.6457,
+    "hi": 1
+   },
+   "precision": {
+    "k": 1,
+    "n": 1,
+    "p": 1,
+    "lo": 0.2065,
+    "hi": 1
+   },
+   "recall_within_labelled": {
+    "k": 1,
+    "n": 6,
+    "p": 0.1667,
+    "lo": 0.0301,
+    "hi": 0.5635
+   },
+   "loss_default": 0.7143,
+   "loss_ci_session_bootstrap": {
+    "lo": 0.3333,
+    "hi": 1,
+    "b": 2000
+   },
+   "loss_ci_item_bootstrap": {
+    "lo": 0.4286,
+    "hi": 1,
+    "b": 2000
+   },
+   "loss_grid": [
+    {
+     "fa": 1,
+     "fr": 0.5,
+     "loss": 0.3571
+    },
+    {
+     "fa": 1,
+     "fr": 1,
+     "loss": 0.7143
+    },
+    {
+     "fa": 1,
+     "fr": 2,
+     "loss": 1.4286
+    },
+    {
+     "fa": 1,
+     "fr": 5,
+     "loss": 3.5714
+    },
+    {
+     "fa": 3,
+     "fr": 0.5,
+     "loss": 0.3571
+    },
+    {
+     "fa": 3,
+     "fr": 1,
+     "loss": 0.7143
+    },
+    {
+     "fa": 3,
+     "fr": 2,
+     "loss": 1.4286
+    },
+    {
+     "fa": 3,
+     "fr": 5,
+     "loss": 3.5714
+    },
+    {
+     "fa": 10,
+     "fr": 0.5,
+     "loss": 0.3571
+    },
+    {
+     "fa": 10,
+     "fr": 1,
+     "loss": 0.7143
+    },
+    {
+     "fa": 10,
+     "fr": 2,
+     "loss": 1.4286
+    },
+    {
+     "fa": 10,
+     "fr": 5,
+     "loss": 3.5714
+    }
+   ],
+   "downstream_verified_yield": {
+    "k": 0,
+    "n": 1,
+    "p": 0,
+    "lo": 0,
+    "hi": 0.7935
+   },
+   "brier": {
+    "n": 7,
+    "brier": 0.3479,
+    "ci_item": {
+     "lo": 0.2473,
+     "hi": 0.4587,
+     "b": 2000
+    },
+    "ece": "n < 50: not computed (PREREG §4)"
+   }
+  },
+  "D": {
+   "counts": {
+    "tp": 5,
+    "fp": 1,
+    "fn": 1,
+    "tn": 0,
+    "abstain": 0,
+    "not_computable": 0
+   },
+   "coverage": {
+    "k": 7,
+    "n": 7,
+    "p": 1,
+    "lo": 0.6457,
+    "hi": 1
+   },
+   "precision": {
+    "k": 5,
+    "n": 6,
+    "p": 0.8333,
+    "lo": 0.4365,
+    "hi": 0.9699
+   },
+   "recall_within_labelled": {
+    "k": 5,
+    "n": 6,
+    "p": 0.8333,
+    "lo": 0.4365,
+    "hi": 0.9699
+   },
+   "loss_default": 0.5714,
+   "loss_ci_session_bootstrap": {
+    "lo": 0,
+    "hi": 1.6667,
+    "b": 2000
+   },
+   "loss_ci_item_bootstrap": {
+    "lo": 0,
+    "hi": 1.4286,
+    "b": 2000
+   },
+   "loss_grid": [
+    {
+     "fa": 1,
+     "fr": 0.5,
+     "loss": 0.2143
+    },
+    {
+     "fa": 1,
+     "fr": 1,
+     "loss": 0.2857
+    },
+    {
+     "fa": 1,
+     "fr": 2,
+     "loss": 0.4286
+    },
+    {
+     "fa": 1,
+     "fr": 5,
+     "loss": 0.8571
+    },
+    {
+     "fa": 3,
+     "fr": 0.5,
+     "loss": 0.5
+    },
+    {
+     "fa": 3,
+     "fr": 1,
+     "loss": 0.5714
+    },
+    {
+     "fa": 3,
+     "fr": 2,
+     "loss": 0.7143
+    },
+    {
+     "fa": 3,
+     "fr": 5,
+     "loss": 1.1429
+    },
+    {
+     "fa": 10,
+     "fr": 0.5,
+     "loss": 1.5
+    },
+    {
+     "fa": 10,
+     "fr": 1,
+     "loss": 1.5714
+    },
+    {
+     "fa": 10,
+     "fr": 2,
+     "loss": 1.7143
+    },
+    {
+     "fa": 10,
+     "fr": 5,
+     "loss": 2.1429
+    }
+   ],
+   "downstream_verified_yield": {
+    "k": 0,
+    "n": 6,
+    "p": 0,
+    "lo": 0,
+    "hi": 0.3903
+   }
+  }
+ },
+ "comparisons": [
+  {
+   "x": "A",
+   "y": "C",
+   "disagreements": 1,
+   "verdict": "INSUFFICIENT",
+   "why": [
+    "n=7<50",
+    "positives=6<10",
+    "negatives=1<10",
+    "sources_with_10=0<2",
+    "disagreements=1<10"
+   ]
+  },
+  {
+   "x": "A",
+   "y": "C_star",
+   "disagreements": 6,
+   "verdict": "INSUFFICIENT",
+   "why": [
+    "n=7<50",
+    "positives=6<10",
+    "negatives=1<10",
+    "sources_with_10=0<2",
+    "disagreements=6<10"
+   ]
+  },
+  {
+   "x": "A",
+   "y": "D",
+   "disagreements": 1,
+   "verdict": "INSUFFICIENT",
+   "why": [
+    "n=7<50",
+    "positives=6<10",
+    "negatives=1<10",
+    "sources_with_10=0<2",
+    "disagreements=1<10"
+   ]
+  },
+  {
+   "x": "C_star",
+   "y": "D",
+   "disagreements": 5,
+   "verdict": "INSUFFICIENT",
+   "why": [
+    "n=7<50",
+    "positives=6<10",
+    "negatives=1<10",
+    "sources_with_10=0<2",
+    "disagreements=5<10"
+   ]
+  },
+  {
+   "x": "A",
+   "y": "B",
+   "disagreements": 0,
+   "verdict": "INSUFFICIENT",
+   "why": [
+    "n=7<50",
+    "positives=6<10",
+    "negatives=1<10",
+    "sources_with_10=0<2",
+    "disagreements=0<10",
+    "B NOT_COMPUTABLE"
+   ]
+  },
+  {
+   "x": "B",
+   "y": "C_star",
+   "disagreements": 0,
+   "verdict": "INSUFFICIENT",
+   "why": [
+    "n=7<50",
+    "positives=6<10",
+    "negatives=1<10",
+    "sources_with_10=0<2",
+    "disagreements=0<10",
+    "B NOT_COMPUTABLE"
+   ]
+  }
+ ],
+ "cost_C": {
+  "calls": 3745,
+  "errors": 294,
+  "error_rate": {
+   "k": 294,
+   "n": 3745,
+   "p": 0.0785,
+   "lo": 0.0703,
+   "hi": 0.0876
+  },
+  "tokens_total": 2947608,
+  "tokens_per_ok_call": 854,
+  "latency_ms": {
+   "n": 3451,
+   "p50": 3555,
+   "p95": 233227
+  }
+ },
+ "plan": {
+  "delta": 0.1,
+  "alpha": 0.05,
+  "power": 0.8,
+  "psi_A_vs_Cstar": 0.4335,
+  "psi_n": 3315,
+  "n_mcnemar_raw": 338,
+  "N_eval": 340,
+  "overlap_relabel": 68,
+  "eval_cells": 5,
+  "active_learning_pool_outside_eval": {
+   "A:abstain|jev:unjudged": 2766,
+   "A:admit|jev:uncertain": 1164,
+   "A:admit|jev:yes": 124,
+   "A:admit|jev:no": 100,
+   "A:admit|jev:unjudged": 10,
+   "A:reject|jev:yes": 100,
+   "A:reject|jev:uncertain": 1474,
+   "A:reject|jev:no": 167
+  }
+ },
+ "eval_sample_file": "eval-sample.json"
+}

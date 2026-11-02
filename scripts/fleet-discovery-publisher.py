@@ -13,12 +13,42 @@ from pathlib import Path
 
 ARXIV = re.compile(r'arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})')
 GITHUB = re.compile(r'github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)')
-# title styles in order of trust: "quoted", **bold**, leading text before a dash
-TITLES = [re.compile(r'"([^"]{8,300})"'), re.compile(r'\*\*([^*]{8,300})\*\*'), re.compile(r'\[([^\]]{8,300})\]\(https?://arxiv'), re.compile(r'^[\s\d.•*-]*([^\[\]()]{8,300}?)\s+[–—-]\s')]
+# title styles in order of trust: [link text](arxiv link), then in the text before the first link: "quoted", **bold**,
+# leading text before a dash. Eve-V (09-10) writes URL-only lines and Dutch descriptions: a quote from the description
+# ("ze testen mijn capaciteiten") or the URL itself became the title. Only the text before the link counts, URL-like
+# candidates are dropped, a Dutch/English lead-in ("Nieuw paper:") is cut; no title left = the caller uses the arXiv id.
+LINK_TITLE = re.compile(r'\[([^\]]{8,300})\]\((?:https?://)?(?:www\.)?arxiv')
+TITLES = [re.compile(r'"([^"]{8,300})"'), re.compile(r'\*\*([^*]{8,300})\*\*'), re.compile(r'^[\s\d.\u2022*-]*([^\[\]()]{8,300}?)\s+[\u2013\u2014-]\s')]
+URL_LIKE = re.compile(r'https?://|arxiv\.org|github\.com|^\S+/\S+$|^arxiv[\s:]*\d', re.I)
+LEAD_IN = re.compile(r'^(?:nieuwe?\s+)?(?:paper|artikel|studie|onderzoek|publicatie|preprint|new paper|bron|link)\s*:\s*', re.I)
+
+
+def bus_headers():
+    """S3 (docs/runbooks/fleet-bus-auth.md): Content-Type plus this host's fleet bus bearer token when it has one
+    (DJIMIT_EVENT_BUS_TOKEN, else the file DJIMIT_FLEET_BUS_TOKEN_FILE, default ~/.djimit/fleet-bus.token, mode 600)."""
+    token = os.environ.get('DJIMIT_EVENT_BUS_TOKEN', '').strip()
+    if not token:
+        try:
+            with open(os.environ.get('DJIMIT_FLEET_BUS_TOKEN_FILE', os.path.expanduser('~/.djimit/fleet-bus.token'))) as f:
+                token = f.read().strip()
+        except OSError:
+            token = ''
+    return {'Content-Type': 'application/json', **({'Authorization': 'Bearer ' + token} if token else {})}
+
+
+FIRST_LINK = re.compile(r'\[[^\]]*\]\(|https?://|(?:www\.)?(?:arxiv\.org|github\.com)/')
 
 
 def title_of(line):
-    return next((m.group(1).strip() for m in (p.search(line) for p in TITLES) if m), '')
+    head = line[:FIRST_LINK.search(line).start()] if FIRST_LINK.search(line) else line
+    found = [m.group(1) for m in [LINK_TITLE.search(line)] if m] + [m.group(1) for m in (p.search(head) for p in TITLES) if m]
+    for cand in found:
+        cand = LEAD_IN.sub('', cand.strip(' *\t')).strip()
+        if len(cand) >= 8 and not URL_LIKE.search(cand):
+            return cand
+    return ''
+
+
 CATEGORY = re.compile(r'\b(cs\.[A-Z]{2}|stat\.ML|quant-ph)\b')
 NOT_REPOS = {'owner', 'user', 'orgs', 'topics', 'features', 'advisories', 'settings', 'marketplace', 'sponsors', 'apps', 'search', 'collections', 'trending'}
 
@@ -30,8 +60,8 @@ def discoveries(text):
         if CATEGORY.search(line) and 'arxiv.org' not in line:
             category = CATEGORY.search(line).group(1)
         note = line.strip(' •-*\t')[:1000]
-        for m in ARXIV.finditer(line):
-            yield 'discovery.paper', f'arxiv:{m.group(1)}', title_of(line), note, [category] if category else []
+        for pid in dict.fromkeys(m.group(1) for m in ARXIV.finditer(line)):  # "[arxiv.org/abs/X](https://arxiv.org/abs/X)" names X twice
+            yield 'discovery.paper', f'arxiv:{pid}', title_of(line) or f'arXiv {pid}', note, [category] if category else []
         for m in GITHUB.finditer(line):
             owner, repo = m.group(1), re.sub(r'(\.git|[.)]+)$', '', m.group(2))
             if owner.lower() in NOT_REPOS or not repo:
@@ -107,7 +137,7 @@ def main():
     interests = list(INTERESTS)
     if args.interests_from_bus:
         try:
-            body = json.loads(urllib.request.urlopen(f"{args.bus.rstrip('/')}/events/{args.stream}?count=5000", timeout=20).read())
+            body = json.loads(urllib.request.urlopen(urllib.request.Request(f"{args.bus.rstrip('/')}/events/{args.stream}?count=5000", headers=bus_headers()), timeout=20).read())
             extra = [t for t in feedback_terms(body.get('events') or []) if t not in interests]
             interests += extra
             print(f'interest profile: +{len(extra)} terms {extra}', file=sys.stderr)
@@ -147,7 +177,7 @@ def main():
     for ref, event in new.items():
         if args.dry_run:
             print(json.dumps(event)); continue
-        req = urllib.request.Request(f"{args.bus.rstrip('/')}/events/{args.stream}", json.dumps(event).encode(), {'Content-Type': 'application/json'})
+        req = urllib.request.Request(f"{args.bus.rstrip('/')}/events/{args.stream}", json.dumps(event).encode(), bus_headers())
         try:
             urllib.request.urlopen(req, timeout=10).read()
         except Exception as exc:  # keep what was sent; retry the rest next run
@@ -177,6 +207,17 @@ def selfcheck():
     bus = [{'event_type': 'x'}, {'event_type': 'djimitflo.feedback.interests', 'terms': '["Agents","coding"]'},
            {'event_type': 'djimitflo.feedback.interests', 'terms': 'old'}]
     assert feedback_terms(bus) == ['agents', 'coding'] and feedback_terms([{'event_type': 'djimitflo.feedback.interests', 'terms': 'a,b'}]) == ['a', 'b']
+    # Eve-V (prod 09-10): URL-only lines and Dutch descriptions; the title must not be the URL or a quote from the description
+    eve = '- [arxiv.org/abs/2608.30510](https://arxiv.org/abs/2608.30510)\n' \
+          '- https://arxiv.org/abs/2608.27340** \u2014 Toont aan dat eval-awareness geen uniforme eigenschap is: capabilities-framing ("ze testen mijn capaciteiten") voorspelt compliance\n' \
+          '- https://arxiv.org/abs/2608.27009** \u2014 Construeert Cautious Bench, het eerste benchmark voor over-safety\n' \
+          '- **[When Symmetry Suppresses Magic](https://arxiv.org/abs/2609.38276)** \u2013 toont hoe symmetrische constraint-designs werken\n' \
+          '- **AI-governance in een verdeelde wereld** \u2013 analyse. *[Architecture Without an Architect? Global Governance of AI](https://arxiv.org/abs/2610.01111)*\n' \
+          '- Nieuw paper: Agentic test repair at scale \u2013 zie https://arxiv.org/abs/2610.02222\n'
+    e = list(discoveries(eve))
+    assert [x[2] for x in e] == ['arXiv 2608.30510', 'arXiv 2608.27340', 'arXiv 2608.27009', 'When Symmetry Suppresses Magic',
+                                 'Architecture Without an Architect? Global Governance of AI', 'Agentic test repair at scale'], e
+    assert 'ze testen mijn capaciteiten' in e[1][3], e
     print('selfcheck ok')
 
 

@@ -10,3 +10,10 @@ GHSA-qwww-vcr4-c8h2
 # v2.100.0 with the dependency bumped.
 CVE-2026-56864
 CVE-2026-56865
+
+# gh CLI (/usr/bin/gh): golang.org/x/net v0.58.0 + Go stdlib 1.26.8 carry CVE-2026-78669 (HTTP/2 denial of service via
+# excessive SETTINGS frames), fixed in x/net 0.60.0 / Go 1.26.9 / 1.27.2; no gh release ships them yet (latest v2.102.0 is
+# built with Go 1.27.1). djimitflo runs gh only as a short-lived HTTPS client against api.github.com (GithubPrReviewService,
+# github-cocreate); it never serves HTTP/2, and the only peer that could send SETTINGS frames is GitHub itself. Revisit with
+# the two entries above when cli/cli ships a release with the fixes (bump GH_CLI_VERSION, drop these lines).
+CVE-2026-78669
