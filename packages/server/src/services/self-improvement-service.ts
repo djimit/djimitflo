@@ -15,7 +15,7 @@ export interface ImprovementProposal {
   title: string;
   description: string;
   rationale: string;
-  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement' | 'dream_state';
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement' | 'dream_state' | 'operator_request';
   status: ImprovementStatus;
   priority: number;
   evidenceRefs: string[];
@@ -208,6 +208,18 @@ export class SelfImprovementService {
     return this.createProposal({
       type: 'bug_fix', title: input.title, description: input.description, rationale: input.rationale,
       source: 'dream_state', priority: 0.7, evidenceRefs: [input.evidenceRef], grounding: input.grounding,
+    });
+  }
+
+  /**
+   * Capability factory (CAPABILITY_FACTORY_MODE): one operator-requested, grounded proposal. It takes the normal path — the
+   * specialist panel, then the human maker approval; no auto-approve rule matches its `capability-request:` ref.
+   * Null when an open proposal with the same title and description already exists.
+   */
+  generateFromOperatorRequest(input: { title: string; description: string; rationale: string; evidenceRefs: string[]; grounding: Partial<Grounding> }): ImprovementProposal | null {
+    return this.createProposal({
+      type: 'feature', title: input.title, description: input.description, rationale: input.rationale,
+      source: 'operator_request', priority: 0.6, evidenceRefs: input.evidenceRefs, grounding: input.grounding,
     });
   }
 

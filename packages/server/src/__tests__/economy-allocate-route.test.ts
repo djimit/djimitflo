@@ -118,11 +118,36 @@ describe('GET /swarms/economy (null-safe run economy)', () => {
       usage_coverage: { reported: 0, total: 1, ratio: 0 }, dollars_lower_bound: false, run_verified: true });
     const unverified = body.recent_runs.find((r) => r.run_id === 'run-unverified')!;
     expect(unverified).toMatchObject({ verified_artifacts: 0, completed_unverified: 1, run_verified: false });
-    expect(unverified.dollars_spent).toBeCloseTo(1.0, 6);
+    // CODE-007: codex total tokens × tariff is an estimate, not dollars: null + reason, the tariff kept apart
+    expect(unverified).toMatchObject({ dollars_spent: null, dollars_reason: 'no_dated_model_price', efficiency_reason: 'no_dated_model_price',
+      runtime_tariff_estimate: { usd: 1, basis: 'runtime_tariff_per_mtok_total' } });
     // keys kept for backward compatibility; the dollar total sums only runs whose dollars are known
     expect(body.summary).toMatchObject({ total_capabilities: 0, total_verified_artifacts: 1, total_completed_unverified: 1,
-      runs_with_unknown_dollars: 1, total_dollars_lower_bound: true });
-    expect(body.summary.total_dollars_spent).toBeCloseTo(1.0, 6);
+      runs_with_unknown_dollars: 2, total_dollars_lower_bound: false, total_dollars_spent: null });
+  });
+
+  it('CODE-007: a run shows dollars only from a dated model price (lease token_accounting with a price_version)', async () => {
+    insertRun('run-dated', 'completed', [{ name: 'maker_completion', status: 'pass', evidence: '' }]);
+    insertLease('m-dated', 'run-dated', 'maker', { runtime_usage: { total_tokens: 1100 },
+      token_accounting: { version: 1, estimated_cost_usd: 0.5, cost_completeness: 'complete', price_version: 'abcd1234abcd1234' } });
+    const body = await (await fetch(`${baseUrl}/swarms/economy`)).json() as { recent_runs: Array<Record<string, unknown>>; summary: Record<string, unknown> };
+    const run = body.recent_runs.find((r) => r.run_id === 'run-dated')!;
+    expect(run).toMatchObject({ dollars_spent: 0.5, dollars_lower_bound: false, dollars_reason: null, efficiency: 2,
+      price_coverage: { priced: 1, partial: 0, total: 1, ratio: 1 }, price_basis: { source: 'token_accounting', price_versions: ['abcd1234abcd1234'] } });
+    expect(typeof (run.price_basis as { priced_at: unknown }).priced_at).toBe('string');
+    expect(body.summary.total_dollars_spent).toBe(0.5);
+  });
+
+  it('CODE-007: capability dollars are null with a reason; the tariff/declared figure is a labelled estimate', async () => {
+    registerCapability(new SwarmIntelligenceService(db), 'cap-est', 0.1);
+    // allocate first: reading the economy re-measures competence and rewrites the learned cost model
+    const alloc = await (await fetch(`${baseUrl}/swarms/economy/allocate?budget=1`)).json() as { cost_basis: string; allocated: Array<Record<string, unknown>> };
+    expect(alloc.cost_basis).toBe('estimate');
+    expect(alloc.allocated).toMatchObject([{ capability_id: 'cap-est', p50_dollars: null, p50_dollars_estimate: 0.1 }]);
+    registerCapability(new SwarmIntelligenceService(db), 'cap-est-2', 0.2);
+    const body = await (await fetch(`${baseUrl}/swarms/economy`)).json() as { capabilities: Array<Record<string, unknown>> };
+    expect(body.capabilities.find((c) => c.capability_id === 'cap-est-2')).toMatchObject({ p50_dollars: null, p95_dollars: null, verified_artifacts_per_dollar: null,
+      dollars_reason: 'no_dated_model_price', p50_dollars_estimate: 0.2, estimate_basis: 'runtime_tariff_or_declared' });
   });
 
   it('total_dollars_spent is null when no run reported usage', async () => {

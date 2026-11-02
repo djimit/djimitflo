@@ -97,6 +97,20 @@ it('D0: a measured mutation score of 0 stays 0 (it used to become null = not mea
   expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBeNull();
 });
 
+it('OPS-001: a fail-closed mutation-gain line (unknown score = null) is not measured, never 0', () => {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mut-')), 'out.log');
+  for (const line of [
+    '{"mutation_gain":{"status":"baseline_unavailable","file":"x","test":"y","before":null,"after":null,"gain":null,"min_gain":10,"rule":null,"pass":false}}',
+    '{"mutation_gain":{"status":"baseline_history_unreadable","file":"x","test":"y","before":null,"after":null,"gain":null,"min_gain":10,"rule":null,"pass":false}}',
+    '{"mutation_gain":{"status":"candidate_unavailable","file":"x","test":"y","before":0,"after":null,"gain":null,"min_gain":10,"rule":null,"pass":false}}',
+  ]) {
+    fs.writeFileSync(f, `stryker noise\n${line}\n`);
+    expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBeNull();
+  }
+  fs.writeFileSync(f, '{"mutation_gain":{"status":"ok","file":"x","test":"y","before":95,"after":90,"gain":-5,"min_gain":10,"rule":"absolute_90","pass":true}}\n');
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBe(90);
+});
+
 it('RX-3: an evolve loser that was eligible (lost on rank) is tagged, an ineligible one too, so the reward can tell them apart', () => {
   maker('m-a', 'opencode', ok(80)); reviewer('c-a', 'checker', 'm-a');
   maker('m-b', 'codex', ok(40)); reviewer('c-b', 'checker', 'm-b');

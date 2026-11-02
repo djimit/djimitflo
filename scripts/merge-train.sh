@@ -40,7 +40,6 @@ SETTLE="${MT_HEAD_SETTLE_S:-30}"; SETTLE_POLL="${MT_HEAD_SETTLE_POLL_S:-5}"
 GH_TIMEOUT="${MT_GH_TIMEOUT_S:-60}"
 ASSERTIONS="${MT_ASSERTIONS:-}"
 TEST_ONLY_DIFF_MAX=400                                     # loop-worker-executor-service.ts TEST_ONLY_DIFF_MAX
-DEFAULT_REQUIRED='build-and-test (22),build-and-test (24),security-scan,sbom,gitleaks'   # main protection, 2026-10-12
 MARK_READY=0
 READONLY=0
 CUR_PR=""; CUR_HEAD=""; CUR_KEY=""
@@ -89,7 +88,7 @@ mt_gh() {   # mt_gh pr <verb> N --flag VALUE: REST calls that gh has no pinned-s
   case "$verb" in
     update-branch) ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/update-branch" -f "expected_head_sha=$v" ;;
     merge-at)      ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/merge" -f merge_method=squash -f "sha=$v" ;;
-    checks-at)     checks_verdict "$v" | jq -r 'if .verdict == "green" then "pass" elif .verdict == "red" then "fail red:\(.red|join(","))"
+    checks-at)     checks_verdict "$v" | jq -r 'if .verdict == "green" then "pass" elif .verdict == "red" then "fail red:\(.red|join(","))\(if .reason then " " + .reason else "" end)"
                      else "pending missing:\(.missing|join(",")) pending:\(.pending|join(","))\(if .reason then " " + .reason else "" end)" end' ;;
     *) echo "mt_gh: unknown verb $verb" >&2; return 64 ;;
   esac
@@ -107,14 +106,20 @@ superseded() { grep -q "\"event\":\"superseded\",\"pr\":\"$1\",\"head\":\"$2\"" 
 own_update() { grep -q "\"event\":\"branch_updated\",\"pr\":\"$1\",\"head\":\"$2\",\"key\":\"$3\"" "$LEDGER"; }
 
 # --- CI on one exact sha (mirrors loop-auto-merge.ts checks() + the required contexts of branch protection) -----------
-required_json() {
+# required checks keep their producer: checks[].app_id (-1/absent = any source); a legacy `contexts` entry is any source
+REQ_JQ='def reqs: ([(.checks // [])[] | select((.context // "") != "") | {context, app_id: (if ((.app_id // -1) | type) == "number" and (.app_id // -1) >= 0 then .app_id else null end)}]) as $c
+  | ($c + [(.contexts // [])[] | . as $n | select(($c | map(.context) | index($n)) == null) | {context: $n, app_id: null}]) | unique_by(.context);'
+required_json() {   # unreadable protection is never replaced by a remembered list: source unavailable ⇒ HOLD, re-read next call
   local f="$MT_TMP/required.json"
   if [ ! -s "$f" ]; then
-    local src ctx
-    if [ -n "${MT_REQUIRED_CHECKS:-}" ]; then src=env; ctx="$MT_REQUIRED_CHECKS"
-    elif ctx="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH/protection/required_status_checks" -q '[(.contexts // [])[], ((.checks // [])[] | .context)] | unique | join(",")' 2>/dev/null)" && [ -n "$ctx" ]; then src=branch_protection
-    else src=default_20261012_assessment; ctx="$DEFAULT_REQUIRED"; fi
-    jq -cn --arg c "$ctx" --arg s "$src" '{source: $s, contexts: ($c | split(",") | map(select(length > 0)))}' > "$f"
+    local src raw has="$REQ_JQ (reqs | length) > 0"
+    if [ -n "${MT_REQUIRED_CHECKS:-}" ]; then src=env; raw="$(jq -cn --arg c "$MT_REQUIRED_CHECKS" '{contexts: ($c | split(",") | map(select(length > 0)))}')"
+    elif raw="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH/protection/required_status_checks" 2>/dev/null)" && jq -e "$has" >/dev/null 2>&1 <<<"$raw"; then src=branch_protection
+    elif raw="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH" -q '.protection.required_status_checks // {}' 2>/dev/null)" && jq -e "$has" >/dev/null 2>&1 <<<"$raw"; then src=branch_protection   # read access suffices
+    else src=unavailable; raw='{}'; fi
+    jq -c --arg s "$src" "$REQ_JQ"' (if $s == "unavailable" then [] else reqs end) as $r | {source: $s, contexts: [$r[].context], checks: $r}' <<<"$raw" > "$f.new"
+    if [ "$src" = unavailable ]; then cat "$f.new"; return 0; fi
+    mv "$f.new" "$f"
   fi
   cat "$f"
 }
@@ -126,18 +131,30 @@ checks_verdict() {   # → {verdict: green|pending|red, red, pending, missing, r
   st="$(ghx api "repos/$REPO_SLUG/commits/$sha/status" 2>/dev/null || true)"
   json_or_null "$runs" > "$d/runs.json"; json_or_null "$st" > "$d/status.json"   # files, not argv: responses can be large
   jq -cn --slurpfile R "$d/runs.json" --slurpfile S "$d/status.json" --argjson req "$(required_json)" '
+    def newest(k): group_by(k) | map(max_by([(.id // 0), (.completed_at // .updated_at // "")]));   # a rerun replaces the run it re-ran
     $R[0] as $runs | $S[0] as $st |
-    if $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
-    ($runs.check_runs // []) as $cr | (($st // {}).statuses // []) as $ss | (($st // {}).state // "") as $state |
+    if $req.source == "unavailable" then {verdict: "pending", red: [], pending: [], missing: [], reason: "required_checks_unavailable"}
+    elif $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
+    # newest per producer AND name: a same-named run of another app never hides (or stands in for) a required one
+    # MT_IGNORE_CHECKS: non-required runs a caller cannot wait for (its own job); a required check is never ignored
+    ($ENV.MT_IGNORE_CHECKS // "" | split(",") | map(select(length > 0)) - $req.contexts) as $ign |
+    ($runs.check_runs // [] | map(select(.name | IN($ign[]) | not)) | newest([(.app.id // ""), .name])) as $cr | (($st // {}).statuses // [] | newest(.context)) as $ss | (($st // {}).state // "") as $state |
+    ($req.checks // [$req.contexts[] | {context: ., app_id: null}]) as $rq |
+    # the newest run of each required check from its required producer (app_id null = any source; only then a status counts)
+    [$rq[] | . as $r | {r: $r, run: ([$runs.check_runs[]? | select(.name == $r.context and ($r.app_id == null or .app.id == $r.app_id))] | newest(.name) | first),
+      st: (if $r.app_id == null then [$ss[] | select(.context == $r.context)] | first else null end)}] as $rr |
+    # a REQUIRED check is green only on success: skipped, neutral, cancelled, stale (any other completed conclusion) is red
+    ([$rr[] | select(.run != null and .run.status == "completed" and .run.conclusion != "success") | {n: .r.context, c: .run.conclusion}]
+      + [$rr[] | select(.st != null and (.st.state | IN("success", "pending") | not)) | {n: .r.context, c: .st.state}]) as $reqbad |
     ([$cr[] | select(.status == "completed" and (.conclusion | IN("failure", "timed_out", "action_required", "startup_failure"))) | .name]
-      + [$ss[] | select(.state == "failure" or .state == "error") | .context]) as $red |
+      + [$ss[] | select(.state == "failure" or .state == "error") | .context] + [$reqbad[].n] | unique) as $red |
     ([$cr[] | select(.status != "completed" or .conclusion == "cancelled" or .conclusion == "stale") | .name]
       + [$ss[] | select(.state == "pending") | .context]) as $pend |
-    ([$cr[].name] + [$ss[].context]) as $seen |
-    [$req.contexts[] | . as $r | select(($seen | index($r)) == null)] as $missing |
+    [$rr[] | select(.run == null and .st == null) | .r.context] as $missing |
     {verdict: (if ($red | length) > 0 or $state == "failure" or $state == "error" then "red"
                elif ($pend | length) > 0 or ($missing | length) > 0 or (($cr | length) + ($ss | length)) == 0 then "pending"
-               else "green" end), red: $red, pending: $pend, missing: $missing} end'
+               else "green" end), red: $red, pending: $pend, missing: $missing}
+    + (if ($reqbad | length) > 0 then {reason: ("required_not_success:" + ([$reqbad[] | "\(.n)=\(.c)"] | join(",")))} else {} end) end'
 }
 
 # --- eligibility (mirrors the #754 shadow: loop-auto-merge.ts runAutoMergeTick, applied to the CURRENT head) ---------
@@ -424,7 +441,9 @@ ci_wait() {   # ci_wait PR SHA KEY → 0 green · 3 red · 9 cancelled run (retr
   while :; do
     b="$(pr_checks "$pr" "$sha" 2>/dev/null || echo "pending error")"
     case "$b" in
-      pass|pass,skipping|skipping,pass) record ci_green "$pr" "$sha" "$key"; return 0 ;;
+      # only the exact verdict `pass` is green: the old `gh pr checks` tokens pass,skipping / skipping,pass let a skipped
+      # check count as passed (forensic 2026-10-26 rank 9); checks-at never prints them, so anything else waits
+      pass) record ci_green "$pr" "$sha" "$key"; return 0 ;;
       *fail*) return 3 ;;
       *cancel*) return 9 ;;
     esac

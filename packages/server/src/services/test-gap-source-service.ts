@@ -15,6 +15,9 @@ import { recordSpecGapShadow, specGapMode, specRepo } from './spec-gap-source';
  *   TEST_GAP_MAX_PER_DAY (default 2)   TEST_GAP_REQUEUE_RESERVE (default 0, slots kept for requeues)   TEST_GAP_MAX_IN_FLIGHT (default 2)   TEST_GAP_REPO_PATH (default LOOP_DAEMON_REPOSITORY_PATH)
  */
 export const testGapSourceEnabled = (): boolean => process.env.TEST_GAP_SOURCE_ENABLED === 'true';
+/** re-20261030 N7: the last result of each gap lane in this process (why it created nothing), read by the stall watch's
+ *  no_oracle_work detector; in memory only — empty after a restart until the lanes run again (90 s after start). */
+export const gapLaneResults = new Map<'test-gap' | 'mutation-gap', { created: number; skipped: string; at: string }>();
 
 export interface TestGap { service: string; sourcePath: string; testPath: string; exports: string[]; loc: number; kind?: 'untested' | 'exports'; pkg?: string; command?: string }
 
@@ -216,8 +219,10 @@ export class TestGapSourceService {
     if (this.timer || !testGapSourceEnabled()) return;
     const run = () => {
       markRun('test_gap_source');
-      try { const r = this.run(); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
-      try { const r = this.runMutationGaps(); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      const note = (lane: 'test-gap' | 'mutation-gap', r: { created: number; skipped: string }) => gapLaneResults.set(lane, { ...r, at: new Date().toISOString() });
+      const failed = (err: unknown) => ({ created: 0, skipped: `failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200) });
+      try { const r = this.run(); note('test-gap', r); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { note('test-gap', failed(err)); console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      try { const r = this.runMutationGaps(); note('mutation-gap', r); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { note('mutation-gap', failed(err)); console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
     };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 90_000).unref?.();

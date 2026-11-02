@@ -1,7 +1,7 @@
 /**
  * Holdout epoch 1: operator-run manifest freeze (never automatic; see docs/runbooks/self-improvement-loop-operations.md).
  *   node dist/scripts/holdout-freeze.js --db <path> --manifest <file> --epoch <n> --expect-sha <sha256> --repo <checkout>
- *     [--species atomic@llama-router] [--operator <name>] [--p0 0.37 --p1 0.57 --alpha 0.05 --icc 0.1] [--apply]
+ *     [--species atomic@llama-router] [--operator <name>] [--p0 0.37 --p1 0.57 --alpha 0.05 --icc 0.1 --rho <phi>] [--apply]
  * Default is a DRY RUN: the database is opened read-only and every check runs (schema, sha256, size, eligibility NOW,
  * occupied epoch); nothing is written. --apply migrates, freezes the epoch in one transaction and appends a hash-chained
  * audit event (holdout.freeze) inside it. It never sets DREAM_EVOLUTION_ENABLED or GYM_HOLDOUT_EPOCH and starts nothing.
@@ -63,8 +63,9 @@ const frozenKeys = result.status === 'FROZEN' || result.status === 'VALID_DRY_RU
 const familySources = policy.deciding === 'mutant' && frozenKeys ? frozenKeys.mutant.map((k) => k.split(':')[2]) : (tasks.mined ?? []).map((t) => t.source);
 const families = new Map<string, number>(); for (const f of familySources) families.set(f, (families.get(f) ?? 0) + 1);
 const size = result.status === 'FROZEN' || result.status === 'VALID_DRY_RUN' ? result.holdout_size : (tasks.mined ?? []).length;
+// --rho has no default: without it the power is null (unknown), never computed at rho = 0
 const power = pairedPowerReport({ n: size, p0: Number(arg('p0', '0.37')), p1: Number(arg('p1', '0.57')), alpha: Number(arg('alpha', '0.05')),
-  clusterSizes: [...families.values()], icc: Number(arg('icc', '0.1')) });
+  ...(arg('rho') ? { rho: Number(arg('rho')) } : {}), clusterSizes: [...families.values()], icc: Number(arg('icc', '0.1')) });
 console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry-run', result, power_report: { note: 'assumptions, not measurements; never used to size the holdout',
   deciding: policy.deciding ?? 'mined', families: families.size, family_sizes: [...families.values()].sort((a, b) => b - a), ...power } }, null, 2));
 db.close();

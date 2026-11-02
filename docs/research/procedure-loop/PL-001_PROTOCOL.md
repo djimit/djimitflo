@@ -147,3 +147,43 @@ Amendments are appended below the fingerprint line, dated, with a reason. They n
 
 ---
 PREREG_SHA256: fa136ae5946574f749bce23a190acc7632e5a6135f4d4577e311e9ea0dfb616c (sha256 of everything above this line; computed 2026-10-25 before any selector or runner code existed)
+
+## Amendment 2026-10-26: runner
+
+Reason: the runner is built (`packages/server/src/services/pl-001.ts`, branch `feat/pl-001-runner`) before any attempt. The
+frozen text leaves the points below open; they are fixed here, before any outcome exists. The hypothesis, arms, treatment and
+its digest, population exclusions, primary outcome, test, alpha, n, stop rule and harm rules are as frozen:
+verdict rules unchanged.
+
+1. **Flag.** `PL_001_MODE=off|on` (default off). Rollback is `off`: claims then match the pre-PL-001 claims byte for byte.
+2. **Worker.** PL-001 attempts are served only to a worker that announces `prod_gates` and `procedure_lines`. Its fire check
+   also reports `lines_sha256`, the sha256 of the lines it received joined by `\n`. The workstation worker must be reinstalled
+   from `main` before the start.
+3. **Fire check, both arms (stricter than the frozen text, never weaker).** The claim records the delivered lines digest and the
+   goal sha256 the worker must send. Arm B counts only when the delivered digest and the worker's received digest are both
+   `6dddbba1…`, 5 of 5 lines are in the maker prompt and the goal sha256 equals the gym goal with those lines. Arm A counts only
+   when the received digest is sha256 of the empty list, 0 lines are found and the goal sha256 equals the plain gym goal.
+   Anything else is VOID. This holds whatever `GENOME_FIRE_CHECK` says.
+4. **Oracle.** A gated success without its per-check gate map is VOID (`ELIGIBLE_GATED`). A success without changed files and
+   a diff is an infra discard (P0-12). A success the hack classifier flags is quarantined: not verified, and it counts toward
+   the harm rule.
+5. **Task discards.** A `task:` discard (for example, the mutant survives) is deterministic for the task. The task is then
+   INVALID for both arms, its other arm is not served, and it is excluded from the pairs and reported. The margin of 15 tasks
+   covers it.
+6. **Freeze.** The first claim from a capable worker after the flag is on freezes the manifest. That claim serves no PL-001
+   attempt. The candidate pool is the mined repairs plus up to 60 seeded mutant repairs per tier 3 to 6 from the deploy
+   checkout. If fewer than 75 tasks are eligible, nothing is frozen and the reason is recorded (retried at most hourly). The
+   pre-start selector check uses 12 unfit tasks.
+7. **Start condition and cap share.** `PL_001_CAP_SHARE` (0 to 1, default 0). With a share above 0, PL-001 takes up to
+   ceil(share × `EVOLUTION_GYM_REMOTE_MAX_PER_DAY`) claims per 24 h, ahead of trials. Without a share, PL-001 waits until both
+   `g-a187f81f` and `g-d14c1156` are no longer `trial`, and it is then served after any trial attempt.
+8. **Analysis order.** If more than 60 pairs complete, the first 60 by completion time are analysed. A day-14 verdict is
+   recorded at the next claim from a capable worker.
+9. **Lifecycle.** SUPPORTED sets the procedure row to `validated`, with no delivery: any production use is a separate operator
+   decision. NOT_SUPPORTED and STOPPED_FOR_HARM set it to `retired` and record a negative-evidence draft (judgment
+   `negative_evidence_draft`); the operator adds the entry to `NEGATIVE_EVIDENCE.yaml`. INCONCLUSIVE keeps it `candidate`, with
+   the reason. Nothing is promoted to `trial` or `active`.
+10. **Registry stop date.** Before the first attempt the experiment registry carries stop_by 2026-11-25 (registered + 30 d: decide
+    to start or close). From the first attempt, stop_by is the first attempt + 14 days, as frozen.
+11. **Secondary measures.** Maker wall time is the worker's `maker_ms` (sent for PL-001 claims as for TG-001). The graded
+    score is computed for every PL-001 attempt whatever `GRADED_FITNESS_MODE` says.
