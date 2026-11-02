@@ -1,7 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { buildEvolutionEvidence } from './evolution-evidence';
 import { detectStalls } from './stall-watch';
-import { listSchedulers } from './scheduler-registry';
+import { guardTick, listSchedulers, noteScheduler } from './scheduler-registry';
 import { dependencyLaneQueue, laneMode } from './dependency-lane';
 import { redactSecrets } from './secret-patterns';
 import { decisionsInbox, openDecisionCounts, recordNeedsYouRanking, type DecisionsInbox } from './decisions-inbox';
@@ -307,7 +307,10 @@ export async function maybeSendDigest(db: Database, env: NodeJS.ProcessEnv = pro
 let digestTimer: ReturnType<typeof setInterval> | null = null;
 /** One 15-minute tick for the daily digest and the triage push; armed only when one of them is enabled. */
 export function startOperatorDigest(db: Database): void {
+  // UXE-01: reports to the scheduler registry; a separate statement, so the arming check below is unchanged. The registry
+  // takes one flag name; TELEGRAM_TRIAGE_ENABLED (with TELEGRAM_PUSH_ENABLED) is the second gate that arms this tick.
+  noteScheduler('operator_digest', 'OPERATOR_DIGEST_ENABLED', digestEnabled() || triageEnabled(), 15 * 60_000);
   if (digestTimer || (!digestEnabled() && !triageEnabled())) return;
   // ponytail: the Phase 3 shadow ranking rides this 15-min tick (once per day); its own scheduler if the digest is ever off
-  digestTimer = setInterval(() => { recordNeedsYouRanking(db); void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
+  digestTimer = setInterval(guardTick('operator_digest', () => { recordNeedsYouRanking(db); return maybeSendDigest(db).then(() => pushTriage(db)); }), 15 * 60_000); digestTimer.unref?.();
 }
