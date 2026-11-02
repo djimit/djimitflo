@@ -26,6 +26,20 @@ test('source graph preserves aliases, nested factories, return adapters, arrays 
   assert.deepEqual(source.unsupported, []);
 }));
 
+test('UXE-03: each route carries the requirePermission literals of its middleware, aliases included, handler bodies not', () => fixture((root, dir) => {
+  writeFileSync(join(dir, 'index.ts'), `export function createRoutes(auth) { const router = Router();
+    const canManage = auth.requirePermission('manage:config');
+    const guarded = typeof auth?.requirePermission === 'function' ? auth.requirePermission('write:governance') : (_q, _s, next) => next();
+    router.get('/a', requireAuth, requirePermission('read:evidence'), handler);
+    router.get('/b', auth?.requirePermission('read:audit'), handler);
+    router.get('/c', canManage, handler);
+    router.post('/d', guarded, (req, res) => { requirePermission('manage:tokens'); });
+    router.get('/e', requireAuth, handler);
+    return router; }`);
+  assert.deepEqual(inventoryRouteSource(root).mounted.map(route => `${route.mounted_path} ${route.permissions.join(',')}`),
+    ['/api/a read:evidence', '/api/b read:audit', '/api/c manage:config', '/api/d write:governance', '/api/e ']);
+}));
+
 test('a computed source path is explicitly unsupported, never silently green', () => fixture((root, dir) => {
   writeFileSync(join(dir, 'index.ts'), 'export function createRoutes() { router.get(computePath(), handler); }');
   assert.equal(inventoryRouteSource(root).unsupported[0].reason, 'Nonliteral route path');
