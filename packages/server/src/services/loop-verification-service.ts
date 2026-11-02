@@ -14,6 +14,7 @@ import type {
   LoopService,
 } from './loop-service';
 import { runCertified } from './loop-types';
+import { autoMergeMode } from './loop-auto-merge-state';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -118,10 +119,10 @@ export class LoopVerificationService {
       },
       {
         name: 'diff_threshold_all_makers',
-        status: completedMakerLeases.every((lease) => this.leaseDiffWithinThreshold(lease)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
+        status: combine(completedMakerLeases.map((lease) => this.leaseDiffWithinThreshold(lease))),
         evidence: completedMakerLeases.length === 0
           ? 'No completed maker leases yet.'
-          : 'All completed maker leases must stay under their configured diff threshold.',
+          : 'All completed maker leases must stay under their configured diff threshold (a maker without a recorded diff_lines is insufficient evidence).',
       },
       {
         name: 'checker_verdict',
@@ -161,11 +162,10 @@ export class LoopVerificationService {
         status: combine(completedMakerLeases.map((lease) => this.objectiveScopeObservation(run, lease))),
         evidence: 'An objective-mode maker (not auto-approved) may change only its finding file; a missing changed-files record is insufficient evidence; a maker lease without risk_inputs (legacy) is not evaluated.',
       } satisfies LoopGate]),
-      {
-        name: 'no_automatic_merge',
-        status: 'pass',
-        evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.',
-      },
+      // U4a: under LOOP_AUTO_MERGE_TEST_ONLY=act earned auto-merge may merge this run's PR — the gate cannot attest otherwise
+      autoMergeMode() === 'act'
+        ? { name: 'no_automatic_merge', status: 'skipped', evidence: 'Not applicable: auto-merge may act (LOOP_AUTO_MERGE_TEST_ONLY=act); the loop itself did not merge, push, or deploy.' }
+        : { name: 'no_automatic_merge', status: 'pass', evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.' },
     ];
     const gates: LoopGate[] = computedGates.map((gate) => notApplicable.gates.has(gate.name)
       ? { name: gate.name, status: 'skipped', evidence: `Not applicable: ${notApplicable.reason}.` }
@@ -278,10 +278,13 @@ export class LoopVerificationService {
     return files.every((file) => file === scope) ? 'pass' : 'fail';
   }
 
-  private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {
-    const diffLines = Number(lease.metadata?.diff_lines ?? 0);
+  /** U4b (A3): an absent diff_lines is not 0 — it is unknown (insufficient evidence); no configured threshold still fails. */
+  private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): GateStatus {
     const diffMaxLines = Number(lease.metadata?.diff_max_lines ?? 0);
-    return diffMaxLines > 0 && diffLines <= diffMaxLines;
+    if (!(diffMaxLines > 0)) return 'fail';
+    const raw = lease.metadata?.diff_lines;
+    if (raw === undefined || raw === null || raw === '' || !Number.isFinite(Number(raw))) return 'unknown';
+    return Number(raw) <= diffMaxLines ? 'pass' : 'fail';
   }
 
   /**

@@ -12,6 +12,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 import { randomUUID } from 'node:crypto';
 import { buildLeaseFailure, CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
@@ -214,9 +215,9 @@ export class BackgroundWorkerService {
       try { return (this.db.prepare(sql).get() as any)?.c ?? 0; } catch { return 0; }
     };
 
-    const running = safeCount("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'running'");
-    const blocked = safeCount("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'");
-    const failedMakers = safeCount("SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'failed'");
+    const running = safeCount(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'running' AND ${realRunSql()}`);
+    const blocked = safeCount(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked' AND ${realRunSql()}`);
+    const failedMakers = safeCount(`SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'failed' AND ${realRunIdSql('loop_run_id')}`);
     const activeAgents = safeCount("SELECT COUNT(*) as c FROM agents WHERE status = 'active'");
 
     return `Health: ${running} running, ${blocked} blocked, ${failedMakers} failed makers, ${activeAgents} active agents`;
@@ -245,13 +246,17 @@ export class BackgroundWorkerService {
     const safeCount = (sql: string): number => {
       try { return (this.db.prepare(sql).get() as any)?.c ?? 0; } catch { return 0; }
     };
-    return `Metrics snapshot: ${safeCount('SELECT COUNT(*) as c FROM loop_runs')} loops, ${safeCount('SELECT COUNT(*) as c FROM goals')} goals`;
+    return `Metrics snapshot: ${safeCount(`SELECT COUNT(*) as c FROM loop_runs WHERE ${realRunSql()}`)} loops, ${safeCount('SELECT COUNT(*) as c FROM goals')} goals`;
   }
 
   private async taskOrphanLeaseCleanup(): Promise<string> {
     try {
       const preparedThreshold = Number(process.env.DJIMFLO_STALE_PREPARED_THRESHOLD_HOURS ?? 24);
       const runningThreshold = Number(process.env.DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS ?? 2);
+
+      // Lease timestamps are ISO (`…T…Z`); compared with datetime('now', …) text ('YYYY-MM-DD HH:MM:SS') they only matched
+      // rows from an earlier UTC date, so the 24 h cleanup acted at 24–48 h, always just after midnight (C-reliability 30-10 §1d).
+      const ago = (hours: number) => new Date(Date.now() - hours * 36e5).toISOString();
 
       // Cancel stale prepared leases
       const now = new Date().toISOString();
@@ -261,8 +266,8 @@ export class BackgroundWorkerService {
             ${CANCEL_LEASE_METADATA_SQL},
             updated_at = datetime('now')
         WHERE status = 'prepared'
-        AND created_at < datetime('now', '-' || ? || ' hours')
-      `).run(...cancelLeaseBind('stale_timeout', now), preparedThreshold);
+        AND created_at < ?
+      `).run(...cancelLeaseBind('stale_timeout', now), ago(preparedThreshold));
 
       // Mark hung running leases as failed (no exit was observed: the structured failure says so)
       const hung = (role: string) => JSON.stringify(buildLeaseFailure(role, 'failed', { failure_reason: 'stale_timeout' }));
@@ -273,8 +278,8 @@ export class BackgroundWorkerService {
               '$.failure', json(CASE WHEN role IN ('checker', 'security_checker') THEN ? ELSE ? END)),
             updated_at = datetime('now')
         WHERE status = 'running'
-        AND updated_at < datetime('now', '-' || ? || ' hours')
-      `).run(hung('checker'), hung('maker'), runningThreshold);
+        AND updated_at < ?
+      `).run(hung('checker'), hung('maker'), ago(runningThreshold));
 
       return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases`;
     } catch { return 'Orphan lease cleanup skipped (no worker_leases table)'; }

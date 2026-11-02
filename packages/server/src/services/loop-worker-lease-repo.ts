@@ -76,13 +76,14 @@ export class WorkerLeaseRepo {
    * Update lease status with metadata merge.
    */
   updateStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
-    const existing = this.db.prepare('SELECT role, metadata FROM worker_leases WHERE id = ?').get(id) as { role?: string; metadata?: string } | undefined;
+    const existing = this.db.prepare('SELECT l.role, l.metadata, r.status AS run_status FROM worker_leases l LEFT JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.id = ?')
+      .get(id) as { role?: string; metadata?: string; run_status?: string | null } | undefined;
     const metadata: Record<string, unknown> = {
       ...(existing ? JSON.parse(existing.metadata || '{}') : {}),
       ...metadataPatch,
     };
-    // L3 v2 P2: 50/56 maker cancels had no reason — a cancel always names one (the stated, else derived, else 'unspecified')
-    if (status === 'cancelled' && !metadata.cancellation_reason) metadata.cancellation_reason = cancellationReasonOf(metadata);
+    // L3 v2 P2 / O2b: a cancel always names one (the stated, else derived, else cascade:run_<status>, else 'unspecified')
+    if (status === 'cancelled' && !metadata.cancellation_reason) metadata.cancellation_reason = cancellationReasonOf(metadata, existing?.run_status);
     // 136 production leases failed with no stored reason: never record a failure without one.
     if (status === 'failed' && !metadata.failure_reason && !metadata.failed_reason) {
       metadata.failure_reason = String(metadata.execution_denied_reason ?? metadata.notes
