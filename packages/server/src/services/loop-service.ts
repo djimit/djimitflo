@@ -30,7 +30,7 @@ import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
 import { LoopRunQueryService } from './loop-run-query-service';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
-import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-service';
+import { LoopRecoveryService, RuntimeLeaseRegistry, type ResumeInterruptedMode, type ResumeInterruptedSummary } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
@@ -481,18 +481,9 @@ export class LoopService {
     return { ...result, prunedWorktrees };
   }
 
-  resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
-    resumed: boolean;
-    boundedFail: boolean;
-    resumeAttempt: number;
-    requeuedFindings: string[];
-    skippedFindings: string[];
-  } {
-    return this.recovery.resumeInterruptedRun(runId, maxResumeAttempts);
-  }
-
-  resumeInterruptedRuns(): { resumed: number; boundedFailed: number; details: Array<{ runId: string; resumed: boolean }> } {
-    return this.recovery.resumeInterruptedRuns();
+  /** RIR (LOOP_RESUME_INTERRUPTED): re-queue this boot's interrupted runs with a fresh maker; see LoopRecoveryService. */
+  resumeInterruptedRuns(opts: { bootedAt?: string; mode?: ResumeInterruptedMode } = {}): ResumeInterruptedSummary {
+    return this.recovery.resumeInterruptedRuns((id) => this.retryLoopRun(id), opts);
   }
 
   /**
@@ -2480,7 +2471,7 @@ export class LoopService {
     const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
     if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste || extra.capabilities) {
       this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}), ...(extra.capabilities ? { capabilities: extra.capabilities } : {}) });
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}), ...(extra.capabilities ? { capabilities: extra.capabilities } : {}), ...(extra.capability_ids ? { capability_ids: extra.capability_ids } : {}) });
     }
     // multi-repo: an extra repo's maker is told that repo's check scripts (EXTRA_REPOS_ENABLED=on); djimitflo's text is unchanged
     const repo = extraRepoByPath(run.repository_path);

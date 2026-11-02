@@ -25,7 +25,9 @@ export interface AssignmentContext { examples: string[]; rules: Array<{ id: stri
   /** STE-001 (STE_001_MODE=on): arm 1 = the Simplified Technical English maker template */
   ste?: SteContext;
   /** Capability factory (CAPABILITY_FACTORY_MODE=on): up to 3 registered factory capabilities matching this goal */
-  capabilities?: string[] }
+  capabilities?: string[];
+  /** OMEGA slice 1: `<id>@<version>` of each capability line above, for attribution (event metadata only, never maker text) */
+  capability_ids?: string[] }
 
 /**
  * Memory holdout (prod: rules were read in 121 of 122 maker runs — no control group, Fisher p = 1.0). MEMORY_HOLDOUT_RATE
@@ -104,7 +106,7 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
       for (const r of out.rules) log.run(randomUUID(), r.id, agentId, new Date().toISOString());
     }
     const capabilities = factoryCapabilityLines(db, run.goal_id, env);
-    if (capabilities.length) out.capabilities = capabilities;
+    if (capabilities.length) { out.capabilities = capabilities.map((c) => c.line); out.capability_ids = capabilities.map((c) => `${c.id}@${c.version}`); }
   } catch { /* context is advisory: never block an assignment */ }
   return out;
 }
