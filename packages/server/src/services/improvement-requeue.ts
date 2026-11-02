@@ -40,11 +40,7 @@ export function requeueImprovement(db: Database, originalId: string, input: Requ
   const escalated = db.prepare(`SELECT 1 FROM loop_runs r JOIN goals g ON g.id = r.goal_id WHERE g.improvement_id = ? AND r.status = 'escalated' LIMIT 1`).get(originalId);
   if (escalated && !input.approveEscalation) throw new Error('REQUEUE_ESCALATED_NEEDS_APPROVAL');
   const refs = JSON.parse(String(original.evidence_refs_json || '[]')) as string[];
-  if (refs.some((r) => r.startsWith('test-gap:'))) {
-    const day = new Date(Date.now() - 86_400_000).toISOString();
-    const createdToday = (db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%test-gap:%' AND created_at >= ?").get(day) as { n: number }).n;
-    if (createdToday >= (Number(env.TEST_GAP_MAX_PER_DAY) || 2)) throw new Error('REQUEUE_BUDGET_EXHAUSTED');
-  }
+  if (!requeueBudgetAllows(db, refs, env)) throw new Error('REQUEUE_BUDGET_EXHAUSTED');
   const id = randomUUID(); const now = new Date().toISOString();
   const copy: Record<string, unknown> = {
     ...original, id, status: 'scheduled', approved_by: actor, fingerprint: null, created_at: now, updated_at: now,
@@ -64,6 +60,14 @@ export function requeueImprovement(db: Database, originalId: string, input: Requ
     void checkProposalDuplicate(db, { id, title: String(original.title ?? ''), description: String(original.description ?? '') }).catch(() => null);
   }
   return { id, created: true };
+}
+
+/** The lane budget a requeue counts against: a test-gap copy carries its `test-gap:` ref, so the lane's daily cap sees it. */
+export function requeueBudgetAllows(db: Database, refs: string[], env: NodeJS.ProcessEnv = process.env, now = Date.now()): boolean {
+  if (!refs.some((r) => r.startsWith('test-gap:'))) return true;
+  const day = new Date(now - 86_400_000).toISOString();
+  const createdToday = (db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%test-gap:%' AND created_at >= ?").get(day) as { n: number }).n;
+  return createdToday < (Number(env.TEST_GAP_MAX_PER_DAY) || 2);
 }
 
 /** True when the original has a completed, non-superseded maker lease and the latest one recorded no assertion-strength check. */

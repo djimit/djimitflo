@@ -36,20 +36,22 @@ export type GymSpecies = Species & { subscription?: true };
  * discards (prod 2026-09-29: task 9b2fa2bf crashed/timed out three times in a row on atomic@llama-router and, being
  * re-offered after each infra discard, tripped the breaker for the whole species).
  */
+/** PL-001 attempts (loop_name 'pl-001', gym.pl) are an experiment: they never mark a task tried or trip the species breaker. */
+const NOT_PL = "json_extract(metadata, '$.gym.pl') IS NULL";
 export function triedTasks(db: Database, speciesKey: string): Set<string | null> {
   return new Set((db.prepare(`SELECT c FROM (SELECT json_extract(metadata, '$.gym.commit') AS c,
       SUM(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') AS real,
       SUM(json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND json_extract(metadata, '$.gym_result.reason') NOT LIKE 'infra: subscription_%') AS infra
-    FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL GROUP BY c) WHERE real > 0 OR infra >= 2`).all(speciesKey) as Array<{ c: string | null }>).map((r) => r.c));
+    FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND ${NOT_PL} GROUP BY c) WHERE real > 0 OR infra >= 2`).all(speciesKey) as Array<{ c: string | null }>).map((r) => r.c));
 }
 
 export function infraFailing(db: Database, speciesKey: string, since: string): boolean {
   // a success proves the species works: only discards after its latest success count (prod 2026-09-27: atomic@llama-router
   // was benched by three discards from since-fixed bugs, two of them before and after two successes)
-  const lastSuccess = (db.prepare("SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.status') = 'success'")
+  const lastSuccess = (db.prepare(`SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND ${NOT_PL} AND json_extract(metadata, '$.gym_result.status') = 'success'`)
     .get(speciesKey) as { t: string | null }).t;
   const from = lastSuccess && lastSuccess > since ? lastSuccess : since;
-  const trips = db.prepare("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
+  const trips = db.prepare(`SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND ${NOT_PL} AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?`)
     .get(speciesKey, from) as { n: number; last: string | null };
   if (trips.n < (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3)) return false;
   // half-open: after a quiet cool-down one probe attempt is let through (prod 2026-09-27: a fixed worker stayed benched for

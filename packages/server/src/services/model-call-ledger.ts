@@ -23,20 +23,39 @@ export function experimentArms(db: Database, goalId: string | null, ace: { arm: 
   return arms.length ? arms.join(',') : null;
 }
 
-export function recordMakerCall(db: Database, c: {
-  runId: string; goalId: string | null; loopName: string; runtime: string; meta: { model?: unknown; runtime_usage?: Usage }; ace: { arm: string } | null;
-  ste: { arm: number } | null; durationMs: number; ok: boolean;
+/**
+ * O2a (re-20261029 §3e): reviewer leases (0/217) and remote gym attempts (0/362) had no ledger row. consumer 'checker' rows
+ * mirror their reviewer lease's runtime_usage exactly as 'maker' rows mirror the maker lease — readers that count lease
+ * tokens skip both (LEASE_MIRROR_CONSUMERS). A remote gym attempt has no lease: its 'gym' row is the only token record.
+ */
+export const LEASE_MIRROR_CONSUMERS = ['maker', 'checker'] as const;
+export const isLeaseMirror = (consumer: string | null | undefined): boolean => (LEASE_MIRROR_CONSUMERS as readonly string[]).includes(String(consumer));
+
+/** One ledger row for a worker run (maker / reviewer lease, gym attempt); unknown tokens stay NULL. */
+export function recordWorkerCall(db: Database, c: {
+  consumer: 'maker' | 'checker' | 'gym'; role?: string; runId: string; goalId: string | null; loopName: string; runtime: string; provider?: string;
+  meta: { model?: unknown; runtime_usage?: Usage }; ace?: { arm: string } | null; ste?: { arm: number } | null; durationMs: number; ok: boolean; status?: string;
 }): void {
   const usage = c.meta.runtime_usage ?? {};
   // a runtime that reported only a total keeps tokens_in = total, tokens_out = null (split unknown) — never 0
   const input = num(usage.input_tokens); const output = num(usage.output_tokens); const total = num(usage.total_tokens);
   const tokensIn = input !== null && (input > 0 || (output ?? 0) > 0) ? input : total;
   const tokensOut = input !== null && (input > 0 || (output ?? 0) > 0) ? output : null;
+  const maker = c.consumer === 'maker';
   recordModelCall(db, {
-    consumer: 'maker', model: typeof c.meta.model === 'string' ? c.meta.model : c.runtime, provider: c.runtime, ok: c.ok, latencyMs: c.durationMs, outChars: 0,
-    shadow: 0, agree: null, tokensIn, tokensOut, taskKind: c.loopName, runId: c.runId, purpose: `maker:${c.loopName}`,
-    experimentId: experimentArms(db, c.goalId, c.ace, c.ste), status: c.ok ? 'verified' : 'not_verified',
+    consumer: c.consumer, model: typeof c.meta.model === 'string' ? c.meta.model : c.runtime, provider: c.provider ?? c.runtime, ok: c.ok,
+    latencyMs: Math.max(0, c.durationMs || 0), outChars: 0, shadow: 0, agree: null, tokensIn, tokensOut, taskKind: c.loopName, runId: c.runId,
+    purpose: `${c.role ?? c.consumer}:${c.loopName}`, experimentId: experimentArms(db, c.goalId, c.ace ?? null, c.ste ?? null),
+    status: c.status ?? (maker ? (c.ok ? 'verified' : 'not_verified') : c.ok ? 'ok' : 'failed'),
   });
+}
+
+/** B29: the maker's call (once per run, with its experiment arms). */
+export function recordMakerCall(db: Database, c: {
+  runId: string; goalId: string | null; loopName: string; runtime: string; meta: { model?: unknown; runtime_usage?: Usage }; ace: { arm: string } | null;
+  ste: { arm: number } | null; durationMs: number; ok: boolean;
+}): void {
+  recordWorkerCall(db, { ...c, consumer: 'maker' });
 }
 
 /** Totals per purpose and per experiment arm over a window (calls, tokens with unknowns counted apart, costs). */

@@ -1,0 +1,37 @@
+# Backlog: small packages, prioritised
+
+**House rules.**
+- Each package is one PR. Behaviour sits behind a flag, default `off`, then `shadow`.
+- Each package needs a test that fails on main, and a rollback that unsets the flag or reverts the commit (AGENTS.md "Definition of done").
+- Paths are under `packages/server/src/`.
+- **Op** = needs an operator decision or action.
+- `remote-gym-service.ts`, `scripts/gym-worker.mjs` and `execution/runtime-admission.ts` are **protected paths**, so any change there needs the operator's OK.
+
+## In flight (finish first, in this order)
+
+| # | Package | Problem / evidence | Extension point | Tests | Rollback | Measurable value | Op |
+|---|---|---|---|---|---|---|---|
+| B1 | **Economy metric truth** (`fix/economy-metric-truth`, builder running) | Completed leases count as verified, and missing usage becomes $0 (REVALIDATION #2) | `services/loop-budget-service.ts:127-148`, read by `routes/swarms.ts:406` | a completed but unverified maker is not counted; no usage → `dollars: null` with coverage; g13/g18 updated | revert | `/swarms/economy` `verified_artifacts` equals the count from the verification source; 0 runs with a false $0 | — |
+| B2 | **Gym outcome truth + orphan sweep** (`fix/gym-outcome-truth`, gap matrix PR1+PR2) | Tokens 0 instead of null (`scripts/gym-worker.mjs:545`, `services/remote-gym-service.ts:289`); outcome and settle not atomic (`:288/:310`); no time-based sweep | `RemoteGymService.record` / `claim`; GYM_OUTCOME_TRUTH, GYM_STALE_SWEEP | kill between insert and settle → exactly one outcome; stale run → discarded, `maker_ran:'unknown'`, no outcome | flags off | 0 double-counted gym outcomes; gym token coverage reported instead of 0 | **yes**: protected path; the worker half changes the TG surface (gap matrix §5) |
+| B3 | **#1015 engine skill-outcome semantics**: merged at `a4a083ac`, deploy state UNKNOWN | Success was process exit; model was the executor; tokens `\|\| 0` | `recordSkillOutcome` (`execution/execution-engine.ts:1421`); `skill_outcomes.tokens_used` becomes nullable at boot (`relaxTokensNotNull`, `services/skill-evolution-engine.ts`) | in the PR | revert; restore from the pre-rebuild backup | engine outcomes count only verified results. **Remaining:** check the row count after the first boot; `metaOrchestration.recordOutcome` still sends the runtime as the model (plan 25-10). | **yes**: watch the first deploy (table rebuild on 1 484 rows) |
+| B4 | **Scheduler load-scope fix before any enforce** | cgroup `cpus` minus host `load1` (`services/resource-scheduler.ts:78,96`; Orca delta (a)) | `observeCapacity`: use cgroup `cpu.stat` usage deltas or PSI `cpu.pressure`, else `cpu_available: null` | under a cgroup limit with high host load → no defer from host load; on a host without a limit → unchanged | revert (shadow only) | `scheduler_capacity` would_defer rows explained by the container's own load. **Precondition:** read the current shadow rows. | **yes**: the shadow-row read (prod read) and any future enforce mode |
+| B5 | **PR3 procedure selector** (PROCEDURE_LOOP_MODE) | A validated procedure never reaches a fitting task (gap matrix, "Reuse" / "Rejection") | `services/genome-registry.ts`; the claim branch in `services/remote-gym-service.ts` (non-trial, non-TG, non-holdout only) | fitting → served; unfit (JS, wrong tier, TG/holdout key) → `unfit:<rule>`; a fire check is required | flag off; off = claims byte-identical | `procedure_decision` on 100 % of eligible claims; 100 % rejection on the seeded unfit set | **yes**: protected path |
+| B6 | **PR4 GymRunPanel** | Gym runs have no leases, so the run view says "No worker leases" | `GoalsLoopsPage.tsx`, beside `AsgPanel` | one fixture per stop class, including legacy rows and a missing `gym_result` | revert (read-only) | the operator answers "why stopped / what is proven / next" from one panel | — |
+| B7 | **PR5 cancel channel** (GYM_CANCEL_POLL) | A server cancel never reaches a running worker (`services/remote-maker-queue.ts:80`) | `scripts/gym-worker.mjs`: poll every 60 s, then graceful stop, then `docker rm -f` | container gone ≤ 70 s; no outcome; late result rejected | flag off; worker backup | cancelled jobs with a confirmed stop: 0 → 100 % | **yes**: TG surface, a new worker version, an operator install |
+| B8 | **PL-001** pre-registered procedure comparison | Evolutionary milestone ([MILESTONE](MILESTONE.md)) | own loop name, own frozen set | prereg + off = byte-identical | flag off | McNemar verdict at n = 60 pairs | **yes**: manifest freeze, cap share, start |
+
+## Next (not started)
+
+| # | Package | Problem / evidence | Extension point | Tests | Rollback | Measurable value | Op |
+|---|---|---|---|---|---|---|---|
+| B9 | Decide what to do with `resumeInterruptedRuns` | No caller; a stale comment at `services/loop-daemon.ts:124` (REVALIDATION #6) | delete it, or wire it behind a flag at `index.ts:109` | if wired: an interrupted run with a completed lease is not re-run | revert | no dead recovery path claimed in docs | **yes**: delete vs wire |
+| B10 | Memory fan-out receipts | No receipt or retry per leg (REVALIDATION #7) | `services/memory-sync-service.ts:69-85`; an additive `memory_deliveries` row per leg; replay ≤ N/run; MEMORY_DELIVERY_LEDGER | Qdrant 500 → `pending`, replayed once, idempotent id | flag off | delivery rate per leg becomes measurable (today UNKNOWN) | — |
+| B11 | Single-controller guard | No instance lock (REVALIDATION #5) | a boot row (`controller_lease`: boot id, host, heartbeat); a second boot logs and alarms in shadow | two engines on one DB → the second is flagged | flag off | double-controller detection: 0 → 1 alarm path | — |
+| B12 | Keep remote results after a restart | A post-restart patch is dropped as `late_result` (CONFORMANCE) | `services/remote-maker-queue.ts:49-57`: store the patch sha and size as evidence, never apply | restart mid-job → result kept as evidence, lease stays settled | revert | lost remote patches counted (today invisible) | — |
+| B13 | Runtime admission migration before 2026-12-31 | Every record is LEGACY (`runtime-admission.ts:122`) | per-runtime evidence; the remote host reports its atomic version | admission tests | keep LEGACY until expiry | 0 runtimes expire unplanned | **yes**: protected path; retire hermes/gemini/editor/pi |
+| B14 | S0 maker isolation (sandbox-runner #950) | Maker uid owns the DB (#948) | design #950 (gVisor/runc, U0–U5) | per #950 | per #950 | unblocks the external pilot (G4.3), the falsifier allowlist and codex; the maker can no longer write the DB | **yes**: root steps, review |
+| B15 | Authority decisions | Machine approvals count as human, no policy versions, separation of duties ([AUTHORITY_GRAPH](../../research/authority/AUTHORITY_GRAPH.md) §"Operator decisions") | as listed there | failing-first tests per decision | flag | — | **yes**: 7 decisions |
+| B16 | Served model and worker version per gym attempt | Missing (EPOCH1 prereg, "Known threats") | worker report + `gym_result` | the field exists, unknown is null | flag off | attempts attributable to model and version | **yes**: protected path, worker install |
+| B17 | Docs correction | `docs/research/orca/IMPLEMENTATION-PLAN.md:69` says Orca also misses `setsid` escapes. Its sweep catches them (Orca delta (c′)). | docs | — | revert | — | — |
+
+Deferred, waiting on evidence: a `setsid` descendant sweep (prod shows 0 orphans) and Codex app-server per-tool approvals (no incident; Orca delta (b)).

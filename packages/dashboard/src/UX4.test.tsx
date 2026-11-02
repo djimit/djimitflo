@@ -86,6 +86,13 @@ it('UX-4: the permission map mirrors the server routes (hand list from packages/
     mcpRefreshServers: 'manage:config', // mcp.ts POST /servers/refresh
     policyUpdate: 'manage:config', // policies.ts PATCH /:id
     runtimeConfig: 'manage:config', // health.ts GET /config
+    usageSnapshot: 'manage:config', // usage.ts POST /accounts/:account/snapshot
   });
-  expect(NAV_PERMISSIONS).toEqual({ '/configuration': 'manage:config', '/audit': 'read:audit' }); // audit.ts GET / read:audit
+  expect(NAV_PERMISSIONS).toEqual({
+    '/configuration': 'manage:config', // health.ts GET /config
+    '/audit': 'read:audit', // audit.ts GET /
+    '/evolution': 'manage:config', // health.ts GET /evolution-evidence (UXE-03)
+    '/observability': 'manage:config', // observability.ts GET /metrics (UXE-03)
+    '/usage': 'manage:config', // usage.ts GET /accounts (UXE-03)
+  });
 });

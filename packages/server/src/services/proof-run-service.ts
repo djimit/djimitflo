@@ -269,6 +269,51 @@ export class ProofRunService {
     return summary;
   }
 
+  /**
+   * Knowledge/memory injection: retrieve swarm memory + OKF knowledge relevant to the maker's
+   * task and append it to the work assignment, so specialists operate WITH retrieved memory +
+   * skills instead of blind. Best-effort and non-fatal. Sources that were skipped (e.g. a swarm
+   * collection at another embedding dimension, CODE-002) are persisted on the maker lease as
+   * `context_retrieval.unavailable`, so a failed source is distinguishable from "no matching
+   * memory" even when another source did supply context.
+   */
+  async injectMakerContext(makerLease: { id: string; metadata: Record<string, unknown> }): Promise<void> {
+    const record = (patch: Record<string, unknown>) => {
+      const row = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLease.id) as { metadata?: string } | undefined;
+      const existing = row ? this.parseJson(row.metadata || '{}') : {};
+      this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?').run(JSON.stringify({ ...existing, ...patch }), new Date().toISOString(), makerLease.id);
+    };
+    try {
+      const assignmentFile = typeof makerLease.metadata.assignment_file === 'string' ? makerLease.metadata.assignment_file : '';
+      if (!assignmentFile || !fs.existsSync(assignmentFile)) return;
+      const assignmentText = fs.readFileSync(assignmentFile, 'utf8');
+      const finding = (assignmentText.match(/## Finding[\s\S]*?$/) || [assignmentText])[0].slice(0, 500);
+      const contextInjector = new ContextInjectionService(this.db);
+      // G8+G12: retrieve procedural rules (distilled from prior runs) + general context.
+      // This closes the self-improvement loop: distilled rules from run N are
+      // injected into run N+1's maker assignment.
+      const snapshot = await contextInjector.injectContextSnapshot(`DjimFlo control-plane loop: ${finding}`, true);
+      const unavailable = snapshot.unavailable ?? [];
+      const patch: Record<string, unknown> = {
+        context_retrieval: { sha256: snapshot.sha256, sources: snapshot.sources, degraded: unavailable.length > 0, unavailable },
+      };
+      const swarmContext = snapshot.text;
+      if (swarmContext) {
+        fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
+        // G5: record the injected memory trust_scores on the maker lease so the
+        // production certificate can gate on low-trust memory (injected_memory_trust).
+        const trustMatches = [...swarmContext.matchAll(/\[trust:(\d+\.\d+)\]/g)];
+        if (trustMatches.length > 0) patch.injected_memory_trust_scores = trustMatches.map((m) => parseFloat(m[1]));
+      }
+      record(patch);
+    } catch (error) {
+      // Context retrieval is best-effort; never fail the proof on the knowledge layer.
+      try {
+        record({ context_retrieval: { degraded: true, unavailable: [], error: error instanceof Error ? error.message : String(error) } });
+      } catch { /* best-effort */ }
+    }
+  }
+
   private findLeaseByRole(
     loopRunId: string,
     role: 'maker' | 'checker',
@@ -640,38 +685,7 @@ export class ProofRunService {
 
       this.ensureProofRunMetadata(loopRunId, proofRunId, { runtime });
 
-      // Knowledge/memory injection: retrieve swarm memory + OKF knowledge relevant to the
-      // maker's task and append it to the work assignment, so specialists operate WITH
-      // retrieved memory + skills instead of blind. Best-effort and non-fatal: empty/failed
-      // retrieval (no key, empty store, ollama/qdrant down) just yields no context.
-      try {
-        const assignmentFile = typeof makerPrepared.metadata.assignment_file === 'string'
-          ? makerPrepared.metadata.assignment_file
-          : '';
-        if (assignmentFile && fs.existsSync(assignmentFile)) {
-          const assignmentText = fs.readFileSync(assignmentFile, 'utf8');
-          const finding = (assignmentText.match(/## Finding[\s\S]*?$/) || [assignmentText])[0].slice(0, 500);
-          const contextInjector = new ContextInjectionService(this.db);
-          // G8+G12: retrieve procedural rules (distilled from prior runs) + general context.
-          // This closes the self-improvement loop: distilled rules from run N are
-          // injected into run N+1's maker assignment.
-          const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true);
-          if (swarmContext) {
-            fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
-            // G5: record the injected memory trust_scores on the maker lease so the
-            // production certificate can gate on low-trust memory (injected_memory_trust).
-            const trustMatches = [...swarmContext.matchAll(/\[trust:(\d+\.\d+)\]/g)];
-            if (trustMatches.length > 0) {
-              const scores = trustMatches.map((m) => parseFloat(m[1]));
-              const existingRow = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerPrepared.id) as { metadata?: string } | undefined;
-            const existingMeta = existingRow ? JSON.parse(existingRow.metadata || '{}') as Record<string, unknown> : {};
-            this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?').run(JSON.stringify({ ...existingMeta, injected_memory_trust_scores: scores }), new Date().toISOString(), makerPrepared.id);
-            }
-          }
-        }
-      } catch {
-        // Context retrieval is best-effort; never fail the proof on the knowledge layer.
-      }
+      await this.injectMakerContext(makerPrepared);
 
       await this.loops.executeWorker(loopRunId, {
         lease_id: makerPrepared.id,

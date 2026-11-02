@@ -10,7 +10,9 @@ import { PageHeader, primaryButton, panel } from '../components/PageHeader';
 interface Prediction {
   successProbability: number;
   expectedDurationMs: number;
-  expectedCostDollars: number;
+  /** null = unknown (no matching run with a dated model price), never $0 */
+  expectedCostDollars: number | null;
+  expectedCostReason?: string | null;
   riskFactors: string[];
   recommendations: string[];
 }
@@ -59,7 +61,7 @@ export function PredictiveAnalyticsPage() {
             tone={likely ? 'bg-status-completed/10' : 'bg-status-paused/10'} />
           <MetricCard title="Expected Duration" value={`${Math.round(prediction.expectedDurationMs / 60000)}min`}
             icon={<Activity className="h-5 w-5 text-accent" />} tone="bg-accent/10" />
-          <MetricCard title="Expected Cost" value={`$${prediction.expectedCostDollars.toFixed(3)}`}
+          <MetricCard title="Expected Cost" value={prediction.expectedCostDollars === null ? `unknown${prediction.expectedCostReason ? ` (${prediction.expectedCostReason.replace(/_/g, ' ')})` : ''}` : `$${prediction.expectedCostDollars.toFixed(3)}`}
             icon={<TrendingUp className="h-5 w-5 text-accent-secondary" />} tone="bg-accent-secondary/10" />
         </div>
       )}
