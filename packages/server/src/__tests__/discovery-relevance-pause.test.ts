@@ -337,3 +337,20 @@ it('N4 trial clock: a pause never runs an unmeasured trial out of time (missing,
   publishInterestProfile(db as never, NOW + 30 * DAY, {});
   expect(published(NOW + 30 * DAY).cooldown.map((c) => c.term)).toContain('lattice'); // unpaused: the 14-day rule applies again
 });
+
+it('AUTHZ-F2: the backlog re-judge creates a unit only on a verdict with recorded provenance, like the live path (DI-001 B, fail-closed)', async () => {
+  vi.stubEnv('DISCOVERY_RELEVANCE_PAUSED', 'true');
+  const svc = new ExpertSourceUnitsService(db);
+  parkN(svc, 900, 1);
+  vi.stubEnv('DISCOVERY_RELEVANCE_PAUSED', 'false');
+  vi.stubGlobal('fetch', jev());
+  const { discoveryRelevance } = await import('../services/judgments/discovery-relevance');
+  const version = discoveryRelevance.policyVersion;
+  discoveryRelevance.policyVersion = undefined; // provenance becomes 'partial'
+  try {
+    expect(svc.rejudgePaused()).toEqual({ claimed: 1 });
+    await vi.waitFor(() => expect(backlog()).toMatchObject([{ state: 'judged', decision: 'yes' }]));
+    await settle();
+    expect(units()).toBe(0);
+  } finally { discoveryRelevance.policyVersion = version; }
+});

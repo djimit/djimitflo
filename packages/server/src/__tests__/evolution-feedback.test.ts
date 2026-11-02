@@ -61,7 +61,7 @@ describe('K5 evolution digest', () => {
     card.run('r2', 'skill', 'test-gap', 'survived', JSON.stringify({ target_pattern: ['packages/server/src/__tests__/*.test.ts'] }), 'h', at, at);
     card.run('r3', 'anti_pattern', 'exports', 'candidate', JSON.stringify({ target_pattern: null }), 'h', at, at);
     const neRegistry = [
-      { id: 'NE-009', verdict: 'REJECT', reopen_condition: 'x', title: 'Cascade router <script>alert(1)</script>', decided_on: '2026-10-15' },
+      { id: 'NE-999', verdict: 'REJECT', reopen_condition: 'x', title: 'Cascade router <script>alert(1)</script>', decided_on: '2026-10-15' },
       { id: 'NE-001', verdict: 'REJECT', reopen_condition: 'x', title: 'old', decided_on: '2026-10-01' },
     ];
     const j = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
@@ -76,7 +76,7 @@ describe('K5 evolution digest', () => {
     const d = buildEvolutionDigest(db, NOW, env('shadow', { NE_GENERATOR_CHECK_MODE: 'shadow' }), { neRegistry });
     expect(d.skill_cards).toEqual({ by_status: [{ kind: 'anti_pattern', status: 'candidate', cards: 1 }, { kind: 'skill', status: 'survived', cards: 2 }],
       top_survived: [{ lane: 'test-gap', pattern: 'packages/server/src/__tests__/*.test.ts', cards: 2 }] });
-    expect(d.negative_evidence).toEqual({ registry_entries: 2, new_entries: [{ id: 'NE-009', verdict: 'REJECT', title: 'Cascade router script alert(1) /script' }], matches: [{ id: 'NE-001', matches: 2 }] });
+    expect(d.negative_evidence).toEqual({ registry_entries: 2, new_entries: [{ id: 'NE-999', verdict: 'REJECT', title: 'Cascade router script alert(1) /script' }], matches: [{ id: 'NE-001', matches: 2 }] });
     expect(d.open_gaps).toEqual({ total: 1, top: [{ gap: 'a1b2c3d4e5f60718', source: 'expert_abstention', lane: null, gate: null, since: new Date(NOW - 2 * DAY).toISOString() }] });
     expect(JSON.stringify(d)).not.toMatch(/ignore previous|<script/i);
   });
