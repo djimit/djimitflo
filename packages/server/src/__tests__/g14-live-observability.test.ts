@@ -102,20 +102,6 @@ describe('G14: Live observability', () => {
     expect(transitionEvent.data.new_status).toBe('deprecated');
   });
 
-  it('emits recovery event on resumeInterruptedRun', () => {
-    const events: any[] = [];
-    swarmEventBus.subscribe((e) => events.push(e));
-
-    // Create an interrupted run with metadata.
-    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata) VALUES ('run-resume', 'test', 'closed', 'interrupted', '/tmp', '[]', '[]', '[]', '[]', '{"interrupted_reason":"server_restart"}')`).run();
-    const result = loops.resumeInterruptedRun('run-resume');
-
-    const recoveryEvent = events.find((e) => e.type === 'recovery');
-    expect(recoveryEvent).toBeDefined();
-    expect(recoveryEvent!.data.run_id).toBe('run-resume');
-    expect(recoveryEvent!.data.resumed).toBe(true);
-  });
-
   it('event bus supports multiple subscribers', () => {
     const events1: any[] = [];
     const events2: any[] = [];

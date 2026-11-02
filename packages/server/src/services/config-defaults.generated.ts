@@ -93,6 +93,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   LOOP_MEMORY_RULES_ENABLED: 'off',
   LOOP_PR_CI_WATCH: 'off (`shadow`)',
   LOOP_PR_CI_WATCH_MINUTES: '15 (> 0, else 15)',
+  LOOP_RESUME_INTERRUPTED: 'off (`shadow`, `on`)',
   MAKER_DIFF_CAPTURE: 'off (`on`: when a maker lease completes, the working-tree diff that `diff_lines` is counted from — tracked changes plus…',
   MAKER_WARM_DEPS: 'off (`on`: before a local opencode maker of a goal run starts (MAKER-DEPS-001\'s eligible population: never TG-001, the …',
   MEMORY_DELIVERY_RECEIPTS: 'off (`shadow`, `on`)',
