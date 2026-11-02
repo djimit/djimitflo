@@ -2,6 +2,7 @@
  * Execution engine - orchestrates task execution, event persistence, and WebSocket broadcasting
  */
 
+import { assertSkillAssignmentCurrent, ExecutableSkills, skillFirstMode } from '../services/executable-skills';
 import type { Database } from 'better-sqlite3';
 import {
   ApprovalRequestType,
@@ -53,7 +54,7 @@ import { RuntimeLeaseRegistry } from '../services/loop-recovery-service';
 import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { SkillEvolutionEngine, COMPLETED_UNVERIFIED_REF } from '../services/skill-evolution-engine';
-import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
+import { SkillLoaderService, configuredSkillsDir, type SkillDefinition } from '../services/skill-loader-service';
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { canonicalJson, DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
@@ -111,6 +112,7 @@ export class ExecutionEngine {
   private executionModePolicy: ExecutionModePolicyService;
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
+  private readonly skillsDirectory: string | null;
   private toolBroker: ToolBroker;
   private runtimeGovernance: RuntimeGovernanceService;
   private deepAgentIssuer?: DeepAgentContractIssuer;
@@ -151,7 +153,8 @@ export class ExecutionEngine {
     this.fallbackChain = new FallbackChainService();
     this.executionModePolicy = new ExecutionModePolicyService();
     this.skillEvolution = new SkillEvolutionEngine(db);
-    this.skillLoader = new SkillLoaderService(db, skillsDir);
+    this.skillsDirectory = skillsDir ?? configuredSkillsDir();
+    this.skillLoader = new SkillLoaderService(db, this.skillsDirectory);
     this.activeSessions = new Map();
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
@@ -677,6 +680,7 @@ export class ExecutionEngine {
           '$.execution_recovery_attempt', json(?)), updated_at = ? WHERE id = ?`)
           .run(JSON.stringify({ ...admission, event_id: eventId }), new Date().toISOString(), task.id);
       })();
+      assertSkillAssignmentCurrent(this.db, task);
       this.recordSkillDeliveryReceipt(task, activeExecutor.kind);
       const session = await activeExecutor.start(task, {
         ...(executionMetadata.model ? { model: String(executionMetadata.model) } : {}),
@@ -1434,6 +1438,11 @@ export class ExecutionEngine {
     return typeof model === 'string' && model.trim() ? model.trim() : null;
   }
 
+  private skillLoaderForTask(task: Task): SkillLoaderService {
+    return (task.metadata?.skill_execution || task.metadata?.skill_evaluation_package_hash) && typeof task.metadata.skillId === 'string'
+      ? new SkillLoaderService(this.db, this.skillsDirectory, undefined, task.metadata.skillId) : this.skillLoader;
+  }
+
   /**
    * A skill outcome is a verification verdict, not a process exit. A completed process counts as success only with a
    * passed independent verification (taskVerification); without one it is `outcome_class:completed_unverified`, which
@@ -1448,15 +1457,18 @@ export class ExecutionEngine {
     tokensUsed: number | null,
   ): void {
     const task = this.getTask(taskId);
+    // Workflow success is not independent evidence that each component improved the result.
+    if (task.metadata?.skill_execution && !task.metadata.skillId) return;
+    const loader = this.skillLoaderForTask(task);
     const explicitSkillId = typeof task.metadata?.skillId === 'string'
       ? task.metadata.skillId.trim()
       : '';
     let skill: SkillDefinition | null = explicitSkillId
-      ? this.skillLoader.getSkill(explicitSkillId)
+      ? loader.getSkill(explicitSkillId)
       : null;
 
     if (!explicitSkillId && task.agent_id) {
-      const assigned = this.skillLoader.getAgentSkills(task.agent_id);
+      const assigned = loader.getAgentSkills(task.agent_id);
       if (assigned.length === 1) skill = assigned[0];
       if (assigned.length > 1) {
         this.evidenceService.captureEvidence({
@@ -1482,7 +1494,8 @@ export class ExecutionEngine {
       'SELECT id FROM execution_evidence WHERE task_id = ? ORDER BY captured_at ASC',
     ).all(taskId) as Array<{ id: string }>).map((row) => row.id);
 
-    const verification = processCompleted ? this.taskVerification(taskId) : null;
+    const executablePackage = Boolean(task.metadata?.skill_execution || task.metadata?.skill_evaluation_package_hash);
+    const verification = processCompleted && !executablePackage ? this.taskVerification(taskId) : null;
     const outcomeClass = !processCompleted ? null
       : verification === 'passed' ? null
         : verification === 'failed' ? 'outcome_class:regressed' : COMPLETED_UNVERIFIED_REF;
@@ -1506,23 +1519,36 @@ export class ExecutionEngine {
         ...delivery,
       ],
     });
+    const packageRef = delivery.find((ref) => ref.startsWith('skill_package_sha256:'));
+    if (processCompleted && executablePackage && packageRef) {
+      this.skillEvolution.settleTaskVerification(taskId, skill.id, skill.contentHash, packageRef.slice('skill_package_sha256:'.length));
+    }
   }
 
   /**
    * INT-004: an assigned skill is not a delivered one. Just before the runtime starts, record what the engine can prove it
    * handed over: 'delivered' only when the admitted skill's instructions appear verbatim in the assignment text passed to
    * executor.start (path + sha256 of that text), else 'assigned'. Receipt only — the task the runtime receives is not
-   * touched (running experiments depend on identical prompts). No executor injects skill text today and prod skill
-   * loading is DISABLED_BY_POLICY, so prod receipts read 'assigned'; native runtime skill autodiscovery is not observed.
+   * touched here (running experiments depend on identical prompts). Explicit skill-first tasks were rendered before
+   * persistence; legacy assigned skills still require observed instruction delivery rather than registry presence.
    */
   private recordSkillDeliveryReceipt(task: Task, executorKind: string): void {
+    if (task.metadata?.skill_execution && !task.metadata.skillId) return;
+    const loader = this.skillLoaderForTask(task);
     const skillId = typeof task.metadata?.skillId === 'string' ? task.metadata.skillId.trim() : '';
-    const assigned = !skillId && task.agent_id ? this.skillLoader.getAgentSkills(task.agent_id) : [];
-    const skill = skillId ? this.skillLoader.getSkill(skillId) : assigned.length === 1 ? assigned[0] : null;
+    const assigned = !skillId && task.agent_id ? loader.getAgentSkills(task.agent_id) : [];
+    const skill = skillId ? loader.getSkill(skillId) : assigned.length === 1 ? assigned[0] : null;
     if (!skill) return;
     const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
     const assignment = task.description ?? '';
     const delivered = skill.instructions.length > 0 && assignment.includes(skill.instructions);
+    const pkg = task.metadata?.skill_execution || task.metadata?.skill_evaluation_package_hash
+      ? new ExecutableSkills(this.db, this.skillsDirectory).load(skill.id) : null;
+    if (pkg && (!assignment.includes(JSON.stringify(pkg.payload))
+      || (task.metadata.skill_evaluation_package_hash && task.metadata.skill_evaluation_package_hash !== pkg.contentHash))) {
+      throw new Error('SKILL_EVALUATION_PACKAGE_MISMATCH');
+    }
+    const packageHash = pkg?.contentHash ?? null;
     this.evidenceService.captureEvidence({
       task_id: task.id,
       evidence_type: EvidenceType.EXECUTION_SUMMARY,
@@ -1535,6 +1561,7 @@ export class ExecutionEngine {
         skill_id: skill.id,
         skill_version: skill.version,
         skill_content_hash: skill.contentHash,
+        skill_package_hash: packageHash,
         executor_kind: executorKind,
         delivery_state: delivered ? 'delivered' : 'assigned',
         delivery_path: delivered ? 'task.description' : null,
@@ -1557,23 +1584,41 @@ export class ExecutionEngine {
       return ['skill_delivery:unknown', 'skill_attribution:unverified'];
     }
     if (receipt.delivery_state === 'delivered' && typeof receipt.delivered_sha256 === 'string') {
-      return ['skill_delivery:delivered', `skill_delivery_path:${String(receipt.delivery_path)}`, `skill_delivery_sha256:${receipt.delivered_sha256}`];
+      return ['skill_delivery:delivered', `skill_delivery_path:${String(receipt.delivery_path)}`, `skill_delivery_sha256:${receipt.delivered_sha256}`,
+        ...(typeof receipt.skill_package_hash === 'string' ? [`skill_package_sha256:${receipt.skill_package_hash}`] : [])];
     }
     return ['skill_delivery:assigned', 'skill_attribution:unverified'];
   }
 
   private blockInvalidSkillAttribution(task: Task): string | null {
+    if (task.metadata?.skill_evaluation_package_hash) {
+      if (skillFirstMode() !== 'on' || typeof task.metadata.skillId !== 'string') throw new Error('SKILL_EVALUATION_DISABLED');
+      const pkg = new ExecutableSkills(this.db, this.skillsDirectory).load(task.metadata.skillId);
+      if (pkg.contentHash !== task.metadata.skill_evaluation_package_hash || !task.description.includes(JSON.stringify(pkg.payload))
+        || !task.description.includes(pkg.skill.instructions)) throw new Error('SKILL_EVALUATION_PACKAGE_MISMATCH');
+    }
+    if (task.metadata?.skill_execution) {
+      const ids = assertSkillAssignmentCurrent(this.db, task);
+      if (task.agent_id) for (const id of ids) {
+        const selected = new SkillLoaderService(this.db, this.skillsDirectory, undefined, id);
+        if (!selected.getAgentSkills(task.agent_id).some((skill) => skill.id === id)) {
+          return this.blockSkillAttribution(task, `Selected skill is not assigned to agent ${task.agent_id}: ${id}.`, ids, 'unassigned_skill_attribution');
+        }
+      }
+      if (!task.metadata.skillId) return null;
+    }
+    const loader = this.skillLoaderForTask(task);
     const explicitSkillId = typeof task.metadata?.skillId === 'string'
       ? task.metadata.skillId.trim()
       : '';
 
     if (explicitSkillId) {
-      const skill = this.skillLoader.getSkill(explicitSkillId);
+      const skill = loader.getSkill(explicitSkillId);
       if (!skill) {
         return this.blockSkillAttribution(task, `Task metadata.skillId is not an admitted skill: ${explicitSkillId}.`, [], 'invalid_skill_attribution');
       }
       if (task.agent_id) {
-        const assigned = this.skillLoader.getAgentSkills(task.agent_id);
+        const assigned = loader.getAgentSkills(task.agent_id);
         if (!assigned.some((candidate) => candidate.id === explicitSkillId)) {
           return this.blockSkillAttribution(
             task,
@@ -1588,7 +1633,7 @@ export class ExecutionEngine {
 
     if (!task.agent_id) return null;
 
-    const assigned = this.skillLoader.getAgentSkills(task.agent_id);
+    const assigned = loader.getAgentSkills(task.agent_id);
     if (assigned.length <= 1) return null;
 
     const reason = 'Multiple skills are assigned to the agent; set task metadata.skillId before execution.';

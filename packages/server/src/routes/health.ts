@@ -45,6 +45,9 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   router.get('/', (_req, res) => {
     res.json({
       status: 'healthy',
+      // Public, non-secret UI rollout only; never expose raw environment values.
+      ui: { navigation_discovery_mode: ['shadow', 'on'].includes(process.env.UX_NAVIGATION_DISCOVERY_MODE ?? '')
+        ? process.env.UX_NAVIGATION_DISCOVERY_MODE : 'off' },
       name: 'djimitflo',
       version: getAppVersion(),
       // Non-secret build identity makes public liveness checks attributable.

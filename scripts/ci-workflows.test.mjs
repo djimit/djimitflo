@@ -126,4 +126,10 @@ test('Dependabot auto-merge goes through the corrected gate, never GitHub-native
   assert.ok(dep, 'dependabot-auto-merge.yml is kept (operator decision)');
   assert.match(dep.text, /bash scripts\/dependabot-merge\.sh /);
   assert.match(dep.text, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/, 'the gate runs from main, never from the PR');
+  // a GITHUB_TOKEN merge starts no push workflows: every workflow with a required check must be dispatched on main after it
+  const required = loadWorkflows().filter((w) => /^ {2}(build-and-test|security-scan|sbom|gitleaks|fleet-auth-infra|mutation-test):/m.test(w.text));
+  for (const w of required) {
+    assert.match(w.text, /^ {2}workflow_dispatch:/m, `${w.file} cannot be dispatched`);
+    assert.ok(dep.text.includes(w.file), `${w.file} is not dispatched after a Dependabot merge`);
+  }
 });
