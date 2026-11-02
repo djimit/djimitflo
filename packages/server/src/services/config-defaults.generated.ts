@@ -146,6 +146,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   TRAINING_DATASET_EXPORT: 'off (`shadow`)',
   TRIAL_DIAGNOSTICS_ENABLED: 'off',
   TRIAL_HEADROOM_PRECHECK: 'off',
+  UX_NAVIGATION_DISCOVERY_MODE: 'off (`shadow`, `on`)',
   VALUE_ALLOCATOR_MODE: 'off (`shadow`)',
   VALUE_ANOMALY_ALARM: 'off (`shadow`, `on`)',
   VECTOR_STRICT_DIM: 'off',
