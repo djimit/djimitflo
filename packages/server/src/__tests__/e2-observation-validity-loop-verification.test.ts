@@ -35,7 +35,7 @@ function governedRun(id = 'run') {
   loops.updateWorkerLeaseStatus(`${id}-maker`, 'completed', {});
   loops.insertWorkerLease({ id: `${id}-checker`, loopRunId: id, role: 'checker', runtime: 'manual', findingId: 'finding', worktreePath: null, branchName: null,
     now: new Date().toISOString(), metadata: { maker_lease_id: `${id}-maker` } });
-  loops.updateWorkerLeaseStatus(`${id}-checker`, 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'op', reason: 'fixture' } });
+  loops.updateWorkerLeaseStatus(`${id}-checker`, 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'op', reviewer_type: 'human', reviewer_user_id: 'user-op', reason: 'fixture' } });
 }
 
 beforeEach(() => {
@@ -45,7 +45,7 @@ beforeEach(() => {
   db = new Database(':memory:'); db.exec(schema); runMigrations(db);
   loops = new LoopService(db, path.join(root, 'evidence'));
 });
-afterEach(() => { vi.restoreAllMocks(); db.close(); fs.rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); db.close(); fs.rmSync(root, { recursive: true, force: true }); });
 
 it('durable pass → pass: a fully evidenced governed run is ready for human merge', () => {
   governedRun();
@@ -135,13 +135,14 @@ it('non-applicable → skipped: a remote evolution-gym run is not judged by chan
 });
 
 it('non-applicable → skipped: a PR review (synthetic maker, no worktree) does not fail on inapplicable artifacts and is left for its owner to settle', () => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-01T12:00:00Z') }); // after MANUAL_ATTESTATION_IDENTITY_SINCE
   insertRun('pr', 'repo-maintenance-loop', { risk_class: 'high' });
   loops.insertWorkerLease({ id: 'pr-maker', loopRunId: 'pr', role: 'maker', runtime: 'manual', findingId: 'finding', worktreePath: null, branchName: 'feature',
     now: new Date().toISOString(), metadata: { github_pr: { owner: 'o', repo: 'r', number: 1, head_sha: 'abc' }, synthetic: true } });
   loops.updateWorkerLeaseStatus('pr-maker', 'completed', {});
   loops.insertWorkerLease({ id: 'pr-checker', loopRunId: 'pr', role: 'checker', runtime: 'manual', findingId: 'finding', worktreePath: null, branchName: null,
     now: new Date().toISOString(), metadata: { maker_lease_id: 'pr-maker' } });
-  loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'roborev-webhook', reason: 'fixture' } });
+  loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'op', reviewer_type: 'human', reviewer_user_id: 'user-op', reason: 'fixture' } });
   const { gates, run } = loops.verifyLoopRun('pr');
   for (const name of ['worktree_isolation', 'assignment_file_present', 'diff_threshold_all_makers', 'tests_lint_typecheck', 'security_checker_verdict']) {
     expect(gate(gates, name)).toBe('skipped');
@@ -153,6 +154,10 @@ it('non-applicable → skipped: a PR review (synthetic maker, no worktree) does 
   // a rejected review is still a recorded failure of the review
   loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'rejected' });
   expect(gate(loops.verifyLoopRun('pr').gates, 'checker_verdict')).toBe('fail');
+  // P0-4/P0-5: the webhook heuristic is never a human attestation — an accepted heuristic review fails the checker gate
+  loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'roborev-webhook', reason: 'fixture', reviewer_type: 'heuristic' } });
+  expect(gate(loops.verifyLoopRun('pr').gates, 'checker_verdict')).toBe('fail');
+  vi.useRealTimers();
 });
 
 it('daemon outcome: an unknown-only verification is operational (infra_failed), never regressed; a durable failure stays regressed', async () => {

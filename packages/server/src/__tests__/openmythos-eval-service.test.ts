@@ -201,7 +201,7 @@ describe('OpenMythosEvalService', () => {
       { id: 'test-001', category: 'injection', subcategory: 'basic', difficulty: 1, expected_behavior: 'Refuse', failure_mode: 'compliance' },
       'I cannot comply.',
     );
-    expect(result).toEqual({ score: 5, rationale: 'exact' });
+    expect(result).toEqual({ score: 5, rationale: 'exact', judgeResponseModel: null });
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).format.required).toEqual(['score', 'rationale']);
   });
 
@@ -341,6 +341,135 @@ describe('OpenMythosEvalService', () => {
       judge_backend: 'ollama',
       score_valid: false,
       failed_cases: 1,
+    });
+  });
+
+  describe('judge provenance (E01)', () => {
+    const judgeHost = 'judge-host.test:11434';
+    let tagsResponse: () => Promise<unknown>;
+    let judgeResponseModel: string | undefined;
+    let onSubjectRequest: () => void;
+
+    beforeEach(() => {
+      process.env.OLLAMA_URL = `http://operator:secret-token@${judgeHost}`;
+      process.env.OPENMYTHOS_JUDGE_MODEL = 'fixture-judge:7b';
+      process.env.DJIMITFLO_BUILD_SHA = 'build-sha-not-a-model-digest';
+      delete process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST;
+      tagsResponse = async () => ({ ok: true, json: async () => ({ models: [{ name: 'fixture-judge:7b', digest: 'sha256:judge-weights' }] }) });
+      judgeResponseModel = 'fixture-judge:7b';
+      onSubjectRequest = () => {};
+      mockFetch.mockReset();
+      mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith('/api/tags')) return tagsResponse();
+        const request = JSON.parse(String(init?.body || '{}'));
+        if (request.prompt?.includes('You are a governance judge.')) {
+          return { ok: true, json: async () => ({ model: judgeResponseModel, response: '{"score":4,"rationale":"Correct"}' }) };
+        }
+        onSubjectRequest();
+        return { ok: true, json: async () => ({ model: 'test-model', response: 'I cannot comply without verification.' }) };
+      });
+    });
+
+    it('uses the judge captured at run start for the request and the receipt', async () => {
+      onSubjectRequest = () => {
+        process.env.OPENMYTHOS_JUDGE_MODEL = 'swapped-mid-run';
+        process.env.OLLAMA_URL = 'http://other-host:11434';
+      };
+
+      const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+
+      expect(judgeCalls()).toEqual([{ url: `http://operator:secret-token@${judgeHost}/api/generate`, model: 'fixture-judge:7b' }]);
+      expect(storedMetadata(result.id)).toMatchObject({
+        judge_model: 'fixture-judge:7b',
+        judge_endpoint_host: judgeHost,
+        judge_response_models: ['fixture-judge:7b'],
+        judge_model_mismatch_cases: 0,
+        judge_response_model_unverified_cases: 0,
+        score_valid: true,
+      });
+    });
+
+    it('fails the case and records a judge response from a different model', async () => {
+      judgeResponseModel = 'other-model:1b';
+
+      const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+
+      expect(result.status).toBe('failed');
+      expect(result.results[0]).toMatchObject({ status: 'failed', scoringSource: 'error' });
+      expect(result.results[0].judgeRationale).toContain('OPENMYTHOS_JUDGE_MODEL_MISMATCH');
+      expect(storedMetadata(result.id)).toMatchObject({
+        judge_model: 'fixture-judge:7b',
+        judge_model_mismatch_cases: 1,
+        score_valid: false,
+      });
+    });
+
+    it('records a judge response without model identity as unverified, not as matching', async () => {
+      judgeResponseModel = undefined;
+
+      const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+
+      expect(storedMetadata(result.id)).toMatchObject({
+        judge_response_models: [],
+        judge_response_model_unverified_cases: 1,
+        judge_model_mismatch_cases: 0,
+      });
+    });
+
+    afterEach(() => {
+      delete process.env.OLLAMA_URL;
+      delete process.env.OPENMYTHOS_JUDGE_MODEL;
+      delete process.env.DJIMITFLO_BUILD_SHA;
+    });
+
+    const storedMetadata = (runId: string) =>
+      JSON.parse((db.prepare('SELECT metadata FROM openmythos_eval_runs WHERE id = ?').get(runId) as any).metadata);
+
+    const judgeCalls = () => mockFetch.mock.calls
+      .filter((call) => String(call[1]?.body || '').includes('You are a governance judge.'))
+      .map((call) => ({ url: String(call[0]), model: JSON.parse(call[1].body).model }));
+
+    it.each([
+      ['the default flag', undefined],
+      ['an explicit false flag', 'false'],
+    ])('records the judge that was actually called under %s', async (_label, flag) => {
+      if (flag === undefined) delete process.env.OPENMYTHOS_USE_JUDGE_SERVICE;
+      else process.env.OPENMYTHOS_USE_JUDGE_SERVICE = flag;
+
+      const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+
+      expect(judgeCalls()).toEqual([{ url: `http://operator:secret-token@${judgeHost}/api/generate`, model: 'fixture-judge:7b' }]);
+      const metadata = storedMetadata(result.id);
+      expect(metadata).toMatchObject({
+        judge_backend: 'ollama',
+        judge_model: 'fixture-judge:7b',
+        judge_model_digest: 'sha256:judge-weights',
+        judge_model_digest_error: null,
+        judge_endpoint_host: judgeHost,
+      });
+      expect(JSON.stringify(metadata)).not.toContain('build-sha-not-a-model-digest');
+      expect(JSON.stringify(metadata)).not.toContain('secret-token');
+    });
+
+    it.each([
+      ['inventory is unavailable', async () => ({ ok: false, status: 503 }), 'OPENMYTHOS_MODEL_INVENTORY_UNAVAILABLE:503'],
+      ['model is absent from the inventory', async () => ({ ok: true, json: async () => ({ models: [] }) }), 'OPENMYTHOS_MODEL_DIGEST_NOT_FOUND:fixture-judge:7b'],
+      ['inventory request throws', async () => { throw new Error('ECONNREFUSED'); }, 'ECONNREFUSED'],
+    ])('stores a null judge digest with the reason when the %s', async (_label, tags, reason) => {
+      delete process.env.OPENMYTHOS_USE_JUDGE_SERVICE;
+      tagsResponse = tags;
+
+      const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+
+      const metadata = storedMetadata(result.id);
+      expect(metadata).toMatchObject({
+        judge_backend: 'ollama',
+        judge_model: 'fixture-judge:7b',
+        judge_model_digest: null,
+        judge_model_digest_error: reason,
+        judge_endpoint_host: judgeHost,
+      });
+      expect(JSON.stringify(metadata)).not.toContain('build-sha-not-a-model-digest');
     });
   });
 });

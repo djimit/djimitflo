@@ -1,0 +1,134 @@
+
+=== VALIDATION RESULTS ===
+Total files: 163
+Pass: 123
+Warnings only: 40
+Errors: 0
+Lifecycle compliant: 163/163 (audit only)
+Manifest compliant: 162/163 (existing manifests only)
+
+=== ISSUES ===
+
+/common/foundation/api-and-interface-design/SKILL.md [warnings]
+  - Missing license field
+
+/common/foundation/ci-cd-and-automation/SKILL.md [warnings]
+  - Missing license field
+
+/common/foundation/finishing-a-development-branch/SKILL.md [warnings]
+  - Missing license field
+
+/common/foundation/git-workflow-and-versioning/SKILL.md [warnings]
+  - Missing license field
+
+/common/foundation/performance-optimization/SKILL.md [warnings]
+  - Missing license field
+
+/common/foundation/security-and-hardening/SKILL.md [warnings]
+  - Missing license field
+
+/common/foundation/source-driven-development/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/brainstorm/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/ci-failure-batching/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/clarify/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/clarify-spec/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/commit-pr/SKILL.md [warnings]
+  - Missing license field
+  - SKILL.md body exceeds 500 lines (608 lines) — consider splitting into references/
+
+/.opencode/skills/consult/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/council/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/critic-gate/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/deep-dive/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/deep-research/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/design-docs/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/discover/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/engineering-conventions/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/execute/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/gate-attribution/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/issue-ingest/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/loop/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/merge-queue-readiness/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/phase-wrap/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/plan/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/pre-phase-briefing/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/resume/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/running-tests/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/skill-edit-validation/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/specify/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/swarm/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/swarm-ci-monitor/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/swarm-implement/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/swarm-pr-feedback/SKILL.md [warnings]
+  - Missing license field
+  - SKILL.md body exceeds 500 lines (630 lines) — consider splitting into references/
+
+/.opencode/skills/swarm-pr-review/SKILL.md [warnings]
+  - Missing license field
+  - SKILL.md body exceeds 500 lines (1555 lines) — consider splitting into references/
+
+/.opencode/skills/swarm-pr-subscribe/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/worktree-retry-cleanup/SKILL.md [warnings]
+  - Missing license field
+
+/.opencode/skills/writing-tests/SKILL.md [warnings]
+  - Missing license field
+  - SKILL.md body exceeds 500 lines (866 lines) — consider splitting into references/

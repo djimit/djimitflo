@@ -34,12 +34,38 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
-export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
+/** DF-07: `status` is transport only; `state` is the integration ladder justified by `state_evidence` (absent on an older server = UNKNOWN). */
+export type IntegrationState = 'CONFIGURED' | 'CONNECTED' | 'HEALTHY' | 'DEGRADED' | 'FAILED' | 'DISABLED' | 'UNKNOWN';
+export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null;
+  state?: IntegrationState; state_evidence?: string; last_success_at?: string | null; last_failure_at?: string | null; evidence_source?: string | null };
+/** GET /api/health/config (DF-08): per key value (null = unset), source, documented default, override and activation; plus the running build. */
+export interface RuntimeConfigEntry {
+  name: string; value: string | null; masked: boolean; group: string; area: string;
+  source: 'env' | 'default' | 'unset'; default: string | null; overridden: boolean | null; takes_effect: 'restart'; stale?: boolean | null;
+}
+export interface RuntimeConfig {
+  entries: RuntimeConfigEntry[]; masked: number;
+  build: { commit: string | null; built_commit: string | null; build_source: string | null; build_time: string | null; instance_id: string | null; commit_matches_build: boolean };
+}
 
 export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
 export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
   approved_by: string | null; approved_at: string | null; expires_at: string | null; decided_reason: string | null; started_at: string | null;
   finished_at: string | null; exit_code: number | null; output: string | null; created_at: string; self_approved?: number | boolean };
+
+interface DedupeStat { units: number; clusters: number; duplicate_units: number; inflation_factor: number | null }
+export interface ExpertDedupeReport {
+  at: string;
+  totals: DedupeStat & { duplicate_clusters: number; distinct_titles: number };
+  by_kind: Array<DedupeStat & { kind: string }>;
+  by_key_type: Array<DedupeStat & { key_type: string }>;
+  metrics_if_collapsed: {
+    funnel: { units_before: number; units_after: number; cells_changed: number };
+    gap_demand: { areas_annotated_before: number; areas_annotated_after: number; total_before: number; total_after: number } | null;
+    knowledge_fitness: { inventory_before: number; inventory_after: number; used_items_before: number; used_items_after: number; used_items_in_duplicate_clusters: number; unused_before: number; unused_after: number } | null;
+  };
+  writes: 0;
+}
 
 export type KnowledgeOverview = {
   at: string;
@@ -48,6 +74,32 @@ export type KnowledgeOverview = {
   recent_relevant: Array<{ ref: string; title: string; source: string; at: string }>;
   kb_retrieval: { hits_30d: number; panels_30d: number; last: string | null };
   interest_profile: { at: string; terms: string[] } | null;
+  /** K1: mirrors services/knowledge-fitness.ts (absent on servers before K1) */
+  fitness?: KnowledgeFitness;
+};
+
+export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'unused' | 'insufficient';
+export type KnowledgeFitness = {
+  at: string; window_days: number; half_life_days: number; min_n: number;
+  baseline: { n: number; verified_rate: number | null };
+  runs: { in_window: number; maker_attributable: number; non_maker: number; unattributed: number };
+  by_kind: Array<{ kind: string; inventory: number | null; used_with_value: number; used_no_value: number; insufficient: number; unused: number | null }>;
+  top: Array<{ kind: string; id: string; title: string | null; n_used: number; n_verified: number; n_regressed: number; n_survived_14d: number | null;
+    wilson: [number, number] | null; last_used_at: string | null; decayed_verified_rate: number | null; status: KnowledgeFitnessStatus }>;
+  rule: string;
+};
+
+/** K4: GET /api/health/skills (read:evidence) — record-only skill / anti-pattern cards; mirrors services/skill-distillation.ts. */
+export type SkillCardsView = {
+  mode: 'off' | 'shadow';
+  total: number | null;
+  by_lane: Array<{ lane: string; kind: 'skill' | 'anti_pattern'; status: 'candidate' | 'survived' | 'regressed'; n: number }>;
+  latest: Array<{ run_id: string; kind: 'skill' | 'anti_pattern'; status: string; content_sha256: string; created_at: string; updated_at: string;
+    card: { lane: string | null; task_kind: string | null; target_pattern: string[] | null; runtime: string | null; model: string | null;
+      diff_shape: { files_changed: number | null; diff_lines: number | null; test_only: boolean | null };
+      failure?: { gate: string | null; signature: string | null } } }>;
+  reason: string | null;
+  note: string;
 };
 
 /** UX-16: GET /api/health/runtimes (read:evidence) — one row per runtime; mirrors services/runtime-health.ts. */
@@ -86,6 +138,13 @@ export type GateState = 'green' | 'red' | 'unknown';
 export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
 export type HackRateRow = { scored: number; checked: number; flagged: number; rate: number | null; ci: [number, number] | null; status: 'ok' | 'insufficient' };
 export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
+export type CheckerFamilyVersionEvidence = { enabled: string | null; cross_model: string; target_per_arm: number; same: CheckerFamilyArmEvidence; cross: CheckerFamilyArmEvidence;
+  /** EXP-1 primary: a checker-independent label (merge survival once settled, else the other failed gates); interim before the target */
+  primary: CheckerFamilyComparison & { endpoint: 'outcome_wo_checker' | 'outcome_survival'; read: 'interim' | 'final' };
+  /** the attributed outcome contains the checker's own rejection */
+  secondary_circular: CheckerFamilyComparison & { endpoint: 'outcome'; circular: true };
+  weak_fisher_p: number;
+  stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
 export type CheckerFamilyComparison = { delta_kappa: number | null; delta_kappa_ci: [number, number] | null; fisher_p: number; n: { same: number; cross: number } };
 export type CheckerFamilyArmEvidence = { goals: number; reviewed: number; verdicts: { accepted: number; needs_revision: number; rejected: number }; realized_cross: number;
   outcome: { circular: true; n: number; agree: number; agreement: number | null; kappa: number | null }; outcome_wo_checker: { n: number; agree: number; kappa: number | null }; outcome_survival: { n: number; agree: number; kappa: number | null; unlabelled: number };
@@ -136,19 +195,37 @@ export interface EvolutionEvidence {
   auto_merge: { mode: 'off' | 'shadow' | 'act'; max_per_day: number; audit_sample_pct: number;
     class: { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string };
     counts: { merged: number; merged_24h: number; would_merge: number; audit_samples: number; audit_samples_open: number; waiting: number; ineligible: number };
-    ineligible_by_reason: Record<string, number> };
+    ineligible_by_reason: Record<string, number>;
+    /** U2 value gate (loop-auto-merge-state.ts); optional: an older server may lack it during a rolling deploy */
+    value_gate?: { mode: 'off' | 'shadow' | 'on'; lanes: string[] | 'all'; kill_share_min: number;
+      would_block: { value_signal_missing: number; value_signal_low: number };
+      replay: { n: number; pass: number; low: number; missing: number } };
+    /** LOOP_AUTO_MERGE_RECHECK: latest decision × reason code, ineligible permanent vs transient, PRs re-checked in the last 24 h */
+    recheck?: { enabled: boolean; window_hours: number; per_tick: number; ineligible_by_class: { permanent: number; transient: number };
+      by_decision_reason: Record<string, Record<string, number>>; rechecked_24h: number; rechecked_24h_by_decision: Record<string, number> } };
   /** MEMORY_HOLDOUT_RATE: proposal outcome of maker runs with rules vs runs held out, two-sided Fisher exact p */
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
+  /** OLLAMA_OUTAGE_FALLBACK_RUNTIME: opencode production leases run on claude (subscription); by_role null = table missing */
+  runtime_fallback?: { mode: 'claude' | 'off'; in_backoff: boolean; by_role: Array<{ role: string; n: number; limit_hits: number; auth_missing: number }> | null; note: string };
+  /** OLLAMA_AUTO_FAILOVER / PANEL_FALLBACK_RUNTIME / INFERENCE_BUDGET_THROTTLE: Ollama limit state, panel reviews on claude, 7-d Ollama token use; null = unknown */
+  inference?: {
+    failover: { mode: 'off' | 'on'; effective: 'claude' | 'off'; probe_model: string; transitions: Array<{ action: string; n: number }> | null;
+      state: { state: 'ollama_limited'; detected_at: string; error_class: string; source: string; excerpt: string; last_probe_at?: string; last_probe_result?: string } | null };
+    panel_fallback: { mode: 'claude' | 'off'; model: string; reviews: number | null; quarantined: number | null; note: string;
+      /** shared Claude subscription backoff: inference_unavailable = seats wait (no attempt, quarantine or verdict) until backoff.until */
+      status: 'off' | 'available' | 'inference_unavailable'; backoff: { hit_at: string; source: string; until: string } | null };
+    budget: { mode: 'off' | 'shadow' | 'on'; token_budget: number | null; throttle_at: number; usage_pct: number | null; status: 'no_budget' | 'insufficient' | 'ok' | 'over_threshold';
+      usage: { ledger: { tokens: number; calls: number; calls_without_tokens: number } | null; opencode_leases: { tokens: number; leases: number; leases_without_tokens: number } | null; total_tokens: number | null };
+      paused: string[]; would_pause: string[]; note: string };
+  };
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
-  checker_family: { enabled: string | null; cross_model: string; target_per_arm: number; same: CheckerFamilyArmEvidence; cross: CheckerFamilyArmEvidence;
-    /** EXP-1 primary: a checker-independent label (merge survival once settled, else the other failed gates); interim before the target */
-    primary: CheckerFamilyComparison & { endpoint: 'outcome_wo_checker' | 'outcome_survival'; read: 'interim' | 'final' };
-    /** the attributed outcome contains the checker's own rejection */
-    secondary_circular: CheckerFamilyComparison & { endpoint: 'outcome'; circular: true };
-    weak_fisher_p: number;
-    stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
+  checker_family: CheckerFamilyVersionEvidence & {
+    /** CHECKER_FAMILY_VERSION (default v1): the top level is this version only */
+    version: string;
+    /** every F2 version separately (v1 closed 17-10 as interim, cross = kimi-k3); never pooled */
+    versions: Record<string, { label: string; closed: boolean; evidence: CheckerFamilyVersionEvidence }> };
   /** ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per arm (R retrieval × S example selection; '00' = control) */
   ace_001: { mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
     /** Amendment 1: primary numbers count outcomes from analysis_since; delivery_invalid = earlier outcomes, excluded */
@@ -161,6 +238,14 @@ export interface EvolutionEvidence {
   ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
     arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
     note: string };
+  /** MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per goal, A = existing, B = dependencies prepared before the maker */
+  maker_deps_001: { experiment: 'MAKER-DEPS-001'; version: 'v1'; mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    diff: number | null; diff_ci_descriptive: [number, number] | null;
+    arms: Record<'A' | 'B', { goals: number; terminal: number; verified: number; regressed: number; censored: number; verified_rate: number | null;
+      preparations: number; preparation_failed: number; maker_leases: number; maker_failed: number; maker_timed_out: number; tokens_mean: number | null }>;
+    note: string;
+    /** MAKER_WARM_DEPS: state ('blocked_by_experiment' while MAKER_DEPS_001_MODE=on) and maker leases per deps_source */
+    warm_deps?: { mode: string | null; state: 'off' | 'on' | 'blocked_by_experiment'; keep: number; by_source: Record<'cache' | 'fresh' | 'failed', number>; note: string } };
   /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
   d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
     excluded?: { pre_cutoff_cluster: number; oracle_lane: number };
@@ -190,8 +275,20 @@ export interface EvolutionEvidence {
     pools: Array<{ pool: string; n: number; mean: number | null; share_full: number | null }>;
     contest: { contests: number; agree: number; agreement_rate: number | null };
   };
+  /** R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): fail-before/pass-after verdicts per run, 14-d survival per arm; rates only from 40 settled */
+  fail_before_pass_after: {
+    experiment: 'R2'; protocol: string; mode: 'off' | 'shadow'; runs: number;
+    counts: { pass: number; fail: number; skipped: number; fail_before_violated: number; pass_after_violated: number; pass_to_pass_violated: number };
+    arms: Record<'pass' | 'fail', { runs: number; with_pr: number; settled: number; pending: number }>;
+    settled_runs: number; min_settled: number;
+    primary: { n: number; pass: { survived: number; regressed: number; rate: number | null }; fail: { survived: number; regressed: number; rate: number | null };
+      difference_pt: number | null; fisher_p: number | null } | null;
+    verdict: 'INSUFFICIENT' | 'FALSIFIED' | 'SUPPORTED'; note: string;
+  };
   /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
   knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
+  /** P0-8: runs in the window where the strict daemon rule and the certification rule disagree (null = unreadable). */
+  gate_rule_disagreements: number | null;
   /** §16 step 1: read-only status per metric contract (METRIC_CONTRACTS.yaml); no composite score */
   /** §16 step 7: per frozen holdout epoch, distinct candidates run or decided on it; reuse_risk above the contract limit (read-only) */
   holdout_exposure: {
@@ -204,6 +301,144 @@ export interface EvolutionEvidence {
   /** E3: GET /api/health/provenance-dag without its edge list — services/provenance-dag.ts provenanceSummary */
   provenance?: ProvenanceSummary;
   panel_attempts?: PanelAttemptMetrics;
+  /** P0 §5: maker token accounting per runtime × model (services/maker-token-accounting.ts); old leases count as unrecorded */
+  maker_tokens?: MakerTokenAccountingEvidence;
+  /** K3 (NE_GENERATOR_CHECK_MODE, shadow): generated text naming a negative-evidence entry (services/negative-evidence-check.ts); null = unknown */
+  negative_evidence?: {
+    mode: 'off' | 'shadow'; registry_entries: number | null; note: string;
+    by_entry: Array<{ entry_id: string; source: string; confidence: string; matches: number; subjects: number }> | null;
+    proposals: { matched: number; verified: number; regressed: number; settled: number; verified_share: number | null } | null;
+  };
+  /** K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps (services/knowledge-gaps.ts knowledgeGapEvidence); nulls while off */
+  knowledge_gaps?: KnowledgeGapEvidence;
+  /** JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev (services/jev-challenger.ts); rates null below min_n */
+  jev_challenger?: JevChallengerEvidence;
+  /** Know when to stop (services/experiment-registry.ts): running experiments, target n, registered stop date, overdue (report-only) */
+  experiments?: ExperimentsEvidence;
+  /** G3.5 (services/learning-ledger.ts): per learning mechanism effect + CI from its experiment's evidence, status, loops closed k/N (read-only) */
+  learning_ledger?: LearningLedger;
+  /** P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host and the host key list (services/fleet-event-signatures.ts); null = table absent */
+  fleet_signatures?: {
+    mode: 'off' | 'shadow' | 'enforce';
+    by_host: Array<{ host: string; verdict: 'verified' | 'unsigned' | 'bad_signature' | 'replay' | 'unknown_host' | 'revoked'; n: number }> | null;
+    keys: Array<{ host: string; key_id: string; alg: string; status: string; created_at: string; revoked_at: string | null }> | null;
+  };
+  /** AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main (services/commons-falsifier.ts); nulls while off */
+  falsifier?: FalsifierEvidence;
+  /** L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): merged loop PRs ≥ 14 d — tests re-run at origin/main, fresh-mutant kill share vs maker time; graded vs labels (services/settlement-execution.ts) */
+  settlement_execution?: SettlementExecutionEvidence;
+  /** U1 (report only): per lane the fresh-mutant kill share at settlement — median, share below the threshold (0.2), Wilson CI (services/settlement-execution.ts) */
+  settlement_value?: { threshold: number; note: string;
+    by_lane: Array<{ lane: string; n: number; kill_share_now_median: number | null; below: number; share_below: number; ci: [number, number] }> };
+  scheduler_capacity?: { mode: string; would_defer_24h: number | null; would_defer_7d: number | null; would_schedule_7d: number | null; latest: { at: string; goal_id: string; would_defer: boolean; observed: Record<string, unknown> } | null; observed_now: Record<string, unknown> | null };
+  /** PL-001 (PROCEDURE_SELECTOR_MODE, shadow): procedure applies / does_not_apply per ordinary gym claim; a window without a decision is null (services/procedure-selector.ts) */
+  procedure_selection?: { mode: string; delivered: false; procedure: { id: string; version: number; lines_sha256: string } | null;
+    window_24h: { applies: number | null; does_not_apply: number | null }; window_7d: { applies: number | null; does_not_apply: number | null };
+    top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
+  /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
+  pl_001?: Pl001Evidence;
+  /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
+  memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
+    by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
+  /** Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after settlement; candidates null = no table (services/fleet-repair.ts) */
+  fleet_repair?: { mode: 'off' | 'shadow'; requested: string | null; on_available: boolean; on_blocked_reason: string; window_days: number; min_failures: number;
+    settlement_days: number; last_run_at: string | null; n_candidates: number | null;
+    candidates: Array<{ key: string; recorded_at: string; n: number | null; failures: number | null; failure_ratio: number | null; last_failure_at: string | null;
+      linked_action_events: number; has_failure_tail: boolean;
+      settlement: { status: 'no_linked_fix' | 'pending' | 'settled'; pr_url: string | null; merged_at: string | null; delta: number | null;
+        before: { n: number; successes: number; rate: number | null } | null; after: { n: number; successes: number; rate: number | null } | null } | null }> | null };
+  /** Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory; counts null before the first judgment (services/advisory-exposure.ts) */
+  advisory_exposure?: { mode: 'off' | 'shadow' | 'on'; advisories: number | null; by_verdict: Record<'affected' | 'not_affected' | 'unknown', number> | null;
+    affected: Array<{ advisory_id: string; repo: string; package: string; installed_version: string; first_fixed_version: string | null }>;
+    pending: number | null; proposals: Record<string, number> | null; last_judged_at: string | null };
+  content_drafts?: Record<string, unknown>;
+  /** capability factory (CAPABILITY_FACTORY_MODE): operator requests by status; null counts when unreadable (services/capability-factory.ts) */
+  capability_factory?: { mode: 'off' | 'on'; requests: Record<'reused' | 'proposed' | 'in_progress' | 'merged' | 'registered' | 'rejected', number> | null; registered_downgraded: number | null };
+}
+export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
+export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
+  rate_A: number | null; rate_B: number | null; p_one_sided: number | null; supported: boolean | null }
+export interface Pl001Evidence {
+  mode: 'on' | 'off'; experiment_id: string; protocol: string; prereg_sha256: string; loop_name: string;
+  status: 'not_frozen' | 'invalid_manifest' | 'waiting_start' | 'collecting' | 'exhausted' | 'stopped';
+  procedure: { id: string; version: number | null; lines_sha256: string | null; protocol_lines_sha256: string; digest_matches: boolean | null; status: string | null;
+    lifecycle: { verdict?: string; status?: string; reason?: string; decided_at?: string; promoted?: boolean; negative_evidence?: string } | null };
+  start_condition: { genomes: Array<{ id: string; status: string | null }>; settled: boolean; cap_share: number; open: boolean; rule: 'settled' | 'cap_share' | 'waiting' };
+  selector_check: { n: number; does_not_apply: number; applies: string[]; ok: boolean } | null;
+  targets: { pairs: number; tasks: number; max_days: number; alpha: number };
+  freeze_refused: { reason: string; at: string } | null;
+  manifest: { frozen_at: string; sha256: string; tasks: number; species: string; step_budget: number; by_kind: { mutant: number; mined: number }; by_tier: Record<string, number>;
+    first_arm: { A: number; B: number }; valid: boolean; reason: string | null } | null;
+  pairs: { done: number; analysed: number; target: number; invalid_tasks: number; tasks: number } | null;
+  arms: Array<{ arm: 'A' | 'B'; name: string; observations: number; verified: number; not_verified: number; infra_censored: number; invalid: number; pending: number;
+    physical_attempts: number; infra_attempts: number; void_attempts: number; infra_rate: number | null; tokens: { known: number; unknown: number; mean_known: number | null };
+    graded_mean: number | null; maker_ms_median: number | null; out_of_scope_or_hack: number }>;
+  primary: Pl001Paired | null; sensitivity: Pl001Paired | null;
+  secondary: { graded_mean_diff_B_minus_A: number | null; graded_pairs: number; maker_ms_median_diff_B_minus_A: number | null; maker_ms_pairs: number; note: string } | null;
+  harm: { e_value: number | null; threshold: number; canary_solved: number | null; scope_hack: { A: number; B: number }; margin: number; triggered: boolean; reason: string | null } | null;
+  stop: { first_attempt_at: string | null; day_limit_at: string | null; stopped: boolean; reason: string | null } | null;
+  verdict: Pl001Verdict | null;
+  runs: Array<{ task_key: string; arm: 'A' | 'B'; run_id: string; status: string; reason: string; void: string | null; verified: boolean; at: string }>;
+}
+export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
+export interface FalsifierEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; window_days: number; cap_per_day: number; executions_24h: number | null;
+  totals: FalsifierCounts | null; settle_rate: number | null; by_agent: Array<FalsifierCounts & { agent: string }> | null; note: string;
+}
+export type GradedLabelStat = { n: number; mean: number | null; zero_share: number | null };
+export interface SettlementExecutionEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; cap_per_tick: number; n: number;
+  counts: { pass: number; fail: number; removed: number; unknown: number; no_test_files: number }; pending: number | null; pass_rate: number | null;
+  kill_share: { n_now: number; mean_now: number | null; n_paired: number; mean_maker: number | null; mean_drift: number | null };
+  last_run_at: string | null;
+  graded_vs_labels: { n: number | null; note: string;
+    by_kind: Array<{ kind: string; verified: GradedLabelStat; not_verified: GradedLabelStat; survived: GradedLabelStat; regressed: GradedLabelStat; unsettled: GradedLabelStat }> | null };
+  note: string;
+}
+export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
+/** G1.5 power left; null = unknown, never 0 */
+export type ExperimentPower = { n_so_far: number | null; target_per_arm: number | null; days_to_stop: number | null; accrual_window_days: number | null;
+  accrual_per_day: Record<string, number> | null; projected_min_arm_n: number | null; projected_reaches_target: boolean | null };
+export type ExperimentRow = { id: string; flag: string; protocol: string; started_at: string; target_n: number | null; stop_by: string | null; stop_note: string; stop_source: string;
+  population: 'oracle_goals' | 'gym_tasks' | 'prescreen_proposals' | 'judgments'; approved_over_limit?: string;
+  n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; effects?: Record<string, ExperimentEffect>;
+  overdue: boolean; overdue_reason: string | null; power: ExperimentPower; error?: string };
+export type ExperimentsEvidence = { experiments: ExperimentRow[]; overdue: string[]; no_stop_date: string[]; note: string;
+  /** G1.5 WIP limit on the oracle-goal population (report-only) */
+  wip: { population: 'oracle_goals'; limit: number; active: string[]; active_count: number; over_wip_limit: boolean; counted: string[];
+    approved_over_limit: Array<{ id: string; reason: string }>; guard_ok: boolean } };
+export type LearningStatus = 'ADOPTED' | 'REJECTED' | 'RUNNING' | 'INSUFFICIENT' | 'NOT_MEASURED';
+export type LearningLedger = {
+  loops_closed: { k: number; n: number; headline: string }; by_status: Record<LearningStatus, number>; note: string;
+  mechanisms: Array<{ mechanism: string; name: string; data_source: string; experiment: string | null; metric: string | null; estimate: number | null;
+    ci: [number, number] | null; p: number | null; status: LearningStatus; closed: boolean; note: string }>;
+};
+
+export interface JevChallengerRate { k: number; n: number; rate: number | null; ci_low: number | null; ci_high: number | null; status: 'ok' | 'insufficient' }
+export interface JevChallengerTruth { primary: JevChallengerRate; challenger: JevChallengerRate; abstained?: { primary: number; challenger: number } }
+export interface JevChallengerEvidence {
+  mode: 'off' | 'shadow'; model: string | null; primary_model: string; sample: number; min_n: number; status: 'ok' | 'insufficient';
+  by_judgment: Array<{ judgment: string; model: string; n_pairs: number; n_errors: number; agreement: JevChallengerRate;
+    ground_truth: { names_file: JevChallengerTruth | null; d5_operator: JevChallengerTruth | null; relevance_blind: JevChallengerTruth | null } }>;
+  note: string;
+}
+
+export interface KnowledgeGapEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; window_days: number; open: number | null;
+  open_by_source: { failure_recurrence: number; expert_abstention: number } | null; recurrences: number | null;
+  oldest_age_days: number | null; capability_candidates: number | null; note: string;
+}
+
+export type TokenMeasurementSource = 'provider_reported' | 'runtime_log' | 'estimated' | 'unavailable';
+export interface MakerTokenAccountingEvidence {
+  since: string; leases: number; note: string;
+  by_runtime_model: Array<{ runtime: string; model: string; leases: number; unrecorded: number; tokens_measured: number; tokens_measured_share: number | null;
+    cost_known: number; cost_known_share: number | null; cost_partial: number;
+    /** per field: n = leases that reported it; sum/mean over those only (null when none did) */
+    fields: Record<'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_write_tokens' | 'reasoning_tokens' | 'total_tokens', { n: number; sum: number | null; mean: number | null }>;
+    /** estimated cost per LLM_PRICE_PER_MTOK price version; never summed across versions */
+    cost_by_price_version: Array<{ price_version: string; leases: number; partial: number; estimated_cost_usd: number }>;
+    by_source: Record<TokenMeasurementSource, number> }>;
 }
 
 /** E3: one answer of the provenance DAG — a value, or UNKNOWN with the reason (never 0 for a missing link) */
@@ -262,13 +497,58 @@ export interface EfficiencyView {
   ledger: Array<{ day: string; consumer: string; cloud_tokens: number; local_tokens: number; gpu_seconds: number; jobs: number; wh: number | null; covered_s: number }>;
   hosts: Array<{ host: string; samples: number; last_sample: string | null; avg_watts: number | null; gpu_kwh: number | null; covered_h: number; coverage_pct?: number }>;
   north_star: { weeks: Array<{ week_start: string; verified: number; cloud_m_tokens: number; local_kwh: number | null; local_covered_h: number; per_m_tokens: number | null; per_kwh: number | null;
-    local_verified?: number; coverage_pct?: number | null; per_kwh_reason?: string | null }> };
+    local_verified?: number; coverage_pct?: number | null; per_kwh_reason?: string | null;
+    /** efficiency.cloud_tokens version; superseded keeps the v1 (maker double-counted) values beside the corrected ones */
+    metric_version?: number; superseded?: { metric_version: number; cloud_m_tokens: number; per_m_tokens: number | null; correction: 'ACCOUNTING_CORRECTION' } }> };
   coverage?: { jobs_pct: number | null; window_pct: number | null };
+  notes: string[];
+  cost_per_verified: CostPerVerified;
+}
+
+/** Verified cost ledger (server services/cost-ledger.ts): UNKNOWN parts are null with status 'UNKNOWN', never 0. */
+export interface CostMetricRef { id: string; version: number; hash: string }
+export interface CostMeasure { value: number | null; unit: string; status: 'measured' | 'partial' | 'UNKNOWN'; coverage: number | null; note?: string }
+export interface CostPerUnit { value: number | null; status: 'measured' | 'lower_bound' | 'UNKNOWN'; reason?: string }
+type CostParts<T> = { cloud_tokens: T; task_path_cloud_tokens: T; local_tokens: T; local_gpu_kwh: T; review_minutes: T; usd: T };
+export interface CostScope {
+  metric: CostMetricRef; scope: 'task' | 'reviewer' | 'merge' | 'surviving_pr'; definition: string; n: number; censored: number | null; censored_reason: string | null;
+  numerator: CostParts<CostMeasure>; per_unit: CostParts<CostPerUnit>;
+  successful_only: { events: number; cloud_tokens: number; per_unit: number | null };
+  with_duplicate: { cloud_tokens: number; per_unit: number | null; delta_tokens: number; correction: 'ACCOUNTING_CORRECTION' };
+}
+interface CostShareWindow { value: number | null; numerator_tokens: number; denominator_tokens: number; with_duplicate: number | null }
+export interface CostPerVerified {
+  at: string; window: { since: string; until: string; days: number; lost_windows: ReadonlyArray<{ from: string; to: string; ref: string }>; lost_hours_in_window: number };
+  metrics: Array<CostMetricRef & { definition: string; supersedes?: number; reason?: string }>;
+  scopes: CostScope[];
+  population: { definition: CostMetricRef; members: number; verified: number; open: number; runs: number; prs: number; merged: number; surviving: number; survival_pending: number;
+    unattributed: { events: number; cloud_tokens: number; note: string } };
+  shares: { unverified_run_tokens: CostShareWindow & { metric: CostMetricRef; window: CostShareWindow; correction: string; note: string };
+    reviewer_no_verdict: CostShareWindow & { metric: CostMetricRef; leases: number; window: CostShareWindow & { leases: number }; correction: string; note: string } };
+  by_consumer: Array<{ consumer: string; locality: 'cloud' | 'local'; events: number; events_tokens_known: number; tokens: number; output_split_known: number; coverage: number }>;
+  usage: { events: number; by_source: Array<{ source: string; events: number; events_tokens_known: number; tokens: number; first_record: string | null; window_coverage: number }>;
+    mirrors_excluded: Array<{ source: string; rule: string; rows: number; tokens: number; owner_kind: string }>; shared_groups: number; shared_events: number;
+    owners: number; sum_over_owners: number; total_tokens: number; owners_sum_equals_total: boolean };
+  tool_calls: { events: number; linked: number; linked_share: number | null; by_role: Record<string, number>; unlinked: { no_task: number; no_lease_id: number; lease_missing: number }; rule: string };
+  corrections: Array<{ metric: CostMetricRef; from: CostMetricRef; classification: 'ACCOUNTING_CORRECTION'; reason: string; v1_cloud_tokens: number; v2_cloud_tokens: number; delta_tokens: number; note: string }>;
+  operational_savings: { verified: never[]; note: string };
+  price_list: { entries: number; as_of: string | null; note: string };
   notes: string[];
 }
 
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 export type AceMainEffect = { on_n: number; off_n: number; diff: number | null };
+export type RelevanceLabel = 'relevant' | 'not_relevant' | 'unclear';
+export type RelevancePass = 'first' | 'relabel';
+export type RelevanceCard = { ref: string; pass: RelevancePass; title: string; note: string; source: string; url: string };
+export type RelevanceQueue = {
+  cards: RelevanceCard[];
+  progress: { protected: { labelled: number; total: number }; relabel: { labelled: number; total: number; due: number }; al: { labelled: number; total: number } };
+  today: { day: string; labels: number; seconds: number; median_seconds: number | null; target_seconds: number; remaining_seconds: number; est_cards_left: number | null };
+};
+/** E1: one blind query-level retrieval task — query plus opaque candidates (no source, score or trust tier is sent). */
+export type E1BlindTask = { task_id: string; query: string; candidates: Array<{ handle: string; title: string; excerpt: string }> };
+export type E1LabelQueue = { task: E1BlindTask | null; progress: { labelled: number; tasks: number; target: number; max_tasks: number } };
 export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
 export type OperatorCockpit = {
   at: string;
@@ -282,11 +562,21 @@ export type OperatorCockpit = {
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
   guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null }; attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched?: boolean; stale?: boolean }>;
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
   needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
-    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null; total?: number | null;
+    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null;
+    /** human decisions only (server-side); labels, stalls and panel-reviewed proposals are not in it */
+    total?: number | null;
+    /** open loop PRs: audit-sample PRs (one weekly batch) and flagged PRs the auto-merge lane did not take */
+    audit_batch?: number | null; flagged_prs?: number | null;
+    /** Dependabot PRs the dependency lane leaves to a human; dependency_tracked false = lane off, not tracked */
+    dependency_human?: number | null; dependency_tracked?: boolean;
+    /** ground-truth labelling: optional, its own count, never a decision */
+    optional_labelling?: { d5: number | null; car: number | null; e1: number | null; di001: number | null; total: number | null } | null;
+    /** what the system handles (shown, never counted) */
+    system?: { requeue_will_handle: number | null; requeue_mode: string | null; proposals_auto_reviewed: boolean };
     system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number;
@@ -301,7 +591,37 @@ export type OperatorCockpit = {
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
   evolution?: EvolutionLineage | null;
+  /** Workstream B: capability chain per watched capability (server: services/capability-chain.ts) */
+  capabilities?: CapabilityVerdict[];
+  /** SOUL.md subtraction KPI per ISO week, last 8 (services/subtraction-kpi.ts); weeks null + reason without git — never 0 */
+  subtraction?: SubtractionKpi;
+  /** G0.3/G0.4 (services/unit-economics.ts): € and operator minutes per verified / surviving change over 30 d; null = unknown, never 0 */
+  unit_economics?: UnitEconomics | null;
 };
+export type EurPrices = { ollama_cloud: number | null; claude_max: number | null; chatgpt_pro: number | null; vps: number | null; workstation_kwh_eur: number | null };
+export type UnitEconomics = {
+  window_days: number;
+  counts: { verified: number | null; surviving: number | null; superseded_excluded: number | null };
+  eur: { prices: EurPrices; source: string; source_error: string | null;
+    components: Array<{ key: string; eur: number | null; reason: string | null; kwh?: number | null; coverage_pct?: number | null }>;
+    known_cost: number | null; unknown_share: number; reason: string | null; per_verified: number | null; per_surviving: number | null };
+  operator_minutes: {
+    approvals: { human: number; excluded_automated: number; unknown_actor: number; waiting_minutes: number; handling_minutes_estimate: number } | null;
+    human_merges: { count: number; handling_minutes_estimate: number } | null;
+    waiting_minutes: number | null; handling_minutes_estimate: number | null;
+    per_surviving: { waiting_minutes: number | null; handling_minutes_estimate: number | null };
+    handling_minutes_per_item: number; reason: string | null };
+  errors: string[];
+  notes: string[];
+};
+export type SubtractionWeek = { week: string; start: string; end: string; commits: number; lines_added: number; lines_removed: number; files_added: number; files_deleted: number;
+  ratio_removed_added: number | null; routes_start: number | null; routes_end: number | null; routes_delta: number | null };
+export type SubtractionKpi = { status: 'ok' | 'unavailable'; reason: string | null; repo: string | null; head: string | null; weeks: SubtractionWeek[] | null; note: string };
+export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'DISABLED_BY_POLICY' | 'UNCONFIGURED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
+export type CapabilityChainLink = 'CONFIGURED' | 'ENABLED' | 'DEPENDENCIES_READY' | 'SCHEDULED' | 'EXECUTED' | 'OUTCOME_PERSISTED';
+export type CapabilityVerdict = { component: string; state: CapabilityState; link: CapabilityChainLink;
+  chain: Record<CapabilityChainLink, 'ok' | 'failed' | 'unknown' | 'not_applicable'>; facts: Array<{ fact: string; at: string | null }>;
+  window: { ms: number; since: string }; remediation: string };
 
 /** UX-13: GET /api/health/digest — services/operator-push.ts buildDigest. */
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
@@ -318,9 +638,12 @@ export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: '
 
 export type DecisionsInbox = {
   requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null;
-    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change' }>;
+    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+    /** REQUEUE_AUTO_MODE policy verdict (absent when off): requeue / dismiss / wait = system will handle; hold = needs you */
+    auto?: { mode: 'shadow' | 'on'; action: 'requeue' | 'dismiss' | 'wait' | 'hold'; cls: string; reason: string } | null }>;
   /** untruncated counts over the same filters as the paginated lists; null = the count failed */
-  totals?: Record<string, number | null | Record<string, number>>;
+  totals?: { [count: string]: unknown;
+    requeue_auto?: { mode: 'off' | 'shadow' | 'on'; will_handle: number; held: number; by_action: Partial<Record<'requeue' | 'dismiss' | 'wait' | 'hold', number>> } | null };
   /** Cockpit 3.0 Phase 3 shadow ranking: score = expected_gain × reversibility / operator_minutes; null = insufficient evidence */
   ranking?: Array<{ kind: 'requeue' | 'loop_pr' | 'label' | 'memory_review'; id: string; title: string; expected_gain: number | null;
     reversibility: number; operator_minutes: number; score: number | null; evidence: string[] }>;
@@ -329,7 +652,8 @@ export type DecisionsInbox = {
     labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;
   };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
-  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
+  /** template_duplicate: system dedup work (a memory_template_duplicate judgment), not counted as a human decision */
+  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string; template_duplicate?: number | boolean }>;
   autonomy: Array<{ cls: string; human_approved: number; auto_approved: number; denied: number; expired: number; verified: number; regressed: number; infra: number; pending: number; earned: boolean; why: string }>;
   /** §16 step 4: this week's seeded CAR audit sample of computed attributions; the operator labels, the system never does */
   attribution_audit: {
@@ -346,13 +670,23 @@ export type ImprovementFunnel = {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
   bySource: Array<{ source: string; total: number; parked: number; archived: number; needsGrounding: number; reachedGoal: number; verified: number; failed: number }>;
-  panel: { decisions: Record<string, number>; goalRate: number | null };
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
+  /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
+  panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
+  /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
+  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } | null };
   goals: { fromSelfImprovement: Record<string, number> };
-  learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
-  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
-  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
-  queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  learning: { cognitiveEpisodes: number | null; cognitivePatterns: number | null; cognitiveStrategies: number | null; learningClosures: number | null; memoryCandidates: Record<string, number> };
+  /**
+   * verified/regressed: current status with updated_at in windowDays (not first verifications). The median has its own window
+   * (medianHoursWindowDays, n = medianHoursN): created_at → current updated_at, not first-verification latency.
+   */
+  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
+  /** null = unavailable (reason in `unavailable`), never a healthy 0 */
+  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
+  queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** metric → `missing_schema: …` | `query_failed: …` */
+  unavailable?: Record<string, string>;
 };
 
 export type SpecialistCalibration = {
@@ -360,7 +694,16 @@ export type SpecialistCalibration = {
   bins: Array<{ from: number; to: number; n: number; observed: number }>;
 };
 
-export type AgentGovernanceScore = {
+export type GovernanceScoreScale = '0-5' | '0-100' | 'unknown';
+
+/** Benchmark/scale a score belongs to; optional because older servers did not send it. */
+export type GovernanceScoreCohort = {
+  benchmark?: string;
+  scale?: GovernanceScoreScale;
+  cohort?: string;
+};
+
+export type AgentGovernanceScore = GovernanceScoreCohort & {
   agentId: string;
   overallScore: number;
   categoryScores: Record<string, number>;
@@ -369,7 +712,12 @@ export type AgentGovernanceScore = {
   trend: 'improving' | 'stable' | 'declining';
 };
 
-export type OpenMythosRun = {
+export type GovernanceOtherCohort = Required<GovernanceScoreCohort> & {
+  ranked: boolean;
+  scores: AgentGovernanceScore[];
+};
+
+export type OpenMythosRun = GovernanceScoreCohort & {
   id: string;
   agentId: string;
   status: string;
@@ -400,6 +748,61 @@ type UsageQuota = {
   cost_per_1k_completion: number | null;
   rate_limit_rpm: number | null;
   rate_limit_rpd: number | null;
+};
+
+export type UsageWindowId = '5h' | 'today' | '7d' | 'month';
+export type UsageWindowSum = { calls: number; tokens: number | null; calls_without_tokens: number };
+export type UsageLimitView = {
+  account: string; plan: string; window: '5h' | 'session' | 'weekly' | 'daily' | 'monthly' | 'none'; unit: 'tokens' | 'messages' | 'requests' | 'credits' | 'unknown';
+  limit: number | null; limit_text: string; source_url: string | null; checked_at: string | null;
+  confidence: string | null; note: string | null; exceed_behaviour: string | null;
+  measured_window: UsageWindowId; measured_unit: 'tokens' | 'calls'; used: number | null; comparable: boolean; used_pct: number | null; unit_note: string | null;
+  active: boolean | null;
+  /** set when used_pct is the vendor's own percent (Ollama balance API, account-wide) or an operator snapshot of the vendor's usage page */
+  pct_source?: 'ollama_balance_api' | 'operator_snapshot'; resets_at?: string | null; reported_at?: string;
+};
+/** What the operator copied from the vendor's usage page (POST /usage/accounts/:account/snapshot). Every field optional: absent = not reported. */
+export type UsageSnapshotPayload = {
+  plan?: string;
+  session?: { used_pct?: number; resets_at?: string };
+  weekly?: { used_pct?: number; resets_at?: string };
+  model_weekly?: Array<{ model: string; used_pct?: number; resets_at?: string; cap_note?: string }>;
+  credits?: Array<{ label: string; remaining?: number; total?: number; currency?: string; expires_at?: string }>;
+  spend_limit?: { spent?: number; limit?: number; currency?: string; period?: 'daily' | 'weekly' | 'monthly'; auto_reload?: boolean };
+  by_product?: Array<{ product: string; share_pct: number }>;
+  note?: string;
+};
+export type UsageOperatorSnapshot = UsageSnapshotPayload & { reported_at: string; age_hours: number; stale: boolean };
+export type UsagePctWindow = { used_pct: number; resets_at: string | null };
+/** Ollama balance API (OLLAMA_BALANCE_MODE); null = not returned / unknown, never 0 */
+export type UsageAccountWide = {
+  source: 'ollama_balance_api'; mode: 'off' | 'on'; fetched_at: string | null;
+  session: UsagePctWindow | null; weekly: UsagePctWindow | null;
+  credits: { balance_usd?: number; included_balance_usd?: number; included_allowance_usd?: number; included_period?: { from: string | null; until: string | null } } | null;
+  week: { request_count: number | null; usage_value_usd: number | null; from: string | null; until: string | null } | null;
+  error?: string;
+};
+export type UsageEventBrief = { at: string; message: string; consumer: string; model: string | null } | null;
+export type UsageAccount = {
+  id: string; label: string;
+  /** windows are Djimitflo's share, as recorded (a CLI lease counts once) */
+  scope: 'djimitflo_ledger'; windows: Record<UsageWindowId, UsageWindowSum>; lease_sessions: Record<UsageWindowId, number>;
+  /** ollama_cloud only */
+  account_usage?: UsageAccountWide;
+  consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; calls_without_tokens: number }>;
+  providers_seen: string[]; last_error: UsageEventBrief; last_limit_hit: UsageEventBrief;
+  state: { state: 'limit_reached' | 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
+  cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
+  plan: string;
+  limits: UsageLimitView[];
+  /** latest operator-reported snapshot; null = none reported */
+  operator_snapshot?: UsageOperatorSnapshot | null;
+};
+export type UsageAccountsResponse = {
+  generated_at: string; window_starts: Record<UsageWindowId, string>;
+  sources: Record<string, 'ok' | 'missing'>;
+  plan_limits: { source: string; entries: number; invalid: number; error: string | null };
+  accounts: UsageAccount[]; note: string;
 };
 
 type UsageBreakdown = {
@@ -482,6 +885,21 @@ export type LoopRunRecord = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+};
+
+/** GET /loops/runs/:id/gym-outcome: the skill outcome remote-gym-service record() wrote for a gym run (null = none written). */
+export type GymSkillOutcome = {
+  id: string;
+  skill_id: string;
+  success: boolean;
+  /** null = not reported (unknown); a legacy 0 is unknown too */
+  tokens_used: number | null;
+  /** 0 = the worker sent no duration (unknown) */
+  duration_ms: number;
+  model: string | null;
+  skill_content_hash: string | null;
+  evidence_refs: string[];
+  created_at: string;
 };
 
 export type LoopCatalogItem = {
@@ -972,6 +1390,59 @@ export type ProofRunSummary = {
   narrative: string[];
 };
 
+/** SW-02: `total` is the loaded slice (kept for compatibility); registry_total is the whole registry (absent on an older server) */
+export type SwarmCapabilityHealth = {
+  total: number;
+  validated: number;
+  routable: number;
+  blocked: number;
+  loaded?: number;
+  load_limit?: number;
+  registry_total?: number;
+  registry_by_status?: Record<string, number>;
+};
+export type SwarmCurrentExecution = { lease_id: string; loop_run_id: string; loop_name: string | null; runtime: string; role: string; status: string; updated_at: string };
+/** SW-01: GET /api/swarms/learning-curve — server services/swarm-learning-curve.ts learningCurveView */
+export type UsageTokens = { value: number | null; events: number; known: number; coverage: number | null; status: 'measured' | 'partial' | 'UNKNOWN' };
+export type CohortWindow = { n: number; completed: number; rate: number | null; ci: [number, number] | null; censored: number; mean_retries?: number | null;
+  tokens: UsageTokens; usd: { value: number | null; reason: string | null } };
+export type LearningCohort = { loop_name: string; run_class: 'gym' | 'maintenance' | 'production' | string; windows: { prior: CohortWindow; recent: CohortWindow };
+  comparison: { status: 'compared' | 'insufficient'; delta: number | null; reason: string | null } };
+export type RegisteredReadout = { id: string; stop_by: string | null; analysis: string; causal_conclusion: null; protocol?: string; note?: string };
+export type LearningCurve = {
+  runs: Array<{ run_id: string; created_at: string; success: boolean; retries: number; dollars: number | null; loop_name?: string; status?: string; run_class?: string;
+    tokens?: number | null; cost_status?: 'UNKNOWN' | 'inferred' }>;
+  first_vs_last: Record<string, unknown>;
+  cohorts?: LearningCohort[];
+  window?: { days: number; prior?: { since: string; until: string }; recent?: { since: string; until: string } };
+  min_n_per_window?: number;
+  pooled?: false;
+  definition?: string;
+  registered_readouts?: RegisteredReadout[];
+};
+/** SW-02: GET /api/swarms/intelligence/missions/execution */
+export type MissionExecutionRow = { mission_id: string; title: string; planning_status: string; goal_id: string | null; lineage: 'linked' | 'no_goal' | 'goal_missing';
+  goal_status: string | null; created_at?: string;
+  execution: { loop_runs: number; by_status: Record<string, number>; latest_run: { id: string; loop_name: string; status: string; created_at: string } | null; closed_runs: number | null } | null };
+export type MissionExecutions = { totals: { registered: number; loaded: number; by_planning_status: Record<string, number>; by_goal_status: Record<string, number> }; missions: MissionExecutionRow[]; note?: string };
+/** GET /api/swarms/intelligence/missions/:id/execution — server services/mission-detail.ts missionDetail (read-only) */
+export type MissionDetail = {
+  mission: { id: string; title: string; description: string; risk_class: string; planning_status: string; goal_id: string | null; panel_id: string | null; evidence_refs: string[]; created_at: string; updated_at: string };
+  execution: MissionExecutionRow;
+  goal: { id: string; objective: string; status: string; updated_at: string } | null;
+  runs: Array<{ id: string; loop_name: string; status: string; created_at: string; updated_at: string; completed_at: string | null; failed_gates: string[]; next_actions: string[];
+    closure: { eval_run_id: string; score_delta: number | null; created_at: string } | null;
+    attribution: { outcome: string; reason: string | null; created_at: string; judgment_id: string } | null }>;
+  leases: Array<{ id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null }>;
+  tasks: Array<{ id: string; title: string; status: string; assigned_lease_id: string | null; capability_id: string | null }>;
+  decisions: Array<{ id: string; task_id: string | null; decision_type: string; decision: string; reason: string; actor: string; blocked_reasons: string[]; created_at: string }>;
+  blocker: { text: string; source: string } | null;
+  next_action: { items: string[]; source: string } | null;
+  tokens: UsageTokens | null;
+  provenance: Array<{ edge_type: string; source: { kind: string; id: string }; target: { kind: string; id: string }; created_at: string | null; evidence_ref: string; origin: string }>;
+  note?: string;
+};
+
 export type SwarmMissionControl = {
   execution_node: {
     cockpit: string;
@@ -985,13 +1456,10 @@ export type SwarmMissionControl = {
     running_leases: number;
     active_execution_count: number;
     registry_is_not_execution: boolean;
+    /** SW-02: prepared/running leases with their run (absent on an older server) */
+    current_executions?: SwarmCurrentExecution[];
   };
-  capability_health: {
-    total: number;
-    validated: number;
-    routable: number;
-    blocked: number;
-  };
+  capability_health: SwarmCapabilityHealth;
   claim_health: {
     total: number;
     proposed: number;
@@ -1035,12 +1503,43 @@ export type SocialMessage = {
   interest?: string | null; ecosystem_component?: string | null; proposed_improvement?: string | null; improvement_id?: string | null; improvement_status?: string | null;
   runtime_run_id?: string | null; provenance_status?: string | null;
   runtime: string | null; model_id: string | null; reflection_id: string | null; reflection_status: string | null;
+  /** AC-10: why this learning did (not) become a proposal; 'unknown' = recorded before reasons were kept (never inferred) */
+  proposal_disposition?: CommonsProposalDisposition;
+};
+
+/** AC-10 (services/agent-communication-service.ts CommonsProposalDisposition) */
+export type CommonsProposalDisposition = {
+  reason: 'created' | 'pending_grounding' | 'duplicate' | 'policy_disabled' | 'rate_limited' | 'runtime_failure' | 'not_applicable' | 'unknown';
+  proposal_id: string | null;
+  detail: 'no_proposed_improvement' | 'grounding_thread' | 'proposal_review_thread' | null;
+  cap: number | null; created_in_window: number | null;
+  window: 'rolling_24h' | null; scope: 'global' | null; source: 'reflection' | null;
+  error_code: string | null; decided_at: string | null;
+};
+
+/** AC-10: effective reflection-proposal admission policy (REFLECTION_PROPOSALS_MAX_PER_DAY) plus the Commons workers' flags */
+export type CommonsProposalPolicy = {
+  env: 'REFLECTION_PROPOSALS_MAX_PER_DAY'; cap: number | null; state: 'disabled' | 'exhausted' | 'open' | 'uncapped';
+  created_in_window: number; remaining: number | null; window: 'rolling_24h'; window_hours: number; scope: 'global'; source: 'reflection';
+  shared_producers: string[]; workers: Array<{ id: string; env: string; enabled: boolean }>;
 };
 
 export type SocialThread = {
   id: string; topic: string; topic_ref: string | null; participants: string[];
   stage: 'asked' | 'responding' | 'learned'; started_at: string; last_activity_at: string;
   learnings: number; messages: SocialMessage[];
+  /** 'record' = record-only evidence room: addressed to no runtime inbox, so no reply is ever scheduled */
+  kind?: CommonsThreadKind;
+};
+
+export type CommonsThreadKind = 'discussion' | 'record';
+
+/** Derived server-side from heartbeats, own runtime replies and lapsed delivery leases; the runtime itself reports no errors. */
+export type CommonsRuntimeReadiness = {
+  state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
+  last_heartbeat_at: string | null; last_successful_reply_at: string | null;
+  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
+  runtime_failures_reported: false;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
@@ -1049,17 +1548,28 @@ export type SocialAgentPresence = {
   id: string; name: string; status: string; capabilities: string[]; model: string;
   runtime: string | null; last_heartbeat_at: string | null; present: boolean;
   activity: CommonsAgentActivity[];
+  readiness?: CommonsRuntimeReadiness;
 };
 
+export type CommonsChildOutcomes = {
+  grounded_proposals: number; no_refinement: number; children: number; legacy_fallback_reviews: number; note: string;
+  outcomes: Record<'technical_failure' | 'needs_evidence' | 'blocked' | 'backlog' | 'goal' | 'pending', number>;
+};
 export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
   proposals_by_status?: Record<string, number>;
   /** where validly grounded proposals stopped (furthest stage of their refinement); null = could not be read */
-  grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
-export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
+  grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null;
+  /** AC-03: per grounded child, what its panel said (services/honest-numbers.ts commonsChildOutcomes); null = could not be read */
+  child_outcomes?: CommonsChildOutcomes | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
+export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats;
+  thread_counts?: Record<CommonsThreadKind, number>;
+  page?: { kind: CommonsThreadKind | 'all'; limit: number; offset: number; total: number; has_more: boolean };
+  /** AC-10: null = could not be read on this server */
+  proposal_policy?: CommonsProposalPolicy | null };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
 export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
-export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string; kind?: 'person' | 'paper' | 'repository' | 'area' };
+export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string; kind?: 'person' | 'paper' | 'repository' | 'area'; /** K5: open knowledge gaps matching this area's capabilities (EVOLUTION_FEEDBACK_MODE=on, read-only) */ gap_demand?: number };
 export type ExpertEvidenceItem = { id: string; kind: string; tier: number; title: string; url: string | null; source_family: string };
 export type ExpertCapabilityProvenance = { capability_id: string; status: string; confidence: number; evidence: ExpertEvidenceItem[] };
 export type ExpertClaim = { id: string; subject: string; relation: string; object: string; polarity: string; conditions: string | null; scope: string | null; evidence_refs_json: string; confidence: number; criticality: string; support_status: string; created_at: string };
@@ -1311,22 +1821,47 @@ export type CatalogSearchResult = {
   agents: CatalogAgent[];
 };
 
+export interface MCPRefreshScope {
+  refreshed_at: string;
+  probed: string[];
+  skipped: Array<{ id: string; reason: 'no_url' | 'known_unreachable' }>;
+}
+
+/** A failed API call: the message is unchanged from the plain Error it replaces; status, code and request id ride along. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly request_id?: string;
+  constructor(message: string, info: { status: number; code?: string; request_id?: string }) {
+    super(message);
+    this.status = info.status;
+    this.code = info.code;
+    this.request_id = info.request_id;
+  }
+}
+
+/** Reads `{error:{message,code}}`, `{message}` or `{error:'text'}`; 403/404 keep their fixed messages. */
+async function apiError(response: Response, prefix: string): Promise<ApiError> {
+  let body: any;
+  try { body = await response.json(); } catch { body = { message: response.statusText }; }
+  body = body ?? {};
+  const status = response.status;
+  const message = status === 403 ? 'Access denied'
+    : status === 404 ? 'Not found'
+    : body.message || body.error?.message || (typeof body.error === 'string' && body.error) || `${prefix}: ${status}`;
+  const code = body.error?.code ?? body.code;
+  return new ApiError(message, {
+    status,
+    code: typeof code === 'string' ? code : undefined,
+    request_id: response.headers?.get?.('X-Request-ID') ?? undefined,
+  });
+}
+
 class ApiClient {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await authenticatedFetch(endpoint, options);
 
-    if (response.status === 403) {
-      throw new Error('Access denied');
-    }
-
-    if (response.status === 404) {
-      throw new Error('Not found');
-    }
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(error.message || error.error?.message || `API error: ${response.status}`);
-    }
+    if (!response.ok) throw await apiError(response, 'API error');
 
     if (response.status === 204) return undefined as T;
     return response.json();
@@ -1396,8 +1931,14 @@ class ApiClient {
   }
 
   // MCP
+  /** Passive: stored status only, no probe (L6-08). */
   async getMCPServers(): Promise<{ servers: MCPServer[] }> {
-    return this.request('/mcp/servers?refresh=true');
+    return this.request('/mcp/servers');
+  }
+
+  /** Explicit probe of every registered server URL; needs manage:config. */
+  async refreshMCPServers(): Promise<{ servers: MCPServer[]; refresh: MCPRefreshScope }> {
+    return this.request('/mcp/servers/refresh', { method: 'POST' });
   }
 
   async createMCPServer(input: MCPServerCreateInput): Promise<{ server: MCPServer }> {
@@ -1507,9 +2048,10 @@ class ApiClient {
   }
 
   // Health
-  async getHealth(): Promise<{ status: string; timestamp: string; uptime: number }> {
-    const url = API_BASE.replace('/api', '/health');
-    const response = await fetch(url);
+  async getHealth(): Promise<{ status: string; timestamp: string; ui?: { navigation_discovery_mode?: 'off' | 'shadow' | 'on' } }> {
+    // Basic health is public: a rollout lookup must not refresh or invalidate the user's session.
+    const response = await fetch(`${API_BASE}/health`);
+    if (!response.ok) throw new Error(`Health unavailable (${response.status})`);
     return response.json();
   }
 
@@ -1545,7 +2087,7 @@ class ApiClient {
   }
 
   // OpenMythos governance
-  async getOpenMythosLeaderboard(): Promise<{ leaderboard: AgentGovernanceScore[] }> {
+  async getOpenMythosLeaderboard(): Promise<{ leaderboard: AgentGovernanceScore[]; otherCohorts?: GovernanceOtherCohort[] }> {
     return this.request('/openmythos/leaderboard');
   }
 
@@ -1593,6 +2135,11 @@ class ApiClient {
     return this.request('/health/knowledge');
   }
 
+  /** K4: distilled skill / anti-pattern cards (record-only, never injected into a maker). */
+  async getSkillCards(): Promise<SkillCardsView> {
+    return this.request('/health/skills');
+  }
+
   /** Phase E1/E3: tokens, GPU time, measured Wh and value per consumer (7 d), north-star trend. */
   async getEfficiency(): Promise<EfficiencyView> {
     return this.request('/health/efficiency');
@@ -1638,6 +2185,25 @@ class ApiClient {
     await this.request<void>(`/self-improve/attribution-audit/${encodeURIComponent(runId)}`, { method: 'POST', body: JSON.stringify(note ? { verdict, note } : { verdict }) });
   }
 
+  /** DI-001: next blind relevance cards (title, note, source, link only) and today's 30-min quota */
+  async getRelevanceQueue(limit = 5): Promise<RelevanceQueue> {
+    return this.request(`/self-improve/discovery-labels/next?limit=${limit}`);
+  }
+
+  async labelDiscoveryRelevance(ref: string, pass: RelevancePass, label: RelevanceLabel, seconds: number): Promise<{ recorded: boolean }> {
+    return this.request('/self-improve/discovery-labels', { method: 'POST', body: JSON.stringify({ ref, pass, label, seconds }) });
+  }
+
+  /** E1: the next blind query-level retrieval task and the n/30 progress */
+  async getE1LabelQueue(): Promise<E1LabelQueue> {
+    return this.request('/self-improve/e1-labels/next');
+  }
+
+  /** E1: one label per task — the relevant candidate handles, or none_relevant with an empty list */
+  async labelE1Retrieval(taskId: string, relevant: string[], seconds: number): Promise<{ recorded: boolean }> {
+    return this.request('/self-improve/e1-labels', { method: 'POST', body: JSON.stringify({ task_id: taskId, relevant, none_relevant: relevant.length === 0, seconds }) });
+  }
+
   async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {
     await this.request<void>(`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'PUT', body: JSON.stringify({ user_id: userId, note }) });
   }
@@ -1647,7 +2213,7 @@ class ApiClient {
   }
 
   // S3 runtime configuration (read-only, manage:config)
-  async getRuntimeConfig(): Promise<{ entries: Array<{ name: string; value: string; masked: boolean; group: string }>; masked: number }> {
+  async getRuntimeConfig(): Promise<RuntimeConfig> {
     return this.request('/health/config');
   }
 
@@ -1722,6 +2288,14 @@ class ApiClient {
   }
 
   // Usage
+  async getUsageAccounts(): Promise<UsageAccountsResponse> {
+    return this.request('/usage/accounts');
+  }
+
+  async postUsageSnapshot(account: string, payload: UsageSnapshotPayload): Promise<{ id: string; account: string; reported_at: string; source: 'operator_snapshot'; payload: UsageSnapshotPayload }> {
+    return this.request(`/usage/accounts/${encodeURIComponent(account)}/snapshot`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
   async getUsageQuotas(): Promise<{ quotas: UsageQuota[] }> {
     return this.request('/usage/quotas');
   }
@@ -1779,12 +2353,20 @@ class ApiClient {
     return this.request('/loops/runs');
   }
 
+  async getLoopRun(runId: string): Promise<LoopRunRecord> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}`);
+  }
+
   async getLoopCatalog(): Promise<{ loops: LoopCatalogItem[] }> {
     return this.request('/loops/catalog');
   }
 
   async getRuntimeContracts(): Promise<{ runtimes: Record<string, RuntimeContract> }> {
     return this.request('/loops/runtime-contracts');
+  }
+
+  async getGymOutcome(runId: string): Promise<{ run_id: string; skill_outcome: GymSkillOutcome | null }> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}/gym-outcome`);
   }
 
   async getLoopReviewBundle(runId: string): Promise<LoopReviewBundle> {
@@ -2048,8 +2630,11 @@ class ApiClient {
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
   }
 
-  async getSocialCommons(limit = 50): Promise<SocialCommons> {
-    return this.request(`/swarm-v2/social/commons?limit=${limit}`);
+  async getSocialCommons(limit = 50, options: { kind?: CommonsThreadKind; offset?: number } = {}): Promise<SocialCommons> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (options.kind) query.set('kind', options.kind);
+    if (options.offset) query.set('offset', String(options.offset));
+    return this.request(`/swarm-v2/social/commons?${query}`);
   }
 
   async startSocialRound(): Promise<{ status: 'started' | 'skipped'; correlation_id: string | null; topic: string | null; participants: string[]; reason: string | null }> {
@@ -2062,6 +2647,11 @@ class ApiClient {
 
   async castLure(): Promise<LureCast> {
     return this.request('/swarm-v2/social/lures', { method: 'POST', body: '{}' });
+  }
+
+  /** FE-DEDUPE: duplicate clusters among Frontier Experts units and what a collapse would change (read-only, never applied). */
+  async getExpertDedupe(limit = 5): Promise<ExpertDedupeReport> {
+    return this.request(`/health/expert-dedupe?limit=${limit}`);
   }
 
   async listExperts(params: { state?: string; capability?: string; name?: string; kind?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[]; funnel?: Array<{ kind: string; state: ExpertLifecycleState; count: number }> }> {
@@ -2137,7 +2727,7 @@ class ApiClient {
     return this.request(`/swarms/proof-runs/${id}/rollback`, { method: 'POST' });
   }
 
-  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[] }> {
+  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[]; registry_total?: number; registry_by_status?: Record<string, number>; loaded?: number; limit?: number }> {
     const query = limit ? `?limit=${limit}` : '';
     return this.request(`/swarms/intelligence/capabilities${query}`);
   }
@@ -2226,12 +2816,7 @@ class ApiClient {
       method,
       body: method === 'GET' ? undefined : JSON.stringify({ format, ...options }),
     });
-    if (response.status === 403) throw new Error('Access denied');
-    if (response.status === 404) throw new Error('Not found');
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(error.message || error.error?.message || `Export failed: ${response.status}`);
-    }
+    if (!response.ok) throw await apiError(response, 'Export failed');
 
     const blob = await response.blob();
     const contentDisposition = response.headers.get('Content-Disposition') || '';
