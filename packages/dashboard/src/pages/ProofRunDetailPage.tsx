@@ -3,11 +3,13 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Database, RotateCcw, AlertTriangle } from 'lucide-react';
 import { WebSocketEventType, type WebSocketMessage, type ProofRunEventPayload } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
+import { useDialog } from '../components/ConfirmDialog';
 import { api, type ProofRunSummary } from '../lib/api';
 
 export function ProofRunDetailPage() {
   const { proofRunId } = useParams<{ proofRunId: string }>();
   const subscribe = useWsSubscribe();
+  const dialog = useDialog();
   const [proofRun, setProofRun] = useState<ProofRunSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [rollingBack, setRollingBack] = useState(false);
@@ -46,6 +48,8 @@ export function ProofRunDetailPage() {
 
   async function rollback() {
     if (!proofRunId) return;
+    if (!(await dialog.confirm(`Roll back proof run ${proofRunId}?`,
+      'Deletes every record this proof run created (goals, work items, loop runs, worker leases, claims and evidence). This cannot be undone.', 'Roll back'))) return;
     setRollingBack(true);
     setError(null);
     try {
@@ -90,6 +94,7 @@ export function ProofRunDetailPage() {
 
   return (
     <div className="p-8 space-y-6">
+      {dialog.element}
       <BackLink />
       <div className="flex flex-wrap items-center gap-3">
         <Database className="h-5 w-5 text-status-success" />
