@@ -14,6 +14,7 @@ import { join } from 'path';
 import { initializeDatabase } from './database';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
+import { requestContext } from './middleware/request-context';
 import { securityHeaders } from './middleware/security-headers';
 import { createAuthMiddleware } from './middleware/auth';
 import { AuthService } from './services/auth-service';
@@ -153,6 +154,7 @@ async function main() {
   
   // Middleware
   app.use(securityHeaders);
+  app.use(requestContext); // X-Request-ID on every response; the dashboard shows it on failed calls (UXE-08)
   app.use(cors({
     origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://127.0.0.1:5173'],
     credentials: true,
@@ -230,6 +232,16 @@ async function main() {
   const taskRecovery = executionEngine.recoverInterruptedTasks();
   if (taskRecovery.failedMockTasks || taskRecovery.heldTasks) {
     console.log(`🔄 Reconciled ${taskRecovery.failedMockTasks} interrupted mock task(s); ${taskRecovery.heldTasks} task(s) held for operator outcome reconciliation.`);
+  }
+  // RIR (LOOP_RESUME_INTERRUPTED, default off): after both the loop settle and the engine's recovery holds, re-queue this
+  // boot's interrupted runs with a fresh maker; the daemon's next tick runs them through every gate again.
+  if (autonomousRuntime) {
+    try {
+      const resume = recoverySvc.resumeInterruptedRuns();
+      if (resume.mode !== 'off' && resume.details.length) console.log(`🔄 Resume interrupted runs (${resume.mode}): ${resume.resumed} resumed, ${resume.skipped} skipped.`);
+    } catch (error) {
+      console.warn('⚠️  Resume of interrupted runs failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
   }
   console.log('⚙️  Execution engine initialized');
 

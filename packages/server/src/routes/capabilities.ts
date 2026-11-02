@@ -16,6 +16,7 @@ const requestSchema = z.object({
   target_file: z.string().trim().min(1).max(300),
   acceptance: z.string().trim().min(1).max(300),
   repo: z.string().trim().min(1).max(200).optional(),
+  execute: z.boolean().optional(), // OMEGA slice 2: honoured only with CAPABILITY_FACTORY_REUSE_EXECUTE=on
 }).strict();
 
 export function createCapabilityRoutes(db: Database, auth?: AuthMiddleware): Router {
@@ -30,7 +31,7 @@ export function createCapabilityRoutes(db: Database, auth?: AuthMiddleware): Rou
       const actor = req.user?.sub || req.user?.email;
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const parsed = requestSchema.safeParse(req.body);
-      if (!parsed.success) throw createError(400, 'title, description, target_file and acceptance are required (repo optional)', 'VALIDATION_ERROR');
+      if (!parsed.success) throw createError(400, 'title, description, target_file and acceptance are required (repo, execute optional)', 'VALIDATION_ERROR');
       const result = submitCapabilityRequest(db, parsed.data, actor);
       res.status(result.status === 'proposed' ? 201 : result.status === 'duplicate' ? 409 : 200).json(result);
     } catch (error) {
