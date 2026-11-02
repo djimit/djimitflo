@@ -1,0 +1,26 @@
+# UX/UI functional verification matrix
+
+This supplements, rather than silently repeats, the [32-action baseline matrix](../djimitflo-ux/C-functional-verification-matrix.md). All 37 navigation destinations were inspected in that baseline. Current-release browser rechecks cover Cockpit, Funnel, Configuration, Fleet, Knowledge, Evolution, Governance, Audit and Health. Other routes retain historical browser coverage plus current source inventory; see [02](02-route-inventory.md). No mutation, provider inference, dispatch, promotion, restart or heal was tested.
+
+| ID / action | Expected / actual / evidence | Verdict |
+|---|---|---|
+| L6-V01 open Cockpit | Health/outcome/service context renders; current lineage and separate not-measured gains visible. Current AX observation 22:35 UTC; DB reports corroborate populations, not identical refresh instants. | WORKING for read presentation; outcome semantics PARTIAL |
+| V02 open Funnel | Historical refinement conversion and denominator explicit: 18/307→6%; panel rate 48/1079→4% and 1587 total; panel creation and specialist reviews separated. 195 default unreviewed linked panels remain in the rate denominator. | PARTIAL |
+| V03 Configuration filter MEMORY_HOLDOUT_RATE | Filter narrows to .3, env source, default 0, override and restart disclosure. 300 settings/268 env/75 overridden/20 masked; screenshot 01. No editor/save tested. | WORKING for filter/provenance; effective per-run settings PARTIAL |
+| V04 Fleet read | Seven live host cards and distinct runtime health render; no remote command dispatched. Host heartbeat is not runtime execution proof. | WORKING for inventory, readiness NOT_TESTABLE here |
+| V05 Knowledge fitness | Counts/cohort and Wilson intervals visible; “no value” assigned from below-baseline association without causal support. Narrow desktop screenshot shows tightly packed/overflowing table headings. screenshot 05 + knowledge_fitness reader. | MISLEADING label; readable layout PARTIAL |
+| V06 Evolution read | Realm gates, trials/models, oracle, Commons, settlement, flags render. Already available experiments and learning ledger not rendered by EvolutionPage. Native AX identifies 100% “Usable” for gym models whose task outcomes are failures. | PARTIAL; usable metric requires transport definition |
+| V07 Governance Scorecard | Comparable benchmark ranking expected; 93.00 critic ranked ahead of 4.20 under 0–5 description. Fresh screenshot 02, DB governance_scales and deployed service query. | MISLEADING |
+| V08 Audit→Log viewer | Tab exposes records with loop_run and IDs/metadata; tab changes URL ?tab=logs. | WORKING |
+| V09 Log viewer→Entity Type→Loop | Existing loop_run entries should remain; selected Loop produces header-only empty table, Next remains enabled. Screenshot 03; source option loop vs persisted loop_run. | BROKEN |
+| V10 Run Health Check | Read-only scan returns cards and degraded DB size. “0 stale healthy” contradicts normalized 11; 0/162 rate uses wrong 24h population (normalized78). Screenshot 04 and paired queries frozen22:40. Blocked runs are not necessarily failures, so no invented failure numerator. | MISLEADING |
+| V11 Audit export | Buttons/source present, source ignores list filters; download and exported business scope not re-exercised. | NOT_TESTABLE current; source defect retained |
+| V12 MCP page fresh load | Excluded because mount GETrefresh=true persists probe/catalog state. Earlier browser search worked; current read-only boundary cannot be guaranteed through this UI. | NOT_TESTABLE under audit constraints |
+| V13 installed skill validation | Existing validator:163 files,123 pass/40 warnings/0 errors;162 existing manifests, lifecycle audit163/163. No skill invoked. | WORKING structural validation only |
+| V14 memory report calculation | Offline independent Fisher recomputation .1101977 matches existing reader .1102; goal assignment/settled exclusions checked separately. | WORKING numeric calculation; causal interpretation UNVERIFIED |
+| V15 mesh health | Router/registry/event-bus GETs return expected health; bus verifies Redis ping. Source router selection returns endpoint without executing it. | WORKING narrow read; interoperability NOT_TESTABLE |
+| V16 Qdrant metadata | Existing client credential accepted;24 collections enumerated and collection metadata read, no points or embeddings sent. | WORKING metadata; retrieval quality NOT_TESTABLE |
+
+Browser UI → exact request cannot be continuously captured with the available native Safari control. API wiring is source evidence, DB aggregates independently verify retained data, and fresh UI states verify feedback. Do not represent those as an instrumented action→request→persisted-state trace. Mutating controls are NOT_TESTABLE here even when source implements them.
+
+Screenshots 01–05 were captured through the screenshot skill and visually inspected. Baseline screenshots retain their original SHA/date; they are not current-release screenshots. Keyboard navigation, screen-reader task completion, mobile viewport, contrast measurements, every sort/page/export and injected server-error recovery remain untested. Existing skip link and native accessible control labels are positive observations, not WCAG certification.

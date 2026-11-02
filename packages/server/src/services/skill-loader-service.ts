@@ -60,7 +60,7 @@ export class SkillLoaderService {
   private skills: Map<string, SkillDefinition> = new Map();
   private rejectedSkills: RejectedSkill[] = [];
 
-  constructor(private db: Database, private skillsDir: string | null = configuredSkillsDir(), private allowedSkillIds = configuredAllowlist()) {
+  constructor(private db: Database, private skillsDir: string | null = configuredSkillsDir(), private allowedSkillIds = configuredAllowlist(), private selectedDirectory?: string) {
     this.ensureTables();
     this.loadSkills();
   }
@@ -82,7 +82,7 @@ export class SkillLoaderService {
     const entries = readdirSync(skillsDir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || (this.selectedDirectory && entry.name !== this.selectedDirectory)) continue;
 
       const skillPath = join(skillsDir, entry.name);
       const skillMdPath = join(skillPath, 'SKILL.md');

@@ -116,6 +116,19 @@ it('evidence: per-arm n / verified / out-of-scope share / tokens; gym and untagg
   expect(buildEvolutionEvidence(db, { STE_001_MODE: 'on' }).ste_001.arms['1'].n).toBe(2);
 });
 
+it('evidence: tokens_mean averages known (> 0) tokens only, with tokens_n and coverage (Amendment 2026-10-27)', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string, tokens: number | null) => db.prepare(`INSERT INTO skill_outcomes
+      (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, 'loop-maker:x:opencode', 1, ?, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), tokens, randomUUID(), JSON.stringify([`ste-001-arm:${arm}`]), now);
+  outcome('0', 3000); outcome('0', null); outcome('0', 0); outcome('0', 1000);
+  outcome('1', null); outcome('1', 0);
+  const ev = ste001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { STE_001_MODE: 'on' });
+  // a run without a usage report is not a 0-token run: (3000 + 1000) / 2, not / 4
+  expect(ev.arms['0']).toMatchObject({ n: 4, tokens_n: 2, tokens_mean: 2000, tokens_coverage: 0.5 });
+  expect(ev.arms['1']).toMatchObject({ n: 2, tokens_n: 0, tokens_mean: null, tokens_coverage: 0 });
+});
+
 it('evidence: mode reflects STE_001_MODE env and diff is null when an arm is empty', () => {
   new SkillEvolutionEngine(db);
   const ev = ste001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { STE_001_MODE: 'on' });

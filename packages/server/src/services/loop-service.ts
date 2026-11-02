@@ -1,6 +1,9 @@
 import { mutationCheckEnv } from './test-gap-source-service';
 import { assertionStrengthCheck } from './test-assertion-strength';
+import { withoutHiddenChecks } from './fail-before-pass-after';
 import { deadCodeCheckEnv } from './dead-code-source-service';
+import { findingFixCheck, findingFixCheckEnv } from './finding-fix-source';
+import { ADVISORY_EXPOSURE_CHECK, advisoryExposureCheck, advisoryGoalRefs } from './advisory-exposure';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -15,7 +18,7 @@ import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService, type SwarmCapabilityRecord } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
-import { LoopBudgetService } from './loop-budget-service';
+import { LoopBudgetService, type EfficiencyMetric } from './loop-budget-service';
 import { WorktreeManager } from './worktree-manager';
 import { GoalService } from './goal-service';
 import { LoopWorkerExecutorService } from './loop-worker-executor-service';
@@ -27,7 +30,7 @@ import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
 import { LoopRunQueryService } from './loop-run-query-service';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
-import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-service';
+import { LoopRecoveryService, RuntimeLeaseRegistry, type ResumeInterruptedMode, type ResumeInterruptedSummary } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
@@ -35,6 +38,8 @@ import { MAKER_TEMPLATE_RULES_STE, steRulesFor } from './ste-001';
 import { extraRepoByPath, extraRepoChecks } from './repo-registry';
 import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
 import { firstJsonObject } from './model-json';
+import { isHighRiskPath } from './diff-capture';
+import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopName,
   WorkerRole,
@@ -52,10 +57,14 @@ import type {
   RuntimeManifestAction,
   StartDocDriftLoopInput,
   CheckerVerdictInput,
+  VerdictActor,
 } from './loop-types';
+import { isSupersededMaker } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
 import { captureReadSet, freshnessMode, type ReadSet } from './evidence-freshness';
+import { provisionWarmDeps, type WarmDepsResult } from './maker-warm-deps';
+import { checksFailureHint } from './lease-failure';
 
 export type {
   LoopName,
@@ -149,6 +158,8 @@ const CONTROL_DIR = '.djimitflo';
 const LOOP_WORK_FILE = 'LOOP_WORK.md';
 const ASSIGNMENT_PACKET_FILE = 'ASSIGNMENT_PACKET.json';
 const ASSIGNMENT_CONTEXT_FILE = 'ASSIGNMENT_CONTEXT.json';
+/** The sensitive-content rule of highRiskReason (finding file + text); also applied to a maker's changed file paths. */
+const SENSITIVE_CONTENT = /(auth|oauth|oidc|secret|token|password|credential|infra|terraform|docker|deploy|production|policy|ci\/cd|github actions)/;
 
 const LOOP_CONTRACTS: LoopContract[] = [
   {
@@ -342,6 +353,9 @@ export function renderWorkAssignment(run: { id: string; loop_name: string }, fin
 export const objectiveScopeLine = (file: string): string => `Change only this file: ${file}. Do not edit README.md, CONTRIBUTING.md or any other file.`;
 
 /** The fixed instruction lines of every checker / security-checker assignment (exported for the STE prompt lint). */
+/** The checker prompt carries at most this many characters of the assignment packet (buildCheckerPrompt). */
+export const CHECKER_PACKET_MAX_CHARS = 20_000;
+
 export const CHECKER_INSTRUCTIONS = {
   common: [
     'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
@@ -358,6 +372,24 @@ export const CHECKER_INSTRUCTIONS = {
 };
 
 const VALID_CHECKER_VERDICTS: string[] = ['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'];
+
+/**
+ * P0-4: the attestation recorded on a manual verdict. With an authenticated actor the reviewer IS that user (the body's
+ * reviewer string is ignored) and it is the only way to record reviewer_type 'human'. Without an actor (in-process machine
+ * callers such as the PR-review webhook) the body attestation is kept as-is, but can never claim 'human' or a user id.
+ */
+function recordedAttestation(input: CheckerVerdictInput, actor?: VerdictActor): Record<string, unknown> | undefined {
+  const reason = input.manual_attestation?.reason;
+  if (actor?.id) {
+    // P0-4 decision 2: for the authenticated reviewer the request notes are the reason when none is sent (trimmed, 1-2000 chars)
+    const notes = typeof input.notes === 'string' ? input.notes.trim() : '';
+    const fallback = notes.length > 0 && notes.length <= 2000 ? notes : '';
+    return { reviewer: actor.email || actor.id, reviewer_user_id: actor.id, reviewer_type: 'human', reason: reason || fallback };
+  }
+  if (!input.manual_attestation) return undefined;
+  const { reviewer, reviewer_type } = input.manual_attestation;
+  return { reviewer, reason, ...(reviewer_type === 'heuristic' ? { reviewer_type } : {}) };
+}
 
 export class LoopService {
 
@@ -449,18 +481,9 @@ export class LoopService {
     return { ...result, prunedWorktrees };
   }
 
-  resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
-    resumed: boolean;
-    boundedFail: boolean;
-    resumeAttempt: number;
-    requeuedFindings: string[];
-    skippedFindings: string[];
-  } {
-    return this.recovery.resumeInterruptedRun(runId, maxResumeAttempts);
-  }
-
-  resumeInterruptedRuns(): { resumed: number; boundedFailed: number; details: Array<{ runId: string; resumed: boolean }> } {
-    return this.recovery.resumeInterruptedRuns();
+  /** RIR (LOOP_RESUME_INTERRUPTED): re-queue this boot's interrupted runs with a fresh maker; see LoopRecoveryService. */
+  resumeInterruptedRuns(opts: { bootedAt?: string; mode?: ResumeInterruptedMode } = {}): ResumeInterruptedSummary {
+    return this.recovery.resumeInterruptedRuns((id) => this.retryLoopRun(id), opts);
   }
 
   /**
@@ -753,7 +776,7 @@ export class LoopService {
     return 'manual';
   }
 
-  computeDollarCost(runtime: string, totalTokens: number): number {
+  computeDollarCost(runtime: string, totalTokens: number): number | null {
     return this.budget.computeDollarCost(runtime, totalTokens);
   }
 
@@ -764,7 +787,7 @@ export class LoopService {
     return this.budget.allocateDollarBudget(findings, budget);
   }
 
-  computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number } {
+  computeEfficiencyMetric(runId: string): EfficiencyMetric {
     return this.budget.computeEfficiencyMetric(runId);
   }
 
@@ -793,7 +816,7 @@ export class LoopService {
     }
 
     for (const lease of this.listWorkerLeases(id).filter(lease => ['prepared', 'running'].includes(lease.status))) {
-      this.updateWorkerLeaseStatus(lease.id, 'cancelled', { stopped_by_runner: true, stopped_at: new Date().toISOString() });
+      this.updateWorkerLeaseStatus(lease.id, 'cancelled', { stopped_by_runner: true, stopped_at: new Date().toISOString(), cancellation_reason: 'operator_stop' });
       if (!await RuntimeLeaseRegistry.stop(lease.id)) this.runtimeCommand.stopWorkerLeaseRuntime(lease.id);
     }
     void this.experience.indexRun(id);
@@ -976,7 +999,7 @@ export class LoopService {
     return true;
   }
 
-  submitCheckerVerdict(id: string, input: CheckerVerdictInput): { run: LoopRunRecord; checker: WorkerLeaseRecord } {
+  submitCheckerVerdict(id: string, input: CheckerVerdictInput, actor?: VerdictActor): { run: LoopRunRecord; checker: WorkerLeaseRecord } {
     if (!input.verdict) {
       throw new Error('CHECKER_VERDICT_REQUIRED');
     }
@@ -1006,7 +1029,8 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
-    if (checker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+    const attestation = recordedAttestation(input, actor);
+    if (checker.runtime === 'manual' && (!attestation?.reviewer || !attestation?.reason)) {
       throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
     }
 
@@ -1015,7 +1039,7 @@ export class LoopService {
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
-      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
+      ...(attestation ? { manual_review_attestation: attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Checker verdict submitted: ${input.verdict}.`, {
@@ -1034,7 +1058,7 @@ export class LoopService {
     };
   }
 
-  submitSecurityVerdict(id: string, input: CheckerVerdictInput): { run: LoopRunRecord; security_checker: WorkerLeaseRecord } {
+  submitSecurityVerdict(id: string, input: CheckerVerdictInput, actor?: VerdictActor): { run: LoopRunRecord; security_checker: WorkerLeaseRecord } {
     if (!input.verdict) {
       throw new Error('CHECKER_VERDICT_REQUIRED');
     }
@@ -1064,7 +1088,8 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
-    if (securityChecker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+    const attestation = recordedAttestation(input, actor);
+    if (securityChecker.runtime === 'manual' && (!attestation?.reviewer || !attestation?.reason)) {
       throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
     }
 
@@ -1073,7 +1098,7 @@ export class LoopService {
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
-      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
+      ...(attestation ? { manual_review_attestation: attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'security_checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Security checker verdict submitted: ${input.verdict}.`, {
@@ -1145,7 +1170,7 @@ export class LoopService {
         cwd: makerLease.worktree_path!,
         encoding: 'utf8',
         timeout: timeoutMs,
-        env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id) },
+        env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id), ...findingFixCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
       });
       const exitStatus = typeof result.status === 'number' ? result.status : null;
@@ -1168,6 +1193,20 @@ export class LoopService {
       const strength = assertionStrengthCheck(this.db, run.goal_id, makerLease.worktree_path!, makerLease.metadata?.changed_files, outputDir);
       if (strength) checks.push(strength);
     } catch { /* an evidence check never breaks the scripted checks */ }
+    // G2.2 finding-fix lane: Djimitflo's own gate re-scans the target file; it is a gate, so an exception is a failed check
+    try {
+      const findingFix = findingFixCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir);
+      if (findingFix) checks.push(findingFix);
+    } catch (err) {
+      if (Object.keys(findingFixCheckEnv(this.db, run.goal_id)).length) checks.push({ name: 'test:finding-fix', status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
+    }
+    // Track A advisory exposure: the exposure check re-run on the worktree lockfile (must be not_affected) + package files only
+    try {
+      const advisory = advisoryExposureCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir, makerLease.metadata?.changed_files);
+      if (advisory) checks.push(advisory);
+    } catch (err) {
+      if (advisoryGoalRefs(this.db, run.goal_id)) checks.push({ name: ADVISORY_EXPOSURE_CHECK, status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
+    }
     const failed = checks.some((check) => check.status === 'fail');
     // Batch-8 evidence freshness: fingerprint what the checks READ (configs, lockfile, imports) at the base commit.
     let evidenceReadSet: ReadSet | undefined;
@@ -1184,7 +1223,8 @@ export class LoopService {
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
-      ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.reason ? `(${check.reason})` : check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}` } : {}),
+      ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.reason ? `(${check.reason})` : check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}`,
+        failure: checksFailureHint(checks) } : {}),
       ...(evidenceReadSet ? { evidence_read_set: evidenceReadSet } : {}),
     });
 
@@ -1269,39 +1309,8 @@ export class LoopService {
       runtime_adapter: lease.runtime,
     });
 
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${lease.role}:${lease.runtime}:spawn`,
-      status: 'running',
-      evidence_ref: `loop:${run.id}/worker:${lease.id}`,
-      metadata: {
-        worker_lease_id: lease.id,
-        role: lease.role,
-        runtime: lease.runtime,
-        checkpoint_before_id: checkpointBefore.id,
-      },
-    });
-
+    // OPS-004: the worker span (one per maker lease, closed at settlement) is owned by the shared executeMaker path
     const execution = await this.executeMaker(id, input);
-    const finalStatus = execution.lease.status === 'completed' ? 'ok' : 'error';
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${lease.role}:${lease.runtime}:completion`,
-      status: finalStatus,
-      evidence_ref: execution.stdout_path,
-      metadata: {
-        worker_lease_id: lease.id,
-        role: lease.role,
-        runtime: lease.runtime,
-        stdout_path: execution.stdout_path,
-        stderr_path: execution.stderr_path,
-        gates: execution.gates,
-      },
-    });
 
     const checkpointAfter = this.assurance.createCheckpoint({
       loop_run_id: run.id,
@@ -1445,18 +1454,36 @@ export class LoopService {
     // metadata.improvement_id (see autonomous-goal-generator.ts).
     const improvementId = typeof goal.metadata.improvement_id === 'string' ? goal.metadata.improvement_id : null;
     const improvement = improvementId
-      ? this.db.prepare("SELECT description, rationale, type, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
-          { description?: string; rationale?: string; type?: string; artifact?: string | null } | undefined
+      ? this.db.prepare("SELECT description, rationale, type, source, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
+          { description?: string; rationale?: string; type?: string; source?: string | null; artifact?: string | null } | undefined
       : undefined;
 
     const severity: LoopFinding['severity'] =
       goal.risk_class === 'high' || goal.risk_class === 'critical' ? 'error'
       : goal.risk_class === 'medium' ? 'warning' : 'info';
 
+    // S4b: proposal text from an origin that is not the internal deterministic gap lane (test-gap, mutation, untested exports,
+    // dead code, finding-fix) — Commons replies via reflection, refinement, dream state, feedback, anything unknown — is data
+    // for the maker, not instructions: its title (the goal objective), description and rationale each reach the maker as a
+    // marked external-content block, JSON-encoded so the text cannot close it. The gap lane keeps its text byte for byte
+    // (running experiments compare its prompts).
+    const externalSource = improvement && improvement.source !== 'gap_analysis'
+      ? String(improvement.source ?? 'unknown').replace(/[^\w:-]/g, '_') : null;
+    const wrapExternal = (content: Record<string, string>) => [
+      `BEGIN_EXTERNAL_CONTENT source=self_improvement:${externalSource} trust=untrusted`, JSON.stringify(content), 'END_EXTERNAL_CONTENT',
+    ].join('\n');
+    const external = externalSource && (improvement?.description || improvement?.rationale)
+      ? wrapExternal({
+          ...(improvement?.description ? { original_proposal: improvement.description } : {}),
+          ...(improvement?.rationale ? { rationale: improvement.rationale } : {}),
+        })
+      : null;
+    const message = externalSource ? wrapExternal({ objective }) : objective;
     const evidence = [
       `Self-improvement goal ${goal.id} (source=${String(goal.metadata.source ?? 'unknown')}, risk_class=${goal.risk_class}).`,
-      improvement?.description ? `Original proposal: ${improvement.description}` : null,
-      improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
+      external,
+      !external && improvement?.description ? `Original proposal: ${improvement.description}` : null,
+      !external && improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
       goal.constraints.length ? `Constraints: ${goal.constraints.join('; ')}` : null,
     ].filter(Boolean).join('\n');
 
@@ -1467,11 +1494,11 @@ export class LoopService {
       // EV2 (prod 2026-10-03): every oracle goal said 'repository-wide objective' although its proposal names the file;
       // with a 'doc-drift' header that was enough for makers to edit README/CONTRIBUTING instead of the test
       file: improvement?.artifact || '(repository-wide objective; no single target file)',
-      message: objective,
+      message,
       evidence: evidence || 'No additional evidence beyond the goal objective was available.',
       suggested_fix: goal.acceptance_criteria.length
         ? `Satisfy: ${goal.acceptance_criteria.join('; ')}`
-        : objective,
+        : message,
       metadata: {
         objective_mode: true,
         goal_id: goal.id,
@@ -1701,6 +1728,7 @@ export class LoopService {
         exit_status: reason,
         failure_reason: details,
         failed_at: new Date().toISOString(),
+        failure: { stage: 'prepare' }, // only called before the runtime starts (missing worktree, manual runtime)
       });
       this.recordLoopEvent(runId, 'maker_execution_failed', 'warning', `Maker lease ${leaseId} failed: ${reason}`, {
         lease_id: leaseId,
@@ -1741,10 +1769,46 @@ export class LoopService {
       finding.evidence,
       finding.suggested_fix,
     ].join(' ').toLowerCase();
-    if (/(auth|oauth|oidc|secret|token|password|credential|infra|terraform|docker|deploy|production|policy|ci\/cd|github actions)/.test(haystack)) {
+    if (SENSITIVE_CONTENT.test(haystack)) {
       return 'sensitive_finding_content';
     }
     return null;
+  }
+
+  /**
+   * §3d P0 #1: the risk the maker's actual diff carries — the first changed path that matches the finding-content rule
+   * above or diff-capture's high/critical path list (CI workflows, Dockerfiles, .env, keys, migrations, lockfiles).
+   * Effective risk is the max of this and highRiskReason: it can only raise a run to high, never lower it.
+   */
+  public changedFilesRiskReason(files: unknown): string | null {
+    const hit = (Array.isArray(files) ? files.map(String) : []).find((file) => SENSITIVE_CONTENT.test(file.toLowerCase()) || isHighRiskPath(file));
+    return hit ? `sensitive_changed_file:${hit}` : null;
+  }
+
+  /**
+   * §3d P0 #1, grandfathered by evidence presence: only a maker lease that carries `risk_inputs` (written by runMaker since
+   * this rule exists) is classified by its changed files; an older lease keeps the text-only risk, so re-verifying a
+   * historical run (daemon step 9, Verify, certification, backlog sync) never flips it.
+   */
+  public leaseChangedFilesRisk(lease: WorkerLeaseRecord): string | null {
+    return lease.metadata?.risk_inputs ? this.changedFilesRiskReason(lease.metadata.changed_files) : null;
+  }
+
+  /**
+   * §3d P0 #1: a completed maker whose changed files are sensitive gets a security checker when its finding text did not
+   * already give it one (the lifecycle creates them before the maker runs, from the text alone). Same lease shape as there.
+   */
+  public ensureChangedFilesSecurityChecker(run: LoopRunRecord, maker: WorkerLeaseRecord, reason: string): string | null {
+    const existing = this.listWorkerLeases(run.id).find((lease) => lease.role === 'security_checker' && lease.metadata.maker_lease_id === maker.id);
+    if (existing) return null;
+    const id = randomUUID();
+    this.insertWorkerLease({
+      id, loopRunId: run.id, role: 'security_checker', runtime: 'manual', findingId: maker.finding_id ?? '', worktreePath: null, branchName: null,
+      metadata: { maker_lease_id: maker.id, requires_security_review: true, high_risk_reason: reason, risk_source: 'changed_files' }, now: new Date().toISOString(),
+    });
+    this.recordLoopEvent(run.id, 'security_checker_required', 'warning', `Maker ${maker.id} changed a sensitive file (${reason}); a security checker is required.`,
+      { maker_lease_id: maker.id, security_checker_lease_id: id, high_risk_reason: reason });
+    return id;
   }
 
   discoverLoopFindings(loopName: LoopName, repositoryPath: string, maxFindings: number): LoopFinding[] {
@@ -1979,7 +2043,7 @@ export class LoopService {
    * test:changed runs first (dist absent). Provenance: lockfile sha256, npm version, command, exit + duration. No registry, no
    * script approval; the lockfile's integrity hashes are the only supply-chain control. Never throws.
    */
-  public prepareMakerWorktree(runId: string, leaseId: string, worktree: string) {
+  public prepareMakerWorktree(runId: string, leaseId: string, worktree: string, opts: { warmDepsRoot?: string } = {}) {
     const started = Date.now();
     const outputDir = path.join(this.evidenceRoot, runId, 'maker-prepare', leaseId);
     const run = (args: readonly string[], timeout: number) => {
@@ -1989,18 +2053,34 @@ export class LoopService {
     };
     const out = { command: `npm ${LoopService.WORKTREE_INSTALL_ARGS.join(' ')}`, npm_version: null as string | null, lockfile_sha256: null as string | null,
       installed: false, install_exit: null as number | null, install_ms: 0, install_failed: false,
-      shared_built: false, shared_exit: null as number | null, shared_ms: 0, shared_failed: false, duration_ms: 0 };
+      shared_built: false, shared_exit: null as number | null, shared_ms: 0, shared_failed: false, duration_ms: 0,
+      // MAKER_WARM_DEPS only (never set for MAKER-DEPS-001 arm B): where node_modules came from
+      warm_deps: undefined as WarmDepsResult | undefined };
     try {
       fs.mkdirSync(outputDir, { recursive: true });
       const lock = path.join(worktree, 'package-lock.json');
       if (fs.existsSync(lock)) out.lockfile_sha256 = createHash('sha256').update(fs.readFileSync(lock)).digest('hex');
       const v = run(['--version'], 30_000); out.npm_version = v.exit === 0 ? v.stdout.trim() || null : null;
       if (out.lockfile_sha256 && !fs.existsSync(path.join(worktree, 'node_modules'))) {
-        const r = run(LoopService.WORKTREE_INSTALL_ARGS, 600_000);
-        out.install_exit = r.exit; out.install_ms = r.ms; out.install_failed = r.exit !== 0;
+        const install = () => {
+          const r = run(LoopService.WORKTREE_INSTALL_ARGS, 600_000);
+          out.install_exit = r.exit; out.install_ms = r.ms;
+          fs.writeFileSync(path.join(outputDir, 'install.stdout.log'), r.stdout, 'utf8');
+          fs.writeFileSync(path.join(outputDir, 'install.stderr.log'), r.stderr, 'utf8');
+          return { exit: r.exit };
+        };
+        if (opts.warmDepsRoot) {
+          try {
+            out.warm_deps = provisionWarmDeps(worktree, install, { root: opts.warmDepsRoot }) ?? undefined;
+          } catch (err) { // cache bookkeeping failed: the normal path, recorded as such
+            if (out.install_exit === null) install();
+            out.warm_deps = { deps_source: out.install_exit === 0 ? 'fresh' : 'failed', lockfile_sha256: out.lockfile_sha256, cache_hit: false, cache_stored: false,
+              cache_error: `provision_error: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`, paths: [], ms: 0 };
+          }
+          if (out.warm_deps?.deps_source === 'cache') out.install_exit = 0;
+        } else install();
+        out.install_failed = out.install_exit !== 0;
         out.installed = !out.install_failed && fs.existsSync(path.join(worktree, 'node_modules'));
-        fs.writeFileSync(path.join(outputDir, 'install.stdout.log'), r.stdout, 'utf8');
-        fs.writeFileSync(path.join(outputDir, 'install.stderr.log'), r.stderr, 'utf8');
       }
       const shared = path.join(worktree, 'packages', 'shared');
       if (!out.install_failed && fs.existsSync(path.join(shared, 'package.json')) && !fs.existsSync(path.join(shared, 'dist', 'index.js'))) {
@@ -2258,7 +2338,7 @@ export class LoopService {
   }
 
   public isSupersededMakerLease(lease: WorkerLeaseRecord): boolean {
-    return lease.role === 'maker' && typeof lease.metadata.superseded_by_maker_lease_id === 'string';
+    return isSupersededMaker(lease);
   }
 
   public retryRootFor(maker: WorkerLeaseRecord): string {
@@ -2389,9 +2469,9 @@ export class LoopService {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
-    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste) {
+    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste || extra.capabilities) {
       this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}) });
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}), ...(extra.capabilities ? { capabilities: extra.capabilities } : {}), ...(extra.capability_ids ? { capability_ids: extra.capability_ids } : {}) });
     }
     // multi-repo: an extra repo's maker is told that repo's check scripts (EXTRA_REPOS_ENABLED=on); djimitflo's text is unchanged
     const repo = extraRepoByPath(run.repository_path);
@@ -2469,9 +2549,7 @@ export class LoopService {
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
     const diff = worktreePath ? this.workingTreeDiff(worktreePath) : '';
-    const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
-      ? fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8').slice(0, 20_000)
-      : '';
+    const assignmentPacket = this.checkerAssignmentPacket(run, maker, checker).slice(0, CHECKER_PACKET_MAX_CHARS);
     const stdoutPath = typeof maker.metadata.stdout_path === 'string' ? maker.metadata.stdout_path : '';
     const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
     const checks = this.checkResultsForReviewer(maker.metadata.deterministic_checks);
@@ -2503,9 +2581,37 @@ export class LoopService {
     ].join('\n');
   }
 
+  /**
+   * §3d P0 #2: the packet a reviewer reads lives in the maker's worktree (.djimitflo/, outside changed_files), so the maker
+   * could rewrite it unseen. It is used only while it still hashes to the sha256 recorded at lease creation; otherwise the
+   * reviewer gets the daemon's copy (or, without one, a withheld notice) and the mismatch is recorded as a loop event and a
+   * POLICY_VIOLATION_LOG row. A lease from before the sha256 was recorded reads the file as before.
+   */
+  private checkerAssignmentPacket(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
+    const file = typeof maker.metadata.assignment_packet_file === 'string' ? maker.metadata.assignment_packet_file : '';
+    const current = file && fs.existsSync(file) ? fs.readFileSync(file) : null;
+    const expected = typeof maker.metadata.assignment_packet_sha256 === 'string' ? maker.metadata.assignment_packet_sha256 : null;
+    if (!expected) return current ? current.toString('utf8') : '';
+    const sha256 = (content: Buffer) => createHash('sha256').update(content).digest('hex');
+    if (current && sha256(current) === expected) return current.toString('utf8');
+    const copyPath = typeof maker.metadata.assignment_packet_copy === 'string' ? maker.metadata.assignment_packet_copy : '';
+    const copy = copyPath && fs.existsSync(copyPath) ? fs.readFileSync(copyPath) : null;
+    const restored = copy && sha256(copy) === expected ? copy.toString('utf8') : null;
+    const observed = current ? sha256(current) : null;
+    const evidenceRef = `loop_run:${run.id}/lease:${maker.id}/assignment_packet`;
+    const description = `assignment packet of maker ${maker.id} changed after it was written (expected sha256 ${expected}, found ${observed ?? 'missing'}); reviewer given ${restored ? 'the daemon copy' : 'no packet'}`;
+    this.patchWorkerLeaseMetadata(checker.id, { assignment_packet_integrity: restored ? 'restored_from_daemon_copy' : 'withheld', assignment_packet_evidence_ref: evidenceRef });
+    this.recordLoopEvent(run.id, 'assignment_packet_tampered', 'warning', description,
+      { maker_lease_id: maker.id, checker_lease_id: checker.id, expected_sha256: expected, observed_sha256: observed, restored_from_daemon_copy: Boolean(restored), evidence_ref: evidenceRef });
+    recordPolicyViolation(this.db, { kind: 'assignment_packet_tampered', actor: `maker:${maker.runtime}`, severity: 'high', dedupe_key: maker.id,
+      run_id: run.id, lease_id: maker.id, evidence_ref: evidenceRef, description });
+    return restored ?? `Assignment packet withheld: the maker's copy no longer matches the sha256 recorded before the maker ran (${expected}) and the daemon copy is unavailable.`;
+  }
+
   /** The maker's deterministic checks for a reviewer: name, status, exit and the ANSI-stripped tail of each log (capped). */
   private checkResultsForReviewer(raw: unknown): string {
-    const checks = Array.isArray(raw) ? raw as Array<Record<string, unknown>> : [];
+    // R2: a shadow-experiment check is never shown to a reviewer
+    const checks = Array.isArray(raw) ? withoutHiddenChecks(raw as Array<Record<string, unknown>>) : [];
     if (!checks.length) return 'No deterministic checks recorded.';
     const tail = (file: unknown, max: number): string => {
       if (typeof file !== 'string' || !file) return '';
@@ -2635,7 +2741,26 @@ export class LoopService {
   }
 
   public insertWorkerLease(input: Parameters<WorkerLeaseRepo['insert']>[0]): void {
-    this.workerLeases.insert(input);
+    this.workerLeases.insert(this.withAssignmentPacketProvenance(input));
+  }
+
+  /**
+   * §3d P0 #2: a lease is created right after its packet is written and before its maker runs, so this is the packet's
+   * sha256 as the daemon wrote it, plus a content-addressed daemon copy outside the worktree (checkerAssignmentPacket).
+   */
+  private withAssignmentPacketProvenance(input: Parameters<WorkerLeaseRepo['insert']>[0]): Parameters<WorkerLeaseRepo['insert']>[0] {
+    const file = input.metadata.assignment_packet_file;
+    if (typeof file !== 'string' || input.metadata.assignment_packet_sha256 !== undefined || !fs.existsSync(file)) return input;
+    try {
+      const content = fs.readFileSync(file);
+      const sha256 = createHash('sha256').update(content).digest('hex');
+      const copy = path.join(this.evidenceRoot, input.loopRunId, 'assignment-packets', `${sha256}.json`);
+      fs.mkdirSync(path.dirname(copy), { recursive: true });
+      fs.writeFileSync(copy, content);
+      return { ...input, metadata: { ...input.metadata, assignment_packet_sha256: sha256, assignment_packet_copy: copy } };
+    } catch {
+      return input; // unreadable packet: the lease is recorded without provenance and the checker reads the file as before
+    }
   }
 
   public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {

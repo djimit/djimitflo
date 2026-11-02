@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { redactSecrets } from './secret-patterns';
+import { eValue, mcnemarOneSided } from './paired-stats';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { budgetPause } from './inference-budget';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantDecidingTiers, mutantHoldoutKeys, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
 import { markRun } from './scheduler-registry';
 import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
-import { prodGatesConfig } from './remote-gym-service';
+import { prodGatesConfig, sweepOrphanedGymRuns } from './remote-gym-service';
 import { recordNegativeEvidenceMatches } from './negative-evidence-check';
 import { buildSourcePack, CITED_FORMAT, citedLines, dreamEvidenceSources, genomeSourceColumns, type PackItem, recordDreamPack, type SourcePack, sourcePrompt } from './dream-evidence-sources';
 import { dreamPlaybookGene, playbookFor, playbookLanes, playbookNote } from './lane-playbook';
@@ -28,13 +29,7 @@ export const MAX_MUTANTS = 3;
  * typically 3 vs 1 discordant pairs — exact one-sided McNemar p ≈ 0.31, i.e. noise. Only discordant pairs (one genome
  * green, the other not) carry information: P(X ≥ b | n = b + c, ½) < DREAM_PROMOTION_ALPHA (default 0.05) promotes.
  */
-export function mcnemarOneSided(b: number, c: number): number {
-  const n = b + c;
-  if (n === 0) return 1;
-  let p = 0; let coef = 1; // C(n, 0)
-  for (let k = 0; k <= n; k++) { if (k >= b) p += coef; coef = coef * (n - k) / (k + 1); }
-  return p / 2 ** n;
-}
+export { mcnemarOneSided } from './paired-stats';
 const promotionAlpha = () => Number(process.env.DREAM_PROMOTION_ALPHA) || 0.05;
 
 /**
@@ -56,15 +51,7 @@ const binom = (n: number, p: number): number[] => {
  * among n discordant pairs. Promote iff E ≥ 1/alpha; by Ville's inequality that stays valid when looked at after every pair
  * (McNemar does not). It is exchangeable, so the final value does not depend on the pair order.
  */
-const logFact = (n: number): number => { let s = 0; for (let i = 2; i <= n; i++) s += Math.log(i); return s; };
-export function eValue(n: number, k: number): number {
-  if (n <= 0) return 1;
-  const terms = Array.from({ length: k + 1 }, (_, i) => logFact(n + 1) - logFact(i) - logFact(n + 1 - i));
-  const max = Math.max(...terms);
-  const logCdf = max + Math.log(terms.reduce((a, t) => a + Math.exp(t - max), 0)) - (n + 1) * Math.LN2;
-  return Math.exp((n + 1) * Math.LN2 + logFact(k) + logFact(n - k) - logFact(n + 1) + logCdf);
-}
-export const ePaired = (pairs: Array<1 | -1>): number => eValue(pairs.length, pairs.filter((p) => p === 1).length);
+export { eValue, ePaired } from './paired-stats';
 export type PromotionRule = 'mcnemar' | 'both' | 'graded';
 export const promotionRule = (env: NodeJS.ProcessEnv = process.env): PromotionRule =>
   (env.DREAM_PROMOTION_RULE === 'both' ? 'both' : env.DREAM_PROMOTION_RULE === 'graded' ? 'graded' : 'mcnemar');
@@ -150,11 +137,27 @@ const MAX_LINE_CHARS = 200;
 // evaluator that judges the genome itself (holdout, oracle, verdict, promotion, the genome/gym code; Codex P0 11-10)
 const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|commit\w*|stash\w*|reset|revert\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*|holdouts?|evaluat\w*|promot\w*|fitness|oracles?|verdicts?|genomes?|dream-evolution|genome-\w+|gym-worker)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
 
+// FR-001 / A9 (re-20261029): matched on the line tokenised on [^a-z0-9]+, so '_' and punctuation no longer hide a word
+// (maker_gate_failed, it.todo, @ts-ignore). Test-weakening vocabulary: runner modifiers, suppressions, runner/mutation
+// config, env files, blanket mocks, trivial or weakened assertions, and removing/renaming tests, specs or assertions.
+// Bare 'only' stays allowed ("Edit only the named file", the playbook's "test-only"); the '.only' call form is not.
+const FILLER = '(?:the|a|an|any|all|every|each|failing|failed|flaky|slow|unstable|broken|red|out|that|those|these|its|their|old|existing|unit|named)';
+const TEST_WEAKENING = new RegExp([
+  '\\b(todos?|xit|xdescribe|xtest|fdescribe|bypass\\w*|stryker|env|dotenv|bak|tobedefined|tobetruthy|tobefalsy|tobeundefined)\\b',
+  '\\bts (ignore|nocheck|expect error)\\b', '\\beslint disable', '\\b(vitest|jest|vite) config\\b', '\\bexpect (true|1)\\b', '\\btobe true\\b',
+  // FORBIDDEN's hyphen/dot names as the tokeniser spells them (gym_worker, dream_evolution, package.json)
+  '\\b(gym worker|dream evolution|no verify|package json)\\b', '\\bci (false|0)\\b', '\\bmock\\w* (the )?(everything|all|every|modules?|dependencies|imports)\\b',
+  `\\b(delet|remov|renam|drop|comment|weaken|loosen|relax|replac|exclud|edit|chang|modif|rewrit)\\w* (${FILLER} )*(tests?|specs?|assertions?|asserts?|expects?|expectations?|suites?)\\b`,
+].join('|'));
+const RAW_TEST_WEAKENING = /\.\s*only\b/i;
+const tokens = (l: string): string => ` ${l.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+
 /** Lines a mutant may add: strings, ≤ 5, ≤ 200 chars, none touching what the guard forbids. null when anything is off. */
 export function guardLines(lines: unknown): string[] | null {
   if (!Array.isArray(lines) || !lines.length || lines.length > MAX_LINES) return null;
   const clean = lines.map((l) => (typeof l === 'string' ? l.replace(/\s+/g, ' ').trim() : ''));
-  return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !FORBIDDEN.test(l)) ? clean : null;
+  const forbidden = (l: string) => FORBIDDEN.test(l) || RAW_TEST_WEAKENING.test(l) || FORBIDDEN.test(tokens(l)) || TEST_WEAKENING.test(tokens(l));
+  return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !forbidden(l)) ? clean : null;
 }
 
 export function dreamInputs(db: Database, now = Date.now()): { failures: string[]; knowledge: string[]; knowledgeRefs: string[] } {
@@ -484,6 +487,9 @@ function evidenceSummary(policy: string, holdout: HoldoutTable, epoch: number, k
 
 export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommits: string[], mutantCommits: string[] = [], now = Date.now(), writeTestKeys: string[] = []): Array<{ id: string; f: number; n: number; needed: number }> {
   if (!trialHeadroomPrecheck() || !holdoutCommits.length) return [];
+  // Z5: with mutant trials on, the mined holdout is the no-regression check only — no deciding mutants, no headroom verdict
+  // (the remote claim called this with an empty mutant set and counted the parent's failures on the mined holdout)
+  if (mutantTrialsEnabled() && !mutantCommits.length) return [];
   const deciding = mutantCommits.length ? mutantCommits : holdoutCommits;
   const iso = new Date(now).toISOString();
   const graded = promotionRule() === 'graded';
@@ -520,7 +526,7 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
     try {
       const epoch = holdoutEpoch(db, table);
       db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch, graded_mean_parent, gate_policy, evidence_json)
-        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
+        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantDecidingTiers(db).join(',') : 'mined', n, f, iso,
         epoch, parentGraded, policy, evidenceSummary(policy, table, epoch, scored, evidence));
     } catch { /* the record is fail-soft; the settlement above is what stops the attempts */ }
     console.log(`🧬 genome ${trial.id} inconclusive (no headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win)`);
@@ -645,7 +651,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
       try {
         const epoch = holdoutEpoch(db, table);
         db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, state, recorded_at, epoch, gate_policy, evidence_json) VALUES (?, ?, ?, 'hold_ineligible', ?, ?, ?, ?)`)
-          .run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', iso, epoch, policy, evidenceSummary(policy, table, epoch, pairedKeys, theirs.evidence, mine.evidence));
+          .run(trial.id, trial.parent, mutantCommits.length ? mutantDecidingTiers(db).join(',') : 'mined', iso, epoch, policy, evidenceSummary(policy, table, epoch, pairedKeys, theirs.evidence, mine.evidence));
       } catch { /* the record is fail-soft; the settlement above is the decision */ }
       console.log(`🧬 genome ${trial.id} ${hold}`);
       settled.push({ id: trial.id, status: 'inconclusive', wins: mine.wins, parentWins: theirs.wins });
@@ -682,7 +688,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
         const power = trialPower(f, scored.length - f, 0.8, 0.05);
         const state = mcnemarOneSided(f, 0) >= promotionAlpha() ? 'blind' : power < 0.8 ? 'underpowered' : 'powered';
         db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', scored.length, f, b, c, p, mined.b, mined.c,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantDecidingTiers(db).join(',') : 'mined', scored.length, f, b, c, p, mined.b, mined.c,
           +power.toFixed(4), state, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'));
       } catch { /* diagnostics are fail-soft */ }
     }
@@ -715,6 +721,11 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   const species = process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
   const tick = () => {
     markRun('dream_evolution');
+    // GYM_ORPHAN_SWEEP: settle remote gym runs whose host never reported (before trials are evaluated: an orphan keeps its item pending)
+    try {
+      const swept = sweepOrphanedGymRuns(db);
+      if (swept.mode !== 'off') { markRun('gym_orphan_sweep'); if (swept.candidates.length) console.log(`🧹 gym orphan sweep (${swept.mode}): ${swept.candidates.length} stale remote run(s), ${swept.settled.length} settled`); }
+    } catch (e) { markRun('gym_orphan_sweep', e); }
     try {
       const commits = frozenHoldoutCommits(db); // RX-12: the current epoch's mined holdout
       const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];

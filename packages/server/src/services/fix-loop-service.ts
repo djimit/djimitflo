@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { LoopService } from './loop-service';
 import { RsiSafetyGuard } from './rsi-safety-guard';
+import { gatePasses } from './loop-types';
 
 export interface FixRequest {
   repositoryPath: string;
@@ -68,7 +69,7 @@ export class FixLoopService {
         await this.loops.executeChecker(run.id, { runtime, lease_id: securityCheckerLease.id });
       }
       const verification = this.loops.verifyLoopRun(run.id);
-      const gatePass = verification.gates.every(g => g.status === 'pass' || (g.name === 'security_checker_verdict' && g.status === 'skipped'));
+      const gatePass = verification.gates.every(gatePasses);
 
       return {
         success: gatePass && (verification.run.status === 'ready_for_human_merge' || verification.run.status === 'completed'),

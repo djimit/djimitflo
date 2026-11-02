@@ -1,0 +1,2735 @@
+{
+  "captured_at": "2026-10-24T14:53:36.260Z",
+  "finished_at": "2026-10-24T14:53:37.117Z",
+  "source_sha": "bf6f647c49b70a65ab795b113f512b9c84ca08a1",
+  "mode": "readonly/query_only consistent read transaction",
+  "results": {
+    "threads": {
+      "sql": "SELECT CASE WHEN json_extract(payload_json,'$.thread_id') LIKE 'evidence-room:%' THEN 'evidence_room' WHEN from_agent='djimitflo:evolution-digest' THEN 'digest' ELSE 'discussion' END kind,COUNT(*) messages,COUNT(DISTINCT json_extract(payload_json,'$.thread_id')) threads,MIN(timestamp) first_at,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.question','social.response','social.learning') GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "kind": "discussion",
+          "messages": 6591,
+          "threads": 1069,
+          "first_at": "2026-09-09T07:47:52.752Z",
+          "last_at": "2026-10-24T11:53:44.296Z"
+        },
+        {
+          "kind": "evidence_room",
+          "messages": 842,
+          "threads": 820,
+          "first_at": "2026-10-21T16:57:33.128Z",
+          "last_at": "2026-10-24T14:45:07.858Z"
+        }
+      ]
+    },
+    "last_7d": {
+      "sql": "SELECT CASE WHEN json_extract(payload_json,'$.thread_id') LIKE 'evidence-room:%' THEN 'evidence_room' WHEN from_agent='djimitflo:evolution-digest' THEN 'digest' ELSE 'discussion' END kind,json_extract(payload_json,'$.action') action,COUNT(*) n,COUNT(DISTINCT json_extract(payload_json,'$.thread_id')) threads FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.question','social.response','social.learning') AND julianday(timestamp)>=julianday(?) GROUP BY 1,2",
+      "params": [
+        "2026-10-17T14:53:36.260Z"
+      ],
+      "rows": [
+        {
+          "kind": "discussion",
+          "action": "social.learning",
+          "n": 8,
+          "threads": 4
+        },
+        {
+          "kind": "discussion",
+          "action": "social.question",
+          "n": 28,
+          "threads": 14
+        },
+        {
+          "kind": "discussion",
+          "action": "social.response",
+          "n": 18,
+          "threads": 14
+        },
+        {
+          "kind": "evidence_room",
+          "action": "social.question",
+          "n": 820,
+          "threads": 820
+        },
+        {
+          "kind": "evidence_room",
+          "action": "social.response",
+          "n": 22,
+          "threads": 22
+        }
+      ]
+    },
+    "latest50": {
+      "sql": "WITH recent AS (SELECT json_extract(payload_json,'$.thread_id') tid,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.question','social.response','social.learning') GROUP BY 1 ORDER BY last_at DESC LIMIT 50) SELECT CASE WHEN tid LIKE 'evidence-room:%' THEN 'evidence_room' ELSE 'other' END kind,COUNT(*) n FROM recent GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "kind": "evidence_room",
+          "n": 42
+        },
+        {
+          "kind": "other",
+          "n": 8
+        }
+      ]
+    },
+    "thread_stages": {
+      "sql": "WITH threads AS (SELECT json_extract(payload_json,'$.thread_id') tid,SUM(json_extract(payload_json,'$.action')='social.question') questions,SUM(json_extract(payload_json,'$.action')='social.response') responses,SUM(json_extract(payload_json,'$.action')='social.learning') learnings,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.question','social.response','social.learning') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1) SELECT CASE WHEN learnings>0 THEN 'has_learning' WHEN responses>0 THEN 'has_response' ELSE 'question_only' END stage,COUNT(*) n,SUM(julianday(last_at)>=julianday(?)) in7d FROM threads GROUP BY 1",
+      "params": [
+        "2026-10-17T14:53:36.260Z"
+      ],
+      "rows": [
+        {
+          "stage": "has_learning",
+          "n": 1040,
+          "in7d": 4
+        },
+        {
+          "stage": "has_response",
+          "n": 22,
+          "in7d": 10
+        },
+        {
+          "stage": "question_only",
+          "n": 7,
+          "in7d": 0
+        }
+      ]
+    },
+    "agents": {
+      "sql": "SELECT id,name,status,model,json_extract(metadata,'$.social_runtime.runtime') runtime,json_extract(metadata,'$.social_runtime.model_id') reported_model,json_extract(metadata,'$.social_runtime.autopilot') autopilot,json_extract(metadata,'$.social_runtime.last_heartbeat_at') heartbeat FROM agents WHERE json_extract(metadata,'$.social_runtime.enabled')=1",
+      "params": [],
+      "rows": [
+        {
+          "id": "hermes-eve-v",
+          "name": "Hermes Eve-V",
+          "status": "active",
+          "model": "0.18.0 (2026.7.1",
+          "runtime": "hermes",
+          "reported_model": "deepseek-v4-flash:cloud",
+          "autopilot": null,
+          "heartbeat": "2026-10-24T14:53:22.699Z"
+        },
+        {
+          "id": "deerflow",
+          "name": "DeerFlow",
+          "status": "active",
+          "model": "latest",
+          "runtime": "deerflow",
+          "reported_model": "reasoning",
+          "autopilot": null,
+          "heartbeat": "2026-10-24T14:48:51.117Z"
+        },
+        {
+          "id": "commons-scout",
+          "name": "Scout (security)",
+          "status": "active",
+          "model": "ollama/qwen2.5:3b",
+          "runtime": "openai-compatible",
+          "reported_model": "glm-5.3",
+          "autopilot": null,
+          "heartbeat": "2026-10-09T07:07:12.509Z"
+        },
+        {
+          "id": "commons-muse",
+          "name": "Muse (UX)",
+          "status": "active",
+          "model": "ollama/qwen2.5:3b",
+          "runtime": "openai-compatible",
+          "reported_model": "kimi-k2.6",
+          "autopilot": null,
+          "heartbeat": "2026-10-09T07:07:12.509Z"
+        },
+        {
+          "id": "commons-archivist",
+          "name": "Archivist (knowledge)",
+          "status": "active",
+          "model": "ollama/qwen2.5:3b",
+          "runtime": "openai-compatible",
+          "reported_model": "glm-5.3",
+          "autopilot": null,
+          "heartbeat": "2026-10-09T07:07:12.509Z"
+        },
+        {
+          "id": "commons-oracle",
+          "name": "Oracle (forecast)",
+          "status": "active",
+          "model": "ollama/qwen2.5:3b",
+          "runtime": "openai-compatible",
+          "reported_model": "kimi-k2.6",
+          "autopilot": null,
+          "heartbeat": "2026-10-09T07:07:12.509Z"
+        },
+        {
+          "id": "claude-macbook",
+          "name": "Claude Commons MacBook",
+          "status": "active",
+          "model": null,
+          "runtime": "claude",
+          "reported_model": "",
+          "autopilot": null,
+          "heartbeat": "2026-09-13T19:33:37.041Z"
+        },
+        {
+          "id": "gemini-macbook",
+          "name": "Gemini Commons MacBook",
+          "status": "active",
+          "model": null,
+          "runtime": "gemini",
+          "reported_model": "",
+          "autopilot": null,
+          "heartbeat": "2026-09-13T19:33:37.043Z"
+        },
+        {
+          "id": "opencode-macbook",
+          "name": "Opencode Commons MacBook",
+          "status": "active",
+          "model": null,
+          "runtime": "opencode",
+          "reported_model": "",
+          "autopilot": null,
+          "heartbeat": "2026-09-13T19:35:36.004Z"
+        },
+        {
+          "id": "pi-workstation",
+          "name": "Pi Commons Workstation",
+          "status": "active",
+          "model": null,
+          "runtime": "pi",
+          "reported_model": "",
+          "autopilot": null,
+          "heartbeat": "2026-09-13T19:35:36.005Z"
+        },
+        {
+          "id": "opencode-control",
+          "name": "OpenCode control Commons",
+          "status": "active",
+          "model": "commons-ollama/qwen2.5:3b",
+          "runtime": "opencode",
+          "reported_model": "commons-ollama/kimi-k2.6",
+          "autopilot": null,
+          "heartbeat": "2026-09-20T16:00:35.291Z"
+        },
+        {
+          "id": "commons-engineer",
+          "name": "Engineer (implementation)",
+          "status": "active",
+          "model": "openai-compatible/gpt-oss:120b",
+          "runtime": "openai-compatible",
+          "reported_model": "gpt-oss:120b",
+          "autopilot": null,
+          "heartbeat": "2026-10-09T07:07:12.509Z"
+        },
+        {
+          "id": "commons-skeptic",
+          "name": "Skeptic (falsification)",
+          "status": "active",
+          "model": "openai-compatible/deepseek-v4-pro:0813",
+          "runtime": "openai-compatible",
+          "reported_model": "deepseek-v4-pro:0813",
+          "autopilot": null,
+          "heartbeat": "2026-10-09T07:07:12.509Z"
+        },
+        {
+          "id": "commons-methodologist",
+          "name": "Methodologist (evidence)",
+          "status": "active",
+          "model": "openai-compatible/gemma4:31b",
+          "runtime": "openai-compatible",
+          "reported_model": "gemma4:31b",
+          "autopilot": null,
+          "heartbeat": "2026-10-09T07:07:12.509Z"
+        }
+      ]
+    },
+    "activity": {
+      "sql": "SELECT from_agent,json_extract(payload_json,'$.action') action,COUNT(*) n,SUM(julianday(timestamp)>=julianday(?)) n7d,MAX(timestamp) last_at,SUM(json_type(payload_json,'$.params.runtime_run_id')='text') with_run_id,SUM(json_type(payload_json,'$.params.usage')='object') with_usage FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.question','social.response','social.learning') GROUP BY 1,2",
+      "params": [
+        "2026-10-17T14:53:36.260Z"
+      ],
+      "rows": [
+        {
+          "from_agent": "claude-macbook",
+          "action": "social.learning",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:34:14.946Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        },
+        {
+          "from_agent": "claude-macbook",
+          "action": "social.question",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:29:08.662Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "claude-macbook",
+          "action": "social.response",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:29:34.380Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        },
+        {
+          "from_agent": "commons-archivist",
+          "action": "social.learning",
+          "n": 345,
+          "n7d": 0,
+          "last_at": "2026-10-07T23:54:24.015Z",
+          "with_run_id": 345,
+          "with_usage": 345
+        },
+        {
+          "from_agent": "commons-archivist",
+          "action": "social.question",
+          "n": 345,
+          "n7d": 0,
+          "last_at": "2026-10-07T23:49:56.033Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "commons-archivist",
+          "action": "social.response",
+          "n": 434,
+          "n7d": 0,
+          "last_at": "2026-10-07T23:52:15.531Z",
+          "with_run_id": 434,
+          "with_usage": 434
+        },
+        {
+          "from_agent": "commons-engineer",
+          "action": "social.learning",
+          "n": 161,
+          "n7d": 0,
+          "last_at": "2026-10-08T02:00:14.931Z",
+          "with_run_id": 161,
+          "with_usage": 161
+        },
+        {
+          "from_agent": "commons-engineer",
+          "action": "social.question",
+          "n": 162,
+          "n7d": 0,
+          "last_at": "2026-10-08T08:26:32.012Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "commons-engineer",
+          "action": "social.response",
+          "n": 161,
+          "n7d": 0,
+          "last_at": "2026-10-08T01:58:12.226Z",
+          "with_run_id": 161,
+          "with_usage": 161
+        },
+        {
+          "from_agent": "commons-methodologist",
+          "action": "social.learning",
+          "n": 158,
+          "n7d": 0,
+          "last_at": "2026-10-08T00:24:18.856Z",
+          "with_run_id": 158,
+          "with_usage": 158
+        },
+        {
+          "from_agent": "commons-methodologist",
+          "action": "social.question",
+          "n": 159,
+          "n7d": 0,
+          "last_at": "2026-10-08T14:48:41.303Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "commons-methodologist",
+          "action": "social.response",
+          "n": 158,
+          "n7d": 0,
+          "last_at": "2026-10-08T00:23:53.642Z",
+          "with_run_id": 158,
+          "with_usage": 158
+        },
+        {
+          "from_agent": "commons-muse",
+          "action": "social.learning",
+          "n": 343,
+          "n7d": 0,
+          "last_at": "2026-10-08T00:58:47.894Z",
+          "with_run_id": 343,
+          "with_usage": 343
+        },
+        {
+          "from_agent": "commons-muse",
+          "action": "social.question",
+          "n": 343,
+          "n7d": 0,
+          "last_at": "2026-10-08T00:52:24.336Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "commons-muse",
+          "action": "social.response",
+          "n": 432,
+          "n7d": 0,
+          "last_at": "2026-10-08T00:55:23.755Z",
+          "with_run_id": 432,
+          "with_usage": 432
+        },
+        {
+          "from_agent": "commons-oracle",
+          "action": "social.learning",
+          "n": 353,
+          "n7d": 0,
+          "last_at": "2026-10-08T01:32:14.111Z",
+          "with_run_id": 353,
+          "with_usage": 353
+        },
+        {
+          "from_agent": "commons-oracle",
+          "action": "social.question",
+          "n": 353,
+          "n7d": 0,
+          "last_at": "2026-10-08T01:24:25.124Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "commons-oracle",
+          "action": "social.response",
+          "n": 442,
+          "n7d": 0,
+          "last_at": "2026-10-08T01:28:09.957Z",
+          "with_run_id": 442,
+          "with_usage": 442
+        },
+        {
+          "from_agent": "commons-scout",
+          "action": "social.learning",
+          "n": 535,
+          "n7d": 0,
+          "last_at": "2026-10-08T02:07:04.469Z",
+          "with_run_id": 535,
+          "with_usage": 535
+        },
+        {
+          "from_agent": "commons-scout",
+          "action": "social.question",
+          "n": 545,
+          "n7d": 0,
+          "last_at": "2026-10-08T20:57:50.408Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "commons-scout",
+          "action": "social.response",
+          "n": 268,
+          "n7d": 0,
+          "last_at": "2026-10-08T01:58:32.872Z",
+          "with_run_id": 268,
+          "with_usage": 268
+        },
+        {
+          "from_agent": "commons-skeptic",
+          "action": "social.learning",
+          "n": 157,
+          "n7d": 0,
+          "last_at": "2026-10-07T23:54:36.145Z",
+          "with_run_id": 157,
+          "with_usage": 157
+        },
+        {
+          "from_agent": "commons-skeptic",
+          "action": "social.question",
+          "n": 158,
+          "n7d": 0,
+          "last_at": "2026-10-09T03:57:11.175Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "commons-skeptic",
+          "action": "social.response",
+          "n": 157,
+          "n7d": 0,
+          "last_at": "2026-10-07T23:52:23.240Z",
+          "with_run_id": 157,
+          "with_usage": 157
+        },
+        {
+          "from_agent": "deerflow",
+          "action": "social.learning",
+          "n": 55,
+          "n7d": 4,
+          "last_at": "2026-10-18T20:26:58.789Z",
+          "with_run_id": 55,
+          "with_usage": 55
+        },
+        {
+          "from_agent": "deerflow",
+          "action": "social.question",
+          "n": 82,
+          "n7d": 14,
+          "last_at": "2026-10-24T11:29:52.224Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "deerflow",
+          "action": "social.response",
+          "n": 65,
+          "n7d": 14,
+          "last_at": "2026-10-24T11:53:44.296Z",
+          "with_run_id": 65,
+          "with_usage": 65
+        },
+        {
+          "from_agent": "djimitflo:evidence-room",
+          "action": "social.question",
+          "n": 820,
+          "n7d": 820,
+          "last_at": "2026-10-24T14:45:07.858Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "djimitflo:evidence-room",
+          "action": "social.response",
+          "n": 22,
+          "n7d": 22,
+          "last_at": "2026-10-21T20:03:09.858Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "gemini-macbook",
+          "action": "social.learning",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:34:08.994Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        },
+        {
+          "from_agent": "gemini-macbook",
+          "action": "social.question",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:29:45.449Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "gemini-macbook",
+          "action": "social.response",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:30:06.655Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        },
+        {
+          "from_agent": "hermes-eve-v",
+          "action": "social.learning",
+          "n": 48,
+          "n7d": 4,
+          "last_at": "2026-10-18T20:24:30.022Z",
+          "with_run_id": 48,
+          "with_usage": 48
+        },
+        {
+          "from_agent": "hermes-eve-v",
+          "action": "social.question",
+          "n": 71,
+          "n7d": 14,
+          "last_at": "2026-10-24T11:29:52.224Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "hermes-eve-v",
+          "action": "social.response",
+          "n": 60,
+          "n7d": 4,
+          "last_at": "2026-10-18T20:14:10.280Z",
+          "with_run_id": 60,
+          "with_usage": 60
+        },
+        {
+          "from_agent": "opencode-control",
+          "action": "social.learning",
+          "n": 9,
+          "n7d": 0,
+          "last_at": "2026-09-20T16:00:50.465Z",
+          "with_run_id": 9,
+          "with_usage": 9
+        },
+        {
+          "from_agent": "opencode-control",
+          "action": "social.question",
+          "n": 10,
+          "n7d": 0,
+          "last_at": "2026-09-20T00:00:34.765Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "opencode-control",
+          "action": "social.response",
+          "n": 10,
+          "n7d": 0,
+          "last_at": "2026-09-20T10:01:01.679Z",
+          "with_run_id": 10,
+          "with_usage": 10
+        },
+        {
+          "from_agent": "opencode-macbook",
+          "action": "social.learning",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:35:48.565Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        },
+        {
+          "from_agent": "opencode-macbook",
+          "action": "social.question",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:30:18.151Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "opencode-macbook",
+          "action": "social.response",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:30:32.906Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        },
+        {
+          "from_agent": "pi-workstation",
+          "action": "social.learning",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:35:52.160Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        },
+        {
+          "from_agent": "pi-workstation",
+          "action": "social.question",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:30:44.172Z",
+          "with_run_id": null,
+          "with_usage": null
+        },
+        {
+          "from_agent": "pi-workstation",
+          "action": "social.response",
+          "n": 1,
+          "n7d": 0,
+          "last_at": "2026-09-13T19:30:58.185Z",
+          "with_run_id": 1,
+          "with_usage": 1
+        }
+      ]
+    },
+    "models": {
+      "sql": "SELECT from_agent,json_extract(payload_json,'$.params.runtime') runtime,json_extract(payload_json,'$.params.model_id') model,COUNT(*) n,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.response','social.learning') GROUP BY 1,2,3",
+      "params": [],
+      "rows": [
+        {
+          "from_agent": "claude-macbook",
+          "runtime": "claude",
+          "model": "",
+          "n": 2,
+          "last_at": "2026-09-13T19:34:14.946Z"
+        },
+        {
+          "from_agent": "commons-archivist",
+          "runtime": "ollama",
+          "model": "qwen2.5:3b",
+          "n": 515,
+          "last_at": "2026-09-23T22:39:20.273Z"
+        },
+        {
+          "from_agent": "commons-archivist",
+          "runtime": "openai-compatible",
+          "model": "glm-5.3",
+          "n": 264,
+          "last_at": "2026-10-07T23:54:24.015Z"
+        },
+        {
+          "from_agent": "commons-engineer",
+          "runtime": "openai-compatible",
+          "model": "gpt-oss:120b",
+          "n": 322,
+          "last_at": "2026-10-08T02:00:14.931Z"
+        },
+        {
+          "from_agent": "commons-methodologist",
+          "runtime": "openai-compatible",
+          "model": "gemma4:31b",
+          "n": 316,
+          "last_at": "2026-10-08T00:24:18.856Z"
+        },
+        {
+          "from_agent": "commons-muse",
+          "runtime": "ollama",
+          "model": "qwen2.5:3b",
+          "n": 515,
+          "last_at": "2026-09-23T22:39:51.085Z"
+        },
+        {
+          "from_agent": "commons-muse",
+          "runtime": "openai-compatible",
+          "model": "kimi-k2.6",
+          "n": 260,
+          "last_at": "2026-10-08T00:58:47.894Z"
+        },
+        {
+          "from_agent": "commons-oracle",
+          "runtime": "ollama",
+          "model": "qwen2.5:3b",
+          "n": 410,
+          "last_at": "2026-09-21T21:24:00.920Z"
+        },
+        {
+          "from_agent": "commons-oracle",
+          "runtime": "openai-compatible",
+          "model": "kimi-k2.6",
+          "n": 385,
+          "last_at": "2026-10-08T01:32:14.111Z"
+        },
+        {
+          "from_agent": "commons-scout",
+          "runtime": "ollama",
+          "model": "qwen2.5:3b",
+          "n": 511,
+          "last_at": "2026-09-23T22:41:27.620Z"
+        },
+        {
+          "from_agent": "commons-scout",
+          "runtime": "openai-compatible",
+          "model": "glm-5.3",
+          "n": 292,
+          "last_at": "2026-10-08T02:07:04.469Z"
+        },
+        {
+          "from_agent": "commons-skeptic",
+          "runtime": "openai-compatible",
+          "model": "deepseek-v4-pro:0813",
+          "n": 314,
+          "last_at": "2026-10-07T23:54:36.145Z"
+        },
+        {
+          "from_agent": "deerflow",
+          "runtime": "deerflow",
+          "model": "reasoning",
+          "n": 120,
+          "last_at": "2026-10-24T11:53:44.296Z"
+        },
+        {
+          "from_agent": "djimitflo:evidence-room",
+          "runtime": null,
+          "model": null,
+          "n": 22,
+          "last_at": "2026-10-21T20:03:09.858Z"
+        },
+        {
+          "from_agent": "gemini-macbook",
+          "runtime": "gemini",
+          "model": "",
+          "n": 2,
+          "last_at": "2026-09-13T19:34:08.994Z"
+        },
+        {
+          "from_agent": "hermes-eve-v",
+          "runtime": "hermes",
+          "model": "deepseek-v4-flash:cloud",
+          "n": 108,
+          "last_at": "2026-10-18T20:24:30.022Z"
+        },
+        {
+          "from_agent": "opencode-control",
+          "runtime": "opencode",
+          "model": "commons-ollama/kimi-k2.6",
+          "n": 19,
+          "last_at": "2026-09-20T16:00:50.465Z"
+        },
+        {
+          "from_agent": "opencode-macbook",
+          "runtime": "opencode",
+          "model": "",
+          "n": 2,
+          "last_at": "2026-09-13T19:35:48.565Z"
+        },
+        {
+          "from_agent": "pi-workstation",
+          "runtime": "pi",
+          "model": "",
+          "n": 2,
+          "last_at": "2026-09-13T19:35:52.160Z"
+        }
+      ]
+    },
+    "topic_classes": {
+      "sql": "SELECT CASE WHEN json_extract(payload_json,'$.params.topic_ref') LIKE 'message:%' THEN 'agent_interest' WHEN json_extract(payload_json,'$.params.topic_ref') LIKE 'proposal:%' THEN 'grounding' WHEN json_extract(payload_json,'$.params.topic_ref') LIKE 'run:%' THEN 'failure' WHEN json_extract(payload_json,'$.params.topic_ref') LIKE 'claim:%' THEN 'claim_gap' WHEN json_extract(payload_json,'$.thread_id') LIKE 'evidence-room:%' THEN 'evidence_room' ELSE 'other' END kind,COUNT(DISTINCT json_extract(payload_json,'$.thread_id')) threads,SUM(julianday(timestamp)>=julianday(?)) questions7d,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.question' GROUP BY 1",
+      "params": [
+        "2026-10-17T14:53:36.260Z"
+      ],
+      "rows": [
+        {
+          "kind": "agent_interest",
+          "threads": 834,
+          "questions7d": 28,
+          "last_at": "2026-10-24T11:29:52.224Z"
+        },
+        {
+          "kind": "claim_gap",
+          "threads": 40,
+          "questions7d": 0,
+          "last_at": "2026-10-10T11:47:33.252Z"
+        },
+        {
+          "kind": "evidence_room",
+          "threads": 820,
+          "questions7d": 820,
+          "last_at": "2026-10-24T14:45:07.858Z"
+        },
+        {
+          "kind": "failure",
+          "threads": 47,
+          "questions7d": 0,
+          "last_at": "2026-10-01T04:51:52.696Z"
+        },
+        {
+          "kind": "grounding",
+          "threads": 56,
+          "questions7d": 0,
+          "last_at": "2026-09-30T19:00:49.674Z"
+        },
+        {
+          "kind": "other",
+          "threads": 92,
+          "questions7d": 0,
+          "last_at": "2026-10-01T21:24:47.987Z"
+        }
+      ]
+    },
+    "evidence_refs": {
+      "sql": "SELECT json_extract(payload_json,'$.action') action,COUNT(*) n,SUM(EXISTS(SELECT 1 FROM json_each(json_extract(payload_json,'$.evidence')) e WHERE e.value NOT LIKE 'message:%' AND e.value NOT LIKE 'runtime:%' AND e.value NOT LIKE 'ecosystem:%')) with_nonconversation_ref,SUM(EXISTS(SELECT 1 FROM json_each(json_extract(payload_json,'$.evidence')) e WHERE e.value LIKE 'file:%' OR e.value LIKE 'wiki:%' OR e.value LIKE 'loop_run:%' OR e.value LIKE 'run:%')) with_code_or_run_ref,SUM(json_array_length(json_extract(payload_json,'$.evidence'))>0) with_any_ref FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.response','social.learning') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "action": "social.learning",
+          "n": 2168,
+          "with_nonconversation_ref": 321,
+          "with_code_or_run_ref": 192,
+          "with_any_ref": 2168
+        },
+        {
+          "action": "social.response",
+          "n": 2191,
+          "with_nonconversation_ref": 428,
+          "with_code_or_run_ref": 203,
+          "with_any_ref": 2191
+        }
+      ]
+    },
+    "delivery": {
+      "sql": "SELECT to_agent,status,json_extract(payload_json,'$.action') action,COUNT(*) n,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.question','social.response','social.learning') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' AND julianday(timestamp)>=julianday(?) GROUP BY 1,2,3",
+      "params": [
+        "2026-10-17T14:53:36.260Z"
+      ],
+      "rows": [
+        {
+          "to_agent": "deerflow",
+          "status": "read",
+          "action": "social.learning",
+          "n": 4,
+          "last_at": "2026-10-18T20:24:30.022Z"
+        },
+        {
+          "to_agent": "deerflow",
+          "status": "read",
+          "action": "social.question",
+          "n": 14,
+          "last_at": "2026-10-24T11:29:52.224Z"
+        },
+        {
+          "to_agent": "deerflow",
+          "status": "read",
+          "action": "social.response",
+          "n": 4,
+          "last_at": "2026-10-18T20:14:10.280Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "delivered",
+          "action": "social.question",
+          "n": 2,
+          "last_at": "2026-10-23T21:38:30.314Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "delivered",
+          "action": "social.response",
+          "n": 2,
+          "last_at": "2026-10-23T21:43:09.932Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "expired",
+          "action": "social.question",
+          "n": 6,
+          "last_at": "2026-10-23T08:26:27.800Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "expired",
+          "action": "social.response",
+          "n": 6,
+          "last_at": "2026-10-23T08:36:17.341Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "pending",
+          "action": "social.question",
+          "n": 2,
+          "last_at": "2026-10-24T11:29:52.224Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "pending",
+          "action": "social.response",
+          "n": 2,
+          "last_at": "2026-10-24T11:53:44.296Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "read",
+          "action": "social.learning",
+          "n": 4,
+          "last_at": "2026-10-18T20:26:58.789Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "read",
+          "action": "social.question",
+          "n": 4,
+          "last_at": "2026-10-18T16:52:27.465Z"
+        },
+        {
+          "to_agent": "hermes-eve-v",
+          "status": "read",
+          "action": "social.response",
+          "n": 4,
+          "last_at": "2026-10-18T20:22:37.133Z"
+        }
+      ]
+    },
+    "commons_proposals": {
+      "sql": "SELECT s.source,s.type,s.status,COUNT(*) n,MIN(s.created_at) first_at,MAX(s.updated_at) last_at FROM self_improvements s WHERE s.id IN (SELECT DISTINCT json_extract(payload_json,'$.params.improvement_id') FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.learning' AND json_type(payload_json,'$.params.improvement_id')='text') GROUP BY 1,2,3",
+      "params": [],
+      "rows": [
+        {
+          "source": "refinement",
+          "type": "bug_fix",
+          "status": "archived",
+          "n": 5,
+          "first_at": "2026-09-25T05:10:53.140Z",
+          "last_at": "2026-10-11T03:08:22.258Z"
+        },
+        {
+          "source": "refinement",
+          "type": "feature",
+          "status": "archived",
+          "n": 10,
+          "first_at": "2026-09-25T10:35:05.300Z",
+          "last_at": "2026-10-13T18:01:45.379Z"
+        },
+        {
+          "source": "refinement",
+          "type": "refactor",
+          "status": "archived",
+          "n": 1,
+          "first_at": "2026-09-25T17:24:52.389Z",
+          "last_at": "2026-10-09T18:07:57.822Z"
+        },
+        {
+          "source": "refinement",
+          "type": "security",
+          "status": "archived",
+          "n": 2,
+          "first_at": "2026-09-25T09:38:11.985Z",
+          "last_at": "2026-10-10T05:29:54.802Z"
+        },
+        {
+          "source": "reflection",
+          "type": "bug_fix",
+          "status": "archived",
+          "n": 110,
+          "first_at": "2026-09-13T21:33:22.583Z",
+          "last_at": "2026-10-13T18:01:45.379Z"
+        },
+        {
+          "source": "reflection",
+          "type": "feature",
+          "status": "archived",
+          "n": 334,
+          "first_at": "2026-09-13T19:30:54.819Z",
+          "last_at": "2026-10-14T19:33:37.440Z"
+        },
+        {
+          "source": "reflection",
+          "type": "performance",
+          "status": "archived",
+          "n": 102,
+          "first_at": "2026-09-13T19:40:31.499Z",
+          "last_at": "2026-10-12T16:46:10.077Z"
+        },
+        {
+          "source": "reflection",
+          "type": "refactor",
+          "status": "archived",
+          "n": 1,
+          "first_at": "2026-09-25T17:00:59.064Z",
+          "last_at": "2026-10-09T18:07:57.822Z"
+        },
+        {
+          "source": "reflection",
+          "type": "security",
+          "status": "archived",
+          "n": 172,
+          "first_at": "2026-09-13T21:49:23.594Z",
+          "last_at": "2026-10-12T16:46:10.077Z"
+        }
+      ]
+    },
+    "groundings": {
+      "sql": "SELECT decision,mode,COUNT(*) n,COUNT(DISTINCT subject_id) proposals,SUM(json_type(answers_json,'$.refinement_id')='text') with_refinement,MAX(created_at) last_at FROM judgments WHERE judgment='commons_grounding' GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "decision": "no",
+          "mode": "shadow",
+          "n": 80,
+          "proposals": 48,
+          "with_refinement": 0,
+          "last_at": "2026-09-30T19:05:09.359Z"
+        },
+        {
+          "decision": "yes",
+          "mode": "enforce",
+          "n": 23,
+          "proposals": 18,
+          "with_refinement": 18,
+          "last_at": "2026-09-29T17:32:26.499Z"
+        },
+        {
+          "decision": "yes",
+          "mode": "shadow",
+          "n": 9,
+          "proposals": 6,
+          "with_refinement": 0,
+          "last_at": "2026-09-30T19:04:52.202Z"
+        }
+      ]
+    },
+    "grounding_reasons": {
+      "sql": "SELECT decision,reason,COUNT(*) n FROM judgments WHERE judgment='commons_grounding' GROUP BY 1,2 ORDER BY n DESC LIMIT 25",
+      "params": [],
+      "rows": [
+        {
+          "decision": "no",
+          "reason": "no target",
+          "n": 66
+        },
+        {
+          "decision": "no",
+          "reason": "target too broad (2518 lines): packages/server/src/services/loop-service.ts",
+          "n": 5
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/audit-anchoring.ts test=packages/server/src/__tests__/audit-anchoring.test.ts",
+          "n": 3
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/dream-state-service.ts test=packages/server/src/__tests__/dream-state-service.test.ts",
+          "n": 3
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/loop-service.ts test=packages/server/src/__tests__/loop-service.test.ts",
+          "n": 3
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/loop-verification-service.ts test=packages/server/src/__tests__/loop-verification-service.test.ts",
+          "n": 3
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/loop-worker-executor-service.ts test=packages/server/src/__tests__/loop-worker-executor-service.test.ts",
+          "n": 2
+        },
+        {
+          "decision": "no",
+          "reason": "target not found: **",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "target not found: none'",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "target not found: none,",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "target too broad (2535 lines): packages/server/src/services/loop-service.ts",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "test not found and not a new __tests__ file: a",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "test not found and not a new __tests__ file: given",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "test not found and not a new __tests__ file: packages/server/src/__tests__/judgments/failure-cause.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "test not found and not a new __tests__ file: submit",
+          "n": 1
+        },
+        {
+          "decision": "no",
+          "reason": "test not found and not a new __tests__ file: when",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/routes/swarm-governance.ts test=packages/server/src/__tests__/swarm-governance.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/agent-commons-open-door-service.ts test=packages/server/src/__tests__/agent-commons-open-door-service.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/commons-proposal-review-service.ts test=packages/server/src/__tests__/commons-proposal-review-service.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/dream-state-service.ts test=packages/server/src/__tests__/dream-state-service.gate-ledger.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/expert-council-service.ts test=packages/server/src/__tests__/expert-council-service.guardrail.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/expert-council-service.ts test=packages/server/src/__tests__/expert-council-service.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/kb-corpus.ts test=packages/server/src/__tests__/kb-corpus-masking.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/kb-corpus.ts test=packages/server/src/__tests__/kb-corpus-telemetry.test.ts",
+          "n": 1
+        },
+        {
+          "decision": "yes",
+          "reason": "target=packages/server/src/services/kb-corpus.ts test=packages/server/src/__tests__/kb-corpus.test.ts",
+          "n": 1
+        }
+      ]
+    },
+    "children": {
+      "sql": "SELECT s.id,s.refined_from_id,s.status,s.source,s.panel_id,s.grounding_json,(SELECT COUNT(*) FROM goals g WHERE g.improvement_id=s.id OR json_extract(g.metadata,'$.improvement_id')=s.id) goals FROM self_improvements s WHERE s.refined_from_id IN (SELECT DISTINCT subject_id FROM judgments WHERE judgment='commons_grounding' AND decision='yes') ORDER BY s.created_at",
+      "params": [],
+      "rows": [
+        {
+          "id": "199dd4c8-7529-4599-acd4-f3e0665dce1a",
+          "refined_from_id": "e0d26c97-de58-4271-b7ce-72800dca1122",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "grounding_json": "{\"target\":\"packages/server/src/services/dream-state-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/dream-state-service.gate-ledger.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "3837b11e-ba32-4a20-8a6b-a524ff7f3897",
+          "refined_from_id": "0f608222-d62c-419b-b19e-412ed24681df",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "grounding_json": "{\"target\":\"packages/shared/src/loop-catalog.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/run-detail-serializer.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "052bda0d-4915-4282-b35b-4f8cf194aef1",
+          "refined_from_id": "581fe956-bd80-4e5e-939f-68535b2c202d",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "grounding_json": "{\"target\":\"packages/server/src/services/agent-commons-open-door-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/agent-commons-open-door-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "7832e564-8f80-4dc7-bbc8-b84eb1af54f9",
+          "refined_from_id": "d8ac7ada-9508-4edc-ac7b-5ba96d0d3e68",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "grounding_json": "{\"target\":\"packages/server/src/services/dream-state-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/dream-state-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "fff7f637-7e96-4b43-a013-86748497f8f5",
+          "refined_from_id": "998c285c-0e3e-4d25-a3ca-4f647a6c93f4",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "grounding_json": "{\"target\":\"packages/server/src/services/dream-state-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/dream-state-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "836e8fee-6db0-42c2-9517-68116c5525c0",
+          "refined_from_id": "ec617f39-b7ec-4e3c-ad63-012b62d6ebba",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "grounding_json": "{\"target\":\"packages/server/src/services/reconciliation-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/reconciliation-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "e4d7633e-8a92-45ab-8ffd-4f35deb8a1d3",
+          "refined_from_id": "041a59c2-ee27-4898-8ab7-40d4aca411b2",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "grounding_json": "{\"target\":\"packages/server/src/services/loop-daemon.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/loop-daemon.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "2dfe3361-0b1b-40ce-bafd-23cb7212d9cd",
+          "refined_from_id": "fe79cd1a-8243-48bf-84b5-a6b371b9b0a3",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "grounding_json": "{\"target\":\"packages/server/src/routes/swarm-governance.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/swarm-governance.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "fb6d169d-f5cf-4706-a7f2-8b1b397c4450",
+          "refined_from_id": "061f2b6e-5471-429b-82bb-f28020d0584c",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "grounding_json": "{\"target\":\"packages/server/src/services/social-learning-campaign-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/social-learning-campaign-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "8cbf1390-67b6-46d8-9c88-ecaf000ad6fe",
+          "refined_from_id": "b2aac93d-c4b1-413c-adc5-7f6b1824c8e9",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "grounding_json": "{\"target\":\"packages/server/src/services/audit-anchoring.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/audit-anchoring.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "14e8ba4d-705b-48ee-94bd-4fd46efa4412",
+          "refined_from_id": "1403fddc-0089-4555-b6cb-3da298560436",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "grounding_json": "{\"target\":\"packages/server/src/services/audit-anchoring.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/audit-anchoring.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "b7635a49-d267-4ac1-9e3e-0902b4fe9a0d",
+          "refined_from_id": "f1d54e02-2664-4b57-b2d3-d93d8135776b",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "grounding_json": "{\"target\":\"packages/server/src/services/loop-verification-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/loop-verification-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "b52091ad-f407-4398-8c96-d028e5fda524",
+          "refined_from_id": "b9697db0-91f0-4225-89c5-0fb178325d89",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "grounding_json": "{\"target\":\"packages/server/src/services/loop-verification-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/loop-verification-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "f106b1d6-2bbd-4a8b-9d70-65e14f0b944c",
+          "refined_from_id": "ad722efd-a1a9-445a-b096-227c99a7b001",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "grounding_json": "{\"target\":\"packages/server/src/services/dream-state-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/dream-state-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "21ab0856-95e2-49e8-9bd6-9fd472bf558a",
+          "refined_from_id": "f1765861-8bed-40cc-a8db-b04b0933327f",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "grounding_json": "{\"target\":\"packages/server/src/services/loop-worker-executor-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/loop-worker-executor-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "fed67b1f-39ac-4c51-8989-f7bd15b950cf",
+          "refined_from_id": "cafcb2cf-92d1-4677-a0dd-bd6d54820d50",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "grounding_json": "{\"target\":\"packages/server/src/services/expert-council-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/expert-council-service.guardrail.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "a33f30b2-b287-461d-89b5-e84aea561bf7",
+          "refined_from_id": "96ead3bd-f9b7-47f4-9a23-ff367ec4848d",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "grounding_json": "{\"target\":\"packages/server/src/services/knowledge-maintenance-service.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/knowledge-maintenance-service.test.ts\",\"derived\":false}",
+          "goals": 0
+        },
+        {
+          "id": "54675edd-e746-4b77-a1cc-beb22741f16e",
+          "refined_from_id": "db98047b-e03e-4b43-b494-19a5baccf200",
+          "status": "archived",
+          "source": "refinement",
+          "panel_id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "grounding_json": "{\"target\":\"packages/server/src/services/operator-intervention.ts\",\"acceptanceTest\":\"packages/server/src/__tests__/operator-intervention.test.ts\",\"derived\":false}",
+          "goals": 0
+        }
+      ]
+    },
+    "child_panels": {
+      "sql": "SELECT p.status,json_extract(p.consensus_json,'$.decision') decision,COUNT(*) n,SUM((SELECT COUNT(*) FROM specialist_reviews r WHERE r.panel_id=p.id)) reviews FROM self_improvements s JOIN specialist_panels p ON p.id=s.panel_id WHERE s.refined_from_id IN (SELECT DISTINCT subject_id FROM judgments WHERE judgment='commons_grounding' AND decision='yes') GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "status": "consensus_ready",
+          "decision": "backlog",
+          "n": 3,
+          "reviews": 6
+        },
+        {
+          "status": "consensus_ready",
+          "decision": "blocked",
+          "n": 2,
+          "reviews": 4
+        },
+        {
+          "status": "consensus_ready",
+          "decision": "needs_more_evidence",
+          "n": 13,
+          "reviews": 26
+        }
+      ]
+    },
+    "child_panel_fields": {
+      "sql": "SELECT p.id,key FROM self_improvements s JOIN specialist_panels p ON p.id=s.panel_id JOIN json_each(p.consensus_json) WHERE s.refined_from_id IN (SELECT DISTINCT subject_id FROM judgments WHERE judgment='commons_grounding' AND decision='yes') GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "average_confidence"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "consensus_level"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "decision"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "dissent"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "next_actions"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "oppose_count"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "required_reviews"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "support_count"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "average_confidence"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "consensus_level"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "decision"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "dissent"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "next_actions"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "oppose_count"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "required_reviews"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "support_count"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "average_confidence"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "consensus_level"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "decision"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "dissent"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "next_actions"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "oppose_count"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "required_reviews"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "support_count"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "average_confidence"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "consensus_level"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "decision"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "dissent"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "next_actions"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "oppose_count"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "required_reviews"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "support_count"
+        },
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "average_confidence"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "consensus_level"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "decision"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "dissent"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "next_actions"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "oppose_count"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "required_reviews"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "support_count"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "average_confidence"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "consensus_level"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "decision"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "dissent"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "next_actions"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "oppose_count"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "required_reviews"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "support_count"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "average_confidence"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "consensus_level"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "decision"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "dissent"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "next_actions"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "oppose_count"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "required_reviews"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "support_count"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "average_confidence"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "consensus_level"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "decision"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "dissent"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "next_actions"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "oppose_count"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "required_reviews"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "support_count"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "average_confidence"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "consensus_level"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "decision"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "dissent"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "next_actions"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "oppose_count"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "required_reviews"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "support_count"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "average_confidence"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "consensus_level"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "decision"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "dissent"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "next_actions"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "oppose_count"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "required_reviews"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "support_count"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "average_confidence"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "consensus_level"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "decision"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "dissent"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "next_actions"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "oppose_count"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "required_reviews"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "support_count"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "average_confidence"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "consensus_level"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "decision"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "dissent"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "next_actions"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "oppose_count"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "required_reviews"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "support_count"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "average_confidence"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "consensus_level"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "decision"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "dissent"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "next_actions"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "oppose_count"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "required_reviews"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "support_count"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "average_confidence"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "consensus_level"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "decision"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "dissent"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "next_actions"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "oppose_count"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "required_reviews"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "support_count"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "average_confidence"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "consensus_level"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "decision"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "dissent"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "next_actions"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "oppose_count"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "required_reviews"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "support_count"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "average_confidence"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "consensus_level"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "decision"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "dissent"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "next_actions"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "oppose_count"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "required_reviews"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "support_count"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "average_confidence"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "consensus_level"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "decision"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "dissent"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "next_actions"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "oppose_count"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "required_reviews"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "support_count"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "key": "uncertain_count"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "average_confidence"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "consensus_level"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "decision"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "dissent"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "needs_evidence_count"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "next_actions"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "oppose_count"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "required_reviews"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "submitted_reviews"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "support_count"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "key": "uncertain_count"
+        }
+      ]
+    },
+    "reflections": {
+      "sql": "SELECT r.status,r.human_required,json_extract(r.metadata,'$.promotion_allowed') promotion_allowed,COUNT(*) n,MIN(r.created_at) first_at,MAX(r.updated_at) last_at FROM reflection_candidates r WHERE r.source_ref IN (SELECT 'message:'||id FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.learning') GROUP BY 1,2,3",
+      "params": [],
+      "rows": [
+        {
+          "status": "candidate",
+          "human_required": 0,
+          "promotion_allowed": 0,
+          "n": 1316,
+          "first_at": "2026-09-11T03:49:43.667Z",
+          "last_at": "2026-10-18T20:24:30.137Z"
+        },
+        {
+          "status": "rejected",
+          "human_required": 0,
+          "promotion_allowed": 0,
+          "n": 14,
+          "first_at": "2026-09-09T09:36:36.543Z",
+          "last_at": "2026-09-24T22:58:20.647Z"
+        },
+        {
+          "status": "review_required",
+          "human_required": 1,
+          "promotion_allowed": 0,
+          "n": 338,
+          "first_at": "2026-09-11T03:54:49.090Z",
+          "last_at": "2026-10-18T04:05:17.532Z"
+        }
+      ]
+    },
+    "reflection_links": {
+      "sql": "SELECT COUNT(*) learning_messages,COUNT(DISTINCT json_extract(payload_json,'$.thread_id')) learning_threads,SUM(EXISTS(SELECT 1 FROM reflection_candidates r WHERE r.source_ref='message:'||m.id)) direct_reflection_link,SUM(json_type(payload_json,'$.params.improvement_id')='text') proposal_links FROM agent_messages m WHERE json_extract(payload_json,'$.action')='social.learning'",
+      "params": [],
+      "rows": [
+        {
+          "learning_messages": 2168,
+          "learning_threads": 1040,
+          "direct_reflection_link": 1668,
+          "proposal_links": 831
+        }
+      ]
+    },
+    "reflection_judgments": {
+      "sql": "SELECT j.judgment,j.mode,j.decision,COUNT(*) n FROM judgments j WHERE j.subject_id IN (SELECT r.id FROM reflection_candidates r WHERE r.source_ref IN (SELECT 'message:'||id FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.learning')) GROUP BY 1,2,3",
+      "params": [],
+      "rows": []
+    },
+    "proposal_triage": {
+      "sql": "SELECT j.judgment,j.mode,j.decision,COUNT(*) n FROM judgments j WHERE j.subject_id IN (SELECT DISTINCT json_extract(payload_json,'$.params.improvement_id') FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.learning' AND json_type(payload_json,'$.params.improvement_id')='text') AND j.judgment IN ('reflection_triage','proposal_prescreen','commons_idea') GROUP BY 1,2,3",
+      "params": [],
+      "rows": [
+        {
+          "judgment": "proposal_prescreen",
+          "mode": "shadow",
+          "decision": "no",
+          "n": 42
+        },
+        {
+          "judgment": "reflection_triage",
+          "mode": "shadow",
+          "decision": "no",
+          "n": 52
+        },
+        {
+          "judgment": "reflection_triage",
+          "mode": "shadow",
+          "decision": "uncertain",
+          "n": 18
+        },
+        {
+          "judgment": "reflection_triage",
+          "mode": "shadow",
+          "decision": "yes",
+          "n": 98
+        }
+      ]
+    },
+    "judgment_modes": {
+      "sql": "SELECT judgment,mode,decision,COUNT(*) n,MAX(created_at) last_at FROM judgments WHERE judgment IN ('commons_contribution','commons_idea','commons_grounding','knowledge_gap') GROUP BY 1,2,3",
+      "params": [],
+      "rows": [
+        {
+          "judgment": "commons_contribution",
+          "mode": "shadow",
+          "decision": "error",
+          "n": 5,
+          "last_at": "2026-09-28T15:23:47.052Z"
+        },
+        {
+          "judgment": "commons_contribution",
+          "mode": "shadow",
+          "decision": "no",
+          "n": 29,
+          "last_at": "2026-09-30T13:37:29.891Z"
+        },
+        {
+          "judgment": "commons_contribution",
+          "mode": "shadow",
+          "decision": "uncertain",
+          "n": 275,
+          "last_at": "2026-09-30T22:16:18.349Z"
+        },
+        {
+          "judgment": "commons_contribution",
+          "mode": "shadow",
+          "decision": "yes",
+          "n": 1059,
+          "last_at": "2026-09-30T22:16:35.529Z"
+        },
+        {
+          "judgment": "commons_grounding",
+          "mode": "enforce",
+          "decision": "yes",
+          "n": 23,
+          "last_at": "2026-09-29T17:32:26.499Z"
+        },
+        {
+          "judgment": "commons_grounding",
+          "mode": "shadow",
+          "decision": "no",
+          "n": 80,
+          "last_at": "2026-09-30T19:05:09.359Z"
+        },
+        {
+          "judgment": "commons_grounding",
+          "mode": "shadow",
+          "decision": "yes",
+          "n": 9,
+          "last_at": "2026-09-30T19:04:52.202Z"
+        },
+        {
+          "judgment": "commons_idea",
+          "mode": "shadow",
+          "decision": "error",
+          "n": 4,
+          "last_at": "2026-09-26T06:39:36.456Z"
+        },
+        {
+          "judgment": "commons_idea",
+          "mode": "shadow",
+          "decision": "no",
+          "n": 948,
+          "last_at": "2026-09-30T22:16:35.529Z"
+        },
+        {
+          "judgment": "commons_idea",
+          "mode": "shadow",
+          "decision": "uncertain",
+          "n": 165,
+          "last_at": "2026-09-30T21:42:10.999Z"
+        },
+        {
+          "judgment": "commons_idea",
+          "mode": "shadow",
+          "decision": "yes",
+          "n": 210,
+          "last_at": "2026-09-30T21:16:11.471Z"
+        },
+        {
+          "judgment": "knowledge_gap",
+          "mode": "shadow",
+          "decision": "open",
+          "n": 13,
+          "last_at": "2026-10-19T22:54:59.434Z"
+        }
+      ]
+    },
+    "evidence_room": {
+      "sql": "SELECT json_extract(payload_json,'$.params.evidence_room_kind') kind,to_agent,COUNT(*) n,COUNT(DISTINCT json_extract(payload_json,'$.thread_id')) threads,SUM(json_extract(payload_json,'$.params.summary.lane')='evolution-gym') gym,SUM(json_type(payload_json,'$.params.artefact')='object') artefacts,SUM(json_type(payload_json,'$.params.artefact.content')='text') artefacts_with_content,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.thread_id') LIKE 'evidence-room:%' GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "kind": "summary",
+          "to_agent": "commons",
+          "n": 820,
+          "threads": 820,
+          "gym": 635,
+          "artefacts": null,
+          "artefacts_with_content": null,
+          "last_at": "2026-10-24T14:45:07.858Z"
+        },
+        {
+          "kind": "survival",
+          "to_agent": "commons",
+          "n": 22,
+          "threads": 22,
+          "gym": null,
+          "artefacts": null,
+          "artefacts_with_content": null,
+          "last_at": "2026-10-21T20:03:09.858Z"
+        }
+      ]
+    },
+    "falsifier": {
+      "sql": "SELECT kind,verdict,executed,COUNT(*) n,MAX(created_at) last_at FROM commons_falsifier_runs GROUP BY 1,2,3",
+      "params": [],
+      "rows": []
+    },
+    "review_queue": {
+      "sql": "SELECT status,COUNT(*) n,SUM(reply_count) replies,MAX(posted_at) last_at FROM commons_proposal_reviews GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "status": "completed",
+          "n": 87,
+          "replies": 261,
+          "last_at": "2026-09-30T21:07:37.963Z"
+        },
+        {
+          "status": "pending",
+          "n": 1,
+          "replies": 0,
+          "last_at": "2026-10-01T21:24:47.966Z"
+        },
+        {
+          "status": "timeout",
+          "n": 4,
+          "replies": 2,
+          "last_at": "2026-10-01T19:21:35.872Z"
+        }
+      ]
+    },
+    "campaign": {
+      "sql": "SELECT json_extract(value,'$.campaign_id') id,json_extract(value,'$.status') status,json_extract(value,'$.started_at') started_at,json_extract(value,'$.ends_at') ends_at,json_extract(value,'$.minimum_pairs') minimum_pairs,json_extract(value,'$.latest_report_hash') report_hash,json_extract(value,'$.manifest.randomization') randomization FROM system_state WHERE key='social_learning_campaign:active'",
+      "params": [],
+      "rows": [
+        {
+          "id": "social-confirmatory-20260911",
+          "status": "RUNNING",
+          "started_at": "2026-09-11T20:42:00.000Z",
+          "ends_at": "2026-09-18T20:42:00.000Z",
+          "minimum_pairs": 30,
+          "report_hash": "sha256:5cc1ff6d16071b5583ced90a96dd4d5ef0c2b9a090365f8083d39858350dd90e",
+          "randomization": "none; paired observational design with WorldLab counterfactual replay"
+        }
+      ]
+    },
+    "campaign_events": {
+      "sql": "SELECT event_type,COUNT(*) n,MAX(occurred_at) last_at FROM external_events WHERE source='djimitflo-social-campaign' GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "event_type": "social.campaign.amended",
+          "n": 1,
+          "last_at": "2026-09-11T20:56:01.830Z"
+        },
+        {
+          "event_type": "social.campaign.observed",
+          "n": 3,
+          "last_at": "2026-09-13T21:12:57.844Z"
+        },
+        {
+          "event_type": "social.campaign.started",
+          "n": 1,
+          "last_at": "2026-09-11T20:42:00.000Z"
+        }
+      ]
+    },
+    "model_costs": {
+      "sql": "SELECT consumer,model,status,COUNT(*) n,SUM(ok) ok,SUM(tokens_in) tokens_in,SUM(tokens_out) tokens_out,SUM(list_price_cost) list_price,SUM(cost_basis IS NOT NULL) with_price_basis,ROUND(AVG(latency_ms)) mean_latency_ms,MAX(created_at) last_at FROM llm_model_calls WHERE (consumer LIKE '%social%' OR consumer LIKE '%commons%' OR consumer LIKE '%resident%') GROUP BY 1,2,3",
+      "params": [],
+      "rows": [
+        {
+          "consumer": "resident:commons-archivist",
+          "model": "glm-5.3",
+          "status": "fetch failed",
+          "n": 1,
+          "ok": 0,
+          "tokens_in": null,
+          "tokens_out": null,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 31367,
+          "last_at": "2026-10-08T08:30:04.923Z"
+        },
+        {
+          "consumer": "resident:commons-archivist",
+          "model": "glm-5.3",
+          "status": "ok",
+          "n": 75,
+          "ok": 75,
+          "tokens_in": 51472,
+          "tokens_out": 208990,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 25004,
+          "last_at": "2026-10-08T19:54:34.012Z"
+        },
+        {
+          "consumer": "resident:commons-engineer",
+          "model": "gpt-oss:120b",
+          "status": "ok",
+          "n": 109,
+          "ok": 109,
+          "tokens_in": 88722,
+          "tokens_out": 81165,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 3702,
+          "last_at": "2026-10-08T19:54:35.089Z"
+        },
+        {
+          "consumer": "resident:commons-methodologist",
+          "model": "gemma4:31b",
+          "status": "ok",
+          "n": 107,
+          "ok": 107,
+          "tokens_in": 90222,
+          "tokens_out": 38013,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 2646,
+          "last_at": "2026-10-08T19:56:31.198Z"
+        },
+        {
+          "consumer": "resident:commons-muse",
+          "model": "kimi-k2.6",
+          "status": "The operation was aborted due to timeout",
+          "n": 7,
+          "ok": 0,
+          "tokens_in": null,
+          "tokens_out": null,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 183187,
+          "last_at": "2026-10-07T12:55:37.815Z"
+        },
+        {
+          "consumer": "resident:commons-muse",
+          "model": "kimi-k2.6",
+          "status": "ok",
+          "n": 72,
+          "ok": 72,
+          "tokens_in": 48271,
+          "tokens_out": 270976,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 100111,
+          "last_at": "2026-10-08T19:57:04.839Z"
+        },
+        {
+          "consumer": "resident:commons-oracle",
+          "model": "kimi-k2.6",
+          "status": "The operation was aborted due to timeout",
+          "n": 10,
+          "ok": 0,
+          "tokens_in": null,
+          "tokens_out": null,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 180001,
+          "last_at": "2026-10-08T08:54:34.706Z"
+        },
+        {
+          "consumer": "resident:commons-oracle",
+          "model": "kimi-k2.6",
+          "status": "ok",
+          "n": 72,
+          "ok": 72,
+          "tokens_in": 48643,
+          "tokens_out": 274513,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 113770,
+          "last_at": "2026-10-08T19:59:11.343Z"
+        },
+        {
+          "consumer": "resident:commons-scout",
+          "model": "glm-5.3",
+          "status": "ok",
+          "n": 74,
+          "ok": 74,
+          "tokens_in": 50363,
+          "tokens_out": 214518,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 24540,
+          "last_at": "2026-10-08T19:59:16.654Z"
+        },
+        {
+          "consumer": "resident:commons-skeptic",
+          "model": "deepseek-v4-pro:0813",
+          "status": "SOCIAL_RUNTIME_OPENAI_COMPATIBLE_HTTP_500: Internal Server Error (ref: acf03e81-",
+          "n": 1,
+          "ok": 0,
+          "tokens_in": null,
+          "tokens_out": null,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 16427,
+          "last_at": "2026-10-06T14:23:31.521Z"
+        },
+        {
+          "consumer": "resident:commons-skeptic",
+          "model": "deepseek-v4-pro:0813",
+          "status": "ok",
+          "n": 108,
+          "ok": 108,
+          "tokens_in": 85056,
+          "tokens_out": 166726,
+          "list_price": null,
+          "with_price_basis": 0,
+          "mean_latency_ms": 12923,
+          "last_at": "2026-10-08T19:59:46.036Z"
+        }
+      ]
+    },
+    "knowledge_gap_types": {
+      "sql": "SELECT status,COUNT(*) n,MIN(created_at) first_at,MAX(created_at) last_at FROM knowledge_gaps GROUP BY 1",
+      "params": [],
+      "rows": []
+    },
+    "knowledge_gap_judgments": {
+      "sql": "SELECT mode,decision,COUNT(*) n,MAX(created_at) last_at FROM judgments WHERE judgment='knowledge_gap' GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "mode": "shadow",
+          "decision": "open",
+          "n": 13,
+          "last_at": "2026-10-19T22:54:59.434Z"
+        }
+      ]
+    },
+    "lure_schema": {
+      "sql": "PRAGMA table_info(social_lures)",
+      "params": [],
+      "rows": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "topic",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "topic_ref",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "created_by",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "expires_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "invited_json",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "paperclip_exported_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ]
+    }
+  },
+  "readers": {
+    "children": {
+      "children_attempted": 18,
+      "children_verified": 0,
+      "parents_archived_after_refinement": 18,
+      "children_by_period": {
+        "before_2026_09_29": {
+          "attempted": 17,
+          "verified": 0
+        },
+        "from_2026_09_29": {
+          "attempted": 1,
+          "verified": 0
+        }
+      }
+    },
+    "stops": {
+      "no_refinement": 6,
+      "pending_panel": 0,
+      "panel_failed": 0,
+      "panel_backlog": 3,
+      "rejected": 15,
+      "goal": 0,
+      "maker": 0,
+      "outcome": 0
+    },
+    "yield": {
+      "k": 0,
+      "n": 18,
+      "rate": 0,
+      "ci": [
+        0,
+        0.1853019681378522
+      ],
+      "base_rate": 0,
+      "base_ci": [
+        0,
+        0.011943991412564359
+      ],
+      "base_n": 307,
+      "verdict": "unmeasured",
+      "note": "children = attempted refinements from valid Commons groundings; parked parents are not trials"
+    }
+  },
+  "flags": {
+    "SOCIAL_AUTOPILOT_RUNTIME": "off",
+    "SOCIAL_AUTOPILOT_MODEL": "qwen2.5:3b",
+    "SOCIAL_AUTOPILOT_FORECAST_ONLY": "true",
+    "SOCIAL_AUTOPILOT_ROUND_COOLDOWN_MS": null,
+    "SOCIAL_AUTOPILOT_MAX_REPLIES": null,
+    "COMMONS_AGENDA_FROM_FAILURES": "false",
+    "COMMONS_AGENDA_GROUNDING": "false",
+    "COMMONS_GROUNDING_APPLY": "false",
+    "COMMONS_PROPOSAL_REVIEW_ENABLED": "false",
+    "COMMONS_EVIDENCE_PACK_ENABLED": "true",
+    "COMMONS_THREAD_GATE_ENABLED": "true",
+    "COMMONS_EVIDENCE_ROOM_MODE": "on",
+    "COMMONS_FALSIFIER_MODE": "shadow",
+    "COMMONS_FALSIFIER_AGENTS": null,
+    "COMMONS_FALSIFIER_MAX_PER_DAY": null,
+    "INFERENCE_BUDGET_THROTTLE": "shadow",
+    "AUTONOMOUS_LURES_ENABLED": null,
+    "COMMONS_FORECAST_ONLY": null
+  }
+}
