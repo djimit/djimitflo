@@ -772,10 +772,10 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(executed.checkpoint_after.id).toBe(executed.lease.metadata.checkpoint_after_id);
     expect(executed.checkpoint_before.leases.find((lease: any) => lease.id === maker.id).status).toBe('prepared');
     expect(executed.checkpoint_after.leases.find((lease: any) => lease.id === maker.id).status).toBe('completed');
-    expect(executed.trace.spans).toEqual(expect.arrayContaining([
-      expect.objectContaining({ span_type: 'worker', status: 'running' }),
-      expect.objectContaining({ span_type: 'worker', status: 'ok' }),
-    ]));
+    // one worker span, closed in place (OPS-004): no separate 'running' spawn row any more
+    expect(executed.trace.spans.filter((span: any) => span.span_type === 'worker')).toEqual([
+      expect.objectContaining({ status: 'ok', ended_at: expect.any(String) }),
+    ]);
 
     const checksResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/run-checks`, {
       method: 'POST',
@@ -884,10 +884,10 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(executed.gates).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'maker_runtime_exit_zero', status: 'fail' }),
     ]));
-    expect(executed.trace.spans).toEqual(expect.arrayContaining([
-      expect.objectContaining({ span_type: 'worker', status: 'running' }),
-      expect.objectContaining({ span_type: 'worker', status: 'error' }),
-    ]));
+    // one worker span, closed in place (OPS-004): no separate 'running' spawn row any more
+    expect(executed.trace.spans.filter((span: any) => span.span_type === 'worker')).toEqual([
+      expect.objectContaining({ status: 'error', ended_at: expect.any(String) }),
+    ]);
     expect(executed.run.status).toBe('blocked');
     const manifests = db.prepare('SELECT action, lease_id FROM swarm_runner_manifests WHERE loop_run_id = ? ORDER BY created_at ASC').all(run.id) as any[];
     expect(manifests.find((manifest: any) => manifest.action === 'fail' && manifest.lease_id === maker.id)).toBeTruthy();

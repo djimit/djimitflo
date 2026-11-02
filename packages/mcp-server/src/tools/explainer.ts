@@ -5,6 +5,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { requireMcpPermission } from "../auth-context.js";
+
+/**
+ * The HTTP twins (POST /api/explainer/tasks, POST /api/explainer/tasks/:id/run) need write:governance. A task names a
+ * local_path or remote_url the server worker scans and publishes, and run_task calls the API with the server's own
+ * DJIMITFLO_API_TOKEN, so the MCP door must not be wider than the API one.
+ */
+const EXPLAINER_WRITE_PERMISSION = "write:governance";
 
 type DbLike = any;
 
@@ -59,6 +67,7 @@ async function runPipeline(db: DbLike, id: string): Promise<any> {
       ...(process.env.DJIMITFLO_API_TOKEN ? { Authorization: `Bearer ${process.env.DJIMITFLO_API_TOKEN}` } : {}),
     },
     body: JSON.stringify({}),
+    signal: AbortSignal.timeout(300_000),
   });
   if (!res.ok) {
     throw new Error(`Pipeline run failed via server: ${res.status} ${res.statusText}`);
@@ -190,6 +199,7 @@ export function registerExplainerTools(server: McpServer, db: DbLike): void {
     },
     async (args: any) => {
       try {
+        requireMcpPermission(EXPLAINER_WRITE_PERMISSION);
         const task = createTask(db, args || {});
         return { content: [{ type: "text" as const, text: JSON.stringify(task, null, 2) }] };
       } catch (error) {
@@ -234,6 +244,7 @@ export function registerExplainerTools(server: McpServer, db: DbLike): void {
     },
     async (args: any) => {
       try {
+        requireMcpPermission(EXPLAINER_WRITE_PERMISSION);
         const result = await runPipeline(db, args?.id as string);
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
       } catch (error) {
@@ -298,6 +309,7 @@ export function registerExplainerTools(server: McpServer, db: DbLike): void {
             ...(process.env.DJIMITFLO_API_TOKEN ? { Authorization: `Bearer ${process.env.DJIMITFLO_API_TOKEN}` } : {}),
           },
           body: JSON.stringify({ question: args?.question, repo: args?.repo }),
+          signal: AbortSignal.timeout(120_000),
         });
         if (!res.ok) {
           return { content: [{ type: "text" as const, text: `Ask failed: ${res.status} ${res.statusText}` }], isError: true };

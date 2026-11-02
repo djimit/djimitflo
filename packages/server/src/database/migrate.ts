@@ -78,6 +78,11 @@ const selfImprovementRefinementColumns: ColumnSpec[] = [
 
 const specialistReviewActorColumns: ColumnSpec[] = [
   { name: 'reviewer_actor', definition: 'TEXT' },
+  // B32: provenance of an automated review (model, prompt hash, raw answer hash, attempt that produced it)
+  { name: 'model', definition: 'TEXT' },
+  { name: 'prompt_sha256', definition: 'TEXT' },
+  { name: 'raw_sha256', definition: 'TEXT' },
+  { name: 'attempt', definition: 'INTEGER' },
 ];
 
 const goalImprovementColumns: ColumnSpec[] = [
@@ -113,6 +118,27 @@ function addMissingColumns(db: BetterSqlite3Database, tableName: string, columns
       db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.definition}`);
     }
   }
+}
+
+/**
+ * DI-001 B: versioned decision provenance (services/judgment-provenance.ts). Additive and idempotent: one nullable column;
+ * existing rows stay NULL (read as 'unrecorded', never backfilled). The trigger gives every NEW row from a writer that does
+ * not supply provenance a 'partial' floor built only from the row's own columns, with the reason for each missing field.
+ * Down (SQLite >= 3.35): DROP TRIGGER IF EXISTS trg_judgments_provenance_floor; ALTER TABLE judgments DROP COLUMN provenance_json;
+ */
+export function ensureJudgmentProvenance(db: BetterSqlite3Database): void {
+  addMissingColumns(db, 'judgments', [{ name: 'provenance_json', definition: 'TEXT' }]);
+  if (!getColumns(db, 'judgments').has('provenance_json')) return;
+  db.exec(`CREATE TRIGGER IF NOT EXISTS trg_judgments_provenance_floor AFTER INSERT ON judgments WHEN NEW.provenance_json IS NULL
+    BEGIN
+      UPDATE judgments SET provenance_json = json_object('v', 1, 'status', 'partial', 'writer', 'uninstrumented',
+        'policy_id', NEW.judgment, 'policy_version', NULL, 'prompt_id', NULL, 'prompt_version', NULL, 'input_digest', NULL,
+        'model_id', NEW.model, 'model_version', NULL, 'evaluator_version', NULL, 'execution_mode', NEW.mode,
+        'decision_timestamp', NEW.created_at, 'evidence_reference', NEW.subject_type || ':' || NEW.subject_id, 'uncertainty', NULL,
+        'missing', json_object('policy_version', 'writer_not_instrumented', 'prompt_version', 'writer_not_instrumented',
+          'input_digest', 'writer_not_instrumented', 'evaluator_version', 'writer_not_instrumented'))
+      WHERE rowid = NEW.rowid;
+    END`);
 }
 
 function tableSql(db: BetterSqlite3Database, tableName: string): string | null {
@@ -902,6 +928,25 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_specialist_reviews_specialist_id ON specialist_reviews(specialist_id);
     CREATE INDEX IF NOT EXISTS idx_specialist_reviews_stance ON specialist_reviews(stance);
 
+    -- B32: a specialist answer that failed schema/semantic validation is quarantined here, never stored as a review.
+    -- closes_seat = 1: the seat's attempts are exhausted and the panel decides on its valid reviews only.
+    -- cleared = 1: superseded by a panel reset (#758 retry), no longer counted.
+    CREATE TABLE IF NOT EXISTS specialist_review_quarantine (
+      id TEXT PRIMARY KEY,
+      panel_id TEXT NOT NULL,
+      specialist_id TEXT NOT NULL,
+      model TEXT,
+      prompt_sha256 TEXT,
+      raw_sha256 TEXT,
+      raw_excerpt TEXT,
+      error TEXT NOT NULL,
+      attempt INTEGER NOT NULL DEFAULT 1,
+      closes_seat INTEGER NOT NULL DEFAULT 0,
+      cleared INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_specialist_review_quarantine_seat ON specialist_review_quarantine(panel_id, specialist_id);
+
     CREATE TABLE IF NOT EXISTS agent_trace_spans (
       id TEXT PRIMARY KEY,
       trace_id TEXT NOT NULL,
@@ -1301,6 +1346,12 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS gym_holdout (commit_sha TEXT PRIMARY KEY, created_at TEXT NOT NULL);
     -- Z5: frozen seeded mutant-repair tasks (tier 2–3) that genome trials are judged on; the task (base + mutant) is stored
     CREATE TABLE IF NOT EXISTS gym_mutant_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL);
+    -- WT-HOLDOUT: frozen failure-derived write_test tasks (graded as mutant_kill) per epoch, served only in genome trials
+    CREATE TABLE IF NOT EXISTS gym_write_test_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL, epoch INTEGER NOT NULL DEFAULT 0);
+    -- GYM_STORE_DIFFS: the (task, diff, oracle result) pairs of scored gym attempts — diff secret-redacted, <= 50 KB
+    CREATE TABLE IF NOT EXISTS gym_attempt_diffs (run_id TEXT PRIMARY KEY, task_key TEXT NOT NULL, status TEXT NOT NULL, species TEXT,
+      sha256 TEXT NOT NULL, diff TEXT NOT NULL, redacted INTEGER NOT NULL DEFAULT 0, truncated INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_gym_attempt_diffs_task ON gym_attempt_diffs(task_key);
     -- RX-4: per settled trial, what it could have shown (parent failures on the deciding set, power, blind/underpowered/powered)
     CREATE TABLE IF NOT EXISTS genome_trial_results (trial_id TEXT PRIMARY KEY, parent_id TEXT, tier_set TEXT, deciding_n INTEGER, f_parent_failures INTEGER,
       b INTEGER, c INTEGER, p REAL, mined_b INTEGER, mined_c INTEGER, power_q8_l05 REAL, state TEXT NOT NULL, recorded_at TEXT NOT NULL);
@@ -1308,6 +1359,22 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS evolution_estimates (id TEXT PRIMARY KEY, estimator TEXT NOT NULL, scope TEXT NOT NULL, as_of_day TEXT NOT NULL, window_days INTEGER,
       value REAL, ci_low REAL, ci_high REAL, n INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}', computed_at TEXT NOT NULL,
       UNIQUE(estimator, scope, as_of_day));
+    -- shipped-code scan (shadow): one row per new content hash of an installed runtime package — report, diff vs the previous row
+    CREATE TABLE IF NOT EXISTS shipped_code_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, package TEXT NOT NULL, version TEXT, runtime_id TEXT NOT NULL,
+      scanned_path TEXT NOT NULL, report_hash TEXT NOT NULL, prev_report_hash TEXT, report_json TEXT NOT NULL, diff_json TEXT NOT NULL,
+      summary_json TEXT NOT NULL, scanned_at TEXT NOT NULL);
+    -- TG-001 (gym → production transfer gap): the frozen experiment manifest (tasks + the four rendered prompts per task) and one
+    -- row per (task, arm) attempt in its Latin-square order; history_json keeps every attempt (incl. re-queued infra discards)
+    CREATE TABLE IF NOT EXISTS tg_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL, analysis_sha256 TEXT);
+    CREATE TABLE IF NOT EXISTS tg_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, arm TEXT NOT NULL, seq INTEGER NOT NULL,
+      status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT, updated_at TEXT NOT NULL, UNIQUE(experiment_id, task_key, arm));
+    -- PL-001 (procedure loop): the frozen manifest (tasks, lines, contract, analysis) with its sha256, and one row per (task, arm)
+    -- in the frozen paired order; history_json keeps every physical attempt (re-served infra / VOID attempts included)
+    CREATE TABLE IF NOT EXISTS pl_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL, manifest_sha256 TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS pl_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, arm TEXT NOT NULL, seq INTEGER NOT NULL,
+      status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT, first_claimed_at TEXT, updated_at TEXT NOT NULL,
+      UNIQUE(experiment_id, task_key, arm));
+    CREATE INDEX IF NOT EXISTS idx_shipped_code_scans_package ON shipped_code_scans(package, id);
     -- MS-1: every model call of a consumer (incumbent and shadow candidates): did it parse, did it agree, how long, how long the answer
     CREATE TABLE IF NOT EXISTS llm_model_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, consumer TEXT NOT NULL, model TEXT NOT NULL, ok INTEGER NOT NULL,
       latency_ms INTEGER, out_chars INTEGER, shadow INTEGER NOT NULL DEFAULT 0, agree INTEGER, provider TEXT, tokens_in INTEGER, tokens_out INTEGER,
@@ -1342,12 +1409,30 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_judgments_subject ON judgments(judgment, subject_id, created_at);
+    -- DI-001 C: discoveries left unjudged by DISCOVERY_RELEVANCE_PAUSED. Decision identity = (event_id, policy), the PK.
+    -- unjudged → rejudging (fence + 1 per claim, claimed_at; a stale claim is reclaimed after a timeout) → judged | skipped |
+    -- failed. A decision commits only with the current fence; judgment_id is UNIQUE (one judgment decides one row).
+    CREATE TABLE IF NOT EXISTS discovery_relevance_backlog (
+      event_id TEXT NOT NULL, policy TEXT NOT NULL, ref TEXT NOT NULL,
+      path TEXT NOT NULL CHECK (path IN ('pending', 'rejected', 'unit')), event_json TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'unjudged' CHECK (state IN ('unjudged', 'rejudging', 'judged', 'skipped', 'failed')),
+      fence INTEGER NOT NULL DEFAULT 0, claimed_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, judgment_id TEXT UNIQUE, decision TEXT,
+      paused_at TEXT NOT NULL, judged_at TEXT, PRIMARY KEY (event_id, policy)
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_ref ON discovery_relevance_backlog(ref, state);
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_state ON discovery_relevance_backlog(state, paused_at);
     CREATE TABLE IF NOT EXISTS registry_agents (
       name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
       version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
       raw_json TEXT NOT NULL DEFAULT '{}', synced_at TEXT NOT NULL
     );
   `);
+  // TG-001 integrity addendum: sha256 of the frozen analysis manifest, written in the freeze transaction
+  addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
+  addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
+  ensureJudgmentProvenance(db);
+  // DI-001: when the members' context was assembled (claim) and whether the proposal already had an outcome then; null = unrecorded
+  addMissingColumns(db, 'committee_jobs', [{ name: 'context_at', definition: 'TEXT' }, { name: 'outcome_known_at_context', definition: 'INTEGER' }]);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
@@ -1358,12 +1443,43 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'gym_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
   // UX-18: the model-call ledger now covers every server-side LLM call (provider, tokens, task kind, run, status)
   addMissingColumns(db, 'llm_model_calls', [{ name: 'provider', definition: 'TEXT' }, { name: 'tokens_in', definition: 'INTEGER' }, { name: 'tokens_out', definition: 'INTEGER' },
-    { name: 'task_kind', definition: 'TEXT' }, { name: 'run_id', definition: 'TEXT' }, { name: 'status', definition: 'TEXT' }]);
+    { name: 'task_kind', definition: 'TEXT' }, { name: 'run_id', definition: 'TEXT' }, { name: 'status', definition: 'TEXT' },
+    { name: 'attempts', definition: 'INTEGER' }]);
+  // B29: purpose, experiment arm and cost of every model call (marginal 0 only for a known flat subscription / local / free tier)
+  addMissingColumns(db, 'llm_model_calls', [{ name: 'purpose', definition: 'TEXT' }, { name: 'experiment_id', definition: 'TEXT' },
+    { name: 'cost_basis', definition: 'TEXT' }, { name: 'list_price_cost', definition: 'REAL' }, { name: 'marginal_cost', definition: 'REAL' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
+  // Holdout epoch 1: calibration rows never decide; one provenance row per manifest-frozen epoch (holdout-manifest.ts)
+  for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_holdout_freezes (epoch INTEGER PRIMARY KEY, manifest_sha256 TEXT NOT NULL, frozen_at TEXT NOT NULL, origin_sha TEXT, version TEXT,
+    holdout_size INTEGER NOT NULL, counts_json TEXT NOT NULL, operator TEXT, manifest_json TEXT NOT NULL)`);
+  // prod 25-10: a pending trial item no claim could be given a task for (remote-gym-service trialBlocked; stall 'gym:trial_blocked')
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_trial_blocked (genome_id TEXT NOT NULL, task_key TEXT NOT NULL, reason TEXT NOT NULL, first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL, PRIMARY KEY (genome_id, task_key))`);
+  // prod 27-10: per host × token scope, the last valid authentication, the expiry its token states and the current rejection
+  // streak (host-token-watch.ts; stall 'host_token'). Never the token.
+  db.exec(`CREATE TABLE IF NOT EXISTS host_token_auth (host TEXT NOT NULL, scope TEXT NOT NULL, last_ok_at TEXT NOT NULL, token_expires_at TEXT,
+    first_rejected_at TEXT, last_rejected_at TEXT, rejected_count INTEGER NOT NULL DEFAULT 0, last_reason TEXT, PRIMARY KEY (host, scope))`);
+  // A18 (re-20261029): a treatment-env change between boots, per experiment that declares it (experiment-registry.ts)
+  db.exec(`CREATE TABLE IF NOT EXISTS experiment_period_boundaries (experiment_id TEXT NOT NULL, env_name TEXT NOT NULL, previous TEXT, current TEXT,
+    at TEXT NOT NULL, PRIMARY KEY (experiment_id, env_name, at))`);
+  // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
+  addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
+  // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
+  addMissingColumns(db, 'maker_genomes', [{ name: 'knowledge_refs_json', definition: 'TEXT' }]);
+  // EVO-K (DREAM_EVIDENCE_SOURCES): the skill / anti-pattern card run ids and K1 knowledge ids a dream mutant cites; null = sources off
+  addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_sources_json', definition: 'TEXT' }]);
   addMissingColumns(db, 'genome_trial_results', [
     { name: 'epoch', definition: 'INTEGER' }, { name: 'e_value', definition: 'REAL' },
     { name: 'n_discordant', definition: 'INTEGER' }, { name: 'e_rule_decision', definition: 'TEXT' },
   ]);
+  // SI-C: graded genome trials — paired permutation test on graded scores; recorded for every trial, acted on under DREAM_PROMOTION_RULE=graded
+  addMissingColumns(db, 'genome_trial_results', [
+    { name: 'graded_mean_parent', definition: 'REAL' }, { name: 'graded_mean_mutant', definition: 'REAL' }, { name: 'graded_p', definition: 'REAL' },
+    { name: 'graded_decision', definition: 'TEXT' }, { name: 'graded_refs', definition: 'INTEGER' },
+  ]);
+  // P0 (13-10): the gate policy and the eligible-evidence summary (epoch, counts, task family/difficulty) each trial decision rested on
+  addMissingColumns(db, 'genome_trial_results', [{ name: 'gate_policy', definition: 'TEXT' }, { name: 'evidence_json', definition: 'TEXT' }]);
   // P1c: collapse duplicate fingerprints among LIVE rows (keep the newest) so the partial UNIQUE index never aborts.
   // Only live statuses can collide with that index. This used to delete every older row sharing a fingerprint
   // regardless of status, on every boot: parked/finished proposals vanished when a later one with the same text
@@ -1891,7 +2007,63 @@ export function runMigrations(db: BetterSqlite3Database) {
   createOutcomeLearningTables(db);
   createFrontierExpertTables(db);
   new FrontierExpertRegistryService(db).seedTaxonomy();
+  createAccountUsageSnapshotTables(db);
   createPerformanceIndexes(db);
+  ensureMakerSpanSettlement(db);
+}
+
+/**
+ * OPS-004: a worker lease's trace (run span + worker span) closes when the lease settles — on every path, not only the
+ * executor's finally: stop run, superseded evolve siblings, stale/zombie/hygiene sweeps and boot recovery settle prepared
+ * leases with their own UPDATEs. Maker traces are `loop-<run>-worker-<lease>` (executeMaker), reviewer traces (checker /
+ * security checker) `loop-<run>-checker-<lease>` (executeChecker). End time = the lease's updated_at (normalised to ISO),
+ * so the span ends at the settlement. Only still-open spans of that one lease are touched. It cannot fail a lease update
+ * on bad JSON or NULL timestamps: invalid span metadata is left as is (json_valid guard) and a NULL / unparsable
+ * updated_at falls back to now. Storage and schema errors still propagate into the lease UPDATE (disk full, locked, a
+ * missing table): while it exists, every worker_leases status UPDATE needs agent_trace_spans, so a migration that drops
+ * (or renames away) agent_trace_spans without also dropping worker_leases must DROP TRIGGER
+ * trg_worker_lease_settles_trace first (rebuildLoopTables drops worker_leases in the same exec, which drops the trigger).
+ * Created last: a worker_leases rebuild drops it. Replaced on every boot (DROP + CREATE in one transaction, so no other
+ * connection ever settles a lease without it) so a database that has the maker-only body gets the reviewer pattern too.
+ * Down: DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace;
+ */
+export function ensureMakerSpanSettlement(db: BetterSqlite3Database): void {
+  if (!tableSql(db, 'worker_leases') || !tableSql(db, 'agent_trace_spans')) return;
+  db.transaction(() => {
+    db.exec('DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace');
+    db.exec(`CREATE TRIGGER trg_worker_lease_settles_trace AFTER UPDATE OF status ON worker_leases
+    WHEN NEW.status IN ('completed', 'failed', 'cancelled')
+    BEGIN
+      UPDATE agent_trace_spans
+      SET status = CASE NEW.status WHEN 'completed' THEN 'ok' ELSE 'error' END,
+          ended_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ', NEW.updated_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+          metadata = CASE WHEN json_valid(metadata) THEN json_set(metadata,
+            '$.terminal_status', CASE NEW.status WHEN 'completed' THEN 'ok' WHEN 'cancelled' THEN 'cancelled' ELSE 'error' END,
+            '$.lease_status', NEW.status) ELSE metadata END
+      WHERE trace_id IN ('loop-' || NEW.loop_run_id || '-worker-' || NEW.id, 'loop-' || NEW.loop_run_id || '-checker-' || NEW.id) AND ended_at IS NULL;
+    END;`);
+  })();
+}
+
+/**
+ * Operator-reported usage snapshots (/usage): for accounts without an account-wide source (claude_max, chatgpt_pro) the
+ * operator copies session / weekly %, credits and spend limit from the vendor's own usage page. Append-only: the route only
+ * inserts, the latest row per account is shown. services/usage-snapshots.ts validates payload_json.
+ */
+export function createAccountUsageSnapshotTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_usage_snapshots (
+      id TEXT PRIMARY KEY,
+      account TEXT NOT NULL,
+      reported_at TEXT NOT NULL,
+      reported_by TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'operator_snapshot' CHECK(source IN ('operator_snapshot')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_account_usage_snapshots_account ON account_usage_snapshots(account, reported_at);
+  `);
 }
 
 /**
@@ -2272,7 +2444,9 @@ function createSubAgentContextTables(db: BetterSqlite3Database) {
   `);
 }
 
-if (require.main === module) {
+// only when migrate itself is the entry point: in a bundle every module is `require.main`, and a bundled operator script
+// must never migrate the DB_PATH database as a side effect (holdout-freeze dry run, 14-10)
+if (require.main === module && /migrate\.[cm]?[jt]s$/.test(process.argv[1] ?? '')) {
   const dbPath = resolveDbPath();
   const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');

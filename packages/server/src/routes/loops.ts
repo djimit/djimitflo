@@ -4,7 +4,10 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
+import { LoopRunQueryService } from '../services/loop-run-query-service';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
+import { dependencyLaneQueue, reenableDependencyLane } from '../services/dependency-lane';
+import { autoMergeEvidence, reEnableClass } from '../services/loop-auto-merge-state';
 import type { ExecutionEngine } from '../execution/execution-engine';
 
 function mapLoopServiceError(error: unknown): never {
@@ -30,6 +33,7 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'LOOP_RETRY_NOT_ALLOWED') throw createError(409, 'maker lease is not failed, rejected, or marked for revision', 'LOOP_RETRY_NOT_ALLOWED');
   if (message === 'LOOP_ESCALATED_REQUIRES_HUMAN') throw createError(409, 'loop is escalated and requires human review before leasing more workers', 'LOOP_ESCALATED_REQUIRES_HUMAN');
   if (message === 'LOOP_FAILED_GATES_BLOCK_CONTINUE') throw createError(409, 'failed gates block continuation', 'LOOP_FAILED_GATES_BLOCK_CONTINUE');
+  if (message === 'LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE') throw createError(409, 'gates with insufficient evidence block continuation', 'LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE');
   if (message.startsWith('WORKTREE_CREATE_FAILED')) throw createError(500, message, 'WORKTREE_CREATE_FAILED');
   if (message === 'MAKER_LEASE_NOT_FOUND') throw createError(404, 'maker lease not found', 'MAKER_LEASE_NOT_FOUND');
   if (message === 'LEASE_NOT_MAKER') throw createError(400, 'lease is not a maker lease', 'LEASE_NOT_MAKER');
@@ -64,6 +68,10 @@ function mapLoopServiceError(error: unknown): never {
     const gate = message.split(':')[1] || 'unknown';
     throw createError(409, `loop completion blocked by gate: ${gate}`, 'LOOP_COMPLETION_BLOCKED');
   }
+  if (message.startsWith('LOOP_COMPLETION_INSUFFICIENT_EVIDENCE:')) {
+    const gate = message.split(':')[1] || 'unknown';
+    throw createError(409, `loop completion blocked: insufficient evidence for gate ${gate}`, 'LOOP_COMPLETION_INSUFFICIENT_EVIDENCE');
+  }
   throw error;
 }
 
@@ -72,6 +80,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const loopService = new LoopService(db, evidenceRoot, executionEngine);
+  const queries = new LoopRunQueryService(db);
 
   router.get('/catalog', requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -93,6 +102,49 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.get('/draft-prs', requirePermission('read:evidence'), (req, res, next) => {
     try {
       res.json(listDraftPrs(db, Number(req.query.limit) || 50));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Dependency lane: the Dependabot queue and its decisions (read-only, from the lane's own table; no GitHub call)
+  router.get('/dependency-lane', requirePermission('read:evidence'), (_req, res, next) => {
+    try { res.json(dependencyLaneQueue(db)); } catch (error) { next(error); }
+  });
+  // re-enable act mode after a post-merge red main revoked it (audited)
+  router.post('/dependency-lane/re-enable', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const reason = (req.body ?? {}).reason;
+      if (typeof reason !== 'string' || !reason.trim()) throw createError(400, 'reason required', 'VALIDATION_ERROR');
+      res.json(reenableDependencyLane(db, actor, reason.trim().slice(0, 500)));
+    } catch (error) { next(error); }
+  });
+
+  // Earned auto-merge for test-only loop PRs: mode, class state and counts (read-only)
+  router.get('/auto-merge', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json(autoMergeEvidence(db));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // A revoked class stays revoked until an operator re-enables it (manage:config; audited with the reason)
+  router.post('/auto-merge/re-enable', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+      if (reason.length < 5 || reason.length > 500) throw createError(400, 'reason (5-500 characters) is required', 'VALIDATION_ERROR');
+      const actor = String(req.user?.sub || req.user?.email || '');
+      if (!actor) throw createError(401, 'an authenticated operator is required', 'UNAUTHORIZED');
+      try {
+        reEnableClass(db, actor, reason);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'AUTO_MERGE_NOT_REVOKED') throw createError(409, 'the auto-merge class is not revoked', 'AUTO_MERGE_NOT_REVOKED');
+        throw error;
+      }
+      res.json(autoMergeEvidence(db));
     } catch (error) {
       next(error);
     }
@@ -121,6 +173,19 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.get('/runs/:id/review-bundle', requirePermission('read:evidence'), (req, res, next) => {
     try {
       res.json(loopService.getReviewBundle(req.params.id));
+    } catch (error) {
+      try {
+        mapLoopServiceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  // Gym run panel (read-only): the skill outcome record() wrote for this run — duration and the counted verdict live only there
+  router.get('/runs/:id/gym-outcome', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(queries.getGymSkillOutcome(req.params.id));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -253,9 +318,11 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/checker-verdict', requirePermission('create:task'), (req, res, next) => {
+  // P0-4: a verdict is an approval — approve:task, and the reviewer is the authenticated user, never a body string
+  router.post('/runs/:id/checker-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
-      res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}));
+      if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -265,9 +332,11 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/security-verdict', requirePermission('create:task'), (req, res, next) => {
+  // P0-4: a verdict is an approval — approve:task, and the reviewer is the authenticated user, never a body string
+  router.post('/runs/:id/security-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
-      res.json(loopService.submitSecurityVerdict(req.params.id, req.body || {}));
+      if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.json(loopService.submitSecurityVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);

@@ -13,7 +13,8 @@ export interface GymTask { commit: string; source: string; tests: string[]; sour
 const SERVICE = /^packages\/server\/src\/services\/([A-Za-z0-9_-]+)\.ts$/;
 const TEST = /^packages\/server\/src\/__tests__\/[^/]+\.test\.ts$/;
 // never replay changes to auth, secrets or deployment (same boundary as the evolve loop)
-const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn|approval)([-_]|$)/i;
+export const SENSITIVE_SERVICE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn|approval)([-_]|$)/i;
+const SENSITIVE = SENSITIVE_SERVICE;
 
 /** Parses `git log --numstat --format=@%H` output into per-commit file stats. */
 export function parseNumstat(log: string): Array<{ commit: string; files: Array<{ path: string; lines: number }> }> {
@@ -48,6 +49,23 @@ export function mineGymTasks(repoPath: string, opts: { sinceDays?: number; maxSo
   // 584cbadb failed 'git show <commit>^:<file>' on every attempt, and infra discards never mark a task tried)
   return selectGymTasks(parseNumstat(log), importedServices(repoPath), opts.maxSourceLines)
     .filter((t) => existsInParent(repoPath, t.commit, t.source));
+}
+
+/**
+ * A frozen mined holdout task rebuilt from its own commit (prod 25-10: frozen commit 1a2431ef aged out of the 120-day window
+ * above and the epoch-1 trial starved on it). Same selection rules as the miner except the window and the live-service check:
+ * the task was eligible when it was frozen, and the worker replays the commit itself. Null when the commit is not in this
+ * checkout or no longer yields a task (a merge, a shape change, an added source file).
+ */
+export function minedTaskAt(repoPath: string, commit: string, opts: { maxSourceLines?: number } = {}): GymTask | null {
+  if (!/^[0-9a-f]{7,40}$/.test(commit)) return null;
+  try {
+    const commits = parseNumstat(execFileSync('git', ['-C', repoPath, 'log', '-1', '--numstat', '--format=@%H', commit, '--'],
+      { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 })).filter((c) => c.commit.startsWith(commit));
+    const names = new Set(commits.flatMap((c) => c.files.map((f) => SERVICE.exec(f.path)?.[1]).filter((n): n is string => Boolean(n))));
+    const [task] = selectGymTasks(commits, names, opts.maxSourceLines);
+    return task && existsInParent(repoPath, task.commit, task.source) ? task : null;
+  } catch { return null; }
 }
 
 function existsInParent(repoPath: string, commit: string, file: string): boolean {

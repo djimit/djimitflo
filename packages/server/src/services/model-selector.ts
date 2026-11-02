@@ -33,14 +33,54 @@ export interface ModelCall {
   consumer: string; model: string; ok: boolean; latencyMs: number; outChars: number; shadow: 0 | 1; agree: boolean | null;
   /** UX-18: every server-side model call lands here too (no prompt text, ever). */
   provider?: string | null; tokensIn?: number | null; tokensOut?: number | null; taskKind?: string | null; runId?: string | null; status?: string | null;
+  /** B8: attempts behind this call (one row per call, not per attempt). */
+  attempts?: number | null;
+  /** B29: what the call is for (default `<consumer>:<taskKind>`) and the experiment arm(s) it ran in (e.g. 'ACE-001:01,STE-001:1') */
+  purpose?: string | null; experimentId?: string | null;
+}
+
+/**
+ * B29: what a call costs. cost_basis says how the provider is paid; marginal_cost is what one more call costs —
+ * 0 only for a known flat subscription / local host / free tier, null when unknown (never invented). list_price_cost
+ * uses LLM_PRICE_PER_MTOK when the model has a price and the tokens are known, else null.
+ * L-F04 (forensic audit 2026-10-26): a side with unknown tokens and a non-zero price makes the price partial — list and
+ * metered marginal cost are then null and list_price_lower_bound carries the known side only; it is never a complete price.
+ * LLM_COST_BASIS=<provider-or-model substring>=<basis>,… overrides the defaults below (first match wins).
+ */
+export type CostBasis = 'flat_subscription' | 'local' | 'free_tier' | 'metered' | 'unknown';
+const DEFAULT_COST_BASIS = 'free-tier-cli=free_tier,subscription-cli=flat_subscription,ollama.com=flat_subscription,:cloud=flat_subscription,ollama=flat_subscription,llama-router=local,127.0.0.1=local,localhost=local,nvidia=free_tier,typesafe=metered';
+export function costBasis(provider: string | null | undefined, model: string, env: NodeJS.ProcessEnv = process.env): CostBasis {
+  const hay = `${provider ?? ''} ${model}`.toLowerCase();
+  for (const pair of `${env.LLM_COST_BASIS ? `${env.LLM_COST_BASIS},` : ''}${DEFAULT_COST_BASIS}`.split(',')) {
+    const [needle, basis] = pair.split('=').map((t) => t?.trim().toLowerCase());
+    if (needle && basis && hay.includes(needle) && ['flat_subscription', 'local', 'free_tier', 'metered'].includes(basis)) return basis as CostBasis;
+  }
+  return 'unknown';
+}
+export function callCost(c: { model: string; provider?: string | null; tokensIn?: number | null; tokensOut?: number | null }, env: NodeJS.ProcessEnv = process.env):
+  { cost_basis: CostBasis; list_price_cost: number | null; marginal_cost: number | null; price_completeness: 'complete' | 'partial' | null; list_price_lower_bound: number | null } {
+  const basis = costBasis(c.provider, c.model, env);
+  const price = modelPrice(c.model, env);
+  const tin = typeof c.tokensIn === 'number' ? c.tokensIn : null;
+  const tout = typeof c.tokensOut === 'number' ? c.tokensOut : null;
+  const priced = price && (tin !== null || tout !== null) ? +(((tin ?? 0) * price.input + (tout ?? 0) * price.output) / 1_000_000).toFixed(6) : null;
+  // a side priced at 0 costs 0 whatever its count; any other unknown side leaves only a lower bound
+  const partial = priced !== null && ((tin === null && price!.input > 0) || (tout === null && price!.output > 0));
+  const list = partial ? null : priced;
+  const marginal = basis === 'flat_subscription' || basis === 'local' || basis === 'free_tier' ? 0 : basis === 'metered' ? list : null;
+  return { cost_basis: basis, list_price_cost: list, marginal_cost: marginal, price_completeness: priced === null ? null : partial ? 'partial' : 'complete',
+    list_price_lower_bound: partial ? priced : null };
 }
 const int = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
 export function recordModelCall(db: Database, c: ModelCall, at = new Date()): void {
   try {
-    db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, provider, tokens_in, tokens_out, task_kind, run_id, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    const cost = callCost({ model: c.model, provider: c.provider, tokensIn: int(c.tokensIn), tokensOut: int(c.tokensOut) });
+    db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, provider, tokens_in, tokens_out, task_kind, run_id, status, attempts,
+        purpose, experiment_id, cost_basis, list_price_cost, marginal_cost, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(c.consumer, c.model, c.ok ? 1 : 0, Math.round(c.latencyMs), c.outChars, c.shadow, c.agree === null ? null : c.agree ? 1 : 0,
-        c.provider ?? null, int(c.tokensIn), int(c.tokensOut), c.taskKind ?? null, c.runId ?? null, c.status ?? null, at.toISOString());
+        c.provider ?? null, int(c.tokensIn), int(c.tokensOut), c.taskKind ?? null, c.runId ?? null, c.status ?? null, int(c.attempts),
+        c.purpose ?? (c.taskKind ? `${c.consumer}:${c.taskKind}` : c.consumer), c.experimentId ?? null, cost.cost_basis, cost.list_price_cost, cost.marginal_cost, at.toISOString());
   } catch { /* the ledger never breaks the call it measures */ }
 }
 
@@ -50,6 +90,7 @@ export function recordModelCall(db: Database, c: ModelCall, at = new Date()): vo
  */
 let ledgerDb: Database | null = null;
 export function setLlmLedger(db: Database | null): void { ledgerDb = db; }
+export const getLlmLedger = (): Database | null => ledgerDb;
 export type LlmCall = Omit<ModelCall, 'shadow' | 'agree'> & { shadow?: 0 | 1; agree?: boolean | null };
 export function recordLlmCall(c: LlmCall, db: Database | null = ledgerDb): void {
   if (!db) return;
@@ -120,21 +161,37 @@ export function modelEvidence(db: Database, incumbents: Record<string, string | 
     });
   } catch { /* table absent on an old schema */ }
   const would_pick = Object.fromEntries(Object.entries(incumbents).map(([c, inc]) => [c, inc ? chooseModel(db, c, inc, env, now) : null]));
-  // UX-18: every server-side LLM call per consumer over 7 d — calls, ok, tokens, and a cost only when every model has a configured price
-  let usage_7d: Array<{ consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }> = [];
+  // UX-18: every server-side LLM call per consumer over 7 d — calls, ok, tokens, and a cost only when every model has a configured price.
+  // L-F04: tokens_in/out sum the known sides; calls_tokens_*_unknown count the calls that did not report one. A call with an unknown
+  // side whose price is > 0 makes the cost partial: est_cost_usd null, est_cost_lower_bound_usd the priced known sides.
+  type Usage = { consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; calls_tokens_in_unknown: number; calls_tokens_out_unknown: number;
+    est_cost_usd: number | null; est_cost_lower_bound_usd: number | null; cost_completeness: 'complete' | 'partial' | null };
+  let usage_7d: Usage[] = [];
   try {
-    const per = db.prepare(`SELECT consumer, model, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(tokens_in), 0) AS tin, COALESCE(SUM(tokens_out), 0) AS tout
-      FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`).all(new Date(now - 7 * 86_400_000).toISOString()) as Array<{ consumer: string; model: string; calls: number; ok: number; tin: number; tout: number }>;
-    const by = new Map<string, { consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }>();
+    const per = db.prepare(`SELECT consumer, model, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(tokens_in), 0) AS tin, COALESCE(SUM(tokens_out), 0) AS tout,
+        COALESCE(SUM(tokens_in IS NULL), 0) AS miss_in, COALESCE(SUM(tokens_out IS NULL), 0) AS miss_out
+      FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`).all(new Date(now - 7 * 86_400_000).toISOString()) as Array<{ consumer: string; model: string; calls: number; ok: number; tin: number; tout: number; miss_in: number; miss_out: number }>;
+    const by = new Map<string, Usage & { cost: number; unpriced: boolean; partial: boolean }>();
     for (const r of per) {
       const key = r.consumer.startsWith('resident:') ? 'resident' : r.consumer;
-      const cur = by.get(key) ?? { consumer: key, calls: 0, ok: 0, tokens_in: 0, tokens_out: 0, est_cost_usd: 0 };
+      const cur = by.get(key) ?? { consumer: key, calls: 0, ok: 0, tokens_in: 0, tokens_out: 0, calls_tokens_in_unknown: 0, calls_tokens_out_unknown: 0,
+        est_cost_usd: null, est_cost_lower_bound_usd: null, cost_completeness: null, cost: 0, unpriced: false, partial: false };
       const price = modelPrice(r.model, env);
       cur.calls += r.calls; cur.ok += r.ok; cur.tokens_in += r.tin; cur.tokens_out += r.tout;
-      cur.est_cost_usd = price && cur.est_cost_usd !== null ? +(cur.est_cost_usd + (r.tin * price.input + r.tout * price.output) / 1_000_000).toFixed(4) : null;
+      cur.calls_tokens_in_unknown += r.miss_in; cur.calls_tokens_out_unknown += r.miss_out;
+      if (!price) cur.unpriced = true;
+      else {
+        cur.cost += (r.tin * price.input + r.tout * price.output) / 1_000_000;
+        if ((r.miss_in > 0 && price.input > 0) || (r.miss_out > 0 && price.output > 0)) cur.partial = true;
+      }
       by.set(key, cur);
     }
-    usage_7d = [...by.values()].sort((a, b) => b.calls - a.calls);
+    usage_7d = [...by.values()].map(({ cost, unpriced, partial, ...u }) => {
+      const usd = +cost.toFixed(4);
+      // an unpriced model leaves no cost at all (unchanged); a partial priced one leaves a labelled lower bound
+      return { ...u, est_cost_usd: unpriced || partial ? null : usd, est_cost_lower_bound_usd: !unpriced && partial ? usd : null,
+        cost_completeness: unpriced ? null : partial ? 'partial' as const : 'complete' as const };
+    }).sort((a, b) => b.calls - a.calls);
   } catch { /* table absent on an old schema */ }
   return { mode: modelSelectorMode(env), rows, would_pick, usage_7d };
 }
@@ -145,11 +202,12 @@ export function modelEvidence(db: Database, incumbents: Record<string, string | 
  * expected shape; agree() compares a shadow answer with the incumbent's (null = not comparable). Off: one incumbent call,
  * nothing recorded. Shadow: the incumbent answers; a sample also asks one cheaper candidate, recorded and discarded.
  * Enforce: the cheapest qualified model answers; an unusable answer falls back to the incumbent.
+ * purpose (e.g. 'technique_card', 'frontier_experts:review') is the caller's identity on every row; absent = the consumer.
  */
 export type AskModel = (model: string, system: string, user: string) => Promise<{ json: unknown; chars: number }>;
 export function selectingRunner(db: Database, consumer: string, incumbent: string, ask: AskModel, usable: (json: unknown) => boolean,
   agree: (a: unknown, b: unknown) => boolean | null, env: NodeJS.ProcessEnv = process.env, random: () => number = Math.random, now?: number) {
-  return async (system: string, user: string): Promise<unknown> => {
+  return async (system: string, user: string, purpose?: string): Promise<unknown> => {
     const mode = modelSelectorMode(env);
     if (mode === 'off') return (await ask(incumbent, system, user)).json;
     const call = async (model: string, shadow: 0 | 1, reference?: unknown): Promise<{ json: unknown; ok: boolean }> => {
@@ -157,10 +215,10 @@ export function selectingRunner(db: Database, consumer: string, incumbent: strin
       try {
         const { json, chars } = await ask(model, system, user);
         const ok = usable(json);
-        recordModelCall(db, { consumer, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow, agree: shadow && ok && usable(reference) ? agree(reference, json) : null });
+        recordModelCall(db, { consumer, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow, agree: shadow && ok && usable(reference) ? agree(reference, json) : null, purpose });
         return { json, ok };
       } catch (error) {
-        recordModelCall(db, { consumer, model, ok: false, latencyMs: Date.now() - started, outChars: 0, shadow, agree: null });
+        recordModelCall(db, { consumer, model, ok: false, latencyMs: Date.now() - started, outChars: 0, shadow, agree: null, purpose });
         if (shadow) return { json: null, ok: false };
         throw error;
       }

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { WebSocketEventType } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
-import { api, type OperatorCockpit, type ServiceStatus } from '../lib/api';
+import { api, type EfficiencyConsumer, type EfficiencyView, type EvolutionLineage, type IntegrationState, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
 import { fmt, since } from '../lib/format';
 import { DataTable, Section, StatusPill } from '../components/ui';
 
@@ -11,7 +11,7 @@ const LABELS: Record<string, string> = {
   verified_7d: 'Verified (7 d)', regressed_7d: 'Regressed (7 d)', infra_failed_7d: 'Infra failed (7 d)', approvals_pending: 'Approvals pending',
   approvals_decided_7d: 'Approvals decided (7 d)', approvals_expired_7d: 'Approvals expired (7 d)', runs_failed_7d: 'Runs failed/interrupted (7 d)',
   panel_unparseable_7d: 'Panel unparseable (7 d)', reflection_inflow_24h: 'Reflection inflow (24 h)', needs_grounding_stock: 'Needs grounding',
-  needs_more_evidence_stock: 'Needs more evidence', memory_reads_7d: 'Memory reads (7 d)', tokens_per_outcome_7d: 'Tokens per outcome (7 d)',
+  needs_more_evidence_stock: 'Needs more evidence', memory_reads_7d: 'Memory reads (7 d)', tokens_per_verified_change_7d: 'Tokens per verified change (7 d, maker + reviewers)',
 };
 
 /** UX-13: the daily digest, read-only (Telegram delivery is OPERATOR_DIGEST_ENABLED on the server). */
@@ -29,18 +29,201 @@ export function DigestCard() {
   );
 }
 
+/**
+ * Cockpit 3.0: explicit health states. A missing measurement is UNKNOWN, never healthy. The server may send `state`,
+ * `health`, `errors` and `snapshot_id` (newer builds); an older server sends none, and the state is derived here from
+ * `ok` + `value` (a null value is UNKNOWN even when the old server said ok).
+ */
+export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
+type Gr = OperatorCockpit['guardrails'][number] & { state?: HealthState; split?: { maker: number; reviewer: number; environment: number; unknown?: number } };
+type NY = NonNullable<OperatorCockpit['needs_you']>;
+type NeedsYouCounts = { [K in Exclude<keyof NY, 'system_requeue' | 'optional_labelling' | 'system' | 'dependency_tracked'>]?: number | null }
+  & Partial<Pick<NY, 'system_requeue' | 'optional_labelling' | 'system' | 'dependency_tracked'>>;
+export type CockpitView = Omit<OperatorCockpit, 'guardrails' | 'needs_you'> & {
+  guardrails: Gr[]; needs_you?: NeedsYouCounts;
+  health?: HealthState; errors?: Array<{ section: string; message: string }>; snapshot_id?: string;
+};
+// worst first; NOT_APPLICABLE never raises the overall state
+const RANK: HealthState[] = ['BREACHED', 'DEGRADED', 'UNKNOWN', 'STALE', 'HEALTHY', 'NOT_APPLICABLE'];
+const worst = (states: HealthState[]): HealthState => states.reduce((w, s) => (RANK.indexOf(s) < RANK.indexOf(w) ? s : w), 'NOT_APPLICABLE' as HealthState);
+const STALE_MS = 10 * 60_000;
+export const guardrailState = (g: Gr): HealthState => g.state ?? (g.value === null ? 'UNKNOWN' : g.ok ? 'HEALTHY' : 'BREACHED');
+const TONE: Record<HealthState, 'ok' | 'warn' | 'error' | 'paused' | 'neutral'> = { HEALTHY: 'ok', DEGRADED: 'warn', BREACHED: 'error', UNKNOWN: 'paused', STALE: 'paused', NOT_APPLICABLE: 'neutral' };
+const lower = (s: HealthState) => s.toLowerCase().replace('_', ' ');
+
+/** Overall health: the worst of the server's verdict, every guardrail, section errors, stalls and snapshot age. */
+export function overallHealth(d: CockpitView, now = Date.now()): { state: HealthState; reasons: string[] } {
+  const reasons: string[] = [];
+  const states: HealthState[] = d.health ? [d.health] : [];
+  if (d.health && d.health !== 'HEALTHY') reasons.push(`server reports ${lower(d.health)}`);
+  if (!d.guardrails.length) { states.push('UNKNOWN'); reasons.push('no guardrails reported'); }
+  for (const g of d.guardrails) { const s = guardrailState(g); states.push(s); if (s !== 'HEALTHY' && s !== 'NOT_APPLICABLE') reasons.push(`${g.name}: ${lower(s)}`); }
+  if (d.errors?.length) { states.push('UNKNOWN'); reasons.push(`${d.errors.length} section(s) failed to load`); }
+  if (d.stalls.length) { states.push('DEGRADED'); reasons.push(`${d.stalls.length} silent stall(s)`); }
+  const failedDetectors = (d.detectors ?? []).filter((x) => x.status === 'error');
+  if (failedDetectors.length) { states.push('UNKNOWN'); reasons.push(`${failedDetectors.length} stall detector(s) failed — unwatched`); }
+  const notTicking = (d.schedulers?.by_status?.armed_not_ticking ?? 0) + (d.schedulers?.by_status?.failing ?? 0);
+  if (notTicking) { states.push('DEGRADED'); reasons.push(`${notTicking} scheduler(s) not running`); }
+  if (!(Date.parse(d.at) >= now - STALE_MS)) { states.push('STALE'); reasons.push(`snapshot from ${since(d.at, now)}`); }
+  return { state: worst(states), reasons };
+}
+
+const STATE_TONE: Record<IntegrationState, 'ok' | 'warn' | 'error' | 'paused' | 'neutral'> = {
+  HEALTHY: 'ok', CONNECTED: 'neutral', CONFIGURED: 'neutral', UNKNOWN: 'neutral', DEGRADED: 'warn', FAILED: 'error', DISABLED: 'paused',
+};
+const num = (v: number | null | undefined) => (v === null || v === undefined ? 'unknown' : fmt(v));
+
+/** Level 1: the four questions the operator must answer in seconds. */
+export function CommandStrip({ d, now = Date.now() }: { d: CockpitView; now?: number }) {
+  const health = overallHealth(d, now);
+  const benched = d.gym.filter((g) => g.benched).map((g) => g.species);
+  const stale = d.gym.filter((g) => g.stale && !g.benched).map((g) => g.species);
+  const failedDetectors = (d.detectors ?? []).filter((x) => x.status === 'error').map((x) => x.name);
+  const sb = d.schedulers?.by_status;
+  const blocked = d.stalls.length + benched.length + failedDetectors.length + (sb?.armed_not_ticking ?? 0) + (sb?.failing ?? 0);
+  const card = (id: string, title: string, body: ReactNode) => (
+    <section aria-labelledby={id} className="p-4 rounded-lg border border-border">
+      <h2 id={id} className="text-xs uppercase tracking-wide text-foreground-tertiary mb-1">{title}</h2>{body}
+    </section>
+  );
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" data-testid="command-strip">
+      {card('cmd-health', 'Is the system healthy?', <div role="status" aria-live="polite">
+        <div className="text-xl font-semibold"><StatusPill tone={TONE[health.state]} label={lower(health.state)} /></div>
+        {health.reasons.length > 0 && <ul className="text-xs text-foreground-secondary mt-1 list-disc pl-4">{health.reasons.slice(0, 5).map((r) => <li key={r}>{r}</li>)}</ul>}
+      </div>)}
+      {card('cmd-improvement', 'Is improvement occurring?', <>
+        <div className="text-xl font-semibold">{num(d.scorecard.verified_7d)} verified · {num(d.scorecard.regressed_7d)} regressed</div>
+        <p className="text-xs text-foreground-secondary">7 d throughput, not improvement — see <Link to="/evolution" className="underline">Evolution</Link> for the validated-improvement scorecard.</p>
+      </>)}
+      {card('cmd-blocked', 'What is blocked?', <>
+        <div className="text-xl font-semibold">{blocked ? `${blocked} blocked` : 'nothing blocked'}</div>
+        <ul className="text-xs text-foreground-secondary">
+          {d.stalls.slice(0, 3).map((s) => <li key={s.subsystem}><a href="#stalls" className="underline">{s.subsystem}</a></li>)}
+          {benched.map((sp) => <li key={sp}>benched: {sp}</li>)}
+          {stale.length > 0 && <li>stale species: {stale.join(', ')}</li>}
+          {failedDetectors.length > 0 && <li>detector failed (unwatched): {failedDetectors.join(', ')}</li>}
+          {sb?.armed_not_ticking ? <li>{sb.armed_not_ticking} scheduler(s) armed but not ticking</li> : null}
+          {sb?.failing ? <li>{sb.failing} scheduler(s) failing</li> : null}
+        </ul>
+      </>)}
+      {card('cmd-needs-you', 'What needs you?', d.needs_you ? <NeedsYouTotal n={d.needs_you} /> : <div className="text-xl font-semibold">unknown</div>)}
+    </div>
+  );
+}
+
+
+const STAGE_LABEL: Record<string, string> = { discovery: 'Discovery', proposal: 'Proposal', experiment: 'Experiment', verified: 'Verified', merged: 'Merged',
+  settled: 'Settled', survived_14d: 'Survived 14 d', survived_30d: 'Survived 30 d', capability_gain: 'Capability gain', reproduced: 'Reproduced' };
+const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)} %`);
+
+/** 'Restore Evolutionary Health': the evolutionary funnel (lineage to survival), the largest bottleneck, 4-way regressions and NEV. */
+export function EvolutionFunnel({ e }: { e: EvolutionLineage }) {
+  const b = e.bottleneck; const r = e.regression_split; const n = e.nev;
+  return (
+    <section aria-labelledby="evo-funnel" className="rounded-lg border border-border p-4 space-y-3" data-testid="evolution-funnel">
+      <h2 id="evo-funnel" className="text-lg font-semibold">Evolutionary funnel ({e.window_days} d)</h2>
+      <p className="text-xs text-foreground-secondary">{e.throughput.verified} verified = {e.throughput.label}. Survival, not verification, is the fitness signal.</p>
+      {b && <p role="status" className="text-sm"><strong>Largest bottleneck:</strong> {STAGE_LABEL[b.from] ?? b.from} → {STAGE_LABEL[b.to] ?? b.to}: {b.lost} lineage(s) lost
+        ({pct(b.conversion)} convert){b.reason ? `; top reason ${b.reason}` : ''}{b.oldest_queue ? `; oldest queue ${STAGE_LABEL[b.oldest_queue.stage] ?? b.oldest_queue.stage} (median ${b.oldest_queue.median_age_days} d)` : ''}</p>}
+      <DataTable caption="Lineage per stage" rows={e.stages} rowKey={(s) => s.stage} empty="No lineages in the window." columns={[
+        { key: 'stage', label: 'Stage', render: (s) => <span className={b && (s.stage === b.to) ? 'font-semibold text-status-warning' : ''}>{STAGE_LABEL[s.stage] ?? s.stage}</span> },
+        { key: 'count', label: 'Count', render: (s) => (s.count === null ? (s.measured === 'not_measured' ? 'not measured' : 'unknown') : fmt(s.count)) },
+        { key: 'conv', label: 'Conversion', render: (s) => (s.measured === 'not_linked' ? 'not linked' : pct(s.conversion)) },
+        { key: 'age', label: 'Median wait', render: (s) => (s.median_age_days === null ? '—' : `${s.median_age_days} d`) },
+        { key: 'why', label: 'Top reason', render: (s) => s.top_failure ?? s.note ?? '—' },
+        { key: 'tok', label: 'Compute', render: (s) => (s.compute_tokens === null ? '—' : `${(s.compute_tokens / 1e6).toFixed(2)} M tok`) },
+        { key: 'op', label: 'Operator decisions', render: (s) => (s.operator_decisions === null ? 'unknown' : fmt(s.operator_decisions)) },
+      ]} />
+      <p className="text-sm">Regressions: mutation failure {r.mutation_failure} · post-verification {r.post_verification} (evolutionary {e.evolutionary_regressions}) ·
+        reviewer rejection {r.reviewer_rejection} (gate worked, not a regression) · environment {r.environment} · unattributed {r.unknown}</p>
+      <p className="text-sm">NEV (shadow): {n.status === 'ok' ? `${n.value} (per M cloud tokens ${n.per_m_cloud_tokens ?? '—'}, per operator decision ${n.per_operator_decision ?? '—'})` : `insufficient evidence — ${n.reason}`};
+        survival {n.survived}/{n.settled}{n.survival_ci ? ` [${n.survival_ci[0].toFixed(2)}–${n.survival_ci[1].toFixed(2)}]` : ''}; per kWh: {n.per_kwh ?? n.per_kwh_status}</p>
+      <p className="text-xs text-foreground-secondary">JEV semantic routing: {e.jev_semantic_routing}</p>
+    </section>
+  );
+}
+
+const mtok = (n: number) => (n ? (n / 1e6).toFixed(2) : '0');
+const ratio = (v: number | null) => (v === null ? '—' : v.toFixed(2));
+const interval = (v: ValueInterval | null) => (!v ? '—' : v.low === null ? `${v.value.toFixed(2)} (n ${v.n})` : `${v.value.toFixed(2)} [${v.low.toFixed(2)}–${v.high!.toFixed(2)}]`);
+const energy = (c: EfficiencyConsumer) => (c.energy === 'not_measured' ? (c.jobs ? 'not measured' : '—')
+  : c.energy === 'partial' ? `≥ ${fmt(c.wh)} Wh (${Math.round((c.energy_coverage ?? 0) * 100)} % sampled)` : `${fmt(c.wh)} Wh`);
+
+/** Phase E1/E3: what each consumer spends (cloud tokens, local GPU time, measured GPU energy) and what it delivered. */
+export function EfficiencySection() {
+  const [view, setView] = useState<EfficiencyView | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { api.getEfficiency().then(setView).catch(() => setFailed(true)); }, []);
+  if (failed) return <p className="text-sm text-foreground-secondary">Efficiency view unavailable.</p>;
+  if (!view) return null;
+  const week = view.north_star.weeks[0];
+  return (
+    <Section id="efficiency" title={`Efficiency (${view.window_days} d)`}>
+      <div className="space-y-4">
+        <p className="text-sm text-foreground-secondary">
+          North star: verified changes per cloud M tokens and per local kWh — reported separately, never one unit.
+          {!view.ledger_enabled && <> GPU power sampling is off (<code>RESOURCE_LEDGER_ENABLED</code>); energy reads &lsquo;not measured&rsquo;.</>}
+        </p>
+        {week && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified (last 7 d)</div><div className="text-xl font-semibold">{week.verified}</div></div>
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Cloud M tokens</div><div className="text-xl font-semibold">{week.cloud_m_tokens.toFixed(1)}</div></div>
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified per M tokens</div><div className="text-xl font-semibold">{ratio(week.per_m_tokens)}</div></div>
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified per local kWh</div>
+              <div className="text-xl font-semibold">{week.local_kwh === null ? 'not measured' : week.per_kwh === null && week.per_kwh_reason ? 'insufficient evidence' : ratio(week.per_kwh)}</div>
+              {week.per_kwh_reason && <div className="text-xs text-foreground-tertiary">{week.per_kwh_reason.replace(/^INSUFFICIENT_EVIDENCE: /, '')}</div>}</div>
+          </div>
+        )}
+        <DataTable caption="North star per week" rows={view.north_star.weeks} rowKey={(w) => w.week_start} columns={[
+          { key: 'week', label: 'Week from', render: (w) => w.week_start },
+          { key: 'verified', label: 'Verified', render: (w) => w.verified },
+          { key: 'tokens', label: 'Cloud M tokens', render: (w) => w.cloud_m_tokens.toFixed(1) },
+          { key: 'kwh', label: 'Local kWh', render: (w) => (w.local_kwh === null ? 'not measured' : `${w.local_kwh.toFixed(2)} (${w.local_covered_h} h sampled)`) },
+          { key: 'per_tok', label: 'per M tokens', render: (w) => ratio(w.per_m_tokens) },
+          { key: 'per_kwh', label: 'per kWh', render: (w) => (w.per_kwh === null && w.per_kwh_reason ? <span title={w.per_kwh_reason}>insufficient evidence</span> : ratio(w.per_kwh)) },
+        ]} />
+        <DataTable caption="Resources and value per consumer" rows={view.consumers} rowKey={(c) => c.consumer} empty="No tokens, GPU jobs or outcomes in the window." columns={[
+          { key: 'consumer', label: 'Consumer', render: (c) => c.consumer, cellClassName: () => 'font-mono text-xs' },
+          { key: 'cloud', label: 'Cloud M tok', render: (c) => mtok(c.cloud_tokens) },
+          { key: 'local', label: 'Local M tok', render: (c) => mtok(c.local_tokens) },
+          { key: 'gpu', label: 'GPU-h', render: (c) => (c.gpu_seconds ? (c.gpu_seconds / 3600).toFixed(1) : '—') },
+          { key: 'wh', label: 'Energy', render: energy },
+          { key: 'verified', label: 'Verified', render: (c) => (c.verified === null ? '—' : `${c.verified}/${c.attempts}${c.lanes && Object.keys(c.lanes).length ? ` (${Object.entries(c.lanes).map(([l, k]) => `${l} ${k}`).join(', ')})` : ''}`) },
+          { key: 'per_tok', label: 'per M tokens [95 %]', render: (c) => interval(c.per_m_tokens) },
+          { key: 'per_kwh', label: 'per kWh [95 %]', render: (c) => interval(c.per_kwh) },
+        ]} />
+        <DataTable caption="Measured GPU energy per host" rows={view.hosts} rowKey={(h) => h.host} empty="No host has reported GPU power yet." columns={[
+          { key: 'host', label: 'Host', render: (h) => h.host },
+          { key: 'avg', label: 'Avg W', render: (h) => fmt(h.avg_watts) },
+          { key: 'kwh', label: 'GPU kWh', render: (h) => (h.gpu_kwh === null ? 'not measured' : h.gpu_kwh.toFixed(2)) },
+          { key: 'covered', label: 'Sampled h', render: (h) => h.covered_h },
+          { key: 'last', label: 'Last sample', render: (h) => since(h.last_sample) },
+        ]} />
+        <ul className="text-xs text-foreground-secondary list-disc pl-5">{view.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+      </div>
+    </Section>
+  );
+}
+
 export function OperatorCockpitPage() {
-  const [data, setData] = useState<OperatorCockpit | null>(null);
+  const [data, setData] = useState<CockpitView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState<ServiceStatus[] | null>(null);
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
 
+  // stale-response guard: a slow older response never overwrites a newer one
+  const seq = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++seq.current;
     setLoading(true);
     setError(null);
-    api.getServiceMap().then((r) => setServices(r.services)).catch(() => setServices([]));
-    try { setData(await api.getOperatorCockpit()); setLoadedAt(Date.now()); } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load the cockpit'); } finally { setLoading(false); }
+    api.getServiceMap().then((r) => { if (mine === seq.current) setServices(r.services); }).catch(() => { if (mine === seq.current) setServices([]); });
+    try {
+      const snap = await api.getOperatorCockpit() as CockpitView;
+      if (mine === seq.current) { setData(snap); setLoadedAt(Date.now()); }
+    } catch (err) { if (mine === seq.current) setError(err instanceof Error ? err.message : 'Failed to load the cockpit'); } finally { if (mine === seq.current) setLoading(false); }
   }, []);
   // UX-3: live — poll every 30 s and refetch when an approval or proof run changes; say how fresh the numbers are
   const [, tick] = useState(0);
@@ -59,7 +242,7 @@ export function OperatorCockpitPage() {
       <div className="flex items-center gap-3">
         <Activity className="w-7 h-7" />
         <h1 className="text-2xl font-bold">Operator cockpit</h1>
-        <button onClick={() => void load()} disabled={loading} className="ml-auto flex items-center gap-2 px-3 py-2 rounded-md border border-border">
+        <button onClick={() => void load()} aria-busy={loading} className="ml-auto flex items-center gap-2 px-3 py-2 rounded-md border border-border">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
         {loadedAt && <span className="text-xs text-foreground-secondary">updated {Math.round((Date.now() - loadedAt) / 1000)} s ago</span>}
@@ -73,36 +256,52 @@ export function OperatorCockpitPage() {
 
       {data && (
         <>
+          <CommandStrip d={data} />
+          {data.evolution && <EvolutionFunnel e={data.evolution} />}
+          {data.errors && data.errors.length > 0 && (
+            <div role="alert" className="rounded border border-status-warning/60 bg-status-warning/10 p-3 text-sm">
+              <strong>Partial data:</strong> these sections failed and are shown as unknown, not as healthy.
+              <ul className="list-disc pl-5">{data.errors.map((e) => <li key={e.section}><code>{e.section}</code>: {e.message}</li>)}</ul>
+            </div>
+          )}
+          {!(Date.parse(data.at) >= Date.now() - STALE_MS) && (
+            <p className="text-sm text-status-warning">Stale data: this snapshot was taken {since(data.at)} ({data.at}).</p>
+          )}
           {data.needs_you && <NeedsYou n={data.needs_you} />}
           <DigestCard />
-          {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off</p>}
-          <Section id="guardrails" title="Guardrails">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {data.guardrails.map((g) => (
-                <div key={g.name} className={`p-4 rounded-lg border ${g.ok ? 'border-border' : 'border-status-error/60 bg-status-error/5'}`}>
+          <EfficiencySection />
+          {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off{data.schedulers.by_status ? ` · ${Object.entries(data.schedulers.by_status).filter(([k, n]) => n && k !== 'off').map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(', ')}` : ''}</p>}
+          <Disclose id="guardrails" title="Guardrails" open>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {data.guardrails.map((g) => { const st = guardrailState(g); return (
+                <div key={g.name} data-state={st} className={`p-4 rounded-lg border ${st === 'HEALTHY' ? 'border-border' : st === 'BREACHED' ? 'border-status-error/60 bg-status-error/5' : 'border-status-warning/60'}`}>
                   <div className="text-xs text-foreground-tertiary">{g.name}</div>
-                  <div className="text-2xl font-semibold">{fmt(g.value)}</div>
-                  <div className={`text-xs ${g.ok ? 'text-foreground-muted' : 'text-status-error'}`}>{g.ok ? 'ok' : 'breached'} · limit {g.limit}</div>
+                  <div className="text-2xl font-semibold">{num(g.value)}</div>
+                  <div className={`text-xs ${st === 'HEALTHY' ? 'text-foreground-muted' : st === 'BREACHED' ? 'text-status-error' : 'text-status-warning'}`}>{lower(st)} · limit {g.limit}</div>
+                  {g.split && <div className="text-xs text-foreground-tertiary">maker {g.split.maker} · reviewer {g.split.reviewer} · environment {g.split.environment}{g.split.unknown ? ` · unattributed ${g.split.unknown}` : ''}{g.split.post_verification ? ` · post-verification ${g.split.post_verification}` : ''}</div>}
                 </div>
-              ))}
+              ); })}
             </div>
-          </Section>
+          </Disclose>
 
-          <Section id="services" title="Services">
+          <Disclose id="services" open title="Services">
             {services === null ? <p className="text-sm text-foreground-secondary">Probing…</p> : (
-              <DataTable caption="Service endpoints and their status" rows={services} rowKey={(s) => s.endpoint}
+              <DataTable caption="Service endpoints and their integration state" rows={services} rowKey={(s) => s.endpoint}
                 empty="No service endpoints configured or the probe failed." columns={[
                   { key: 'service', label: 'Service', render: (s) => s.names.join(' · ') },
                   { key: 'endpoint', label: 'Endpoint', render: (s) => s.endpoint, cellClassName: () => 'font-mono text-xs' },
-                  { key: 'status', label: 'Status', render: (s) => `${s.status}${s.error ? ` (${s.error})` : ''}`,
-                    cellClassName: (s) => (s.status === 'up' ? 'text-status-completed' : s.status === 'degraded' ? 'text-status-warning' : 'text-status-error') },
-                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? '—' },
+                  // DF-07: HTTP proves transport only; the state comes from the server's business evidence, never from the probe here
+                  { key: 'state', label: 'State', render: (s) => <StatusPill tone={STATE_TONE[s.state ?? 'UNKNOWN']} label={s.state ?? 'UNKNOWN'} title={s.state_evidence} /> },
+                  { key: 'evidence', label: 'Evidence', render: (s) => s.state_evidence ?? 'no state from the server', cellClassName: () => 'text-xs' },
+                  { key: 'success', label: 'Last success', render: (s) => (s.evidence_source ? since(s.last_success_at) : '—') },
+                  { key: 'failure', label: 'Last failure', render: (s) => (s.evidence_source ? since(s.last_failure_at) : '—') },
+                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? (s.error ? `— (${s.error})` : '—') },
                   { key: 'ms', label: 'Latency', render: (s) => (s.ms === null ? '—' : `${s.ms} ms`) },
                 ]} />
             )}
-          </Section>
+          </Disclose>
 
-          <Section id="deploys" title="Deploys">
+          <Disclose id="deploys" title="Deploys">
             <DataTable caption="Recent deploy events" rows={data.deploys} rowKey={(d) => `${d.at}-${d.event}`}
               rowClassName={(d) => (d.event === 'failed' || d.event === 'paused' ? 'text-status-error' : undefined)}
               empty="No deploy events recorded yet (auto-deploy writes them to the data dir)." columns={[
@@ -111,17 +310,25 @@ export function OperatorCockpitPage() {
                 { key: 'sha', label: 'Commit', render: (d) => <code>{d.sha.slice(0, 8)}</code> },
                 { key: 'detail', label: 'Detail', render: (d) => d.detail },
               ]} />
-          </Section>
+          </Disclose>
 
-          <Section id="stalls" title="Silent stalls">
+          <Disclose id="stalls" open title="Silent stalls">
             {data.stalls.length === 0 ? <p className="text-sm text-foreground-secondary">None — every watched subsystem produced output recently.</p> : (
               <ul className="space-y-1 text-sm">
-                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail} (since {since(s.since)})</li>)}
+                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail}{s.since ? ` (since ${since(s.since)})` : ''}</li>)}
               </ul>
             )}
-          </Section>
+          </Disclose>
 
-          <Section id="scorecard" title="Scorecard">
+          <Disclose id="subtraction" title="Subtraction">
+            <SubtractionSection kpi={data.subtraction} />
+          </Disclose>
+
+          <Disclose id="unit-economics" title="Cost per change (30 d)">
+            <UnitEconomicsSection ue={data.unit_economics} />
+          </Disclose>
+
+          <Disclose id="scorecard" title="Scorecard">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {Object.entries(data.scorecard).map(([k, v]) => (
                 <div key={k} className="p-3 rounded-lg border border-border bg-background-elevated">
@@ -130,45 +337,54 @@ export function OperatorCockpitPage() {
                 </div>
               ))}
             </div>
-          </Section>
+          </Disclose>
 
           <div className="grid md:grid-cols-2 gap-6">
-            <Section id="gym" title="Gym species">
+            <Disclose id="gym" open title="Gym species">
               <DataTable caption="Gym outcomes per species" rows={data.gym} rowKey={(g) => g.species} empty="No gym outcomes yet." columns={[
                 { key: 'species', label: 'Species', render: (g) => g.species },
                 { key: 'state', label: 'State', render: (g) => (g.benched
                   ? <StatusPill tone="error" label="benched" title="Circuit breaker: 3+ infra discards; the species takes no gym work until the cool-down probe succeeds" />
-                  : <StatusPill tone="ok" label="active" />) },
+                  : g.stale ? <StatusPill tone="warn" label="stale" title="No gym outcome for 72 h or more" />
+                    : <StatusPill tone="ok" label="active" />) },
                 { key: 'outcomes', label: 'Outcomes', render: (g) => g.outcomes },
                 { key: 'success', label: 'Success', render: (g) => `${g.success_pct}%` },
                 { key: 'secs', label: 'Avg s', render: (g) => fmt(g.avg_seconds) },
-                { key: 'tokens', label: 'Avg tokens', render: (g) => fmt(g.avg_tokens) },
+                { key: 'tokens', label: 'Avg tokens', render: (g) => num(g.avg_tokens) },
                 { key: 'last', label: 'Last', render: (g) => since(g.last) },
               ]} />
-            </Section>
-            <Section id="remote-workers" title="Remote workers">
+            </Disclose>
+            <Disclose id="remote-workers" open title="Remote workers">
               <DataTable caption="Remote gym hosts" rows={data.remote_workers} rowKey={(w) => w.host} empty="No remote host has claimed work." columns={[
                 { key: 'host', label: 'Host', render: (w) => w.host },
                 { key: 'claims', label: 'Claims 24 h', render: (w) => w.claims_24h },
                 { key: 'interrupted', label: 'Interrupted', render: (w) => w.interrupted_24h },
                 { key: 'last', label: 'Last claim', render: (w) => since(w.last_claim) },
               ]} />
-            </Section>
+            </Disclose>
           </div>
 
-          <Section id="genomes" title="Strategy genomes on real makers (30 d)">
-            <DataTable caption="Real-maker outcomes per strategy genome" rows={data.genomes ?? []} rowKey={(g) => `${g.genome}:${g.skill_id}`}
-              empty="No real-maker outcome carries a genome yet." columns={[
-                { key: 'genome', label: 'Genome', render: (g) => g.genome },
-                { key: 'skill', label: 'Maker skill', render: (g) => g.skill_id },
-                { key: 'outcomes', label: 'Outcomes (n)', render: (g) => g.outcomes },
-                { key: 'wins', label: 'Wins', render: (g) => g.wins },
-                { key: 'rate', label: 'Win rate', render: (g) => `${g.win_pct}%` },
-              ]} />
-          </Section>
+          <Disclose id="genomes" title="Strategy genomes (30 d)">
+            {/* gym makers (loop-maker:gym:*) and makers on real goals were one 'real makers' table; never mixed again */}
+            {(['production', 'gym'] as const).map((scope) => (
+              <div key={scope} className="space-y-2">
+                <h3 className="text-sm font-semibold">{scope === 'production' ? 'Production makers' : 'Gym makers'}</h3>
+                <DataTable caption={scope === 'production' ? 'Production-maker outcomes per strategy genome' : 'Gym-maker outcomes per strategy genome'}
+                  rows={(data.genomes ?? []).filter((g) => (g.scope ?? (g.skill_id.startsWith('loop-maker:gym:') ? 'gym' : 'production')) === scope)}
+                  rowKey={(g) => `${g.genome}:${g.skill_id}`}
+                  empty={scope === 'production' ? 'No production-maker outcome carries a genome yet.' : 'No gym-maker outcome carries a genome yet.'} columns={[
+                    { key: 'genome', label: 'Genome', render: (g) => g.genome },
+                    { key: 'skill', label: 'Maker skill', render: (g) => g.skill_id },
+                    { key: 'outcomes', label: 'Outcomes (n)', render: (g) => g.outcomes },
+                    { key: 'wins', label: 'Wins', render: (g) => g.wins },
+                    { key: 'rate', label: 'Win rate', render: (g) => `${g.win_pct}%` },
+                  ]} />
+              </div>
+            ))}
+          </Disclose>
 
           <div className="grid md:grid-cols-2 gap-6">
-            <Section id="usage" title="Agent runtimes (7 d)">
+            <Disclose id="usage" title="Agent runtimes (7 d)">
               <DataTable caption="Leases and tokens per role and runtime" rows={data.maker_usage_7d} rowKey={(u) => `${u.role}-${u.runtime}-${u.model}`}
                 empty="No leases in the last 7 days." columns={[
                   { key: 'role', label: 'Role', render: (u) => u.role },
@@ -176,8 +392,8 @@ export function OperatorCockpitPage() {
                   { key: 'leases', label: 'Leases', render: (u) => u.leases },
                   { key: 'tokens', label: 'Tokens', render: (u) => fmt(u.tokens) },
                 ]} />
-            </Section>
-            <Section id="judgments" title="Judgments (jev, 7 d)">
+            </Disclose>
+            <Disclose id="judgments" title="Judgments (jev, 7 d)">
               <DataTable caption="jev judgment calls and errors" rows={data.judgments_7d} rowKey={(j) => j.judgment}
                 empty="No judgment calls in the last 7 days." columns={[
                   { key: 'judgment', label: 'Judgment', render: (j) => j.judgment },
@@ -185,7 +401,7 @@ export function OperatorCockpitPage() {
                   { key: 'errors', label: 'Errors', render: (j) => j.errors, cellClassName: (j) => (j.errors > j.calls * 0.3 ? 'text-status-error' : undefined) },
                   { key: 'tokens', label: 'Input tokens', render: (j) => fmt(j.input_tokens) },
                 ]} />
-            </Section>
+            </Disclose>
           </div>
         </>
       )}
@@ -194,28 +410,132 @@ export function OperatorCockpitPage() {
 }
 
 /** W3: what waits for the operator, each count linking to its /decisions section. */
-export function NeedsYou({ n }: { n: NonNullable<OperatorCockpit['needs_you']> }) {
-  const items = [
-    { label: 'approvals', count: n.approvals, href: '/decisions#approvals' },
-    { label: 'approvals expiring within 1 h', count: n.approvals_expiring ?? 0, href: '/decisions#approvals' },
-    { label: 'requeue candidates', count: n.requeue, href: '/decisions#requeue' },
-    { label: 'pre-screen labels', count: n.labels, href: '/decisions#prescreen' },
-    { label: 'memory reviews', count: n.memory_review, href: '/decisions#memory' },
-    { label: 'loop PRs unsettled', count: n.draft_prs ?? 0, href: '/decisions#draft-prs' },
-    { label: 'proposals awaiting approval', count: n.proposals ?? 0, href: '/governance?tab=assurance' },
-    { label: 'silent stalls', count: n.stalls ?? 0, href: '/#stalls' },
-    { label: 'Commons join requests', count: n.join_requests ?? 0, href: '/agent-commons' },
-    { label: 'fleet shell requests', count: n.shell_requests ?? 0, href: '/fleet' },
+/** Level 1 total; null counts (a failed query) make the total a lower bound, never a calm zero. */
+export function NeedsYouTotal({ n }: { n: NeedsYouCounts }) {
+  const { total, unknown } = needsYouItems(n);
+  return <div className="text-xl font-semibold">{unknown.length ? `≥ ${total} (${unknown.length} unknown)` : total ? `${total} waiting` : 'nothing'} {total || unknown.length ? <Link to="/decisions" className="text-sm underline">open Decisions</Link> : null}</div>;
+}
+
+/**
+ * Human-only needs-you (operator 26-10): `items` are HUMAN_DECISION items and make the headline; ground-truth labelling
+ * (D5, CAR, E1, DI-001) is optional with its own count; `info` and `system` are shown, never counted.
+ */
+function needsYouItems(n: NeedsYouCounts) {
+  // absent (older server) = 0; null (the server could not count it) = unknown
+  const c = (v: number | null | undefined) => (v === undefined ? 0 : v);
+  type Item = { label: string; count: number | null; href: string };
+  const split = n.audit_batch !== undefined || n.flagged_prs !== undefined;
+  const proposalsSystem = !!n.system?.proposals_auto_reviewed;
+  const items: Item[] = [
+    { label: 'approvals', count: c(n.approvals), href: '/decisions#approvals' },
+    { label: 'requeue candidates', count: c(n.requeue), href: '/decisions#requeue' },
+    { label: 'memory reviews', count: c(n.memory_review), href: '/decisions#memory' },
+    ...(split ? [{ label: 'PRs in the weekly audit batch', count: c(n.audit_batch), href: '/decisions#audit-batch' },
+      { label: 'flagged loop PRs', count: c(n.flagged_prs), href: '/decisions#draft-prs' }]
+      : [{ label: 'open loop PRs', count: c(n.open_prs), href: '/decisions#draft-prs' }]),
+    ...(n.dependency_tracked ? [{ label: 'Dependabot PRs the lane leaves to you', count: c(n.dependency_human), href: '/decisions#dependency-lane' }] : []),
+    ...(proposalsSystem ? [] : [{ label: 'proposals awaiting approval', count: c(n.proposals), href: '/governance?tab=assurance' }]),
+    { label: 'Commons join requests', count: c(n.join_requests), href: '/agent-commons' },
+    { label: 'fleet shell requests', count: c(n.shell_requests), href: '/fleet' },
   ];
   // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted
-  const blocking = items.filter((item) => item.label !== 'approvals expiring within 1 h' && item.label !== 'loop PRs unsettled');
-  const total = blocking.reduce((sum, item) => sum + item.count, 0);
+  const info: Item[] = [
+    { label: 'approvals expiring within 1 h', count: c(n.approvals_expiring), href: '/decisions#approvals' },
+    { label: 'loop PRs unsettled', count: c(n.draft_prs), href: '/decisions#draft-prs' },
+  ];
+  const ol = n.optional_labelling;
+  const labelling: Item[] = [
+    { label: 'pre-screen labels (D5)', count: ol ? ol.d5 : c(n.labels), href: '/decisions#prescreen' },
+    ...(ol ? [{ label: 'CAR audits', count: ol.car, href: '/decisions#attribution-audit' }, { label: 'E1 retrieval labels', count: ol.e1, href: '/decisions#e1-retrieval-labels' },
+      { label: 'DI-001 relevance labels', count: ol.di001, href: '/decisions#discovery-relevance' }] : []),
+  ];
+  const system: Item[] = [
+    ...(n.system?.requeue_mode === 'on' ? [{ label: 'requeue rows the system will handle', count: n.system.requeue_will_handle, href: '/decisions#requeue' }] : []),
+    { label: 'silent stalls', count: c(n.stalls), href: '/#stalls' },
+    ...(proposalsSystem ? [{ label: 'proposals in panel review', count: c(n.proposals), href: '/governance?tab=assurance' }] : []),
+  ];
+  // the server's total counts human decisions only; older servers send no total
+  const total = n.total ?? items.reduce((sum, item) => sum + (item.count ?? 0), 0);
+  const unknown = items.filter((item) => item.count === null);
+  const labellingTotal = labelling.some((l) => l.count === null) ? null : labelling.reduce((a, l) => a + (l.count as number), 0);
+  return { items, info, labelling, labellingTotal, system, total, unknown };
+}
+
+export function NeedsYou({ n }: { n: NeedsYouCounts }) {
+  const { items, info, labelling, labellingTotal, system, total, unknown } = needsYouItems(n);
+  const sys = n.system_requeue;
+  const shown = <T extends { count: number | null }>(xs: T[]): T[] => xs.filter((x) => x.count !== 0);
+  const link = (item: { label: string; count: number | null; href: string }) => (
+    <li key={item.label}><Link to={item.href} className="underline">{item.count ?? 'unknown'} {item.label}</Link></li>
+  );
   return (
-    <section aria-labelledby="needs-you" className={`rounded-lg border p-4 ${total ? 'border-status-paused/40 bg-status-paused/10' : 'border-border'}`}>
-      <h2 id="needs-you" className="text-lg font-semibold mb-2">{total ? `Needs you (${total})` : 'Nothing needs you right now'}</h2>
-      {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map((item) => (
-        <li key={item.label}><Link to={item.href} className="underline">{item.count} {item.label}</Link></li>
-      ))}</ul>}
+    <section aria-labelledby="needs-you" className={`rounded-lg border p-4 ${total || unknown.length ? 'border-status-paused/40 bg-status-paused/10' : 'border-border'}`}>
+      <h2 id="needs-you" className="text-lg font-semibold mb-2">{total ? `Needs you (${unknown.length ? '≥ ' : ''}${total})` : unknown.length ? 'Needs you: unknown' : 'Nothing needs you right now'}</h2>
+      {unknown.length > 0 && <p className="text-sm text-status-warning mb-1">Could not count: {unknown.map((u) => u.label).join(', ')} — shown as unknown, not 0.</p>}
+      {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map(link)}</ul>}
+      {info.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-xs text-foreground-secondary mt-1">{info.filter((item) => item.count).map(link)}</ul>}
+      {shown(labelling).length > 0 && (
+        <div className="mt-2 text-sm" data-testid="optional-labelling">
+          <span className="font-medium">Optional labelling ({labellingTotal ?? 'unknown'})</span> <span className="text-xs text-foreground-tertiary">ground truth, not decisions</span>
+          <ul className="flex flex-wrap gap-4 text-xs mt-1">{shown(labelling).map(link)}</ul>
+        </div>
+      )}
+      {shown(system).length > 0 && (
+        <div className="mt-2 text-xs text-foreground-tertiary" data-testid="system-handles">
+          System handles (not counted): <ul className="inline-flex flex-wrap gap-3">{shown(system).map(link)}</ul>
+        </div>
+      )}
+      {sys && (sys.budgeted_requeue || sys.attribution_unknown || sys.not_actionable) ? (
+        <p className="text-xs text-foreground-tertiary mt-2">
+          System-side requeue candidates (not counted): {sys.budgeted_requeue ?? 0} budgeted requeue · {sys.attribution_unknown ?? 0} attribution unknown · {sys.not_actionable ?? 0} not actionable
+        </p>
+      ) : null}
     </section>
+  );
+}
+
+/** SOUL.md subtraction KPI: what the checkout lost next to what it gained, per ISO week (report-only, never a gate). */
+export function SubtractionSection({ kpi }: { kpi: OperatorCockpit['subtraction'] }) {
+  if (!kpi) return <p className="text-sm text-foreground-secondary">Not reported by this server.</p>;
+  if (kpi.status !== 'ok' || !kpi.weeks) return <p className="text-sm text-status-warning">Unknown — {kpi.reason ?? 'no git history'}</p>;
+  const signed = (n: number | null) => (n === null ? '—' : n > 0 ? `+${n}` : String(n));
+  return (
+    <DataTable caption="Lines, files and routes added vs removed per ISO week (last 8)" rows={kpi.weeks} rowKey={(w) => w.week} columns={[
+      { key: 'week', label: 'Week', render: (w) => w.week },
+      { key: 'commits', label: 'Commits', render: (w) => w.commits },
+      { key: 'lines', label: 'Lines +/−', render: (w) => `+${w.lines_added} / −${w.lines_removed}` },
+      { key: 'ratio', label: 'Removed / added', render: (w) => (w.ratio_removed_added === null ? '—' : w.ratio_removed_added.toFixed(2)) },
+      { key: 'files', label: 'Files +/−', render: (w) => `+${w.files_added} / −${w.files_deleted}` },
+      { key: 'routes', label: 'Routes Δ', render: (w) => signed(w.routes_delta) },
+    ]} />
+  );
+}
+
+/** G0.3/G0.4: € and operator minutes per verified / surviving change; unknown prices stay unknown (never shown as €0). */
+export function UnitEconomicsSection({ ue }: { ue: OperatorCockpit['unit_economics'] }) {
+  if (!ue) return <p className="text-sm text-foreground-secondary">Not reported by this server.</p>;
+  const eur = (v: number | null) => (v === null ? 'unknown' : `€${v.toFixed(2)}`);
+  const min = (v: number | null) => (v === null ? 'unknown' : `${v.toFixed(1)} min`);
+  const m = ue.operator_minutes;
+  return (
+    <ul className="space-y-1 text-sm">
+      <li>€ per verified change: <strong>{eur(ue.eur.per_verified)}</strong> · per surviving change: <strong>{eur(ue.eur.per_surviving)}</strong>
+        {' '}({ue.counts.verified ?? '?'} verified, {ue.counts.surviving ?? '?'} surviving) — unknown share {(ue.eur.unknown_share * 100).toFixed(0)} %
+        {ue.eur.reason ? <span className="text-status-warning"> · {ue.eur.reason === 'no_prices' ? 'no € prices filled in docs/usage-plan-limits.json' : ue.eur.reason}</span> : null}</li>
+      <li>Operator minutes per surviving change: waiting <strong>{min(m.per_surviving.waiting_minutes)}</strong> · handling <strong>{min(m.per_surviving.handling_minutes_estimate)}</strong> (estimate, {m.handling_minutes_per_item} min per item)
+        {m.reason ? <span className="text-foreground-secondary"> · {m.reason.replace(/_/g, ' ')}</span> : null}</li>
+    </ul>
+  );
+}
+
+/** Level 2–4 progressive disclosure: native <details> (keyboard and screen-reader accessible out of the box). */
+function Disclose({ id, title, open, children }: { id: string; title: ReactNode; open?: boolean; children: ReactNode }) {
+  return (
+    <details open={open} className="group">
+      <summary className="cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">
+        <h2 id={id} className="inline text-lg font-semibold">{title}</h2>
+      </summary>
+      <section aria-labelledby={id} className="mt-2">{children}</section>
+    </details>
   );
 }

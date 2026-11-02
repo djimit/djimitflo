@@ -20,15 +20,15 @@
   },
   "dependencies": {
     "@djimitflo/shared": "*",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^13.0.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
     "@types/node": "^26.1.1",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }

@@ -1,0 +1,21 @@
+# gitleaks config: the default rules, plus ONE narrow allowlist.
+# Holdout manifests (docs/holdout/epoch*-manifest-*.json) list gym tasks whose "key" is a 40-hex git commit SHA; the
+# default generic-api-key rule reads `"key": "<40 hex>"` as a secret. The allowlist applies only when BOTH the path is a
+# holdout manifest AND the whole line is exactly such a key line (condition AND), so secret scanning is unchanged
+# everywhere else, including any other content of those files. Prefer this over .gitleaksignore fingerprints, which name a
+# commit and break on squash.
+title = "djimitflo gitleaks config"
+
+[extend]
+useDefault = true
+
+# rule-scoped (generic-api-key only); the default rule's regex, keywords and own allowlists are kept (gitleaks merges an
+# extended rule with the same id). A global [allowlist] would OR paths and regexes in 8.24 and allow far too much.
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "holdout manifest task keys are git commit SHAs, not secrets"
+condition = "AND"
+paths = ['''^docs/holdout/epoch[0-9]+-manifest-[0-9]{8}\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"key": "[0-9a-f]{40}",?$''']

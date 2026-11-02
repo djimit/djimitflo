@@ -1,5 +1,5 @@
 import { recordAuthorityEvent } from './authority-ledger-service';
-import { enqueueEvent } from './event-outbox-service';
+import { enqueueRequiredEvent } from './event-outbox-service';
 import type { Database } from 'better-sqlite3';
 import { ApprovalRequest, ApprovalRequestType, ApprovalStatus, AuditEventType, RiskAssessment, Task, TaskStatus, WebSocketEventType } from '@djimitflo/shared';
 import { randomUUID } from 'crypto';
@@ -29,6 +29,24 @@ export interface CreateApprovalInput {
 export function approvalTtlMs(env: NodeJS.ProcessEnv = process.env): number {
   const ms = Number(env.APPROVAL_TTL_MS);
   return Number.isFinite(ms) && ms > 0 ? Math.min(7 * 86_400_000, Math.max(300_000, ms)) : 3_600_000;
+}
+
+/**
+ * §16 step 2 (ADQ): the loop run, lease, goal and proposal an approval is for, from the worker task's metadata
+ * (tasks.metadata.loop_run_id / lease_id, written by the loop worker executor). Stored on the approval at creation so the
+ * approval → goal → outcome join no longer depends on the task row. Empty for non-loop tasks; fail-soft (never blocks).
+ */
+export function loopApprovalLink(db: Database, task: Pick<Task, 'metadata'>): Record<string, string> {
+  try {
+    const raw = task.metadata as unknown;
+    const meta = (typeof raw === 'string' ? JSON.parse(raw || '{}') : raw ?? {}) as Record<string, unknown>;
+    const runId = typeof meta.loop_run_id === 'string' ? meta.loop_run_id : null;
+    if (!runId) return {};
+    const row = db.prepare('SELECT r.goal_id, g.improvement_id FROM loop_runs r LEFT JOIN goals g ON g.id = r.goal_id WHERE r.id = ?').get(runId) as
+      { goal_id: string | null; improvement_id: string | null } | undefined;
+    return Object.fromEntries(Object.entries({ loop_run_id: runId, lease_id: meta.lease_id, goal_id: row?.goal_id, improvement_id: row?.improvement_id })
+      .filter((e): e is [string, string] => typeof e[1] === 'string' && e[1].length > 0));
+  } catch { return {}; }
 }
 
 export class ApprovalService {
@@ -101,13 +119,14 @@ export class ApprovalService {
           taskTitle: input.task.title,
         }),
         expiresAt,
-        JSON.stringify(input.metadata || {}),
+        JSON.stringify({ ...loopApprovalLink(this.db, input.task), ...(input.metadata || {}) }), // §16 step 2: caller metadata wins
         input.requestedBy || input.task.owner_user_id || input.task.created_by || 'system',
         now,
         now
       );
 
       const approval = this.getApproval(id)!;
+      this.enqueueApprovalEvent(approval, 'djimitflo.approval.requested');
       this.auditService.record({
         event_type: AuditEventType.APPROVAL_REQUESTED,
         action: 'approval_requested',
@@ -122,25 +141,45 @@ export class ApprovalService {
       });
       return approval;
     }).immediate();
-    void pushApproval(this.db, approval); // UX-12: off unless TELEGRAM_PUSH_ENABLED; never throws
+    // UX-12: off unless TELEGRAM_PUSH_ENABLED; never throws. TG-2: wait TELEGRAM_PUSH_DELAY_MS (default 15 s) so an
+    // approval a lane rule auto-approves right after creation is skipped as 'decided' instead of pushed
+    const pushDelay = Math.max(0, Number(process.env.TELEGRAM_PUSH_DELAY_MS ?? 15_000) || 0);
+    if (pushDelay === 0) void pushApproval(this.db, approval);
+    else setTimeout(() => { void pushApproval(this.db, approval); }, pushDelay).unref?.();
     this.publish(input.task.id, {
       type: WebSocketEventType.APPROVAL_REQUESTED,
       payload: { approval },
       timestamp: now,
     });
-    this.recordDecision(approval, 'EXECUTION_APPROVAL_REQUESTED', 'HOLD', input.requestedBy || 'system', 'djimitflo.approval.requested');
+    this.recordDecision(approval, 'EXECUTION_APPROVAL_REQUESTED', 'HOLD', input.requestedBy || 'system');
 
     return approval;
   }
 
-  /** Ledger + bus record of an approval lifecycle step; best-effort, never blocks the approval itself. */
-  private recordDecision(approval: ApprovalRequest, state: string, decision: 'ALLOW' | 'DENY' | 'HOLD', actor: string, eventType: string): void {
-    const human = actor !== 'system' && !actor.startsWith('agent:');
+  /** Authority-ledger record of an approval lifecycle step; best-effort, never blocks the approval itself. */
+  private recordDecision(approval: ApprovalRequest, state: string, decision: 'ALLOW' | 'DENY' | 'HOLD', actor: string): void {
     recordAuthorityEvent(this.db, {
-      correlationId: approval.task_id, artifactId: approval.id, actorSubject: actor, actorType: human ? 'human' : actor.startsWith('agent:') ? 'agent' : 'service',
+      correlationId: approval.task_id, artifactId: approval.id, actorSubject: actor, actorType: this.actorType(actor),
       requestedState: state, decision, payload: { approval_id: approval.id, risk_level: approval.risk_level, policy_id: approval.policy_id, status: approval.status },
     });
-    enqueueEvent(this.db, { type: eventType, aggregateId: approval.id, correlationId: approval.task_id, payload: { approval_id: approval.id, task_id: approval.task_id, risk_level: approval.risk_level, status: approval.status, decided_by: approval.decided_by ?? null } });
+  }
+
+  /** CODE-003: required bus event, enqueued inside the transaction that changes the approval, so both commit or neither does. */
+  private enqueueApprovalEvent(approval: ApprovalRequest, eventType: string): void {
+    enqueueRequiredEvent(this.db, { type: eventType, aggregateId: approval.id, correlationId: approval.task_id, payload: { approval_id: approval.id, task_id: approval.task_id, risk_level: approval.risk_level, status: approval.status, decided_by: approval.decided_by ?? null } });
+  }
+
+  /**
+   * 'human' only for a real user (users.id or users.email: the approvals route decides as the JWT subject). Rule deciders
+   * (`autonomy:*`), inherited approvals (`inherit:*`), `system` and any other label are automation → 'service'
+   * (the ledger's CHECK allows human/agent/service/ci). Prod 2026-10-09: 194 `autonomy:*` rows were recorded as human.
+   */
+  private actorType(actor: string): 'human' | 'agent' | 'service' {
+    if (actor.startsWith('agent:')) return 'agent';
+    try {
+      if (this.db.prepare('SELECT 1 FROM users WHERE id = ? OR email = ? LIMIT 1').get(actor, actor)) return 'human';
+    } catch { /* no users table: nobody is provably human */ }
+    return 'service';
   }
 
   decideApproval(id: string, approved: boolean, decidedBy: string, reason?: string): ApprovalRequest {
@@ -197,6 +236,7 @@ export class ApprovalService {
       );
 
       const updated = this.getApproval(id)!;
+      this.enqueueApprovalEvent(updated, approved ? 'djimitflo.approval.approved' : 'djimitflo.approval.denied');
       this.auditService.record({
         event_type: approved ? AuditEventType.APPROVAL_GRANTED : AuditEventType.APPROVAL_DENIED,
         action: approved ? 'approval_granted' : 'approval_denied',
@@ -204,6 +244,7 @@ export class ApprovalService {
         resource_id: id,
         task_id: updated.task_id,
         risk_level: updated.risk_level,
+        user_id: decidedBy,
         metadata: { reason: reason || null },
       });
       return updated;
@@ -215,10 +256,10 @@ export class ApprovalService {
       timestamp: updated.updated_at,
     });
     if (expired) {
-      this.recordDecision(updated, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system', 'djimitflo.approval.expired');
+      this.recordDecision(updated, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system');
       throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
     }
-    this.recordDecision(updated, approved ? 'EXECUTION_APPROVED' : 'EXECUTION_DENIED', approved ? 'ALLOW' : 'DENY', decidedBy, approved ? 'djimitflo.approval.approved' : 'djimitflo.approval.denied');
+    this.recordDecision(updated, approved ? 'EXECUTION_APPROVED' : 'EXECUTION_DENIED', approved ? 'ALLOW' : 'DENY', decidedBy);
 
     return updated;
   }
@@ -231,7 +272,7 @@ export class ApprovalService {
       payload: { approval: expired },
       timestamp: expired.updated_at,
     });
-    this.recordDecision(expired, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system', 'djimitflo.approval.expired');
+    this.recordDecision(expired, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system');
   }
 
   private expireApprovalRecord(approval: ApprovalRequest): ApprovalRequest | null {
@@ -240,6 +281,7 @@ export class ApprovalService {
     if (!result.changes) return null;
 
     const expired = this.getApproval(approval.id)!;
+    this.enqueueApprovalEvent(expired, 'djimitflo.approval.expired');
     this.auditService.record({
       event_type: AuditEventType.APPROVAL_EXPIRED,
       action: 'approval_expired',
