@@ -190,3 +190,71 @@ describe('after the commit: dispatcher retry + bus dedupe', () => {
     expect(db.prepare('SELECT aggregate_id, status, attempts FROM event_outbox').get()).toEqual({ aggregate_id: created.id, status: 'published', attempts: 4 });
   });
 });
+
+// STATE-NEW-01 (deep audit 2026-10-28): the interval tick and a manual drain can overlap. One process must run one drain at a
+// time, a stale failure must never regress a published row, and a stale claim must never push attempts past the cap.
+describe('overlapping drains', () => {
+  type Reply = { ok: boolean; status: number };
+  const deferredFetch = () => {
+    const pending: Array<{ key: string; resolve: (r: Reply) => void; reject: (e: Error) => void }> = [];
+    const fetchFn = vi.fn().mockImplementation((_url: string, init: RequestInit) => new Promise<Reply>((resolve, reject) => {
+      pending.push({ key: JSON.parse(init.body as string).dedupe_key as string, resolve, reject });
+    }));
+    return { fetchFn: fetchFn as unknown as typeof fetch, calls: fetchFn, pending };
+  };
+  const row = () => db.prepare('SELECT status, attempts, last_error FROM event_outbox').get();
+  const tick = () => new Promise((r) => setImmediate(r));
+  const enqueue = (aggregateId: string) => db.transaction(() => enqueueRequiredEvent(db, { type: 'djimitflo.test', aggregateId }))();
+
+  it('a second drain while one is in flight joins it instead of sending the same row again', async () => {
+    process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
+    enqueue('a');
+    const bus = deferredFetch();
+    const svc = new EventOutboxService(db, bus.fetchFn);
+    const first = svc.publishPending(); const second = svc.publishPending();
+    await tick();
+    expect(bus.calls).toHaveBeenCalledTimes(1);
+    bus.pending[0].resolve({ ok: true, status: 200 });
+    expect(await first).toMatchObject({ attempted: 1, published: 1, failed: 0 });
+    expect(await second).toMatchObject({ attempted: 1, published: 1, failed: 0 });
+    expect(row()).toEqual({ status: 'published', attempts: 1, last_error: null }); // attempts not double-incremented
+    expect(await svc.publishPending()).toMatchObject({ attempted: 0 }); // the drain is released afterwards
+  });
+
+  it('first send succeeds, an overlapping stale send then fails: the row stays published', async () => {
+    process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
+    enqueue('a');
+    const busA = deferredFetch(); const busB = deferredFetch();
+    // Two drainers on one database bypass the in-process guard, so only the terminal-state update can protect the row.
+    const a = new EventOutboxService(db, busA.fetchFn).publishPending();
+    const b = new EventOutboxService(db, busB.fetchFn).publishPending();
+    await tick();
+    expect(busA.pending[0].key).toBe(busB.pending[0].key); // same dedupe identity on both sends
+    busA.pending[0].resolve({ ok: true, status: 200 });
+    await a;
+    busB.pending[0].reject(new Error('socket hang up'));
+    await b;
+    expect(row()).toMatchObject({ status: 'published', last_error: null });
+  });
+
+  it('a stale claim never pushes attempts past the retry cap', async () => {
+    process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
+    enqueue('first'); enqueue('last-try');
+    db.prepare("UPDATE event_outbox SET created_at = '2000-01-01T00:00:00.000Z' WHERE aggregate_id = 'first'").run();
+    db.prepare("UPDATE event_outbox SET status = 'failed', attempts = 9 WHERE aggregate_id = 'last-try'").run();
+    const busA = deferredFetch(); const busB = deferredFetch();
+    const a = new EventOutboxService(db, busA.fetchFn).publishPending(); // selects both rows, then waits on 'first'
+    await tick();
+    const b = new EventOutboxService(db, busB.fetchFn).publishPending(); // claims 'first' (pending) and later 'last-try'
+    await tick();
+    busB.pending[0].resolve({ ok: true, status: 200 }); await tick();
+    busB.pending[1].reject(new Error('bus down'));
+    await b;
+    busA.pending[0].resolve({ ok: true, status: 200 }); await tick();
+    for (const stale of busA.pending.slice(1)) stale.reject(new Error('stale resend'));
+    await a; // its row list is stale: 'last-try' now has attempts = 10
+    const lastTry = db.prepare("SELECT status, attempts FROM event_outbox WHERE aggregate_id = 'last-try'").get();
+    expect(lastTry).toEqual({ status: 'failed', attempts: 10 });
+    expect(busA.pending).toHaveLength(1); // drainer A never sent the exhausted row
+  });
+});

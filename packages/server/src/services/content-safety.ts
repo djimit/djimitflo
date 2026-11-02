@@ -7,7 +7,7 @@ import { recordPolicyViolation } from './policy-violations';
  * Plan K1: a fast content-safety check on text Djimitflo did not write (fleet/HF discoveries, replies from external
  * agents) before it flows into prompts. NVIDIA nemotron-3.5-content-safety answers in ~0.3 s and flagged a prompt
  * injection 'unsafe' while paper text stayed 'safe' (measured 2026-09-27). The verdict is recorded as a judgment
- * ('content_safety'). Fail-open. NOT shadow-only everywhere: KB ingest (kb-corpus) deletes/skips a page on 'unsafe' in every
+ * ('content_safety'). Fail-open. NOT shadow-only everywhere: KB ingest (kb-corpus) quarantines a page on 'unsafe' in every
  * mode, and those rows are recorded with mode 'enforce' (P0-11); other callers only record (mode 'shadow').
  *   CONTENT_SAFETY_MODE=shadow + NVIDIA_API_KEY (default off); 'enforce' checks the same way and additionally makes the
  *   prompt gate (gateUntrustedForPrompt, B19) exclude untrusted text without a 'safe' verdict.
@@ -40,7 +40,10 @@ export function parseSafety(content: string): { verdict: 'safe' | 'unsafe' | nul
   const text = content || '';
   const m = /user safety"?\s*:\s*"?(safe|unsafe)/i.exec(text);
   const cats = /safety categories"?\s*:\s*"?([^"\n}]+)/i.exec(text);
-  return { verdict: m ? (m[1].toLowerCase() as 'safe' | 'unsafe') : null, categories: cats ? cats[1].trim().slice(0, 200) : '' };
+  if (m) return { verdict: m[1].toLowerCase() as 'safe' | 'unsafe', categories: cats ? cats[1].trim().slice(0, 200) : '' };
+  // Llama Guard shape: the whole answer is "safe", or "unsafe" with category codes on the next line
+  const g = /^\s*(safe|unsafe)\s*(?:\n\s*([A-Z0-9, ]+?))?\s*$/i.exec(text);
+  return { verdict: g ? (g[1].toLowerCase() as 'safe' | 'unsafe') : null, categories: g?.[2] ? g[2].trim().slice(0, 200) : '' };
 }
 
 /**
@@ -53,7 +56,7 @@ export const resetContentSafetyPause = (): void => { pausedUntil = 0; };
 
 /**
  * P0-11: the row's mode is the regime the verdict is used under, not a fixed label. `acting` = the caller acts on the verdict
- * whatever CONTENT_SAFETY_MODE says (KB ingest deletes/skips a page on 'unsafe'); a prompt-bound check acts under enforce.
+ * whatever CONTENT_SAFETY_MODE says (KB ingest quarantines a page on 'unsafe'); a prompt-bound check acts under enforce.
  */
 export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch, promptBound = false, acting = false): Promise<'safe' | 'unsafe' | null> {
   if (!contentSafetyApplies(subject.type, process.env, promptBound) || !text.trim() || Date.now() < pausedUntil) return null;
@@ -82,9 +85,16 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
     }
     if (!res.ok) { record('error', `http_${res.status}${res.status === 429 ? ' (pausing checks)' : ''}`); return null; }
     const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const { verdict, categories } = parseSafety(body.choices?.[0]?.message?.content ?? '');
-    if (!verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
-    record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}`);
+    const parsed = parseSafety(body.choices?.[0]?.message?.content ?? '');
+    const { categories } = parsed;
+    if (!parsed.verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
+    // prod 2026-10-31: Llama Guard flags plain technical text S14 (code interpreter abuse) → CONTENT_SAFETY_IGNORE_CATEGORIES=S14
+    // makes an 'unsafe' whose categories are ALL ignored count as safe; the categories stay in the reason
+    const ignore = new Set((process.env.CONTENT_SAFETY_IGNORE_CATEGORIES || '').split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase()));
+    const cats = categories.split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase());
+    const ignored = parsed.verdict === 'unsafe' && cats.length > 0 && cats.every((c) => ignore.has(c));
+    const verdict = ignored ? 'safe' : parsed.verdict;
+    record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}${ignored ? ` ignored=${cats.join(',')}` : ''}`);
     // §16 step 8 (shadow, POLICY_VIOLATION_LOG): untrusted input judged unsafe is counted; nothing is blocked (still shadow)
     if (verdict === 'unsafe') {
       const stateHash = createHash('sha256').update(text).digest('hex').slice(0, 16);

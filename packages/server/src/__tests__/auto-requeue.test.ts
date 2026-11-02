@@ -167,6 +167,56 @@ describe('auto-dismiss', () => {
   });
 });
 
+describe('escalation hold comes before the automatic dismiss (ROOT-001)', () => {
+  const escalate = (id: string) => {
+    db.prepare("INSERT INTO goals (id, improvement_id, objective, risk_class, status) VALUES (?, ?, 't', 'low', 'failed')").run(`g-${id}`, id);
+    db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES (?, ?, 'l', 'closed', 'escalated', '[]', '{}', '[]', '[]', '{}', ?, ?)`).run(`run-${id}`, `g-${id}`, iso(20), iso(20));
+  };
+
+  it('old escalated maker_failure / no_change / requeue copy / not_actionable rows are held for the operator, never dismissed', () => {
+    seed('mk', 'regressed', { age: 20 }); attribute('mk', 'maker_failure'); escalate('mk');
+    seed('nc', 'no_change', { age: 20 }); escalate('nc');
+    seed('orig', 'regressed', { age: 25 }); attribute('orig', 'environment_failure');
+    seed('copy', 'regressed', { age: 20, refs: ['requeue-of:orig'] }); escalate('copy');
+    seed('na', 'regressed', { age: 20, title: 'dup' }); attribute('na', 'environment_failure'); escalate('na');
+    seed('later', 'verified', { age: 0, title: 'dup' }); // a later proposal with the same title verified: not_actionable
+    const r = autoRequeueTick(db, ON, NOW, onMain);
+    expect(r).toMatchObject({ requeued: [], dismissed: [], held: 4, errors: [] });
+    expect(judgments('requeue_dismiss')).toEqual([]);
+    const inbox = decisionsInbox(db, NOW, ON);
+    expect(Object.fromEntries(inbox.requeue.filter((x) => x.id !== 'orig').map((x) => [x.id, x.auto?.action])))
+      .toEqual({ mk: 'hold', nc: 'hold', copy: 'hold', na: 'hold' });
+    expect(inbox.totals.requeue_auto).toMatchObject({ mode: 'on', held: 4 });
+    // shadow records nothing for a held row either
+    expect(autoRequeueTick(db, SHADOW, NOW, onMain)).toMatchObject({ shadow_recorded: 0, held: 4 });
+  });
+
+  it('control: the same rows without an escalation are dismissed after 14 d, audited', () => {
+    seed('mk', 'regressed', { age: 20 }); attribute('mk', 'maker_failure');
+    seed('nc', 'no_change', { age: 20 });
+    seed('orig', 'regressed', { age: 25 }); attribute('orig', 'environment_failure');
+    seed('copy', 'regressed', { age: 20, refs: ['requeue-of:orig'] });
+    seed('na', 'regressed', { age: 20, title: 'dup' }); attribute('na', 'environment_failure');
+    seed('later', 'verified', { age: 0, title: 'dup' });
+    const r = autoRequeueTick(db, ON, NOW, onMain);
+    expect(r.dismissed.sort()).toEqual(['copy', 'mk', 'na', 'nc']);
+    expect(judgments('requeue_dismiss').map((j) => j.reason.split(': ').pop())).toEqual([
+      'auto:not_requeue_eligible:requeue_copy', 'auto:not_requeue_eligible:maker_failure',
+      'auto:not_requeue_eligible:not_actionable', 'auto:not_requeue_eligible:no_change',
+    ]);
+  });
+
+  it('control: an eligible non-escalated infra_failed row is requeued within the lane budget and waits when it is spent', () => {
+    seed('tg', 'infra_failed', { age: 20, refs: ['test-gap:foo'] });
+    db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, evidence_refs_json, created_at, updated_at)
+      VALUES ('today', 'test', 't', 'd', 'r', 'gap_analysis', 'proposed', '["test-gap:bar"]', ?, ?)`).run(new Date(NOW).toISOString(), new Date(NOW).toISOString());
+    expect(autoRequeueTick(db, { ...ON, TEST_GAP_MAX_PER_DAY: '1' } as NodeJS.ProcessEnv, NOW, onMain)).toMatchObject({ requeued: [], dismissed: [], waiting: 1 });
+    expect(autoRequeueTick(db, { ...ON, TEST_GAP_MAX_PER_DAY: '2' } as NodeJS.ProcessEnv, NOW, onMain).requeued).toHaveLength(1);
+    expect(copies('tg')).toHaveLength(1);
+  });
+});
+
 describe('modes', () => {
   const mixed = () => {
     seed('infra', 'infra_failed');

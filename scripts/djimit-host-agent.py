@@ -6,10 +6,12 @@ POST the result. Two kinds of command:
   diagnostic  a fixed name (ping, uptime, disk, failed-services, top) mapped to this host's own read-only command below;
               nothing the operator typed reaches a shell
   shell       any command, run as root (sudo -n /bin/sh -c ...) — the server only hands it out after a human approved
-              exactly this text; the agent re-checks its sha256 before running it
+              exactly this text; the agent re-checks its sha256 before running it. Off unless this host opts in with
+              DJIMIT_AGENT_ALLOW_SHELL=1; otherwise it is reported back as failed (shell_disabled_on_host)
 Stdlib only, Python >= 3.9 (the Mac mini). Configure with env or flags:
   DJIMIT_API (default http://100.86.47.122:3001/api)  DJIMIT_HOST  DJIMIT_HOST_TOKEN_FILE  DJIMIT_INTERVAL (30)
   DJIMIT_COMMAND_TIMEOUT (300)  DJIMIT_AGENT_ROOT (1: run shell commands via sudo -n; 0: as this user)
+  DJIMIT_AGENT_ALLOW_SHELL (unset: shell commands refused; exactly 1: allowed)
 Root needs a sudoers entry for the agent user, e.g. /etc/sudoers.d/djimit-host-agent:
   djimit ALL=(root) NOPASSWD: /bin/sh
 """
@@ -26,7 +28,7 @@ import sys
 import time
 import urllib.request
 
-VERSION = "2"
+VERSION = "3"
 MAX_OUTPUT = 64 * 1024
 
 DIAGNOSTICS = {
@@ -149,6 +151,11 @@ def run(argv, timeout):
         return 127, str(e)
 
 
+def shell_allowed():
+    """Shell is opt-in per host: only DJIMIT_AGENT_ALLOW_SHELL=1 (exactly) enables it."""
+    return os.environ.get("DJIMIT_AGENT_ALLOW_SHELL") == "1"
+
+
 def execute(cmd, root=True, timeout=300, platform_name=None):
     """Returns (exit_code, output) for one command dict from the server."""
     table = DIAGNOSTICS.get(platform_name or ("darwin" if sys.platform == "darwin" else "linux"), DIAGNOSTICS["linux"])
@@ -161,6 +168,8 @@ def execute(cmd, root=True, timeout=300, platform_name=None):
         return run(table[name], 60)
     if cmd.get("kind") != "shell":
         return 2, "unknown command kind"
+    if not shell_allowed():
+        return 4, "refused: shell_disabled_on_host (set DJIMIT_AGENT_ALLOW_SHELL=1 on this host to opt in)"
     text = cmd.get("command") or ""
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != cmd.get("sha256"):
         return 3, "refused: command text does not match its approved sha256"
@@ -211,10 +220,22 @@ def selfcheck():
     assert execute({"kind": "diagnostic", "command": "ping"})[1].startswith("pong from ")
     assert execute({"kind": "diagnostic", "command": "rm -rf /"})[0] == 2
     text = "echo hello"
-    assert execute({"kind": "shell", "command": text, "sha256": "0" * 64}, root=False)[0] == 3
-    code, out = execute({"kind": "shell", "command": text, "sha256": hashlib.sha256(text.encode()).hexdigest()}, root=False)
-    assert code == 0 and out.strip() == "hello", (code, out)
-    assert execute({"kind": "shell", "command": "sleep 5", "sha256": hashlib.sha256(b"sleep 5").hexdigest()}, root=False, timeout=1)[0] == 124
+    old_allow = os.environ.pop("DJIMIT_AGENT_ALLOW_SHELL", None)
+    try:
+        for value in (None, "0", "true"):
+            if value is not None:
+                os.environ["DJIMIT_AGENT_ALLOW_SHELL"] = value
+            code, out = execute({"kind": "shell", "command": text, "sha256": hashlib.sha256(text.encode()).hexdigest()}, root=False)
+            assert code == 4 and "shell_disabled_on_host" in out, (value, code, out)
+        os.environ["DJIMIT_AGENT_ALLOW_SHELL"] = "1"
+        assert execute({"kind": "shell", "command": text, "sha256": "0" * 64}, root=False)[0] == 3
+        code, out = execute({"kind": "shell", "command": text, "sha256": hashlib.sha256(text.encode()).hexdigest()}, root=False)
+        assert code == 0 and out.strip() == "hello", (code, out)
+        assert execute({"kind": "shell", "command": "sleep 5", "sha256": hashlib.sha256(b"sleep 5").hexdigest()}, root=False, timeout=1)[0] == 124
+    finally:
+        os.environ.pop("DJIMIT_AGENT_ALLOW_SHELL", None)
+        if old_allow is not None:
+            os.environ["DJIMIT_AGENT_ALLOW_SHELL"] = old_allow
     assert "os" in host_info()
     assert isinstance(host_info()["components"], list)
     assert COMPONENT_PATTERN.search("hermes-gateway") and not COMPONENT_PATTERN.search("cups")

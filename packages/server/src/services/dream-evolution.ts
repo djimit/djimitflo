@@ -137,11 +137,27 @@ const MAX_LINE_CHARS = 200;
 // evaluator that judges the genome itself (holdout, oracle, verdict, promotion, the genome/gym code; Codex P0 11-10)
 const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|commit\w*|stash\w*|reset|revert\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*|holdouts?|evaluat\w*|promot\w*|fitness|oracles?|verdicts?|genomes?|dream-evolution|genome-\w+|gym-worker)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
 
+// FR-001 / A9 (re-20261029): matched on the line tokenised on [^a-z0-9]+, so '_' and punctuation no longer hide a word
+// (maker_gate_failed, it.todo, @ts-ignore). Test-weakening vocabulary: runner modifiers, suppressions, runner/mutation
+// config, env files, blanket mocks, trivial or weakened assertions, and removing/renaming tests, specs or assertions.
+// Bare 'only' stays allowed ("Edit only the named file", the playbook's "test-only"); the '.only' call form is not.
+const FILLER = '(?:the|a|an|any|all|every|each|failing|failed|flaky|slow|unstable|broken|red|out|that|those|these|its|their|old|existing|unit|named)';
+const TEST_WEAKENING = new RegExp([
+  '\\b(todos?|xit|xdescribe|xtest|fdescribe|bypass\\w*|stryker|env|dotenv|bak|tobedefined|tobetruthy|tobefalsy|tobeundefined)\\b',
+  '\\bts (ignore|nocheck|expect error)\\b', '\\beslint disable', '\\b(vitest|jest|vite) config\\b', '\\bexpect (true|1)\\b', '\\btobe true\\b',
+  // FORBIDDEN's hyphen/dot names as the tokeniser spells them (gym_worker, dream_evolution, package.json)
+  '\\b(gym worker|dream evolution|no verify|package json)\\b', '\\bci (false|0)\\b', '\\bmock\\w* (the )?(everything|all|every|modules?|dependencies|imports)\\b',
+  `\\b(delet|remov|renam|drop|comment|weaken|loosen|relax|replac|exclud|edit|chang|modif|rewrit)\\w* (${FILLER} )*(tests?|specs?|assertions?|asserts?|expects?|expectations?|suites?)\\b`,
+].join('|'));
+const RAW_TEST_WEAKENING = /\.\s*only\b/i;
+const tokens = (l: string): string => ` ${l.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+
 /** Lines a mutant may add: strings, ≤ 5, ≤ 200 chars, none touching what the guard forbids. null when anything is off. */
 export function guardLines(lines: unknown): string[] | null {
   if (!Array.isArray(lines) || !lines.length || lines.length > MAX_LINES) return null;
   const clean = lines.map((l) => (typeof l === 'string' ? l.replace(/\s+/g, ' ').trim() : ''));
-  return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !FORBIDDEN.test(l)) ? clean : null;
+  const forbidden = (l: string) => FORBIDDEN.test(l) || RAW_TEST_WEAKENING.test(l) || FORBIDDEN.test(tokens(l)) || TEST_WEAKENING.test(tokens(l));
+  return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !forbidden(l)) ? clean : null;
 }
 
 export function dreamInputs(db: Database, now = Date.now()): { failures: string[]; knowledge: string[]; knowledgeRefs: string[] } {
