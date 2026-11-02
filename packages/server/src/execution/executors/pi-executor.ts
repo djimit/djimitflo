@@ -37,9 +37,9 @@ import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@
 import { buildPiArgs, type PiExecutorOptions } from './pi-shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { captureExecutorOutput } from '../executor-output';
 
@@ -141,7 +141,7 @@ export class PiExecutor implements TaskExecutor {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
 
-      const child = spawn(this.piPath, args, {
+      const child = spawnRuntime(this.piPath, args, {
         cwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],

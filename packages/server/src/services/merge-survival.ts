@@ -4,6 +4,8 @@ import { LOOP_PR_SETTLEMENT_STATES, type LoopPrSettlementState } from '@djimitfl
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { markRun } from './scheduler-registry';
 import { extraRepoBySlug, isExtraRepoPr, parsePrUrl, repoSkillPrefix } from './repo-registry';
+import { supersedingProposal } from './merge-superseded';
+import { onLoopPrPolled } from './capability-factory';
 
 /**
  * EV4 (plan Phase EV, 03-10): the strongest fitness signal is whether a loop change survives in the real repository.
@@ -32,7 +34,9 @@ const DOC = /(^|\/)docs?\/|\.(md|mdx|txt|rst|adoc)$/i;
 interface PrOutcome {
   state: 'open' | 'merged' | 'closed_unmerged'; merged_at?: string | null; survived?: boolean; retained?: number; settled_at?: string; checked_at: string;
   review_latency_h?: number; human_commits?: number; attribution?: Record<string, unknown>;
-  version?: 2; not_scored?: 'deletion_only' | 'docs_only' | 'stale_loop' | 'unknown_content'; unknown_files?: number;
+  version?: 2; not_scored?: 'deletion_only' | 'docs_only' | 'stale_loop' | 'unknown_content' | 'superseded_by_requeue'; unknown_files?: number;
+  /** not_scored superseded_by_requeue: the requeue successor (self_improvements.id) that replaced this PR (merge-superseded.ts) */
+  superseded_by?: string;
 }
 /** The poller's interval (startMergeSurvival) and the slack after which a missing poll result is an anomaly, not a wait. */
 export const POLL_INTERVAL_MS = 6 * 3_600_000;
@@ -48,7 +52,8 @@ const DAY_MS = 86_400_000;
  *                          + slack (reason not_polled_yet), or closed unmerged — a TERMINAL OPEN_BLOCKED (reason
  *                          closed_unmerged, terminal true, since = settled_at): it never entered the survival window, so it
  *                          is neither survived nor regressed and no survival rate counts it. Its fitness verdict (merge
- *                          skill outcome, success false) is unchanged.
+ *                          skill outcome, success false) is unchanged — unless the close was superseded by a requeue
+ *                          (not_scored superseded_by_requeue, merge-superseded.ts): then there is no verdict at all.
  *  MERGED_SURVIVAL_PENDING merged, survival not checked yet: now − merged_at < 14 d, or ≥ 14 d but the check is at most one
  *                          poll interval + slack overdue (since = merged_at).
  *  SETTLED_SURVIVED        merged, settled_at ≥ merged_at + 14 d, survived true (since = settled_at).
@@ -204,7 +209,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
   // B3 (17-10): a PR is identified by owner/repo + number from its full URL, never by the number alone (a number in another
   // repo used to be settled with the primary repo's PR of the same number).
   const get = async (slug: string, p: string, gone404 = false) => {
-    const res = await fetchImpl(`https://api.github.com/repos/${slug}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
+    const res = await fetchImpl(`https://api.github.com/repos/${slug}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15_000) });
     if (!res.ok && !(gone404 && res.status === 404)) fail(String(res.status));
     return res;
   };
@@ -232,7 +237,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
     const { slug, number } = ref;
     const res = await get(slug, `pulls/${number}`);
     if (!res.ok) { cycle.skipped++; continue; } // rate limit or outage: try again next tick
-    const pr = await res.json() as { state?: string; merged_at?: string | null; created_at?: string };
+    const pr = await res.json() as { state?: string; merged_at?: string | null; created_at?: string; merge_commit_sha?: string | null };
     checked++;
     const maker = db.prepare(`SELECT id, runtime, json_extract(metadata, '$.model') AS model, json_extract(metadata, '$.model_id') AS model_id,
       json_extract(metadata, '$.prompt_hash') AS prompt_hash, json_extract(metadata, '$.genome_id') AS genome_id FROM worker_leases
@@ -244,7 +249,10 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
     if (v2) outcome.version = 2;
     let success: boolean | null = null;
     if (outcome.state === 'closed_unmerged') {
-      if (v2 && run.close_reason === 'stale_loop') outcome.not_scored = 'stale_loop'; else success = false;
+      // 19-10: a close superseded by a verified / PR-opening requeue copy is bookkeeping, not a rejection (v1 and v2)
+      const successor = v2 && run.close_reason === 'stale_loop' ? null : supersedingProposal(db, run.id);
+      if (v2 && run.close_reason === 'stale_loop') outcome.not_scored = 'stale_loop';
+      else if (successor) { outcome.not_scored = 'superseded_by_requeue'; outcome.superseded_by = successor; } else success = false;
     }
     if (outcome.state === 'merged' && now.getTime() - Date.parse(String(pr.merged_at)) >= SURVIVAL_DAYS * 86_400_000) {
       // graded signal: commits a human added before merging (edits by the reviewer = the draft was not good enough as is)
@@ -289,6 +297,8 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
     }
     db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_outcome', json(?)) WHERE id = ?").run(JSON.stringify(outcome), run.id);
     cycle.updated++;
+    // capability factory (CAPABILITY_FACTORY_MODE=on): a merged factory run registers its capability once; a regressed survival deprecates it
+    if (outcome.state === 'merged') onLoopPrPolled(db, run.id, { url: run.url, mergeSha: pr.merge_commit_sha ?? null, merged: true, regressed: success === false }, env);
     const s = settlementState(run.created_at, outcome, now.getTime());
     if (s.state === 'PIPELINE_ANOMALY') { cycle.anomalous++; cycle.anomalies[s.reason] = (cycle.anomalies[s.reason] ?? 0) + 1; }
   }

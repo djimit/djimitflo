@@ -4,6 +4,7 @@ import { parseSpecies, type Species } from './evolve-selection';
 import { fitnessKeys, fitnessPosterior } from './fitness-view';
 import { speciesKey } from './runtime-bandit';
 import { LoopEventService } from './loop-event-service';
+import { notFallbackGoalSql } from './ollama-outage-fallback';
 
 /**
  * "Effort Paradox" (operator-approved 08-10). Two pieces, both default off:
@@ -124,10 +125,13 @@ export function recordEffortGym(db: Database, runId: string, species: string, co
         AND json_extract(metadata, '$.gym.canary') IS NULL`).get(commit) as { n: number; ok: number };
     const q = betaMean(hist.ok, hist.n);
     const [s] = parseSpecies(species, 1);
-    const tokens = s && cloudSpecies(s) ? Number((db.prepare("SELECT AVG(tokens_used) AS t FROM skill_outcomes WHERE domain = 'gym' AND skill_id = ? AND COALESCE(model, '') = ?")
-      .get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { t: number | null }).t) || 0 : 0;
+    // a local species burns no cloud tokens (0 by construction); a cloud species' mean leaves unreported counts out, and with
+    // none reported the cost is unknown: 0 in the option (no penalty), flagged in the decision context
+    const cloudMean = s && cloudSpecies(s) ? (db.prepare(`SELECT AVG(tokens_used) AS t FROM skill_outcomes WHERE domain = 'gym' AND skill_id = ? AND COALESCE(model, '') = ?`)
+      .get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { t: number | null }).t : 0;
+    const tokens = Number(cloudMean ?? 0);
     const options: EffortOption[] = [{ name: 'serve', p: 0, v: 1, voi: +(q * (1 - q)).toFixed(6), tokens: Math.round(tokens), kwh: 0 }, { name: 'skip', p: 0, v: 1, voi: 0, tokens: 0, kwh: 0 }];
-    const d = decide(db, env, rng, now, 'remote_gym_claim', 'serve', options, { species, commit, task_pass: { n: hist.n, ok: hist.ok, q: +q.toFixed(4) } });
+    const d = decide(db, env, rng, now, 'remote_gym_claim', 'serve', options, { species, commit, task_pass: { n: hist.n, ok: hist.ok, q: +q.toFixed(4) }, ...(cloudMean === null ? { tokens: 'unknown' } : {}) });
     new LoopEventService(db).recordEvent(runId, 'effort_decision', 'info', message(d), d);
   } catch { /* shadow: never affects the claim */ }
 }
@@ -196,7 +200,7 @@ export function effortX1Evidence(db: Database, since: string, env: NodeJS.Proces
         COALESCE(SUM(EXISTS (SELECT 1 FROM loop_runs r JOIN skill_outcomes o ON o.task_id = r.id WHERE r.goal_id = g.id
           AND o.evidence_refs_json LIKE '%"outcome_class:infra_failed"%')), 0) AS infra
       FROM goals g LEFT JOIN self_improvements s ON s.id = g.improvement_id
-      WHERE json_extract(g.metadata, '$.effort_arm') IN ('on', 'off') AND g.created_at >= ? GROUP BY 1`).all(since) as typeof rows;
+      WHERE json_extract(g.metadata, '$.effort_arm') IN ('on', 'off') AND g.created_at >= ? AND ${notFallbackGoalSql('g.id')} GROUP BY 1`).all(since) as typeof rows;
   } catch { /* missing tables */ }
   const arm = (name: string) => {
     const r = rows.find((x) => x.arm === name) ?? { goals: 0, verified: 0, regressed: 0, infra: 0 };

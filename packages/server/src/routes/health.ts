@@ -21,6 +21,8 @@ import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { provenanceDag } from '../services/provenance-dag';
 import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
+import { buildProvenance } from '../utils/build-provenance';
+import { fleetDrift } from '../utils/fleet-drift';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
 import { efficiencyWithCost } from '../services/cost-ledger';
@@ -28,7 +30,10 @@ import { shippedCodeView } from '../services/shipped-code-scan';
 import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 import { skillCardsView } from '../services/skill-distillation';
 import { evolutionFeedbackMode, latestEvolutionDigest } from '../services/evolution-feedback';
+import { advisoryExposureEvidence } from '../services/advisory-exposure';
 import { expertUnitDedupe } from '../services/expert-unit-dedupe';
+import { buildTrainingDataset, trainingDatasetMode, trainingDatasetSummary } from '../services/training-dataset';
+import { buildValueAllocation, latestValueAllocation, valueAllocatorMode } from '../services/value-allocator';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -36,37 +41,19 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
 
-  /**
-   * Build provenance from the image itself (build args), independent of the
-   * runtime environment. Runtime env can drift or be duplicated across files;
-   * this reflects what was actually baked into the artifact.
-   */
-  function buildProvenance() {
-    const runtimeCommit = process.env.DJIMITFLO_COMMIT_SHA || null;
-    const builtCommit = process.env.DJIMITFLO_BUILD_COMMIT && process.env.DJIMITFLO_BUILD_COMMIT !== 'unknown'
-      ? process.env.DJIMITFLO_BUILD_COMMIT
-      : null;
-    return {
-      commit: runtimeCommit,
-      built_commit: builtCommit,
-      build_source: process.env.DJIMITFLO_BUILD_SOURCE || null,
-      build_time: process.env.DJIMITFLO_BUILD_TIME || null,
-      instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
-      // A deployed artifact is only attributable when the running revision and the
-      // baked build revision agree.
-      commit_matches_build: !!(runtimeCommit && builtCommit && runtimeCommit === builtCommit),
-    };
-  }
-
   // GET /api/health — basic health check (public)
   router.get('/', (_req, res) => {
     res.json({
       status: 'healthy',
+      // Public, non-secret UI rollout only; never expose raw environment values.
+      ui: { navigation_discovery_mode: ['shadow', 'on'].includes(process.env.UX_NAVIGATION_DISCOVERY_MODE ?? '')
+        ? process.env.UX_NAVIGATION_DISCOVERY_MODE : 'off' },
       name: 'djimitflo',
       version: getAppVersion(),
       // Non-secret build identity makes public liveness checks attributable.
       commit: process.env.DJIMITFLO_COMMIT_SHA || null,
       build: buildProvenance(),
+      fleet_drift: fleetDrift(),
       timestamp: new Date().toISOString(),
     });
   });
@@ -210,6 +197,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(skillCardsView(db, process.env, Number(req.query.limit) || 20));
   });
 
+  // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory, affected list, pending ids, bump proposals (read-only)
+  router.get('/advisory-exposure', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(advisoryExposureEvidence(db));
+  });
+
   // K5: the newest stored evolution digest (EVOLUTION_FEEDBACK_MODE=shadow|on writes one per day; null before the first)
   router.get('/evolution-digest', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json({ mode: evolutionFeedbackMode(), digest: latestEvolutionDigest(db) });
@@ -218,6 +210,18 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)
   router.get('/evolution-evidence', requireAuth, requirePermission('manage:config'), (req, res) => {
     res.json(buildEvolutionEvidence(db, process.env, Date.now(), Number(req.query.days) || 30));
+  });
+
+  // TRAINING_DATASET_EXPORT=shadow: counts of the read-only maker fine-tune dataset (source × split × outcome, readiness); never a diff
+  router.get('/training-dataset', requireAuth, requirePermission('manage:config'), (_req, res) => {
+    if (trainingDatasetMode() !== 'shadow') { res.status(404).json({ error: 'disabled', flag: 'TRAINING_DATASET_EXPORT' }); return; }
+    res.json({ mode: 'shadow', ...trainingDatasetSummary(buildTrainingDataset(db)) });
+  });
+
+  // E4 (VALUE_ALLOCATOR_MODE=shadow): per consumer 7 d / 30 d resources, credited value, class and the allocation it WOULD propose (never applied)
+  router.get('/value-allocation', requireAuth, requirePermission('manage:config'), (_req, res) => {
+    if (valueAllocatorMode() !== 'shadow') { res.status(404).json({ error: 'disabled', flag: 'VALUE_ALLOCATOR_MODE' }); return; }
+    res.json({ ...buildValueAllocation(db), latest_judgment: latestValueAllocation(db) });
   });
 
   // E3: provenance DAG with edge evidence (read-only); ?days= limits to proposals of the window (default: all history)
@@ -236,9 +240,10 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(runtimeConfigView());
   });
 
-  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent)
+  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent),
+  // plus the DF-07 state ladder from durable business evidence in this db
   router.get('/services', requireAuth, requirePermission('read:evidence'), async (_req, res, next) => {
-    try { res.json({ services: await serviceMap() }); } catch (error) { next(error); }
+    try { res.json({ services: await serviceMap(process.env, fetch, Date.now(), db) }); } catch (error) { next(error); }
   });
 
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {

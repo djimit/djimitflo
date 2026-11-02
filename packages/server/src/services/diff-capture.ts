@@ -55,6 +55,10 @@ const CRITICAL_RISK_PATHS = [
   /credentials/i,
 ];
 
+/** A path classifyFileRisk rates high or critical (also used by the loop's changed-files risk, loop-service.ts). */
+export const isHighRiskPath = (filePath: string): boolean =>
+  CRITICAL_RISK_PATHS.some((p) => p.test(filePath)) || HIGH_RISK_PATHS.some((p) => p.test(filePath));
+
 export class DiffCaptureService {
   private evidenceService: EvidenceService;
 
