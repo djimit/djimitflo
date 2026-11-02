@@ -1,0 +1,3 @@
+Error loading config.toml: unknown variant `bogus`, expected one of `untrusted`, `on-failure`, `on-request`, `granular`, `never`
+in `approval_policy`
+

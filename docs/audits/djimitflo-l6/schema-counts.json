@@ -1,0 +1,5706 @@
+{
+  "captured_at": "2026-10-23T22:37:07.128Z",
+  "mode": "readonly + query_only",
+  "all_tables": [
+    "agent_archives",
+    "agent_eval_runs",
+    "agent_message_deliveries",
+    "agent_messages",
+    "agent_skills",
+    "agent_specializations",
+    "agent_subscriptions",
+    "agent_trace_spans",
+    "agents",
+    "agents_md_files",
+    "agents_md_issues",
+    "approval_policies",
+    "approvals",
+    "audit_anchors",
+    "audit_events",
+    "audit_logs",
+    "authority_events",
+    "board_handoff_claims",
+    "board_handoff_outbox",
+    "board_idempotency_keys",
+    "calibration_ratings",
+    "capability_tokens",
+    "central_memories",
+    "code_chunks",
+    "code_patches",
+    "cognitive_episodes",
+    "cognitive_meta_learning",
+    "cognitive_patterns",
+    "cognitive_strategies",
+    "committee_genomes",
+    "committee_jobs",
+    "commons_falsifier_runs",
+    "commons_proposal_reviews",
+    "compliance_reports",
+    "config",
+    "consensus_debates",
+    "consensus_proposals",
+    "consensus_votes",
+    "context_cache",
+    "council_aggregations",
+    "council_evaluations",
+    "council_models",
+    "council_outputs",
+    "council_reliability",
+    "council_sessions",
+    "dependency_lane_prs",
+    "dependency_lane_state",
+    "discovered_repositories",
+    "discovery_relevance_backlog",
+    "discussion_proposals",
+    "discussion_turns",
+    "discussion_votes",
+    "discussions",
+    "dream_ledger",
+    "dream_opportunities",
+    "dream_task_emissions",
+    "event_outbox",
+    "evolution_estimates",
+    "execution_events",
+    "execution_evidence",
+    "execution_plans",
+    "execution_summaries",
+    "experience_embeddings",
+    "expert_affiliations",
+    "expert_capabilities",
+    "expert_capability_taxonomy",
+    "expert_claim_relations",
+    "expert_claims",
+    "expert_evidence",
+    "expert_identities",
+    "expert_lifecycle_events",
+    "expert_source_snapshots",
+    "expert_swarm_history",
+    "expert_versions",
+    "explainer_audit_log",
+    "explainer_bundles",
+    "explainer_feedback",
+    "explainer_jobs",
+    "explainer_sections",
+    "explainer_tasks",
+    "external_events",
+    "federation_peers",
+    "file_changes",
+    "fleet_capability_sync",
+    "fleet_commands",
+    "fleet_event_keys",
+    "fleet_event_nonces",
+    "fleet_event_signatures",
+    "fleet_handoffs",
+    "fleet_hosts",
+    "fleet_nodes",
+    "fleet_work_distribution",
+    "genome_trial_results",
+    "github_pull_request_reviews",
+    "github_webhook_deliveries",
+    "goal_hypotheses",
+    "goals",
+    "governance_feedback",
+    "governance_feedback_loops",
+    "governance_improvement_proposals",
+    "gym_attempt_diffs",
+    "gym_evaluations",
+    "gym_holdout",
+    "gym_holdout_freezes",
+    "gym_mutant_holdout",
+    "gym_write_test_holdout",
+    "host_power_samples",
+    "human_review_queue",
+    "improvement_opportunities",
+    "instruction_profiles",
+    "judge_calibration",
+    "judge_verdicts",
+    "judgments",
+    "kb_pages",
+    "knowledge_adapter_cache",
+    "knowledge_claims",
+    "knowledge_gaps",
+    "knowledge_maintenance_runs",
+    "learning_cycles",
+    "llm_model_calls",
+    "llm_provider_metrics",
+    "local_shadow_jobs",
+    "loop_checkpoints",
+    "loop_events",
+    "loop_learning_closures",
+    "loop_runs",
+    "lure_events",
+    "maker_genomes",
+    "mcp_servers",
+    "mcp_tool_permissions",
+    "mcp_tools",
+    "memory_access_log",
+    "memory_candidates",
+    "memory_evolution_leases",
+    "memory_relations",
+    "messages",
+    "meta_active_loop_parameters",
+    "meta_task_history",
+    "meta_tuning_log",
+    "model_capabilities",
+    "model_execution_outcomes",
+    "model_routing_decisions",
+    "okf_knowledge_updates",
+    "openmythos_attestations",
+    "openmythos_case_results",
+    "openmythos_eval_runs",
+    "operator_digest_log",
+    "organizations",
+    "outcome_credits",
+    "outcome_learning_assessments",
+    "plugins",
+    "policy_violations",
+    "proactive_memories",
+    "proactive_memory_relations",
+    "prompt_intel_imports",
+    "prompt_patterns",
+    "proposal_clusters",
+    "proposal_embeddings",
+    "provider_configs",
+    "reconciliation_runs",
+    "red_team_reports",
+    "refactoring_proposals",
+    "reflection_candidates",
+    "reflections",
+    "refresh_tokens",
+    "registry_agents",
+    "remote_maker_jobs",
+    "repo_graph_snapshots",
+    "repositories",
+    "repository_health_findings",
+    "repository_indexes",
+    "repository_scan_artifacts",
+    "repository_scans",
+    "research_citations",
+    "research_claims",
+    "research_contradictions",
+    "research_reports",
+    "research_sources",
+    "risk_assessments",
+    "rsi_audit_log",
+    "runtime_contract_probes",
+    "runtime_governance_agents",
+    "runtime_governance_alerts",
+    "sandbox_policies",
+    "security_scans",
+    "segml_bridge_log",
+    "segml_campaign_targets",
+    "segml_compliance_log",
+    "segml_curriculum_state",
+    "segml_cycles",
+    "segml_fleet_memory",
+    "segml_generated_cases",
+    "segml_judge_rollback_log",
+    "segml_judge_rubrics",
+    "segml_predictions",
+    "segml_psychometry_log",
+    "segml_red_team_seeds",
+    "segml_runtime_targets",
+    "segml_violation_triggers",
+    "self_improvements",
+    "self_model_snapshots",
+    "self_modification_opportunities",
+    "self_modification_plans",
+    "self_modification_results",
+    "shipped_code_scans",
+    "skill_cards",
+    "skill_genomes",
+    "skill_outcomes",
+    "skill_patterns",
+    "social_join_invites",
+    "social_join_requests",
+    "social_lure_probes",
+    "social_lures",
+    "spawn_trees",
+    "specialist_panels",
+    "specialist_review_quarantine",
+    "specialist_reviews",
+    "strategy_nodes",
+    "sub_agent_scratch",
+    "sub_agent_spawns",
+    "sub_agent_tool_outputs",
+    "swarm_capabilities",
+    "swarm_claims",
+    "swarm_decisions",
+    "swarm_evidence_edges",
+    "swarm_hypotheses",
+    "swarm_learning",
+    "swarm_missions",
+    "swarm_runner_manifests",
+    "swarm_sessions",
+    "swarm_tasks",
+    "system_state",
+    "task_artifacts",
+    "task_repository_snapshots",
+    "tasks",
+    "telegram_identities",
+    "telegram_push_log",
+    "tg_attempts",
+    "tg_experiments",
+    "token_usage_log",
+    "tool_broker_capability_tokens",
+    "tool_broker_decisions",
+    "trajectory_steps",
+    "usage_counts",
+    "users",
+    "vector_feedback",
+    "vector_memories",
+    "work_items",
+    "worker_leases",
+    "worker_results",
+    "workflow_edges",
+    "workflow_nodes",
+    "workflows"
+  ],
+  "selected": [
+    {
+      "name": "agent_archives",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "archived_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "agent_eval_runs",
+      "n": 159,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "suite_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "target_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "target_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "scorecard_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "findings_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "agent_message_deliveries",
+      "n": 0,
+      "columns": [
+        {
+          "name": "message_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 2
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "delivery_lease_until",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "delivery_lease_token",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "agent_messages",
+      "n": 7610,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "from_agent",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "to_agent",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "priority",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "payload_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "timestamp",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "ttl",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "delivery_lease_until",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "delivery_lease_token",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "idempotency_key",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "agent_skills",
+      "n": 0,
+      "columns": [
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "skill_id",
+          "type": "TEXT",
+          "pk": 2
+        },
+        {
+          "name": "enabled",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "assigned_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "agent_specializations",
+      "n": 5,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "domain",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "sub_domain",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "n_runs",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "success_rate",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "last_activity",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "agent_subscriptions",
+      "n": 0,
+      "columns": [
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "topic",
+          "type": "TEXT",
+          "pk": 2
+        },
+        {
+          "name": "priority",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "subscribed_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "agent_trace_spans",
+      "n": 2820,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "trace_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "parent_span_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "loop_run_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "work_item_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "span_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "ended_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "work_items",
+          "from": "work_item_id",
+          "to": "id"
+        },
+        {
+          "table": "loop_runs",
+          "from": "loop_run_id",
+          "to": "id"
+        },
+        {
+          "table": "agent_trace_spans",
+          "from": "parent_span_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "agents",
+      "n": 32,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capabilities",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "instruction_profile_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "model",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "temperature",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "max_tokens",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "total_tasks",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "completed_tasks",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "failed_tasks",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "total_execution_time_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "total_token_usage",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "current_task_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "last_active_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "telegram_bot_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "telegram_bot_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "machine_ip",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "agent_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "host_machine_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "okf_concept_path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "last_heartbeat_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "retired_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "retirement_reason",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "organization_id",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "tasks",
+          "from": "current_task_id",
+          "to": "id"
+        },
+        {
+          "table": "instruction_profiles",
+          "from": "instruction_profile_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "agents_md_files",
+      "n": 13,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "repository_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "relative_path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "applies_to_path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "content_hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "size_bytes",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "discovered_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "repositories",
+          "from": "repository_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "agents_md_issues",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "file_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "severity",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "recommendation",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "agents_md_files",
+          "from": "file_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "audit_events",
+      "n": 24772,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "event_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "timestamp",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "execution_event_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "action",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "resource_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "resource_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "risk_level",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "before",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "after",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "ip_address",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "user_agent",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "outcome",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "previous_hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "chain_sequence",
+          "type": "INTEGER",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "execution_events",
+          "from": "execution_event_id",
+          "to": "id"
+        },
+        {
+          "table": "tasks",
+          "from": "task_id",
+          "to": "id"
+        },
+        {
+          "table": "agents",
+          "from": "agent_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "authority_events",
+      "n": 1270,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "api_version",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "event_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "correlation_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "causation_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "sequence",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "occurred_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "actor_subject",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "actor_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "actor_issuer",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "artifact_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "artifact_version",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "artifact_digest",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "previous_state",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "requested_state",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "policy_decision",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "payload_digest",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "payload_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_system",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "central_memories",
+      "n": 927,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "committee_genomes",
+      "n": 9,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "parent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "persona",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "knowledge",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "lines_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "origin",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "council_models",
+      "n": 10,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "provider",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "model_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capabilities",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reasoning_depth",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "cost_per_1m_tokens",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "privacy_class",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "independence_score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "avg_governance_score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "total_sessions",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "total_tokens",
+          "type": "",
+          "pk": 0
+        },
+        {
+          "name": "avg_latency_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "event_outbox",
+      "n": 2716,
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "event_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "aggregate_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "correlation_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "payload_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "attempts",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "last_error",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "published_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "execution_events",
+      "n": 48001,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "task_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "event_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "timestamp",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "message",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "level",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tool_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tool_input",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tool_output",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tool_error",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "approval_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "artifact_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "task_artifacts",
+          "from": "artifact_id",
+          "to": "id"
+        },
+        {
+          "table": "approvals",
+          "from": "approval_id",
+          "to": "id"
+        },
+        {
+          "table": "tasks",
+          "from": "task_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_affiliations",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "expert_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "organization",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "valid_from",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "valid_to",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "retrieved_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_identities",
+          "from": "expert_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_capabilities",
+      "n": 5247,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "expert_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capability_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "derived_by",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_capability_taxonomy",
+          "from": "capability_id",
+          "to": "id"
+        },
+        {
+          "table": "expert_identities",
+          "from": "expert_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_capability_taxonomy",
+      "n": 29,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "label",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "parent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "aliases_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_capability_taxonomy",
+          "from": "parent_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_claim_relations",
+      "n": 1,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "from_claim_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "to_claim_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "relation",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "rationale",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "resolved_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "resolved_by",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_claims",
+          "from": "to_claim_id",
+          "to": "id"
+        },
+        {
+          "table": "expert_claims",
+          "from": "from_claim_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_claims",
+      "n": 2265,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "expert_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "subject",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "relation",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "object",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "conditions",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "scope",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "polarity",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "temporal_scope",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "source_independence",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "support_status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "criticality",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_identities",
+          "from": "expert_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_evidence",
+      "n": 15197,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "expert_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tier",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "url",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_family",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "canonical_origin",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "retrieved_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "content_hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "lifecycle",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_identities",
+          "from": "expert_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_identities",
+      "n": 4568,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "canonical_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "aliases_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "lifecycle_state",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "identity_confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "provenance_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "expert_lifecycle_events",
+      "n": 18057,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "expert_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "from_state",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "to_state",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "actor",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_identities",
+          "from": "expert_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "expert_source_snapshots",
+      "n": 245,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "source",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "url",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "content_hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "entry_count",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "retrieved_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "expert_swarm_history",
+      "n": 8,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "result_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "expert_versions",
+      "n": 25007,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "expert_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "snapshot_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "change_summary",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "expert_identities",
+          "from": "expert_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "external_events",
+      "n": 12550,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "event_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "correlation_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "occurred_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "payload",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "ingested_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "causation_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "aggregate_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "aggregate_version",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "dedupe_key",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "fleet_event_keys",
+      "n": 3,
+      "columns": [
+        {
+          "name": "host",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "key_id",
+          "type": "TEXT",
+          "pk": 2
+        },
+        {
+          "name": "alg",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "public_key",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "revoked_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "fleet_event_nonces",
+      "n": 12,
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "host",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "seen_at",
+          "type": "INTEGER",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "fleet_event_signatures",
+      "n": 18,
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "host",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "key_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "verdict",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "mode",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "genome_trial_results",
+      "n": 8,
+      "columns": [
+        {
+          "name": "trial_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "parent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tier_set",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "deciding_n",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "f_parent_failures",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "b",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "c",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "p",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "mined_b",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "mined_c",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "power_q8_l05",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "recorded_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "epoch",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "e_value",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "n_discordant",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "e_rule_decision",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "graded_mean_parent",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "graded_mean_mutant",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "graded_p",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "graded_decision",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "graded_refs",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "gate_policy",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "goal_hypotheses",
+      "n": 3,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "statement",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "evidence_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reasoning",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "parent_goal_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "goals",
+      "n": 1599,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "objective",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "constraints_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "acceptance_criteria_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "risk_class",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "budget_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "owner_user_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "improvement_id",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "gym_attempt_diffs",
+      "n": 166,
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "task_key",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "species",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "sha256",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "diff",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "redacted",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "truncated",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "gym_evaluations",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "skill_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "metrics_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "eval_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "gym_holdout",
+      "n": 60,
+      "columns": [
+        {
+          "name": "commit_sha",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "epoch",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "gym_holdout_freezes",
+      "n": 1,
+      "columns": [
+        {
+          "name": "epoch",
+          "type": "INTEGER",
+          "pk": 1
+        },
+        {
+          "name": "manifest_sha256",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "frozen_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "origin_sha",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "holdout_size",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "counts_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "operator",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "manifest_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "gym_mutant_holdout",
+      "n": 60,
+      "columns": [
+        {
+          "name": "key",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "task_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "epoch",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "gym_write_test_holdout",
+      "n": 5,
+      "columns": [
+        {
+          "name": "key",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "task_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "epoch",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "judgments",
+      "n": 20155,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "judgment",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "subject_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "subject_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "state_hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "mode",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "decision",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "answers_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "error",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "input_tokens",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "output_tokens",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "latency_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "model",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "provenance_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "knowledge_adapter_cache",
+      "n": 6,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "source",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "query_hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "result_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "knowledge_claims",
+      "n": 5,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "topic",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "claim",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "evidence_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "votes_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "knowledge_gaps",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "domain",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "priority",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "knowledge_maintenance_runs",
+      "n": 71,
+      "columns": [
+        {
+          "name": "job",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "period",
+          "type": "TEXT",
+          "pk": 2
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "findings",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "detail_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "ran_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "llm_model_calls",
+      "n": 5081,
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "pk": 1
+        },
+        {
+          "name": "consumer",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "model",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "ok",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "latency_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "out_chars",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "shadow",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "agree",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "provider",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tokens_in",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "tokens_out",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "task_kind",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "attempts",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "purpose",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "experiment_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "cost_basis",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "list_price_cost",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "marginal_cost",
+          "type": "REAL",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "loop_events",
+      "n": 10254,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "loop_run_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "event_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "level",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "message",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "loop_runs",
+          "from": "loop_run_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "loop_runs",
+      "n": 2943,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "goal_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "loop_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "mode",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "repository_path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "state_file",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "findings_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "plan_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "gates_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "next_actions_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "organization_id",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "goals",
+          "from": "goal_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "lure_events",
+      "n": 116,
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "pk": 1
+        },
+        {
+          "name": "lure_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "transition",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "maker_genomes",
+      "n": 19,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "parent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "gene",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "lines_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "origin",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "note",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_clusters",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "knowledge_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_sources_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "memory_access_log",
+      "n": 964,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "candidate_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "accessed_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "memory_candidates",
+          "from": "candidate_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "memory_candidates",
+      "n": 238,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "memory_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "promotion_status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "human_required",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "sensitivity",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "store",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "content_hash",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "memory_evolution_leases",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "loop_run_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "memory_candidate_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "memory_relations",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "from_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "to_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "relation_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "strength",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "central_memories",
+          "from": "to_id",
+          "to": "id"
+        },
+        {
+          "table": "central_memories",
+          "from": "from_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "meta_tuning_log",
+      "n": 911,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "goal_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tuning_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "recommended_value",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "applied",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "previous_value",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "applied_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "model_capabilities",
+      "n": 14,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "model_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "model_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "provider",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "cost_per_mtok",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "avg_latency_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capabilities_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "model_execution_outcomes",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "model_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "task_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "success",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "latency_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "cost_dollars",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "model_routing_decisions",
+      "n": 2,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "task_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "selected_model",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "alternatives_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "cascade_level",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "max_escalations",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "models_attempted",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "okf_knowledge_updates",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "topic",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "action",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "concept_path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "outcome_credits",
+      "n": 569,
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "pk": 2
+        },
+        {
+          "name": "ref",
+          "type": "TEXT",
+          "pk": 3
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "outcome_learning_assessments",
+      "n": 71,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "candidate_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capability_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metric",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "direction",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "observation_window",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "signal_status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "replications",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "mean_value",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "baseline_value",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "confidence_low",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "confidence_high",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "causal_support",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "event_ids_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "result_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "work_item_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "work_items",
+          "from": "work_item_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "proactive_memories",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "relevance_score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "usage_count",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "last_accessed_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "proactive_memory_relations",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "source_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "target_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "relation_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "strength",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "proactive_memories",
+          "from": "target_id",
+          "to": "id"
+        },
+        {
+          "table": "proactive_memories",
+          "from": "source_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "registry_agents",
+      "n": 5,
+      "columns": [
+        {
+          "name": "name",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "host",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "framework",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capabilities_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "api_endpoint",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "raw_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "synced_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "runtime_governance_agents",
+      "n": 0,
+      "columns": [
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "certified_score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "category_scores_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "certified_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "circuit_breaker_threshold",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "quarantine_threshold",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "violation_count",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "circuit_breaker_tripped",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "quarantined",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "segml_fleet_memory",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "category",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "scope",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_agent",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "successes",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "failures",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "access_count",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "last_accessed_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "self_model_snapshots",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "model_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "calibration_error",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "known_unknowns_count",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "skill_cards",
+      "n": 106,
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "lane",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "card_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "content_sha256",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "skill_genomes",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "skill_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "generation",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "parents_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "traits_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "fitness",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "mutations_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "skill_outcomes",
+      "n": 1393,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "skill_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "success",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "tokens_used",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "duration_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "domain",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "skill_version",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "skill_content_hash",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "model",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "skill_patterns",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "steps_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "domains_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "success_rate",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "sub_agent_scratch",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "key",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "value",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "sub_agent_spawns",
+      "n": 52,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "spawn_tree_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "parent_lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "child_lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "requested_by_lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "depth",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "requested_role",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "prompt_digest",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reject_reason",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "token_budget_grant",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "wall_budget_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "worker_leases",
+          "from": "requested_by_lease_id",
+          "to": "id"
+        },
+        {
+          "table": "worker_leases",
+          "from": "child_lease_id",
+          "to": "id"
+        },
+        {
+          "table": "worker_leases",
+          "from": "parent_lease_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "sub_agent_tool_outputs",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "tool_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "original_size",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "file_path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "summary",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "offloaded_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "swarm_capabilities",
+      "n": 511,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "owner",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "risk_ceiling",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "input_schema_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "output_schema_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "allowed_actions_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "forbidden_actions_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "required_evidence_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "eval_score",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "eval_threshold",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "cost_model_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "removal_strategy",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "latest_validation_report",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "swarm_claims",
+      "n": 400,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "claim",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "claim_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "subject_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "predicate",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "object",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "scope",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "pk": 0
+        },
+        {
+          "name": "valid_until",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "supports_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "contradicts_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "verified_by_gate",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "invalidated_by",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_from",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "swarm_claims",
+          "from": "invalidated_by",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "swarm_decisions",
+      "n": 11,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "mission_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "decision_type",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "decision",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "actor",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "gate_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "blocked_reasons_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "swarm_tasks",
+          "from": "task_id",
+          "to": "id"
+        },
+        {
+          "table": "swarm_missions",
+          "from": "mission_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "swarm_evidence_edges",
+      "n": 13823,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "from_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "to_ref",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "relation",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "swarm_hypotheses",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "question",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_plan_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "falsification_signal",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "stop_condition",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "owner_capability_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "projection_state",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "panel_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "specialist_panels",
+          "from": "panel_id",
+          "to": "id"
+        },
+        {
+          "table": "swarm_capabilities",
+          "from": "owner_capability_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "swarm_learning",
+      "n": 2,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "category",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_task_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "source_discussion_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "lesson_learned",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "action_taken",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "effectiveness",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "times_applied",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "discussions",
+          "from": "source_discussion_id",
+          "to": "id"
+        },
+        {
+          "table": "tasks",
+          "from": "source_task_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "swarm_missions",
+      "n": 211,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "goal_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "risk_class",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "panel_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "goals",
+          "from": "goal_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "swarm_runner_manifests",
+      "n": 3021,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "decision_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "loop_run_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "action",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "policy_version",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "runtime_contract_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capacity_snapshot_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "budget_snapshot_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "gate_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "blocked_reasons_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "swarm_sessions",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "goal",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "subtasks_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "agent_pool_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "swarm_tasks",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "mission_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "assigned_lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capability_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "evidence_refs_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "swarm_capabilities",
+          "from": "capability_id",
+          "to": "id"
+        },
+        {
+          "table": "worker_leases_old",
+          "from": "assigned_lease_id",
+          "to": "id"
+        },
+        {
+          "table": "swarm_missions",
+          "from": "mission_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "tg_attempts",
+      "n": 80,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "experiment_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "task_key",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "arm",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "seq",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "retries",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "result_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "history_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "first_claimed_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "tg_experiments",
+      "n": 1,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "frozen_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "manifest_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "analysis_sha256",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "vector_memories",
+      "n": 0,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "embedding_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "ttl",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "access_count",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "last_accessed",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "embedding_provider",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "embedding_dim",
+          "type": "INTEGER",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "worker_leases",
+      "n": 4324,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "loop_run_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "finding_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "worktree_path",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "branch_name",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "budget_json",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "metadata",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "parent_lease_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "spawn_tree_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "depth",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "spawned_by_agent_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "capability_id",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "table": "loop_runs",
+          "from": "loop_run_id",
+          "to": "id"
+        }
+      ]
+    },
+    {
+      "name": "worker_results",
+      "n": 76985,
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "pk": 1
+        },
+        {
+          "name": "task_id",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "duration_ms",
+          "type": "INTEGER",
+          "pk": 0
+        },
+        {
+          "name": "output",
+          "type": "TEXT",
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "pk": 0
+        }
+      ],
+      "foreign_keys": []
+    }
+  ]
+}

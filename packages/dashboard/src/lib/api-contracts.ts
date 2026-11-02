@@ -1,5 +1,5 @@
 import type { ContractKeys } from '@djimitflo/shared';
-import type { DraftPrs, EvolutionEvidence, OperatorCockpit, OperatorDigest, RuntimeHealthRow } from './api';
+import type { DraftPrs, EfficiencyView, EvolutionEvidence, OperatorCockpit, OperatorDigest, RuntimeHealthRow } from './api';
 
 /**
  * UX-2b: compile-time check that the dashboard's response types name exactly the keys the server returns
@@ -17,4 +17,5 @@ export type OperatorApiContractChecks = [
   Assert<Same<keyof OperatorDigest, ContractKeys<'digest'>>>,
   Assert<Same<keyof DraftPrs, ContractKeys<'draftPrs'>>>,
   Assert<Same<keyof DraftPrs['rows'][number], ContractKeys<'draftPrRow'>>>,
+  Assert<Same<keyof EfficiencyView, ContractKeys<'efficiency'>>>,
 ];

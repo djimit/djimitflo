@@ -2,55 +2,63 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { NeedsYou, OperatorCockpitPage } from './OperatorCockpitPage';
+import { CommandStrip, EfficiencySection, EvolutionFunnel, NeedsYou, OperatorCockpitPage, overallHealth, SubtractionSection, type CockpitView } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
-  { names: ['event bus'], endpoint: 'http://100.86.47.122:8083', status: 'up', http: 404, ms: 12, error: null },
-  { names: ['LiteLLM'], endpoint: 'http://192.168.1.28:4000', status: 'down', http: null, ms: null, error: 'timeout' },
+  { names: ['event bus'], endpoint: 'http://100.86.47.122:8083', status: 'reachable', http: 404, ms: 12, error: null, state: 'CONFIGURED',
+    state_evidence: 'probe HTTP 404; last business success 2026-09-28T19:00:00.000Z (event_outbox)', last_success_at: '2026-09-28T19:00:00.000Z', last_failure_at: null, evidence_source: 'event_outbox' },
+  { names: ['LiteLLM'], endpoint: 'http://192.168.1.28:4000', status: 'down', http: null, ms: null, error: 'timeout', state: 'FAILED',
+    state_evidence: 'probe failed (timeout); no business operation in 7 d (llm_model_calls)', last_success_at: null, last_failure_at: null, evidence_source: 'llm_model_calls' },
+  // a row from an older server carries no state: the reader says UNKNOWN, never a transport-derived health
+  { names: ['UAMS'], endpoint: 'http://u:8000', status: 'up', http: 200, ms: 3, error: null } as never,
 ] }); });
 
 it('shows breached guardrails, stalls and gym species from the cockpit endpoint', async () => {
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue({
     at: '2026-09-28T20:00:00Z', build: { commit: 'f9f481ad3eb5', build_time: null },
     scorecard: { verified_7d: 11, regressed_7d: 5 },
-    guardrails: [{ name: 'regressions', ok: false, value: 5, limit: '<= verified/5 (2.2)' }],
+    guardrails: [{ name: 'regressions', ok: false, value: 5, limit: '<= verified/5 (2.2)', split: { maker: 2, reviewer: 3, environment: 0 } }],
     stalls: [{ subsystem: 'gym:atomic@llama-router', since: null, detail: 'no outcome for 9 h' }],
     gym: [{ species: 'atomic', outcomes: 27, successes: 24, success_pct: 89, avg_seconds: 588, avg_tokens: 0, last: '2026-09-28T08:53:00Z' }],
     remote_workers: [], maker_usage_7d: [], judgments_7d: [],
     deploys: [{ at: '2026-09-28T18:43:09Z', event: 'verdict_ok', sha: 'f9f481ad3eb5', detail: '' }],
   });
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('breached · limit <= verified/5 (2.2)')).toBeTruthy();
-  expect(screen.getByText('gym:atomic@llama-router')).toBeTruthy();
+  expect(screen.getByText('maker 2 · reviewer 3 · environment 0')).toBeTruthy(); // funnel phase 3: whose regressions
+  expect(screen.getAllByText('gym:atomic@llama-router').length).toBeGreaterThan(0); // command strip + stalls section
+  expect(screen.queryByText(/since never/)).toBeNull(); // DF-05: a stall without a start time says nothing about elapsed time
   expect(screen.getByText('89%')).toBeTruthy();
   expect(screen.getByText('No remote host has claimed work.')).toBeTruthy();
   expect(screen.getByText('verdict ok')).toBeTruthy();
-  expect(await screen.findByText('down (timeout)')).toBeTruthy();
+  expect(await screen.findByText('probe failed (timeout); no business operation in 7 d (llm_model_calls)')).toBeTruthy();
+  expect(screen.getByText('— (timeout)')).toBeTruthy();
 });
 
 it('UX-2: shows real-maker outcomes per strategy genome with n, and an honest empty state', async () => {
   const base = { at: '2026-10-04T20:00:00Z', build: { commit: null, build_time: null }, scorecard: {}, guardrails: [], stalls: [], gym: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [] };
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValueOnce({ ...base, genomes: [{ genome: 'g-abc123', skill_id: 'loop-maker:test-gap:opencode', outcomes: 12, wins: 7, win_pct: 58 }] });
-  const { unmount } = render(<OperatorCockpitPage />);
+  const { unmount } = render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('g-abc123')).toBeTruthy();
   expect(screen.getByText('58%')).toBeTruthy(); expect(screen.getByText('12')).toBeTruthy();
   unmount();
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValueOnce(base);
-  render(<OperatorCockpitPage />);
-  expect(await screen.findByText('No real-maker outcome carries a genome yet.')).toBeTruthy();
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
+  expect(await screen.findByText('No production-maker outcome carries a genome yet.')).toBeTruthy();
 });
 
 it('shows the error when the endpoint fails', async () => {
   vi.spyOn(api, 'getOperatorCockpit').mockRejectedValue(new Error('Access denied'));
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect((await screen.findByRole('alert')).textContent).toBe('Access denied');
 });
 
 it('W3: shows what needs the operator with links into /decisions, and a calm line when nothing does', () => {
   const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 2, requeue: 0, labels: 22, memory_review: 1 }} /></MemoryRouter>);
-  expect(html).toContain('Needs you (25)');
+  expect(html).toContain('Needs you (3)'); // the 22 labels are optional labelling, not decisions
   expect(html).toContain('href="/decisions#approvals"');
+  expect(html).toContain('Optional labelling (22)');
   expect(html).toContain('22 pre-screen labels');
   expect(html).not.toContain('requeue candidates');
   expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Nothing needs you right now');
@@ -59,7 +67,7 @@ it('W3: shows what needs the operator with links into /decisions, and a calm lin
 it('UX-6: shows every blocking category with a deep link; /decisions links point at ids that exist on the Decisions page', async () => {
   const n = { approvals: 2, requeue: 1, labels: 0, memory_review: 1, proposals: 3, draft_prs: 4, stalls: 1, approvals_expiring: 1, join_requests: 1, shell_requests: 2 };
   const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
-  expect(html).toContain('Needs you (11)'); // 2+1+1+3+1+1+2 — expiring and unsettled PRs are not double-counted
+  expect(html).toContain('Needs you (10)'); // 2+1+1+3+1+2 — expiring and unsettled PRs are not double-counted; a stall is system health
   for (const t of ['3 proposals awaiting approval', '4 loop PRs unsettled', '1 silent stalls', '1 Commons join requests', '2 fleet shell requests', '1 approvals expiring within 1 h']) expect(html).toContain(t);
   const anchors = [...html.matchAll(/href="\/decisions#([a-z-]+)"/g)].map((m) => m[1]);
   expect(new Set(anchors)).toEqual(new Set(['approvals', 'requeue', 'memory', 'draft-prs']));
@@ -81,6 +89,201 @@ it('UX-8: the cockpit shows how many schedulers are armed', async () => {
     at: '2026-10-06T12:00:00Z', build: { commit: null, build_time: null }, scorecard: {}, guardrails: [], stalls: [], gym: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [],
     schedulers: { armed: 9, off: 5 },
   });
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('Schedulers: 9 armed, 5 off')).toBeTruthy();
+});
+
+it('honest cockpit: tokens per verified change, stale gym species, gym vs production genomes, a 404 is not "up"', async () => {
+  vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue({
+    at: '2026-10-08T12:00:00Z', build: { commit: null, build_time: null },
+    scorecard: { tokens_per_verified_change_7d: 2_415_385 }, guardrails: [], stalls: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [],
+    gym: [
+      { species: 'atomic@llama-router', outcomes: 3, successes: 3, success_pct: 100, avg_seconds: 60, avg_tokens: 0, last: '2026-10-08T10:00:00Z', benched: false, stale: false },
+      { species: 'pi@qwen', outcomes: 40, successes: 20, success_pct: 50, avg_seconds: 60, avg_tokens: 0, last: '2026-10-01T10:00:00Z', benched: false, stale: true },
+    ],
+    genomes: [
+      { genome: 'g-prod', skill_id: 'loop-maker:test-gap:opencode', scope: 'production', outcomes: 4, wins: 1, win_pct: 25 },
+      { genome: 'g-gym', skill_id: 'loop-maker:gym:atomic', scope: 'gym', outcomes: 30, wins: 27, win_pct: 90 },
+    ],
+  });
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
+  expect(await screen.findByText('Tokens per verified change (7 d, maker + reviewers)')).toBeTruthy();
+  expect(screen.queryByText('Tokens per outcome (7 d)')).toBeNull();
+  expect(screen.getByText('stale')).toBeTruthy();
+  expect(screen.getByText('active')).toBeTruthy();
+  expect(screen.queryByText('Strategy genomes on real makers (30 d)')).toBeNull();
+  const production = screen.getByRole('table', { name: 'Production-maker outcomes per strategy genome' });
+  const gym = screen.getByRole('table', { name: 'Gym-maker outcomes per strategy genome' });
+  expect(production.textContent).toContain('g-prod'); expect(production.textContent).not.toContain('g-gym');
+  expect(gym.textContent).toContain('g-gym'); expect(gym.textContent).not.toContain('g-prod');
+  // DF-07: the service map shows the state ladder with its evidence, never transport reachability as health
+  const servicesTable = await screen.findByRole('table', { name: 'Service endpoints and their integration state' });
+  expect(servicesTable.textContent).toContain('CONFIGURED');
+  expect(servicesTable.textContent).toContain('probe HTTP 404; last business success 2026-09-28T19:00:00.000Z (event_outbox)');
+  expect(servicesTable.textContent).toContain('FAILED');
+  expect(servicesTable.textContent).toContain('UNKNOWN');
+  expect(servicesTable.textContent).not.toContain('HEALTHY');
+  expect(servicesTable.textContent).not.toContain('reachable');
+  expect(screen.queryByText('up')).toBeNull();
+});
+
+it('E3: the Efficiency section shows tokens, GPU time, measured vs not-measured energy, value with intervals and the north star', async () => {
+  const consumer = { local_tokens: 0, gpu_seconds: 0, jobs: 0, wh: null, energy: 'not_measured' as const, energy_coverage: null, verified: null, attempts: null, lanes: null, per_m_tokens: null, per_kwh: null };
+  vi.spyOn(api, 'getEfficiency').mockResolvedValue({
+    at: '2026-10-08T12:00:00Z', window_days: 7, ledger_enabled: true,
+    consumers: [
+      { ...consumer, consumer: 'maker:opencode@glm-5', cloud_tokens: 39_300_000, verified: 26, attempts: 60, lanes: { 'test-gap': 20, exports: 6 },
+        per_m_tokens: { value: 0.66, low: 0.48, high: 0.86, n: 60 } },
+      { ...consumer, consumer: 'gym:atomic@llama-router', cloud_tokens: 0, gpu_seconds: 55_440, jobs: 115, wh: 4_620, energy: 'measured', energy_coverage: 0.97 },
+      { ...consumer, consumer: 'maker:remote@ws/atomic@llama-router', cloud_tokens: 0, local_tokens: 400_000, gpu_seconds: 3_600, jobs: 3, wh: 120, energy: 'partial', energy_coverage: 0.5, verified: 2, attempts: 3,
+        per_m_tokens: null },
+      { ...consumer, consumer: 'committee', cloud_tokens: 0, gpu_seconds: 4_680, jobs: 26 },
+    ],
+    ledger: [],
+    hosts: [{ host: 'workstation', samples: 20_000, last_sample: '2026-10-08T11:59:30Z', avg_watts: 180.2, gpu_kwh: 6.42, covered_h: 166.5 }],
+    north_star: { weeks: [
+      { week_start: '2026-10-01', verified: 26, cloud_m_tokens: 62.8, local_kwh: 6.42, local_covered_h: 166.5, per_m_tokens: 0.414, per_kwh: 4.05 },
+      { week_start: '2026-09-24', verified: 18, cloud_m_tokens: 70.1, local_kwh: null, local_covered_h: 0, per_m_tokens: 0.257, per_kwh: null },
+    ] },
+    notes: ['Energy is GPU package power from the host agent.'],
+  });
+  render(<EfficiencySection />);
+  expect(await screen.findByRole('heading', { name: 'Efficiency (7 d)' })).toBeTruthy();
+  const consumers = screen.getByRole('table', { name: 'Resources and value per consumer' });
+  expect(consumers.textContent).toContain('39.30'); // cloud M tokens
+  expect(consumers.textContent).toContain('26/60 (test-gap 20, exports 6)');
+  expect(consumers.textContent).toContain('0.66 [0.48–0.86]');
+  expect(consumers.textContent).toContain('15.4'); // GPU-h of the gym
+  expect(consumers.textContent).toContain('4,620 Wh');
+  expect(consumers.textContent).toContain('≥ 120 Wh (50 % sampled)');
+  expect(consumers.textContent).toContain('not measured'); // committee: jobs without power samples, never a guessed figure
+  const weeks = screen.getByRole('table', { name: 'North star per week' });
+  expect(weeks.textContent).toContain('0.41'); expect(weeks.textContent).toContain('4.05'); expect(weeks.textContent).toContain('not measured');
+  expect(screen.getByRole('table', { name: 'Measured GPU energy per host' }).textContent).toContain('6.42');
+  expect(screen.queryByText(/RESOURCE_LEDGER_ENABLED/)).toBeNull();
+});
+
+it('E3: says energy is not measured while power sampling is off, and degrades quietly when the endpoint fails', async () => {
+  vi.spyOn(api, 'getEfficiency').mockResolvedValueOnce({ at: '2026-10-08T12:00:00Z', window_days: 7, ledger_enabled: false, consumers: [], ledger: [], hosts: [],
+    north_star: { weeks: [{ week_start: '2026-10-01', verified: 0, cloud_m_tokens: 0, local_kwh: null, local_covered_h: 0, per_m_tokens: null, per_kwh: null }] }, notes: [] });
+  const { unmount } = render(<EfficiencySection />);
+  expect(await screen.findByText('RESOURCE_LEDGER_ENABLED')).toBeTruthy();
+  expect(screen.getByText('No host has reported GPU power yet.')).toBeTruthy();
+  unmount();
+  vi.spyOn(api, 'getEfficiency').mockRejectedValueOnce(new Error('Access denied'));
+  render(<EfficiencySection />);
+  expect(await screen.findByText('Efficiency view unavailable.')).toBeTruthy();
+});
+
+const snap = (over: Partial<CockpitView> = {}): CockpitView => ({ at: new Date().toISOString(), build: { commit: null, build_time: null },
+  scorecard: { verified_7d: 3, regressed_7d: 1 }, guardrails: [{ name: 'regressions', ok: true, value: 0, limit: '<= 0.6' }], stalls: [], gym: [],
+  remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [], ...over });
+
+it('Cockpit 3.0: an UNKNOWN guardrail (or a null value from an old server that said ok) never renders healthy', () => {
+  expect(overallHealth(snap()).state).toBe('HEALTHY');
+  const oldServer = snap({ guardrails: [{ name: 'panel unparseable (7 d)', ok: true, value: null, limit: '0' }] }); // failed SQL → null, old server said ok
+  expect(overallHealth(oldServer).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ guardrails: [{ name: 'x', ok: true, value: 1, limit: '', state: 'UNKNOWN' }] })).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ guardrails: [] })).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ errors: [{ section: 'gym', message: 'no such table' }] })).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ health: 'HEALTHY', guardrails: [{ name: 'r', ok: false, value: 9, limit: '' }] })).state).toBe('BREACHED');
+  expect(overallHealth(snap({ at: '2026-01-01T00:00:00Z' })).state).toBe('STALE');
+  const html = renderToStaticMarkup(<MemoryRouter><CommandStrip d={oldServer} /></MemoryRouter>);
+  expect(html).toContain('unknown'); expect(html).not.toContain('>healthy<');
+  expect(html).toContain('throughput, not improvement'); expect(html).toContain('href="/evolution"');
+});
+
+it('Cockpit 3.0: null needs-you counts render as unknown, never as a calm zero', () => {
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: null, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>);
+  expect(html).toContain('Needs you: unknown'); expect(html).toContain('Could not count: approvals');
+  expect(html).not.toContain('Nothing needs you right now');
+  expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 2, requeue: null, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Needs you (≥ 2)');
+  expect(renderToStaticMarkup(<MemoryRouter><CommandStrip d={snap({ needs_you: undefined })} /></MemoryRouter>)).toMatch(/What needs you\?.*unknown/);
+});
+
+it('Cockpit 3.0: a partial failure shows the errors banner and the page still renders old-server payloads', async () => {
+  vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue(snap({ errors: [{ section: 'judgments_7d', message: 'no such table: judgments' }], snapshot_id: 's1' }) as never);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('judgments_7d'); expect(alert.textContent).toContain('not as healthy');
+  expect(screen.getByRole('status').textContent).toContain('unknown');
+});
+
+it('Cockpit 3.0: a slower older response never overwrites a newer one', async () => {
+  let resolveOld: (v: CockpitView) => void = () => {};
+  const spy = vi.spyOn(api, 'getOperatorCockpit')
+    .mockImplementationOnce(() => new Promise((r) => { resolveOld = r as never; }) as never)
+    .mockResolvedValueOnce(snap({ build: { commit: 'newer000aaaa', build_time: null } }) as never);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
+  (await screen.findByRole('button', { name: /refresh/i })).click();
+  expect(await screen.findByText('newer000')).toBeTruthy();
+  resolveOld(snap({ build: { commit: 'older111bbbb', build_time: null } }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(screen.queryByText('older111')).toBeNull(); expect(spy).toHaveBeenCalledTimes(2);
+});
+
+it('Cockpit 3.0: the server total wins and system-side requeue candidates are shown, not counted', () => {
+  const deduped = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 1, labels: 1, memory_review: 0, total: 1,
+    system_requeue: { budgeted_requeue: 22, attribution_unknown: 17, not_actionable: 3 } }} /></MemoryRouter>);
+  expect(deduped).toContain('Needs you (1)');
+  expect(deduped).toContain('22 budgeted requeue');
+});
+
+it('Cockpit 3.0: a failed stall detector or a scheduler that stopped ticking is blocked work, never healthy', () => {
+  const d = snap({ guardrails: [{ name: 'g', ok: true, state: 'HEALTHY', value: 0, limit: '0' }],
+    detectors: [{ name: 'gym', status: 'error', error: 'no such table', checked_at: new Date().toISOString() }],
+    schedulers: { armed: 2, off: 0, by_status: { executing: 1, armed_not_ticking: 1 }, health: 'BREACHED' } });
+  expect(overallHealth(d).state).not.toBe('HEALTHY');
+  const html = renderToStaticMarkup(<MemoryRouter><CommandStrip d={d} /></MemoryRouter>);
+  expect(html).toContain('detector failed (unwatched): gym');
+  expect(html).toContain('1 scheduler(s) armed but not ticking');
+  expect(html).toContain('2 blocked');
+});
+
+it('Restore Evolutionary Health: the funnel shows the bottleneck, the 4-way split, NEV evidence state and the JC-001 rejection', () => {
+  const st = (stage: string, count: number | null, conversion: number | null, measured: 'measured' | 'not_linked' | 'not_measured' = 'measured') =>
+    ({ stage, count, conversion, median_age_days: null, top_failure: null, compute_tokens: null, operator_decisions: 0, measured });
+  const html = renderToStaticMarkup(<EvolutionFunnel e={{ window_days: 60,
+    stages: [st('discovery', 300, null, 'not_linked'), st('proposal', 100, null), st('experiment', 80, 0.8), st('verified', 50, 0.625), st('merged', 20, 0.4),
+      st('settled', 2, 0.1), st('survived_14d', 2, 1), st('survived_30d', null, null, 'not_measured'), st('capability_gain', null, null, 'not_measured'), st('reproduced', null, null, 'not_measured')],
+    bottleneck: { from: 'verified', to: 'merged', lost: 30, conversion: 0.4, reason: 'awaiting_human_merge (31)', oldest_queue: null },
+    regression_split: { mutation_failure: 4, reviewer_rejection: 26, environment: 19, post_verification: 0, post_verification_follow_up_fix: null, unknown: 8 },
+    evolutionary_regressions: 4,
+    nev: { status: 'INSUFFICIENT_EVIDENCE', reason: '2 settled lineage(s) with a survival verdict; NEV needs ≥ 10', value: null, survived: 2, settled: 2, survival_rate: 1, survival_ci: [0.34, 1],
+      severity_weights: { removed: 1, follow_up_fix: 0.5 }, per_m_cloud_tokens: null, per_kwh: null, per_kwh_status: 'INSUFFICIENT_EVIDENCE', per_operator_decision: null, operator_decisions: 40, cloud_tokens: null, note: '' },
+    throughput: { verified: 50, label: 'throughput, not improvement' }, jev_semantic_routing: 'REJECTED by JC-001 (NE-001, PR #779)', errors: [] }} />);
+  expect(html).toContain('Largest bottleneck');
+  expect(html).toContain('throughput, not improvement');
+  expect(html).toContain('reviewer rejection 26 (gate worked, not a regression)');
+  expect(html).toContain('insufficient evidence');
+  expect(html).toContain('not measured');
+  expect(html).toContain('JEV semantic routing: REJECTED by JC-001 (NE-001, PR #779)');
+});
+
+it('SOUL subtraction: lines, ratio and route delta per ISO week; unknown with the reason when git is unavailable (never 0)', () => {
+  const week = { week: '2026-W42', start: '2026-10-12T00:00:00.000Z', end: '2026-10-19T00:00:00.000Z', commits: 3, lines_added: 120, lines_removed: 300, files_added: 1, files_deleted: 4,
+    ratio_removed_added: 2.5, routes_start: 560, routes_end: 557, routes_delta: -3 };
+  const html = renderToStaticMarkup(<SubtractionSection kpi={{ status: 'ok', reason: null, repo: '/repo', head: 'abc', weeks: [week], note: '' }} />);
+  expect(html).toContain('2026-W42'); expect(html).toContain('+120 / −300'); expect(html).toContain('2.50'); expect(html).toContain('-3');
+  const none = renderToStaticMarkup(<SubtractionSection kpi={{ status: 'unavailable', reason: 'git is not installed in this environment', repo: '/repo', head: null, weeks: null, note: '' }} />);
+  expect(none).toContain('Unknown — git is not installed in this environment');
+  expect(none).not.toContain('>0<');
+});
+
+it('human-only needs-you: labelling has its own count, system work is shown apart, and the audit batch links to its card', async () => {
+  const n = { approvals: 1, requeue: 0, labels: 3, memory_review: 1, open_prs: 4, audit_batch: 3, flagged_prs: 1, dependency_human: 2, dependency_tracked: true,
+    proposals: 5, stalls: 2, total: 8, optional_labelling: { d5: 3, car: 2, e1: 0, di001: null, total: null },
+    system: { requeue_will_handle: 40, requeue_mode: 'on', proposals_auto_reviewed: true } };
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
+  expect(html).toContain('Needs you (8)');
+  for (const t of ['3 PRs in the weekly audit batch', '1 flagged loop PRs', '2 Dependabot PRs the lane leaves to you', '1 memory reviews']) expect(html).toContain(t);
+  expect(html).toContain('href="/decisions#audit-batch"');
+  // optional labelling: own count; an unknown part makes it unknown, never 0
+  expect(html).toContain('Optional labelling (unknown)'); expect(html).toContain('2 CAR audits'); expect(html).toContain('unknown DI-001 relevance labels');
+  // system handles: shown, never in the headline
+  expect(html).toContain('40 requeue rows the system will handle'); expect(html).toContain('5 proposals in panel review'); expect(html).toContain('2 silent stalls');
+  expect(html).not.toContain('proposals awaiting approval');
+  const fs = await import('node:fs'); const path = await import('node:path');
+  const src = fs.readFileSync(path.join(process.cwd(), 'src/pages', 'DecisionsInboxPage.tsx'), 'utf8');
+  for (const a of ['audit-batch', 'dependency-lane', 'attribution-audit']) expect(src).toContain(`id="${a}"`);
 });

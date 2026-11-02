@@ -75,7 +75,7 @@ it('end to end: a grounding round asks for TARGET/TEST and its learning makes no
   park('p-1', 'Close orphaned runs', 'sweepZombies should close stale running runs');
   db.prepare(`INSERT INTO agents (id, name, description, status, capabilities) VALUES ('agent-a', 'A', 'a', 'active', '["security"]'), ('agent-b', 'B', 'b', 'active', '["ux"]')`).run();
   const comms = new AgentCommunicationService(db);
-  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  comms.heartbeat('agent-a', 'codex', 'm', 'runtime_token'); comms.heartbeat('agent-b', 'opencode', 'm', 'runtime_token');
   expect(comms.socialize(0).topic).toBe('Ground parked proposal: Close orphaned runs');
   const [q] = comms.receiveSocial('agent-b');
   expect(q.payload.context).toContain('TARGET: <repo path>');
@@ -102,7 +102,7 @@ it('failure and grounding topics alternate, so a failure backlog cannot starve g
   }
   db.prepare(`INSERT INTO agents (id, name, description, status, capabilities) VALUES ('agent-a', 'A', 'a', 'active', '["security"]'), ('agent-b', 'B', 'b', 'active', '["ux"]')`).run();
   const comms = new AgentCommunicationService(db);
-  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  comms.heartbeat('agent-a', 'codex', 'm', 'runtime_token'); comms.heartbeat('agent-b', 'opencode', 'm', 'runtime_token');
   const refs = [0, 1, 2].map(() => comms.socialize(0).messages[0].payload.params.topic_ref as string);
   expect(refs.map((r) => r.split(':')[0])).toEqual(['run', 'proposal', 'run']);
 });
@@ -126,7 +126,7 @@ it('strips prose punctuation after a path, and reads TARGET/TEST from the peer r
   park('p-1', 'Close orphaned runs', 'sweepZombies should close stale running runs');
   db.prepare(`INSERT INTO agents (id, name, description, status, capabilities) VALUES ('agent-a', 'A', 'a', 'active', '["security"]'), ('agent-b', 'B', 'b', 'active', '["ux"]')`).run();
   const comms = new AgentCommunicationService(db);
-  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  comms.heartbeat('agent-a', 'codex', 'm', 'runtime_token'); comms.heartbeat('agent-b', 'opencode', 'm', 'runtime_token');
   comms.socialize(0);
   const [q] = comms.receiveSocial('agent-b');
   expect(q.payload.context).toContain('a NEW file under packages/server/src/__tests__/');
