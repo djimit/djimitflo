@@ -8,6 +8,18 @@ import ts from 'typescript';
 const methods = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'all']);
 const joinPath = (...parts) => parts.join('/').replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
 const literal = node => node && (ts.isStringLiteralLike(node)) ? node.text : undefined;
+/** UXE-03: the `requirePermission('<p>')` literals a middleware expression carries, not looking inside handler bodies. */
+function permissionLiterals(node, aliases, out = []) {
+  if (ts.isIdentifier(node) && aliases.has(node.text)) out.push(aliases.get(node.text));
+  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return out;
+  const callee = ts.isCallExpression(node) ? node.expression : undefined;
+  if (callee && (ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : '') === 'requirePermission') {
+    const permission = literal(node.arguments[0]);
+    if (permission) out.push(permission);
+  }
+  ts.forEachChild(node, (child) => { permissionLiterals(child, aliases, out); });
+  return out;
+}
 
 export function routeSourceFingerprint(root) {
   const hash = createHash('sha256');
@@ -28,6 +40,7 @@ export function inventoryRouteSource(root) {
     const module = basename(file, '.ts');
     const source = ts.createSourceFile(file, readFileSync(join(directory, file), 'utf8'), ts.ScriptTarget.Latest, true);
     const imports = new Map();
+    const aliases = new Map(); // const canRead = auth.requirePermission('read:evidence') → canRead: read:evidence
     for (const statement of source.statements) {
       if (!ts.isImportDeclaration(statement) || !literal(statement.moduleSpecifier)?.startsWith('./')) continue;
       const bindings = statement.importClause?.namedBindings;
@@ -40,6 +53,10 @@ export function inventoryRouteSource(root) {
         owner = `${module}:${node.name.text}`;
         factories.set(owner, { routes: [], mounts: [] });
       }
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const [permission] = permissionLiterals(node.initializer, aliases);
+        if (permission) aliases.set(node.name.text, permission);
+      }
       if (owner && ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
         && node.expression.expression.getText(source) === 'router' && methods.has(node.expression.name.text)) {
         const method = node.expression.name.text.toUpperCase();
@@ -47,7 +64,8 @@ export function inventoryRouteSource(root) {
         const paths = argument && ts.isArrayLiteralExpression(argument) ? argument.elements.map(literal) : [literal(argument)];
         if (paths.some(path => path === undefined)) unsupported.push({ module, factory: owner, expression: node.expression.getText(source), reason: 'Nonliteral route path' });
         else for (const path of paths) {
-          const entry = { id: `${module}:${method}:${path}`, module, factory: owner.split(':')[1], method, path };
+          const permissions = [...new Set(node.arguments.slice(1).flatMap((argument) => permissionLiterals(argument, aliases)))];
+          const entry = { id: `${module}:${method}:${path}`, module, factory: owner.split(':')[1], method, path, permissions };
           factories.get(owner).routes.push(entry);
           definitions.push(entry);
         }

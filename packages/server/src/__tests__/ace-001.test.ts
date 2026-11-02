@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { assignmentContext, assignmentContextMarkdown } from '../services/assignment-context';
-import { ACE_ARMS, ace001Evidence, aceArm } from '../services/ace-001';
+import { ACE_ARMS, ACE_001_STOP_BY, ace001Evidence, aceArm } from '../services/ace-001';
 import { daemonCheckOptions } from '../services/loop-daemon';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
@@ -100,6 +100,11 @@ it('evidence counts production outcomes per arm (gym outcomes and other refs exc
   expect(ev.arms['00']).toMatchObject({ n: 2, verified: 1, verified_rate: 0.5, tokens_mean: 1000 });
   expect(ev.arms['11']).toMatchObject({ n: 2, verified: 2, graded_n: 2, graded_mean: 0.5 });
   expect(ev.arms['01'].n).toBe(0); expect(ev.status).toBe('collecting');
-  expect(ev.main_effects.retrieval).toMatchObject({ on_n: 2, off_n: 2, diff: 0.5 });
+  // re-20261030 B §3: no interim efficacy looks (ACE-001_PROTOCOL.md:51) — before the readout the effect is withheld, with a reason
+  expect(ev.main_effects.retrieval).toMatchObject({ on_n: 2, off_n: 2, diff: null });
+  expect(ev.main_effects.retrieval.withheld).toMatch(/no interim efficacy looks/);
   expect(buildEvolutionEvidence(db, { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }).ace_001.arms['11'].n).toBe(2);
+  // at the readout (stop_by, Amendment 2) the same data reads out
+  const out = ace001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }, Date.parse(ACE_001_STOP_BY));
+  expect(out.main_effects.retrieval).toMatchObject({ on_n: 2, off_n: 2, diff: 0.5, withheld: null });
 });

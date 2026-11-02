@@ -5,6 +5,7 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { markRun } from './scheduler-registry';
 import { extraRepoBySlug, isExtraRepoPr, parsePrUrl, repoSkillPrefix } from './repo-registry';
 import { supersedingProposal } from './merge-superseded';
+import { onLoopPrPolled } from './capability-factory';
 
 /**
  * EV4 (plan Phase EV, 03-10): the strongest fitness signal is whether a loop change survives in the real repository.
@@ -208,7 +209,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
   // B3 (17-10): a PR is identified by owner/repo + number from its full URL, never by the number alone (a number in another
   // repo used to be settled with the primary repo's PR of the same number).
   const get = async (slug: string, p: string, gone404 = false) => {
-    const res = await fetchImpl(`https://api.github.com/repos/${slug}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
+    const res = await fetchImpl(`https://api.github.com/repos/${slug}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15_000) });
     if (!res.ok && !(gone404 && res.status === 404)) fail(String(res.status));
     return res;
   };
@@ -236,7 +237,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
     const { slug, number } = ref;
     const res = await get(slug, `pulls/${number}`);
     if (!res.ok) { cycle.skipped++; continue; } // rate limit or outage: try again next tick
-    const pr = await res.json() as { state?: string; merged_at?: string | null; created_at?: string };
+    const pr = await res.json() as { state?: string; merged_at?: string | null; created_at?: string; merge_commit_sha?: string | null };
     checked++;
     const maker = db.prepare(`SELECT id, runtime, json_extract(metadata, '$.model') AS model, json_extract(metadata, '$.model_id') AS model_id,
       json_extract(metadata, '$.prompt_hash') AS prompt_hash, json_extract(metadata, '$.genome_id') AS genome_id FROM worker_leases
@@ -296,6 +297,8 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
     }
     db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_outcome', json(?)) WHERE id = ?").run(JSON.stringify(outcome), run.id);
     cycle.updated++;
+    // capability factory (CAPABILITY_FACTORY_MODE=on): a merged factory run registers its capability once; a regressed survival deprecates it
+    if (outcome.state === 'merged') onLoopPrPolled(db, run.id, { url: run.url, mergeSha: pr.merge_commit_sha ?? null, merged: true, regressed: success === false }, env);
     const s = settlementState(run.created_at, outcome, now.getTime());
     if (s.state === 'PIPELINE_ANOMALY') { cycle.anomalous++; cycle.anomalies[s.reason] = (cycle.anomalies[s.reason] ?? 0) + 1; }
   }

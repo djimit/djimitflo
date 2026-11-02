@@ -270,3 +270,48 @@ it('does not expose human completion approval to a viewer', async () => {
   expect(screen.queryByRole('button', { name: 'Complete', exact: true })).toBeNull();
   expect(posts()).toHaveLength(0);
 });
+
+it('ASG-001: shows route, execution, verification and result apart, with policy, skill, effects and every maker attempt\'s cost', async () => {
+  leases[0] = { ...leases[0], metadata: { runtime_usage: { total_tokens: 1200 }, asg: {
+    mode: 'on', requested: 'on', blocked_by: [], lane: 'test-gap', route_executed: 'MICRO',
+    decision: { route: 'MICRO', reason_codes: ['RUNTIME_NO_MACRO_ADAPTER'], policy: { id: 'asg-policy', version: 1, hash: '04ca63d0770d6532' }, feature_schema_hash: 'f1', skill: null, prefix: null,
+      alternatives: [{ route: 'HYBRID', skill: null, reason: 'needs a runtime with a macro adapter' }] },
+    outcome: { execution_status: 'failed', verification_status: 'passed', result: 'succeeded_with_incident', rescued: true,
+      incident: { class: 'timeout_uncertain', timed_out: true, token_budget_hit: false }, failure: null,
+      effects: { expected: ['t.test.ts'], observed: ['t.test.ts'], out_of_scope: [], declared_untouched: [], bounded: true }, verifier: { command: 'vitest run t.test.ts', exit: 0 } } } } };
+  leases.push({ id: 'maker-retry', role: 'maker', status: 'failed', runtime: 'codex', metadata: { runtime_usage: { total_tokens: 800 } } });
+  await ready();
+  const panel = await screen.findByTestId('asg-panel');
+  const text = panel.textContent ?? '';
+  expect(text).toContain('Route: MICRO (RUNTIME_NO_MACRO_ADAPTER)');
+  expect(text).toContain('Policy: asg-policy v1 · 04ca63d0770d6532');
+  expect(text).toContain('Execution: failed');
+  expect(text).toContain('Verification: passed (vitest run t.test.ts, exit 0)');
+  expect(text).toContain('Result: succeeded_with_incident');
+  expect(text).toContain('Incident: timeout_uncertain (timeout)');
+  expect(text).toContain('2,000 tokens over 2 lease(s), 1 failed');
+  expect(screen.getAllByTestId('asg-panel')).toHaveLength(1); // the retry lease has no ASG record
+});
+
+it('gym run panel: an evolution-gym run shows why it stopped, what is proven and what happens next; other runs do not', async () => {
+  run.loop_name = 'evolution-gym'; run.status = 'completed'; run.findings = [];
+  run.metadata = { gym: { commit: 'abc1234', species: 'atomic@llama-router', remote_host: 'ws1', prod_gates: 1 }, gym_result: { status: 'failure', reason: 'tests still red', tokens: null, hack_flags: [] } };
+  leases = [];
+  const baseline = requests.getMockImplementation()!;
+  requests.mockImplementation((url: string, init?: RequestInit) => url === '/api/loops/runs/fixture-run/gym-outcome'
+    ? Promise.resolve(response({ run_id: 'fixture-run', skill_outcome: null }))
+    : baseline(url, init));
+  render(<GoalsLoopsPage />);
+  const panel = await screen.findByTestId('gym-run-panel');
+  expect(panel.textContent).toContain("Stopped: tests still red after the maker's change (worker report)");
+  expect(panel.textContent).toContain('Next: counted');
+  expect(screen.getByTestId('gym-claimed').textContent).toContain('unknown (not reported)');
+  expect(posts()).toHaveLength(0); // read-only
+  cleanup();
+
+  run.loop_name = 'doc-drift-and-small-fix-loop';
+  render(<GoalsLoopsPage />);
+  await screen.findByText('No worker leases for this run.');
+  expect(screen.queryByTestId('gym-run-panel')).toBeNull();
+  expect(requests.mock.calls.filter(([url]) => String(url).endsWith('/gym-outcome'))).toHaveLength(1);
+});

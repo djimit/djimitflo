@@ -1,0 +1,20 @@
+{
+  "captured_at": "2026-10-23T20:06:50.078Z",
+  "host": "vps-agentical",
+  "container": "djimitflo-live",
+  "image_tag": "djimitflo:main-be0b3ab",
+  "image_id": "sha256:4a4378d0935f9229014f7394a1175e52e70e693d653f2e96a531b181015a6870",
+  "docker_health": "healthy",
+  "restart_count": 0,
+  "health_http_status": 200,
+  "build": {
+    "commit": "be0b3ab05b8f2cd2e676ea6ceddf4f2140ae6fb6",
+    "built_commit": "be0b3ab05b8f2cd2e676ea6ceddf4f2140ae6fb6",
+    "build_source": "deploy-vps.sh",
+    "build_time": "2026-10-23T09:04:55Z",
+    "instance_id": "vps-agentical-production",
+    "commit_matches_build": true
+  },
+  "method": "SSH docker inspect selected fields; container-local GET /health, selected nonsecret fields only",
+  "limitation": "Process/build identity proof; not functional correctness or independent causal deployment attestation"
+}

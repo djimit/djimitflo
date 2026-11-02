@@ -58,11 +58,11 @@ function lockNames(lock: Record<string, unknown>): string[] {
   return names;
 }
 
-/** Where a forbidden dependency, hook command or MCP entry would land: package manifests, lockfile names, MCP and agent settings. */
+/** Where a forbidden dependency, hook command or MCP entry would land: package manifests, lockfile names, MCP and agent settings (incl. Roo Code's .roo/mcp.json and .roomodes). */
 function configTexts(root: string): { file: string; text: string }[] {
   const ls = (dir: string, re: RegExp) => (fs.existsSync(path.join(root, dir)) ? fs.readdirSync(path.join(root, dir)).filter((f) => re.test(f)).map((f) => path.join(dir, f)) : []);
   const pkgDirs = fs.existsSync(path.join(root, 'packages')) ? fs.readdirSync(path.join(root, 'packages')).map((d) => path.join('packages', d, 'package.json')) : [];
-  const files = ['package.json', ...pkgDirs, '.mcp.json', path.join('.vscode', 'mcp.json'), ...ls('.claude', /^settings.*\.json$/), ...ls('.opencode', /\.json$/)];
+  const files = ['package.json', ...pkgDirs, '.mcp.json', path.join('.vscode', 'mcp.json'), path.join('.roo', 'mcp.json'), '.roomodes', ...ls('.claude', /^settings.*\.json$/), ...ls('.opencode', /\.json$/)];
   const out = files.filter((f) => fs.existsSync(path.join(root, f))).map((f) => ({ file: f, text: fs.readFileSync(path.join(root, f), 'utf8') }));
   const lock = path.join(root, 'package-lock.json');
   if (fs.existsSync(lock)) out.push({ file: 'package-lock.json', text: lockNames(JSON.parse(fs.readFileSync(lock, 'utf8'))).join('\n') });
@@ -121,6 +121,15 @@ it('B29: NE-012 (ruvnet agent ecosystem) guards unpinned ruflo/claude-flow execu
     const hits = forbiddenHits(tmp);
     expect(hits).toContain(`NE-012: hook-handler.cjs in ${path.join('.claude', 'settings.json')}`);
     expect(hits).toContain('NE-012: cognitum.one/mcpSse in .mcp.json');
+    fs.mkdirSync(path.join(tmp, '.roo'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'packages/x'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.roo/mcp.json'), JSON.stringify({ mcpServers: { mem0: { url: 'https://mcp.composio.dev/mem0/some-session' } } }));
+    fs.writeFileSync(path.join(tmp, 'packages/x/package.json'), JSON.stringify({ name: 'x', devDependencies: { 'create-sparc': '^1.2.4' } }));
+    const sparcHits = forbiddenHits(tmp);
+    expect(sparcHits).toContain(`NE-012: mcp.composio.dev/ in ${path.join('.roo', 'mcp.json')}`);
+    expect(sparcHits).toContain(`NE-012: create-sparc in ${path.join('packages', 'x', 'package.json')}`);
+    fs.rmSync(path.join(tmp, '.roo'), { recursive: true });
+    fs.rmSync(path.join(tmp, 'packages'), { recursive: true });
     // the federation adapter's OAuth issuer is a different host path and must not match
     fs.writeFileSync(path.join(tmp, '.mcp.json'), JSON.stringify({ authorization_servers: ['https://auth.cognitum.one'] }));
     fs.rmSync(path.join(tmp, '.claude'), { recursive: true });

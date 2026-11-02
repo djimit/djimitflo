@@ -1,0 +1,60 @@
+{
+  "availability": "Local working evidence; not distributed. Hashes identify this capture, not a public validation PASS.",
+  "files": [
+    {
+      "name": "scope.json",
+      "bytes": 271,
+      "sha256": "c32557ef54f60d39be93173bc1146327e99a8d6b79b0f2f8c7f784ad4acd3b4f"
+    },
+    {
+      "name": "pull-requests.json",
+      "bytes": 1296773,
+      "sha256": "c28d42ed2b804462abcc8e9c3967e02cc4de0864123525e08d06ef541f3b648c"
+    },
+    {
+      "name": "git-history.json",
+      "bytes": 582749,
+      "sha256": "0590ccf24ec6258fefff8ca5ba4dda0a759906ca3d3c7eda76faf023cb7f2020"
+    },
+    {
+      "name": "review-evidence.json",
+      "bytes": 1090442,
+      "sha256": "b876309f08a5af754810f60f8f479502a96d346dd23276f2ec23ff267ebefe30"
+    },
+    {
+      "name": "check-evidence.json",
+      "bytes": 3068192,
+      "sha256": "1905eee99cef0f31bf8cb6c6a3a446f998ef2b0a5f6671a22f0dbfaefb7f66a0"
+    },
+    {
+      "name": "workflow-runs.json",
+      "bytes": 3200455,
+      "sha256": "f1102aaa3594681552faff922d4ea499b8ff9580c8409fc9053fa83e5d998083"
+    },
+    {
+      "name": "repository-events.json",
+      "bytes": 112317,
+      "sha256": "7f2cf9e686fa408ddb672a0ea859b5c9519d2ad6f28d0b097ef0f7ffb1fa0b8d"
+    },
+    {
+      "name": "failed-ci-jobs.json",
+      "bytes": 1048375,
+      "sha256": "849f750ab6a18648ae27764f30b7f48b9deae1973203973b79272dbf08374f23"
+    },
+    {
+      "name": "main-protection.json",
+      "bytes": 1906,
+      "sha256": "80c08b225088f177a82e5c9c82d98f8539d0120ebea6d10bf5f136a36a707d26"
+    },
+    {
+      "name": "repository.json",
+      "bytes": 408,
+      "sha256": "0e7e126a84e577b88f2a99b27113580a4c4e547ff46fe28d12521a6094bf6f63"
+    },
+    {
+      "name": "rulesets.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    }
+  ]
+}
