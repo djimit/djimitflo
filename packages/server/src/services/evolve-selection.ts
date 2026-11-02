@@ -5,6 +5,7 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { extraRepoByPath, repoSkillPrefix } from './repo-registry';
 import { gradedContestMode, leaseGraded, leaseGradedRefs, mutationScoreOf } from './graded-fitness';
 import { leaseRanOn } from './outcome-attribution';
+import { CANCEL_LEASE_METADATA_SQL, cancelFailure, cancelLeaseBind } from './lease-failure';
 
 /**
  * E13 steps 2–3 (docs/design/evolve-loop.md): several makers on one objective, the fittest (computed in code) wins.
@@ -111,8 +112,8 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       db.prepare(`UPDATE worker_leases SET metadata = ${meta}, updated_at = ? WHERE id = ?`)
         .run(JSON.stringify({ rank: r.rank, species: r.species, reason: reasonOf(r) }), now, r.makerLeaseId);
       if (r.makerLeaseId !== winner.makerLeaseId) {
-        db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
-          AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, runId, r.makerLeaseId);
+        db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
+          AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, ...cancelLeaseBind('maker_lost_evolve_contest', now), runId, r.makerLeaseId);
       }
     }
     // prod 2026-10-09 (run 161f7840): a retry maker whose execution never got going stayed 'prepared' and non-superseded
@@ -122,9 +123,10 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       .all(runId, winner.makerLeaseId) as Array<{ id: string }>).map((l) => l.id));
     for (const id of leftovers) {
       db.prepare(`UPDATE worker_leases SET status = 'cancelled', metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.superseded_by_maker_lease_id', ?,
-        '$.superseded_at', ?, '$.cancellation_reason', 'superseded_by_evolve_winner'), updated_at = ? WHERE id = ?`).run(winner.makerLeaseId, now, now, id);
-      db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
-        AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, runId, id);
+        '$.superseded_at', ?, '$.cancellation_reason', 'superseded_by_evolve_winner', '$.failure', json(?)), updated_at = ? WHERE id = ?`)
+        .run(winner.makerLeaseId, now, JSON.stringify(cancelFailure('superseded_by_evolve_winner')), now, id);
+      db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
+        AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, ...cancelLeaseBind('maker_superseded_by_evolve_winner', now), runId, id);
     }
   })();
   // N7 lineage: a species that lost the head-to-head is an outcome too (success 0), or the bandit would only ever see
