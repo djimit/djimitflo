@@ -14,6 +14,7 @@ import { join } from 'path';
 import { initializeDatabase } from './database';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
+import { requestContext } from './middleware/request-context';
 import { securityHeaders } from './middleware/security-headers';
 import { createAuthMiddleware } from './middleware/auth';
 import { AuthService } from './services/auth-service';
@@ -153,6 +154,7 @@ async function main() {
   
   // Middleware
   app.use(securityHeaders);
+  app.use(requestContext); // X-Request-ID on every response; the dashboard shows it on failed calls (UXE-08)
   app.use(cors({
     origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://127.0.0.1:5173'],
     credentials: true,
