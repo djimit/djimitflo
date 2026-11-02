@@ -75,6 +75,13 @@ export function SwarmMissionControlPage() {
   const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('mock');
   const [expandedCapability, setExpandedCapability] = useState<string | null>(null);
   const [learningCurve, setLearningCurve] = useState<any>(null);
+  const [skillEvalModel, setSkillEvalModel] = useState('');
+  const [skillEvalCaseIds, setSkillEvalCaseIds] = useState('');
+  const [skillInventory, setSkillInventory] = useState<Array<{ id: string; version: string; content_hash: string; source_tasks: string[] }>>([]);
+  const [skillSourceId, setSkillSourceId] = useState('');
+  const [skillSourceTask, setSkillSourceTask] = useState('');
+  const [skillPatchFind, setSkillPatchFind] = useState('');
+  const [skillPatchReplace, setSkillPatchReplace] = useState('');
 
   // D12: Knowledge bus events
   const [knowledgeEvents, setKnowledgeEvents] = useState<any[]>([]);
@@ -96,11 +103,12 @@ export function SwarmMissionControlPage() {
     setLoading(true);
     setError(null);
     try {
-      const [missionResult, capabilitiesResult, claimsResult, knowledgeResult] = await Promise.allSettled([
+      const [missionResult, capabilitiesResult, claimsResult, knowledgeResult, skillInventoryResult] = await Promise.allSettled([
         api.getSwarmMissionControl(),
         api.getSwarmCapabilities(50),
         api.getSwarmClaims(50),
         api.getKnowledgeRuntime(),
+        api.getSkillEvolutionInventory(),
       ]);
       if (missionResult.status === 'fulfilled') {
         setMission(missionResult.value);
@@ -109,9 +117,10 @@ export function SwarmMissionControlPage() {
       if (capabilitiesResult.status === 'fulfilled') setCapabilities(asArray<SwarmCapabilityRecord>(capabilitiesResult.value.capabilities));
       if (claimsResult.status === 'fulfilled') setClaims(asArray<ClaimLedgerRecord>(claimsResult.value.claims));
       if (knowledgeResult.status === 'fulfilled') setKnowledge(knowledgeResult.value);
-      const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult]
+      if (skillInventoryResult.status === 'fulfilled') setSkillInventory(asArray<{ id: string; version: string; content_hash: string; source_tasks: string[] }>(skillInventoryResult.value.skills));
+      const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult, skillInventoryResult]
         .filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
-      if (failures.length === 4) throw failures[0].reason;
+      if (failures.length === 5) throw failures[0].reason;
       if (failures.length > 0) setError(`${failures.length} data source${failures.length === 1 ? '' : 's'} unavailable`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
@@ -219,6 +228,77 @@ export function SwarmMissionControlPage() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Proof run rollback failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function rollbackSkillCandidate(id: string) {
+    setActionId(`skill-rollback-${id}`);
+    setError(null);
+    try {
+      await api.rollbackSkillEvolutionCandidate(id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Skill rollback failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function compareSkillCandidate(id: string) {
+    const caseIds = skillEvalCaseIds.split(',').map((value) => value.trim()).filter(Boolean);
+    setActionId(`skill-compare-${id}`);
+    setError(null);
+    try {
+      await api.compareSkillEvolutionCandidate(id, skillEvalModel, caseIds);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Skill comparison failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function loadSkillEvalCases() {
+    setActionId('skill-case-list');
+    setError(null);
+    try {
+      const result = await api.getOpenMythosCaseMetadata();
+      setSkillEvalCaseIds(result.cases.map((item) => item.id).join(', '));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'OpenMythos case manifest unavailable');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function promoteSkillCandidate(skill: any) {
+    if (!skill.promotion_input) return;
+    setActionId(`skill-promote-${skill.capability_id}`);
+    setError(null);
+    try {
+      await api.promoteSwarmCapability(skill.capability_id, skill.promotion_input);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Skill promotion was blocked');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function createSkillCandidate() {
+    const skill = skillInventory.find((item) => item.id === skillSourceId);
+    if (!skill || !skillSourceTask || !skillPatchFind.trim() || !skillPatchReplace.trim()) return;
+    setActionId('skill-candidate-create');
+    setError(null);
+    try {
+      await api.createSkillEvolutionCandidate({ skill_id: skill.id, baseline_hash: skill.content_hash,
+        source_task_id: skillSourceTask, find: skillPatchFind, replace: skillPatchReplace });
+      setSkillPatchFind(''); setSkillPatchReplace('');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Skill candidate creation failed');
     } finally {
       setActionId(null);
     }
@@ -348,7 +428,40 @@ export function SwarmMissionControlPage() {
       <section className="rounded-lg border border-border bg-background-secondary p-5">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Skill Evolution Readiness</h2>
-          <p className="mt-1 text-sm text-foreground-secondary">Exact outcomes, baseline and OpenMythos evidence required by the existing promotion gate. The final training gate still runs during promotion.</p>
+          <p className="mt-1 text-sm text-foreground-secondary">Paired candidate checks are bound to exact skill hashes and pinned OpenMythos cases. Admission and the existing training gate still run during promotion.</p>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_2fr]">
+          <label className="text-xs text-foreground-secondary">Declared model
+            <input value={skillEvalModel} onChange={(event) => setSkillEvalModel(event.target.value)} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm" placeholder="configured OpenMythos model" />
+          </label>
+          <label className="text-xs text-foreground-secondary">Pinned OpenMythos case IDs, comma separated
+            <input value={skillEvalCaseIds} onChange={(event) => setSkillEvalCaseIds(event.target.value)} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm" placeholder="case-001, case-002" />
+          </label>
+        </div>
+        <button onClick={() => void loadSkillEvalCases()} disabled={actionId !== null} className="mt-2 rounded border border-border px-2 py-1 text-xs text-foreground-secondary disabled:opacity-50">
+          Load IDs from the configured case manifest
+        </button>
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+          <label className="text-xs text-foreground-secondary">Skill with a successful delivered outcome
+            <select value={skillSourceId} onChange={(event) => { setSkillSourceId(event.target.value); setSkillSourceTask(''); }} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm">
+              <option value="">Select a skill</option>
+              {skillInventory.filter((skill) => skill.source_tasks.length > 0).map((skill) => <option key={skill.id} value={skill.id}>{skill.id} · v{skill.version}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-foreground-secondary">Source task
+            <select value={skillSourceTask} onChange={(event) => setSkillSourceTask(event.target.value)} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm">
+              <option value="">Select a successful task</option>
+              {skillInventory.find((skill) => skill.id === skillSourceId)?.source_tasks.map((taskId) => <option key={taskId} value={taskId}>{taskId}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-foreground-secondary">Exact instruction text to replace
+            <textarea value={skillPatchFind} onChange={(event) => setSkillPatchFind(event.target.value)} maxLength={2000} className="mt-1 block min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-sm" />
+          </label>
+          <label className="text-xs text-foreground-secondary">Replacement instruction text
+            <textarea value={skillPatchReplace} onChange={(event) => setSkillPatchReplace(event.target.value)} maxLength={2000} className="mt-1 block min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-sm" />
+          </label>
+          <button onClick={() => void createSkillCandidate()} disabled={actionId !== null || !skillSourceTask || !skillPatchFind.trim() || !skillPatchReplace.trim()}
+            className="w-fit rounded border border-border px-3 py-2 text-sm text-foreground disabled:opacity-50">Create bounded candidate</button>
         </div>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -359,6 +472,7 @@ export function SwarmMissionControlPage() {
                 <th className="py-2 pr-4">Candidate runs</th>
                 <th className="py-2 pr-4">Baselines</th>
                 <th className="py-2 pr-4">OpenMythos</th>
+                <th className="py-2 pr-4">Paired comparison</th>
                 <th className="py-2 pr-4">Evidence</th>
               </tr>
             </thead>
@@ -373,13 +487,47 @@ export function SwarmMissionControlPage() {
                   <td className="py-2 pr-4 text-foreground-secondary">{skill.candidate_runs}</td>
                   <td className="py-2 pr-4 text-foreground-secondary">{skill.baseline_hashes.length}</td>
                   <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{skill.openmythos_run_id || 'missing'}</td>
+                  <td className="py-2 pr-4 text-foreground-secondary">
+                    {skill.candidate_comparison ? <>
+                      <StatusBadge status={skill.candidate_comparison.verdict.toLowerCase()} />
+                      <div className="mt-1 text-xs">{skill.candidate_comparison.baseline_score ?? '?'} → {skill.candidate_comparison.candidate_score ?? '?'} · {skill.candidate_comparison.reason}</div>
+                      <div className="text-xs">Run duration: {skill.candidate_comparison.manifest?.baseline_run_ms ?? 'unknown'} ms → {skill.candidate_comparison.manifest?.candidate_run_ms ?? 'unknown'} ms · cost: unknown</div>
+                      {skill.candidate_comparison.candidate_eval_id && <div className="font-mono text-xs">{skill.candidate_comparison.candidate_eval_id}</div>}
+                      <details className="mt-1 text-xs">
+                        <summary className="cursor-pointer">Per-case evidence ({skill.candidate_comparison.cases.length})</summary>
+                        <ul className="mt-1 max-h-40 overflow-auto">
+                          {skill.candidate_comparison.cases.map((item) => <li key={item.case_id} className="font-mono">
+                            {item.case_id}: {item.baseline_score} → {item.candidate_score ?? '?'} · oracle {String(item.baseline_oracle_pass ?? '?')} → {String(item.candidate_oracle_pass ?? '?')} {item.oracle_regression ? '· REGRESSION' : ''}
+                          </li>)}
+                        </ul>
+                      </details>
+                    </> : 'not evaluated'}
+                    {skill.artifact_lifecycle === 'active' && skill.candidate_id && <button
+                      onClick={() => void rollbackSkillCandidate(skill.candidate_id!)}
+                      disabled={actionId !== null}
+                      className="mt-1 rounded border border-status-warning/40 px-2 py-1 text-xs text-status-warning disabled:opacity-50">
+                      Roll back for new runs
+                    </button>}
+                    {skill.status === 'candidate' && skill.candidate_id && <button
+                      onClick={() => void compareSkillCandidate(skill.candidate_id!)}
+                      disabled={actionId !== null || !skillEvalModel.trim() || !skillEvalCaseIds.trim()}
+                      className="mt-1 rounded border border-border px-2 py-1 text-xs text-foreground-secondary disabled:opacity-50">
+                      Run paired comparison
+                    </button>}
+                    {skill.status === 'candidate' && skill.evidence_ready && skill.promotion_input && <button
+                      onClick={() => void promoteSkillCandidate(skill)}
+                      disabled={actionId !== null}
+                      className="mt-1 rounded border border-status-success/40 px-2 py-1 text-xs text-status-success disabled:opacity-50">
+                      Submit to existing promotion gate
+                    </button>}
+                  </td>
                   <td className="py-2 pr-4">
                     <StatusBadge status={skill.evidence_ready ? 'ready' : 'blocked'} />
                     {!skill.evidence_ready && <div className="mt-1 max-w-xl text-xs text-status-warning">{skill.blocked_reasons.join(', ')}</div>}
                   </td>
                 </tr>
               ))}
-              {!skillEvolution.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={6}>No governed skill capabilities registered.</td></tr>}
+              {!skillEvolution.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={7}>No governed skill capabilities registered.</td></tr>}
             </tbody>
           </table>
         </div>

@@ -85,4 +85,18 @@ describe('swarm intelligence plan and evolution contracts', () => {
     expect(stats.body.totalGenomes).toBeGreaterThanOrEqual(3);
     expect(stats.body.topSkill).toBeTruthy();
   });
+
+  it('exposes skill evolution inventory and validates candidate contracts before runtime use', async () => {
+    const instance = app();
+    const inventory = await request(instance).get('/intelligence/skills/inventory');
+    expect(inventory.status).toBe(200);
+    expect(inventory.body.skills).toEqual(expect.any(Array));
+
+    const missingCandidateFields = await request(instance).post('/intelligence/skills/candidates').send({ skill_id: 'unknown' });
+    expect(missingCandidateFields.status).toBe(400);
+    expect(missingCandidateFields.body.error.code).toBe('VALIDATION_ERROR');
+
+    const badComparison = await request(instance).post('/intelligence/skills/candidates/missing/compare').send({ model: 'm', case_ids: [] });
+    expect(badComparison.status).toBe(400);
+  });
 });

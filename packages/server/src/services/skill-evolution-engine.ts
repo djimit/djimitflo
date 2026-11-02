@@ -135,7 +135,7 @@ export class SkillEvolutionEngine {
    */
   recordOutcome(skillId: string, outcome: {
     success: boolean;
-    tokensUsed: number;
+    tokensUsed: number | null;
     durationMs: number;
     domain: string;
     taskId?: string;
@@ -144,12 +144,14 @@ export class SkillEvolutionEngine {
     skillContentHash?: string;
     model?: string;
     evidenceRefs?: string[];
+    attemptId?: string;
   }): void {
-    this.db.prepare(`
+    const result = this.db.prepare(`
       INSERT INTO skill_outcomes (
         id, skill_id, success, tokens_used, duration_ms, domain,
-        task_id, agent_id, skill_version, skill_content_hash, model, evidence_refs_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        task_id, agent_id, skill_version, skill_content_hash, model, evidence_refs_json, created_at, attempt_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(attempt_id) DO NOTHING
     `).run(
       randomUUID(),
       skillId,
@@ -164,10 +166,23 @@ export class SkillEvolutionEngine {
       outcome.model || null,
       JSON.stringify(outcome.evidenceRefs || []),
       new Date().toISOString(),
+      outcome.attemptId || null,
     );
 
-    // Update skill traits based on outcome
-    this.updateTraits(skillId, outcome);
+    if (result.changes > 0) this.updateTraits(skillId, outcome);
+  }
+
+  recordDelivery(input: {
+    taskId: string; attemptId: string; agentId?: string; skillId: string;
+    skillVersion: string; skillContentHash: string; runtime: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO skill_delivery_receipts (
+        id, task_id, attempt_id, agent_id, skill_id, skill_version, skill_content_hash, runtime, delivered_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(attempt_id) DO NOTHING
+    `).run(randomUUID(), input.taskId, input.attemptId, input.agentId || null, input.skillId,
+      input.skillVersion, input.skillContentHash, input.runtime, new Date().toISOString());
   }
 
   /**
@@ -257,7 +272,7 @@ export class SkillEvolutionEngine {
 
   private updateTraits(skillId: string, outcome: {
     success: boolean;
-    tokensUsed: number;
+    tokensUsed: number | null;
     durationMs: number;
     domain: string;
   }): void {
@@ -272,8 +287,10 @@ export class SkillEvolutionEngine {
 
     // Update efficiency based on token usage (normalized)
     const expectedTokens = 1000;
-    const efficiencyGain = Math.max(0, Math.min(1, expectedTokens / Math.max(1, outcome.tokensUsed)));
-    genome.traits.efficiency = genome.traits.efficiency * (1 - alpha) + efficiencyGain * alpha;
+    if (outcome.tokensUsed !== null) {
+      const efficiencyGain = Math.max(0, Math.min(1, expectedTokens / Math.max(1, outcome.tokensUsed)));
+      genome.traits.efficiency = genome.traits.efficiency * (1 - alpha) + efficiencyGain * alpha;
+    }
 
     genome.fitness = this.calculateFitness(genome.traits);
 
@@ -298,7 +315,7 @@ export class SkillEvolutionEngine {
         id TEXT PRIMARY KEY,
         skill_id TEXT NOT NULL,
         success INTEGER NOT NULL DEFAULT 0,
-        tokens_used INTEGER NOT NULL DEFAULT 0,
+        tokens_used INTEGER,
         duration_ms INTEGER NOT NULL DEFAULT 0,
         domain TEXT NOT NULL DEFAULT '',
         task_id TEXT,
@@ -307,7 +324,30 @@ export class SkillEvolutionEngine {
         skill_content_hash TEXT,
         model TEXT,
         evidence_refs_json TEXT NOT NULL DEFAULT '[]',
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        attempt_id TEXT UNIQUE
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_delivery_receipts (
+        id TEXT PRIMARY KEY, task_id TEXT NOT NULL, attempt_id TEXT NOT NULL UNIQUE, agent_id TEXT,
+        skill_id TEXT NOT NULL, skill_version TEXT NOT NULL, skill_content_hash TEXT NOT NULL,
+        runtime TEXT NOT NULL, delivered_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_artifact_versions (
+        skill_id TEXT NOT NULL, version TEXT NOT NULL, content_hash TEXT NOT NULL,
+        source_package_hash TEXT NOT NULL, parent_hash TEXT, instructions TEXT NOT NULL,
+        lifecycle TEXT NOT NULL CHECK(lifecycle IN ('candidate','approved','active','deprecated','revoked')),
+        candidate_id TEXT, capability_id TEXT, created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL, activated_at TEXT, origin_task_id TEXT, source_outcome_id TEXT,
+        PRIMARY KEY(skill_id, content_hash), UNIQUE(skill_id, version)
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_evolution_comparisons (
+        id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL, baseline_eval_id TEXT NOT NULL,
+        candidate_eval_id TEXT NOT NULL, verdict TEXT NOT NULL CHECK(verdict IN ('PASS','FAIL','INCONCLUSIVE')),
+        reason TEXT NOT NULL, baseline_score REAL, candidate_score REAL, case_results_json TEXT NOT NULL,
+        manifest_json TEXT NOT NULL, created_at TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_skill_genomes_skill_id ON skill_genomes(skill_id);
@@ -321,10 +361,39 @@ export class SkillEvolutionEngine {
       ['skill_content_hash', 'TEXT'],
       ['model', 'TEXT'],
       ['evidence_refs_json', "TEXT NOT NULL DEFAULT '[]'"],
+      ['attempt_id', 'TEXT'],
     ] as const) {
       const exists = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string }>)
         .some((column) => column.name === name);
       if (!exists) this.db.exec(`ALTER TABLE skill_outcomes ADD COLUMN ${name} ${ddl}`);
+    }
+    const tokenColumn = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string; notnull: number }>)
+      .find((column) => column.name === 'tokens_used');
+    if (tokenColumn?.notnull) this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE skill_outcomes RENAME TO skill_outcomes_legacy_tokens;
+        CREATE TABLE skill_outcomes (
+          id TEXT PRIMARY KEY, skill_id TEXT NOT NULL, success INTEGER NOT NULL DEFAULT 0,
+          tokens_used INTEGER, duration_ms INTEGER NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT '',
+          task_id TEXT, agent_id TEXT, skill_version TEXT, skill_content_hash TEXT, model TEXT,
+          evidence_refs_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          attempt_id TEXT UNIQUE
+        );
+        INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id,
+          skill_version, skill_content_hash, model, evidence_refs_json, created_at, attempt_id)
+        SELECT id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id,
+          skill_version, skill_content_hash, model, evidence_refs_json, created_at, attempt_id
+        FROM skill_outcomes_legacy_tokens;
+        DROP TABLE skill_outcomes_legacy_tokens;
+      `);
+    })();
+    this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_outcomes_attempt_id ON skill_outcomes(attempt_id)');
+    const artifactColumns = this.db.prepare('PRAGMA table_info(skill_artifact_versions)').all() as Array<{ name: string }>;
+    if (!artifactColumns.some((column) => column.name === 'origin_task_id')) {
+      this.db.exec('ALTER TABLE skill_artifact_versions ADD COLUMN origin_task_id TEXT');
+    }
+    if (!artifactColumns.some((column) => column.name === 'source_outcome_id')) {
+      this.db.exec('ALTER TABLE skill_artifact_versions ADD COLUMN source_outcome_id TEXT');
     }
   }
 }

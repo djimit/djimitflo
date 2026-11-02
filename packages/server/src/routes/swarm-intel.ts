@@ -15,6 +15,9 @@ import { AgentInteractionLedgerService } from '../services/agent-interaction-led
 import { OutcomeLearningService } from '../services/outcome-learning-service';
 import { ReviewerIndependenceService } from '../services/reviewer-independence-service';
 import { BoardHandoffService } from '../services/board-handoff-service';
+import { SkillArtifactEvolutionService } from '../services/skill-artifact-evolution-service';
+import { SkillLoaderService } from '../services/skill-loader-service';
+import { OpenMythosEvalService } from '../services/openmythos-eval-service';
 
 function boundedLimit(value: unknown, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -39,6 +42,22 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   const evolution = new SkillEvolutionEngine(db);
   const intelligence = new SwarmIntelligenceService(db);
   const specialistPanel = new SpecialistPanelService(db);
+  const skillArtifacts = new SkillArtifactEvolutionService(db);
+  const skillLoader = new SkillLoaderService(db);
+  const skillEvaluator = new OpenMythosEvalService(db);
+
+  router.get('/intelligence/skills/inventory', requirePermission('read:evidence'), (_req, res) => {
+    skillLoader.loadSkills();
+    const skills = skillLoader.listSkills().map((skill) => ({
+      id: skill.id, version: skill.version, content_hash: skill.contentHash,
+      source_tasks: db.prepare(`SELECT DISTINCT o.task_id FROM skill_outcomes o JOIN skill_delivery_receipts d
+        ON d.attempt_id = o.attempt_id AND d.skill_id = o.skill_id AND d.skill_version = o.skill_version
+        AND d.skill_content_hash = o.skill_content_hash
+        WHERE o.skill_id = ? AND o.skill_content_hash = ? AND o.success = 1 AND o.task_id IS NOT NULL
+        ORDER BY o.task_id DESC LIMIT 20`).all(skill.id, skill.contentHash).map((row: any) => row.task_id),
+    }));
+    res.json({ skills });
+  });
 
   // ─── Task Decomposition ─────────────────────────────────────────────
   router.post('/decompose', requirePermission('write:swarm_action'), (req, res) => {
@@ -264,11 +283,82 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     try {
       res.json(intelligence.promoteCapability(req.params.id, req.body || {}));
     } catch (err: any) {
-      if (err.message?.startsWith('CAPABILITY_') || err.message === 'SWARM_CAPABILITY_NOT_FOUND') {
+      if (err.message?.startsWith('CAPABILITY_') || err.message?.startsWith('SKILL_EVOLUTION_') || err.message === 'SWARM_CAPABILITY_NOT_FOUND') {
         next(createError(409, err.message, err.message.split(':')[0]));
       } else {
         next(err);
       }
+    }
+  });
+
+  router.post('/intelligence/skills/candidates', requirePermission('write:skills'), requirePermission('write:capability'), (req, res, next) => {
+    try {
+      const body = req.body || {};
+      if (typeof body.skill_id !== 'string' || typeof body.baseline_hash !== 'string'
+        || typeof body.find !== 'string' || typeof body.replace !== 'string' || typeof body.source_task_id !== 'string') {
+        throw createError(400, 'skill_id, baseline_hash, source_task_id, find and replace are required', 'VALIDATION_ERROR');
+      }
+      const actor = String((req as any).user?.sub || '').trim();
+      if (!actor) throw createError(401, 'Authenticated actor identity is required', 'ACTOR_ID_REQUIRED');
+      const created = db.transaction(() => {
+        const candidate = skillArtifacts.createCandidate({ loader: skillLoader, skillId: body.skill_id,
+          baselineHash: body.baseline_hash, find: body.find, replace: body.replace, actor, sourceTaskId: body.source_task_id });
+        const capability = intelligence.createCandidate({
+          id: `skill-evolution:${candidate.id}`, kind: 'skill', owner: actor, version: candidate.version,
+          risk_ceiling: 'medium', input_schema_ref: 'skill-instructions/v1', output_schema_ref: 'skill-instructions/v1',
+          allowed_actions: ['provide task guidance'], forbidden_actions: ['grant permissions', 'change policy', 'promote self'],
+          required_evidence: ['paired-openmythos-comparison', 'verified-skill-outcomes'], eval_threshold: 0.75,
+          removal_strategy: 'rollback to parent skill artifact version',
+          metadata: { skill_evolution_candidate_id: candidate.id, agent_skill_id: candidate.skill_id,
+            agent_skill_version: candidate.version, agent_skill_content_hash: candidate.content_hash,
+            parent_skill_hash: candidate.parent_hash, source_task_id: candidate.origin_task_id },
+        });
+        skillArtifacts.bindCapability(candidate.id, capability.id);
+        return { candidate: skillArtifacts.getCandidateById(candidate.id), capability };
+      })();
+      res.status(201).json(created);
+    } catch (err: any) {
+      if (err?.message?.startsWith('SKILL_EVOLUTION_')) next(createError(409, err.message, err.message));
+      else next(err);
+    }
+  });
+
+  router.get('/intelligence/skills/candidates/:id', requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(skillArtifacts.getCandidateById(req.params.id)); }
+    catch (err: any) { next(createError(404, err.message || 'SKILL_EVOLUTION_CANDIDATE_NOT_FOUND', 'NOT_FOUND')); }
+  });
+
+  router.post('/intelligence/skills/candidates/:id/compare', requirePermission('write:governance'), async (req, res, next) => {
+    try {
+      const body = req.body || {};
+      if (typeof body.model !== 'string' || !body.model.trim() || !Array.isArray(body.case_ids)
+        || body.case_ids.length === 0 || body.case_ids.length > 100
+        || body.case_ids.some((id: unknown) => typeof id !== 'string' || !id.trim())
+        || new Set(body.case_ids).size !== body.case_ids.length) {
+        throw createError(400, 'model and case_ids are required', 'VALIDATION_ERROR');
+      }
+      const actor = String((req as any).user?.sub || '').trim();
+      if (!actor) throw createError(401, 'Authenticated actor identity is required', 'ACTOR_ID_REQUIRED');
+      const result = await skillArtifacts.compare(req.params.id, skillLoader, skillEvaluator,
+        { model: body.model, caseIds: body.case_ids, actor });
+      res.status(201).json(result);
+    } catch (err: any) {
+      if (err?.message?.startsWith('SKILL_EVOLUTION_')) next(createError(409, err.message, err.message));
+      else next(err);
+    }
+  });
+
+  router.post('/intelligence/skills/candidates/:id/rollback', requirePermission('write:capability'), (req, res, next) => {
+    try {
+      const candidate = skillArtifacts.getCandidateById(req.params.id) as { capability_id?: string | null };
+      const result = skillArtifacts.rollback(req.params.id);
+      if (candidate.capability_id) db.prepare("UPDATE swarm_capabilities SET status = 'deprecated', updated_at = ? WHERE id = ?")
+        .run(new Date().toISOString(), candidate.capability_id);
+      skillLoader.loadSkills();
+      res.json(result);
+    } catch (err: any) {
+      if (err?.message?.startsWith('SKILL_EVOLUTION_')) next(createError(409, err.message, err.message));
+      else next(err);
     }
   });
 

@@ -224,10 +224,12 @@ export class LoopVerificationService {
 
   private leaseChecksPassed(lease: WorkerLeaseRecord): boolean {
     const checks = lease.metadata?.deterministic_checks;
-    if (!Array.isArray(checks) || checks.length === 0) return false;
-    return checks.every((check) => {
-      const status = (check as { status?: unknown }).status;
-      return status === 'pass' || status === 'skipped';
-    });
+    const required = lease.metadata?.required_deterministic_checks;
+    if (!Array.isArray(checks) || checks.length === 0 || !Array.isArray(required) || required.length === 0) return false;
+    const names = checks.map((check) => (check as { name?: unknown }).name);
+    return names.length === required.length
+      && new Set(names).size === names.length
+      && required.every((name) => typeof name === 'string' && names.includes(name))
+      && checks.every((check) => (check as { status?: unknown }).status === 'pass');
   }
 }

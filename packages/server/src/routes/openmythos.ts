@@ -91,6 +91,11 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
+  router.get('/cases', requirePermission('read:evidence'), (_req, res, next) => {
+    try { res.json({ cases: evalService.listCaseMetadata() }); }
+    catch (error) { next(error); }
+  });
+
   // POST /api/openmythos/eval/:agentId — start evaluation run
   router.post('/eval/:agentId', requirePermission('write:governance'), async (req, res, next) => {
     try {

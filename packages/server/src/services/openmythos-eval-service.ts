@@ -196,6 +196,19 @@ export class OpenMythosEvalService {
     return this.casesCache.filter(c => !categories?.length || categories.includes(c.category));
   }
 
+  listCaseMetadata(): Array<{ id: string; category: string; difficulty: number }> {
+    return this.loadCases().map(({ id, category, difficulty }) => ({ id, category, difficulty }));
+  }
+
+  getCurrentEvaluationIdentity(): { corpus_sha256: string; corpus_version: string; oracle_anchors_sha256: string | null; evaluator_build_sha: string | null } {
+    this.casesCache = null;
+    this.anchorsCache = null;
+    this.loadCases();
+    this.loadAnchors();
+    return { corpus_sha256: this.corpusSha256!, corpus_version: this.corpusManifest!.corpus_version,
+      oracle_anchors_sha256: this.anchorsSha256, evaluator_build_sha: process.env.DJIMITFLO_BUILD_SHA?.trim() || null };
+  }
+
   /**
    * Run a full evaluation for an agent.
    * Uses WorkerPool for parallel case execution.
@@ -231,6 +244,7 @@ export class OpenMythosEvalService {
     const baseMetadata = {
       subject_model: subjectModel,
       subject_model_digest: subjectModelDigest,
+      evaluator_build_sha: process.env.DJIMITFLO_BUILD_SHA?.trim() || null,
       judge_backend: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? 'ollama' : 'judge_service',
       judge_model: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? getJudgeModel() : 'djimitflo-judge-service',
       judge_model_digest: judgeModelDigest,

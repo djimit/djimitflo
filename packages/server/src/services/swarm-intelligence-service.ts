@@ -15,6 +15,7 @@ import { SkillTrainingPromotionGate } from './skill-training-promotion-gate';
 import { AgentInteractionLedgerService, type AgentInteractionRecord } from './agent-interaction-ledger-service';
 import { OutcomeLearningService, type OutcomeLearningAssessment } from './outcome-learning-service';
 import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
+import { SkillArtifactEvolutionService } from './skill-artifact-evolution-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -84,6 +85,8 @@ export interface SwarmCapabilityRecord {
 
 export interface SkillEvolutionReadiness {
   capability_id: string;
+  candidate_id?: string | null;
+  artifact_lifecycle?: string | null;
   skill_id: string;
   skill_version: string;
   candidate_hash: string;
@@ -95,6 +98,7 @@ export interface SkillEvolutionReadiness {
   evidence_ready: boolean;
   blocked_reasons: string[];
   promotion_input: Record<string, unknown> | null;
+  candidate_comparison?: Record<string, unknown> | null;
 }
 
 export interface ClaimLedgerRecord {
@@ -387,11 +391,16 @@ export class SwarmIntelligenceService {
       promoted_at: now,
     };
 
-    this.db.prepare(`
-      UPDATE swarm_capabilities
-      SET status = 'validated', eval_score = ?, latest_validation_report = ?, metadata = ?, updated_at = ?
-      WHERE id = ?
-    `).run(evalScore, input.validation_report || null, JSON.stringify(metadata), now, id);
+    this.db.transaction(() => {
+      if (typeof capability.metadata.skill_evolution_candidate_id === 'string') {
+        new SkillArtifactEvolutionService(this.db).activate(capability.metadata.skill_evolution_candidate_id);
+      }
+      this.db.prepare(`
+        UPDATE swarm_capabilities
+        SET status = 'validated', eval_score = ?, latest_validation_report = ?, metadata = ?, updated_at = ?
+        WHERE id = ?
+      `).run(evalScore, input.validation_report || null, JSON.stringify(metadata), now, id);
+    })();
 
     return this.getCapability(id);
   }
@@ -404,14 +413,18 @@ export class SwarmIntelligenceService {
         const skillId = String(capability.metadata.agent_skill_id || '').trim();
         const skillVersion = String(capability.metadata.agent_skill_version || '').trim();
         const candidateHash = String(capability.metadata.agent_skill_content_hash || '').trim();
+        const candidateId = String(capability.metadata.skill_evolution_candidate_id || '');
         const assignedAgents = skillId && hasAssignments
           ? Number((this.db.prepare('SELECT COUNT(*) AS count FROM agent_skills WHERE skill_id = ? AND enabled = 1').get(skillId) as { count?: number })?.count || 0)
           : 0;
         const outcomeRows = skillId && candidateHash
           ? this.db.prepare(`
-              SELECT skill_content_hash AS hash, COUNT(*) AS count
-              FROM skill_outcomes WHERE skill_id = ? AND skill_content_hash IS NOT NULL
-              GROUP BY skill_content_hash ORDER BY MAX(created_at) DESC
+              SELECT o.skill_content_hash AS hash, COUNT(DISTINCT o.attempt_id) AS count
+              FROM skill_outcomes o JOIN skill_delivery_receipts d
+                ON d.attempt_id = o.attempt_id AND d.skill_id = o.skill_id
+                AND d.skill_version = o.skill_version AND d.skill_content_hash = o.skill_content_hash
+              WHERE o.skill_id = ? AND o.skill_content_hash IS NOT NULL AND o.attempt_id IS NOT NULL
+              GROUP BY o.skill_content_hash ORDER BY MAX(o.created_at) DESC
             `).all(skillId) as Array<{ hash: string; count: number }>
           : [];
         const candidateRuns = Number(outcomeRows.find((row) => row.hash === candidateHash)?.count || 0);
@@ -422,6 +435,16 @@ export class SwarmIntelligenceService {
           : [];
         const blockedReasons: string[] = [];
         let comparison: Record<string, unknown> | null = null;
+        const comparisonRow = candidateId && this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_evolution_comparisons'").get()
+          ? this.db.prepare('SELECT id, verdict, reason, baseline_score, candidate_score, baseline_eval_id, candidate_eval_id, case_results_json, manifest_json FROM skill_evolution_comparisons WHERE candidate_id = ? ORDER BY rowid DESC LIMIT 1').get(candidateId) as any
+          : null;
+        const candidateComparison = comparisonRow ? { id: comparisonRow.id, verdict: comparisonRow.verdict,
+          reason: comparisonRow.reason, baseline_score: comparisonRow.baseline_score, candidate_score: comparisonRow.candidate_score,
+          baseline_eval_id: comparisonRow.baseline_eval_id, candidate_eval_id: comparisonRow.candidate_eval_id,
+          cases: JSON.parse(comparisonRow.case_results_json), manifest: JSON.parse(comparisonRow.manifest_json) } : null;
+        const artifactLifecycle = candidateId && this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_artifact_versions'").get()
+          ? (this.db.prepare('SELECT lifecycle FROM skill_artifact_versions WHERE candidate_id = ?').get(candidateId) as { lifecycle?: string } | undefined)?.lifecycle || null
+          : null;
 
         if (!skillId || !skillVersion || !candidateHash) blockedReasons.push('CAPABILITY_PROMOTION_SKILL_ATTRIBUTION_REQUIRED');
         else if (capability.status !== 'candidate') blockedReasons.push(`CAPABILITY_NOT_CANDIDATE:${capability.status}`);
@@ -429,9 +452,12 @@ export class SwarmIntelligenceService {
         else {
           for (const baselineHash of baselineHashes) {
             try {
+              const refs = candidateComparison
+                ? [`skill_evolution_comparison:${candidateComparison.id}`, `openmythos:${candidateComparison.baseline_eval_id}`, `openmythos:${candidateComparison.candidate_eval_id}`]
+                : [`skill_outcomes:${skillId}:${candidateHash}`, ...evalRefs];
               comparison = this.assertSkillPromotionEvidence(capability, {
                 baseline_skill_content_hash: baselineHash,
-                evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, ...evalRefs],
+                evidence_refs: refs,
               });
               if (comparison) break;
             } catch (error) {
@@ -446,12 +472,16 @@ export class SwarmIntelligenceService {
           ? Number((this.db.prepare('SELECT overall_score FROM openmythos_eval_runs WHERE id = ?').get(openmythosRunId) as { overall_score?: number })?.overall_score || 0) / 5
           : 0;
         const baselineHash = comparison ? String(comparison.baseline_hash) : null;
+        const pairedEvidence = comparison?.paired_comparison as Record<string, unknown> | undefined;
         const evidenceRefs = openmythosRunId
-          ? [`skill_outcomes:${skillId}:${candidateHash}`, `openmythos:${openmythosRunId}`]
+          ? pairedEvidence ? [`skill_evolution_comparison:${pairedEvidence.id}`, `openmythos:${pairedEvidence.baseline_eval_id}`, `openmythos:${openmythosRunId}`]
+            : [`skill_outcomes:${skillId}:${candidateHash}`, `openmythos:${openmythosRunId}`]
           : [];
 
         return {
           capability_id: capability.id,
+          candidate_id: candidateId || null,
+          artifact_lifecycle: artifactLifecycle,
           skill_id: skillId,
           skill_version: skillVersion,
           candidate_hash: candidateHash,
@@ -468,6 +498,7 @@ export class SwarmIntelligenceService {
             evidence_refs: evidenceRefs,
             baseline_skill_content_hash: baselineHash,
           } : null,
+          candidate_comparison: candidateComparison,
         };
       });
   }
@@ -486,39 +517,56 @@ export class SwarmIntelligenceService {
       throw new Error('CAPABILITY_PROMOTION_SKILL_ATTRIBUTION_REQUIRED');
     }
     if (!baselineHash || baselineHash === candidateHash) throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_REQUIRED');
+    const artifactCandidateId = typeof capability.metadata.skill_evolution_candidate_id === 'string'
+      ? capability.metadata.skill_evolution_candidate_id : null;
+    const artifactEvolution = artifactCandidateId ? new SkillArtifactEvolutionService(this.db) : null;
+    const paired = artifactCandidateId ? artifactEvolution!.latestComparison(artifactCandidateId) : null;
+    if (artifactCandidateId) {
+      const artifact = artifactEvolution!.getCandidateById(artifactCandidateId) as any;
+      if (!paired || paired.verdict !== 'PASS' || artifact.parent_hash !== baselineHash || artifact.content_hash !== candidateHash) {
+        throw new Error('CAPABILITY_PROMOTION_SKILL_PAIRED_EVALUATION_REQUIRED');
+      }
+      const pairedCases = Array.isArray(paired.cases) ? paired.cases.length : 0;
+      if (pairedCases < 30) throw new Error(`CAPABILITY_PROMOTION_SKILL_PAIRED_CASES_REQUIRED:${pairedCases}:minimum=30`);
+    }
     if (!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_outcomes'").get()) {
       throw new Error('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=0:minimum=30');
     }
 
-    type OutcomeRow = { id: string; success: number; tokens_used: number; duration_ms: number };
+    type OutcomeRow = { id: string; success: number; tokens_used: number | null; duration_ms: number };
     const outcomes = (hash: string) => this.db.prepare(`
-      SELECT id, success, tokens_used, duration_ms FROM skill_outcomes
-      WHERE skill_id = ? AND skill_content_hash = ?
-      ORDER BY created_at ASC, id ASC
+      SELECT o.id, o.success, o.tokens_used, o.duration_ms FROM skill_outcomes o
+      JOIN skill_delivery_receipts d ON d.attempt_id = o.attempt_id AND d.skill_id = o.skill_id
+        AND d.skill_version = o.skill_version AND d.skill_content_hash = o.skill_content_hash
+      WHERE o.skill_id = ? AND o.skill_content_hash = ? AND o.attempt_id IS NOT NULL
+      ORDER BY o.created_at ASC, o.id ASC
     `).all(skillId, hash) as OutcomeRow[];
-    const candidate = outcomes(candidateHash);
-    const baseline = outcomes(baselineHash);
+    const candidate = artifactCandidateId ? [] : outcomes(candidateHash);
+    const baseline = artifactCandidateId ? [] : outcomes(baselineHash);
     const minimum = 30;
-    if (candidate.length < minimum || baseline.length < minimum) {
+    if (!artifactCandidateId && (candidate.length < minimum || baseline.length < minimum)) {
       throw new Error(`CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=${candidate.length}:baseline=${baseline.length}:minimum=${minimum}`);
     }
 
     const successRate = (rows: OutcomeRow[]) => rows.filter((row) => row.success === 1).length / rows.length;
-    const median = (rows: OutcomeRow[], field: 'tokens_used' | 'duration_ms') => {
-      const values = rows.map((row) => Number(row[field]) || 0).sort((a, b) => a - b);
+    const median = (rows: OutcomeRow[], field: 'tokens_used' | 'duration_ms'): number | null => {
+      if (field === 'tokens_used' && rows.some((row) => row.tokens_used === null)) return null;
+      const values = rows.map((row) => row[field]).filter((value): value is number => value !== null).sort((a, b) => a - b);
+      if (values.length !== rows.length) return null;
       const middle = Math.floor(values.length / 2);
       return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
     };
-    const baselineSuccess = successRate(baseline);
-    const candidateSuccess = successRate(candidate);
+    const baselineSuccess = artifactCandidateId ? null : successRate(baseline);
+    const candidateSuccess = artifactCandidateId ? null : successRate(candidate);
     const baselineTokens = median(baseline, 'tokens_used');
     const candidateTokens = median(candidate, 'tokens_used');
     const baselineDuration = median(baseline, 'duration_ms');
     const candidateDuration = median(candidate, 'duration_ms');
-    const improved = candidateSuccess >= baselineSuccess + 0.1
-      || (candidateSuccess >= baselineSuccess && (
-        (baselineTokens > 0 && candidateTokens <= baselineTokens * 0.85)
-        || (baselineDuration > 0 && candidateDuration <= baselineDuration * 0.85)
+    const improved = artifactCandidateId ? paired?.verdict === 'PASS'
+      : candidateSuccess! >= baselineSuccess! + 0.1
+      || (candidateSuccess! >= baselineSuccess! && (
+        (baselineTokens !== null && candidateTokens !== null && baselineTokens > 0 && candidateTokens <= baselineTokens * 0.85)
+        || (baselineDuration !== null && candidateDuration !== null && baselineDuration > 0 && candidateDuration <= baselineDuration * 0.85)
       ));
     if (!improved) throw new Error('CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT');
 
@@ -527,7 +575,9 @@ export class SwarmIntelligenceService {
       WHERE agent_id = ? AND status = 'completed' AND completed_cases = total_cases
       ORDER BY finished_at DESC, created_at DESC
     `).all(skillId) as Array<{ id: string; overall_score: number; metadata: string }>;
+    const pairedCandidateEvalId = (paired as any)?.candidate_eval_id;
     const evalRun = evalRows.find((row) => {
+      if (pairedCandidateEvalId && row.id !== pairedCandidateEvalId) return false;
       let metadata: Record<string, unknown> = {};
       try { metadata = JSON.parse(row.metadata || '{}') as Record<string, unknown>; } catch { return false; }
       return metadata.evaluation_mode === 'skill_conditioned_prompt'
@@ -541,7 +591,8 @@ export class SwarmIntelligenceService {
     if (!evalRun) throw new Error('CAPABILITY_PROMOTION_SKILL_OPENMYTHOS_REQUIRED');
 
     const requiredRefs = [
-      `skill_outcomes:${skillId}:${candidateHash}`,
+      ...(artifactCandidateId ? [`skill_evolution_comparison:${(paired as any).id}`, `openmythos:${(paired as any).baseline_eval_id}`]
+        : [`skill_outcomes:${skillId}:${candidateHash}`]),
       `openmythos:${evalRun.id}`,
     ];
     if (!requiredRefs.every((ref) => input.evidence_refs?.includes(ref))) {
@@ -562,6 +613,7 @@ export class SwarmIntelligenceService {
       candidate_median_duration_ms: candidateDuration,
       baseline_median_duration_ms: baselineDuration,
       openmythos_run_id: evalRun.id,
+      paired_comparison: paired,
     };
   }
 

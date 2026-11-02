@@ -22,12 +22,19 @@ function writeRunner(name: string, source: string) {
 function seedSkillEvidence(skillId: string, candidateHash = 'candidate-hash', baselineHash = 'baseline-hash', candidateSuccesses = 30) {
   const insert = db.prepare(`
     INSERT INTO skill_outcomes (
-      id, skill_id, success, tokens_used, duration_ms, domain, skill_version, skill_content_hash, evidence_refs_json
-    ) VALUES (?, ?, ?, ?, ?, 'test', '0.1.0', ?, '[]')
+      id, skill_id, success, tokens_used, duration_ms, domain, skill_version, skill_content_hash, evidence_refs_json, attempt_id
+    ) VALUES (?, ?, ?, ?, ?, 'test', '0.1.0', ?, '[]', ?)
   `);
+  const receipt = db.prepare(`INSERT INTO skill_delivery_receipts
+    (id, task_id, attempt_id, skill_id, skill_version, skill_content_hash, runtime, delivered_at)
+    VALUES (?, ?, ?, ?, '0.1.0', ?, 'mock', datetime('now'))`);
   for (let i = 0; i < 30; i += 1) {
-    insert.run(`baseline-${skillId}-${i}`, skillId, i < 24 ? 1 : 0, 1_000, 1_000, baselineHash);
-    insert.run(`candidate-${skillId}-${i}`, skillId, i < candidateSuccesses ? 1 : 0, 800, 800, candidateHash);
+    const baselineAttempt = `baseline-attempt-${skillId}-${i}`;
+    const candidateAttempt = `candidate-attempt-${skillId}-${i}`;
+    receipt.run(`baseline-receipt-${skillId}-${i}`, `baseline-task-${skillId}-${i}`, baselineAttempt, skillId, baselineHash);
+    receipt.run(`candidate-receipt-${skillId}-${i}`, `candidate-task-${skillId}-${i}`, candidateAttempt, skillId, candidateHash);
+    insert.run(`baseline-${skillId}-${i}`, skillId, i < 24 ? 1 : 0, 1_000, 1_000, baselineHash, baselineAttempt);
+    insert.run(`candidate-${skillId}-${i}`, skillId, i < candidateSuccesses ? 1 : 0, 800, 800, candidateHash, candidateAttempt);
   }
   db.prepare(`
     INSERT INTO openmythos_eval_runs (

@@ -26,6 +26,7 @@ export interface SkillDefinition {
   enabled: boolean;
   metadata: Record<string, unknown>;
   contentHash: string;
+  sourcePackageHash?: string;
   manifestHash: string | null;
   workflowHash: string;
 }
@@ -86,7 +87,26 @@ export class SkillLoaderService {
         const manifestPath = join(skillPath, 'skill.manifest.yaml');
         const manifestContent = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : null;
         const manifest = manifestContent ? this.parseFlatYaml(manifestContent) : {};
-        const skill = this.parseSkillMd(content, entry.name, manifest, manifestContent);
+        let skill = this.parseSkillMd(content, entry.name, manifest, manifestContent);
+        const artifactTable = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_artifact_versions'").get();
+        if (artifactTable) {
+          const active = this.db.prepare(`SELECT version, content_hash, source_package_hash, instructions
+            FROM skill_artifact_versions WHERE skill_id = ? AND lifecycle = 'active'`).get(skill.id) as
+            { version: string; content_hash: string; source_package_hash: string; instructions: string } | undefined;
+          if (active) {
+            if (active.source_package_hash !== skill.contentHash) {
+              this.rejectedSkills.push({ id: skill.id, errors: ['active skill artifact base package changed; revalidation required'] });
+              continue;
+            }
+            skill = { ...skill, version: active.version, contentHash: active.content_hash,
+              workflowHash: createHash('sha256').update(active.instructions.replace(/\s+/g, ' ')).digest('hex'),
+              instructions: active.instructions, sourcePackageHash: active.source_package_hash };
+          } else {
+            skill.sourcePackageHash = skill.contentHash;
+          }
+        } else {
+          skill.sourcePackageHash = skill.contentHash;
+        }
         if (this.allowedSkillIds && !this.allowedSkillIds.has(entry.name) && !this.allowedSkillIds.has(skill.id)) continue;
         const errors = this.validateSkill(skill);
         const owner = workflowOwners.get(skill.workflowHash);

@@ -618,16 +618,20 @@ describe('ExecutionEngine', () => {
         '',
       ].join('\n'));
 
+      let deliveredDescription = '';
       const attributedEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
       attributedEngine.registerExecutor({
         kind: 'mock',
         canExecute: () => true,
-        start: async (task: Task) => ({
+        start: async (task: Task) => {
+          deliveredDescription = task.description;
+          return ({
           id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
           events: (async function* () {})(),
           result: Promise.resolve({ status: 'completed', message: 'ok', stdout: 'worker output', stderr: '', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
           cancel: async () => {},
-        }),
+          });
+        },
       } as any);
       db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
       db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
@@ -649,6 +653,12 @@ describe('ExecutionEngine', () => {
         agent_id: 'agent-skill', success: 1, tokens_used: 100,
       });
       expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
+      expect(deliveredDescription).toContain('<skill-instructions id=".opencode.skills.running-tests" version="0.1.0"');
+      expect(deliveredDescription).toContain('Plan the scoped test, execute it, verify output, and stop.');
+      expect(db.prepare('SELECT skill_id, skill_version, skill_content_hash, runtime FROM skill_delivery_receipts WHERE task_id = ?').get('task-skill'))
+        .toMatchObject({ skill_id: row.skill_id, skill_version: row.skill_version, skill_content_hash: row.skill_content_hash, runtime: 'mock' });
+      expect(db.prepare('SELECT attempt_id FROM skill_outcomes WHERE task_id = ?').get('task-skill'))
+        .toEqual(db.prepare('SELECT attempt_id FROM skill_delivery_receipts WHERE task_id = ?').get('task-skill'));
     } finally {
       fs.rmSync(skillsDir, { recursive: true, force: true });
     }

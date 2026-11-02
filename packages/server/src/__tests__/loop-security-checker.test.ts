@@ -37,7 +37,7 @@ beforeEach(() => {
     loops.insertWorkerLease({ id: role, loopRunId: 'review-run', role, runtime: 'manual', findingId: 'finding',
       worktreePath: role === 'maker' ? repo : null, branchName: null, now: new Date().toISOString(),
       metadata: role === 'maker' ? { assignment_file: assignment, diff_lines: 0, diff_max_lines: 20,
-        deterministic_checks: [{ name: 'fixture', status: 'pass' }] } : { maker_lease_id: 'maker' } });
+        required_deterministic_checks: ['fixture'], deterministic_checks: [{ name: 'fixture', status: 'pass' }] } : { maker_lease_id: 'maker' } });
   }
   loops.updateWorkerLeaseStatus('maker', 'completed', {});
 });

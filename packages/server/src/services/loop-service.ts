@@ -973,6 +973,9 @@ export class LoopService {
     }
 
     const scripts = input.scripts || ['test', 'lint', 'type-check'];
+    if (scripts.length === 0 || new Set(scripts).size !== scripts.length || scripts.some((name) => !/^[a-z][a-z0-9-]*$/.test(name))) {
+      throw new Error('DETERMINISTIC_CHECK_SET_INVALID');
+    }
     const packageScripts = this.readNearestPackageScripts(makerLease.worktree_path);
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const outputDir = path.join(this.evidenceRoot, run.id, 'checks', makerLease.id);
@@ -1017,6 +1020,7 @@ export class LoopService {
     const failed = checks.some((check) => check.status === 'fail');
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
+      required_deterministic_checks: scripts,
       checks_completed_at: new Date().toISOString(),
     });
 

@@ -25,7 +25,7 @@ beforeEach(() => {
     loops.insertWorkerLease({ id: role, loopRunId: 'run', role, runtime: 'manual', findingId: 'finding',
       worktreePath: role === 'maker' ? root : null, branchName: null, now: new Date().toISOString(),
       metadata: role === 'maker'
-        ? { assignment_file: path.join(root, 'LOOP_WORK.md'), diff_lines: 0, diff_max_lines: 20, deterministic_checks: [{ name: 'fixture', status: 'pass' }] }
+        ? { assignment_file: path.join(root, 'LOOP_WORK.md'), diff_lines: 0, diff_max_lines: 20, required_deterministic_checks: ['fixture'], deterministic_checks: [{ name: 'fixture', status: 'pass' }] }
         : { maker_lease_id: 'maker' } });
   }
   fs.writeFileSync(path.join(root, 'LOOP_WORK.md'), 'Synthetic assignment');
