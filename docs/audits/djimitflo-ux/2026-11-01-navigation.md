@@ -61,3 +61,7 @@ Existing navigation now filters by page, route, group and bounded domain aliases
 - P2: initial task and agent loading is coupled through Promise.all; inspect independent error recovery before changing it.
 - P2: Agent Commons tab keyboard behavior needs dedicated interaction coverage.
 - Validate benefit by comparing unaided navigation versus search for skills, memory, providers and swarm operations. Record completion, wrong destinations and steps; no measured usability improvement is claimed yet.
+
+## Release validation, 2026-11-02
+
+PR #1137 was reconstructed directly on main (`63b7fb749f56a888c89110531f30dca310eeb138`), preserving its original implementation diff. The ten navigation discovery tests passed again on that baseline. It no longer depends on the OMEGA backend PR. The first automated review of the reconstructed head used the previous stacked base and counted 60 files; that result is not a review of the current three-file main-relative change. The next head must be reviewed against main, without overriding the previous status.
