@@ -217,6 +217,7 @@ export function publishInterestProfile(db: Database, now = Date.now(), env: Node
   if (db.prepare('SELECT 1 FROM event_outbox WHERE aggregate_id = ? LIMIT 1').get(aggregateId)) return false;
   const profile = interestProfile(db, now, env);
   if (!profile.terms.length && !profile.cooldown.length) return false; // a cool-down must survive a day without terms
+  // Best-effort (CODE-003): no domain row; a lost insert is re-offered on the next tick (the aggregate check above finds nothing).
   enqueueEvent(db, { type: 'djimitflo.feedback.interests', aggregateId, payload: profile });
   return true;
 }

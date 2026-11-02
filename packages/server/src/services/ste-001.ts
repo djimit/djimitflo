@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { wilson } from './evolution-estimators';
+import { notFallbackOutcomeSql } from './ollama-outage-fallback';
 
 /**
  * STE-001 (operator 11-10, protocol docs/research/ace/STE-001_PROTOCOL.md): does a maker template written in ASD-STE100
@@ -64,20 +65,24 @@ export function runSte001(db: Database, runId: string): SteContext | null {
 /**
  * Per-arm evidence (production maker outcomes carrying `ste-001-arm:<0|1>`): n, verified, Wilson 95 %, tokens, and the
  * out-of-scope share = outcomes whose auto_approved_scope gate failed (the 'asked for a test, edited README' failure).
+ * Amendment (2026-10-27, L-F05 as in ACE-001 Amendment 3): tokens_mean averages runs with known tokens (> 0) only; tokens_n
+ * and tokens_coverage say how many. A run without a usage report is not a 0-token run. Secondary reading only.
  */
 export function ste001Evidence(db: Database, since: string, env: NodeJS.ProcessEnv = process.env) {
-  let rows: Array<{ arm: string; success: number; tokens: number; out_of_scope: number }> = [];
+  let rows: Array<{ arm: string; success: number; tokens: number | null; out_of_scope: number }> = [];
   try {
     rows = db.prepare(`SELECT substr(r.value, 13) AS arm, o.success, o.tokens_used AS tokens,
         EXISTS (SELECT 1 FROM json_each(o.evidence_refs_json) g WHERE g.value = 'gate:auto_approved_scope:fail') AS out_of_scope
       FROM skill_outcomes o, json_each(o.evidence_refs_json) r
-      WHERE r.value LIKE 'ste-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at >= ?`).all(since) as typeof rows;
+      WHERE r.value LIKE 'ste-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND ${notFallbackOutcomeSql('o')} AND o.created_at >= ?`).all(since) as typeof rows;
   } catch { /* skill_outcomes absent */ }
   const arm = (a: '0' | '1') => {
     const r = rows.filter((x) => x.arm === a); const v = r.filter((x) => x.success).length; const s = r.filter((x) => x.out_of_scope).length;
+    const t = r.map((x) => x.tokens).filter((x): x is number => typeof x === 'number' && x > 0);
     return { n: r.length, verified: v, verified_rate: r.length ? +(v / r.length).toFixed(3) : null, ci: r.length ? wilson(v, r.length) : null,
       out_of_scope: s, out_of_scope_share: r.length ? +(s / r.length).toFixed(3) : null,
-      tokens_mean: r.length ? Math.round(r.reduce((t, x) => t + (x.tokens || 0), 0) / r.length) : null };
+      tokens_n: t.length, tokens_coverage: r.length ? +(t.length / r.length).toFixed(3) : null,
+      tokens_mean: t.length ? Math.round(t.reduce((sum, x) => sum + x, 0) / t.length) : null };
   };
   const arms = { '0': arm('0'), '1': arm('1') };
   const reached = arms['0'].n >= STE_001_TARGET_PER_ARM && arms['1'].n >= STE_001_TARGET_PER_ARM;

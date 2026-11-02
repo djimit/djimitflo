@@ -12,7 +12,7 @@ import { createLoopRoutes } from '../routes/loops';
 import { errorHandler } from '../middleware/error-handler';
 import { buildDigest } from '../services/operator-push';
 import {
-  bumpOf, parseDependabotPr, runDependencyLaneTick, dependencyLaneQueue, REBASE_COMMENT,
+  bumpOf, githubLaneClient, parseDependabotPr, runDependencyLaneTick, dependencyLaneQueue, REBASE_COMMENT,
   type CheckState, type LaneGitHub, type LanePr,
 } from '../services/dependency-lane';
 
@@ -203,4 +203,64 @@ it('digest counts the lane queue when the lane is on', async () => {
   expect(d.data.dependency_lane).toEqual({ mode: 'act', open: 1, merged_24h: 1, revoked: false });
   expect(d.text).toContain('Dependency lane (act): 1 Dependabot PRs open, 1 merged in 24 h');
   expect(buildDigest(freshDb(), at(1).getTime(), {} as NodeJS.ProcessEnv).data.dependency_lane).toBeNull();
+});
+
+describe('githubLaneClient.checkState — skip is not pass (forensic 2026-10-26 rank 9)', () => {
+  type Run = { id: number; name: string; status: string; conclusion: string | null };
+  const client = (runs: Run[], protection: unknown = { contexts: ['build-and-test (22)', 'sbom'] }) => {
+    const fetchImpl = (async (url: string) => {
+      const body = url.endsWith('/check-runs?per_page=100') ? { check_runs: runs }
+        : url.endsWith('/status') ? { state: 'pending', statuses: [] }
+        : url.includes('/protection/required_status_checks') ? protection
+        : url.endsWith('/branches/main') ? { protection: { required_status_checks: protection } } : null;
+      return { ok: body !== null, status: body === null ? 404 : 200, json: async () => body };
+    }) as unknown as typeof fetch;
+    return githubLaneClient({ GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't' } as NodeJS.ProcessEnv, fetchImpl)!;
+  };
+  const ok = (id: number, name: string, conclusion: string | null = 'success', status = 'completed'): Run => ({ id, name, status, conclusion });
+
+  it('a required check that concluded skipped or neutral is a failure, never a success', async () => {
+    expect(await client([ok(1, 'build-and-test (22)'), ok(2, 'sbom')]).checkState('h')).toBe('success');
+    expect(await client([ok(1, 'build-and-test (22)'), ok(2, 'sbom', 'skipped')]).checkState('h')).toBe('failure');
+    expect(await client([ok(1, 'build-and-test (22)'), ok(2, 'sbom', 'neutral')]).checkState('h')).toBe('failure');
+    // a non-required check may be skipped
+    expect(await client([ok(1, 'build-and-test (22)'), ok(2, 'sbom'), ok(3, 'auto-merge', 'skipped')]).checkState('h')).toBe('success');
+  });
+
+  it('a required check that has not reported yet is pending, even when everything else is green', async () => {
+    expect(await client([ok(1, 'build-and-test (22)'), ok(3, 'gitleaks')]).checkState('h')).toBe('pending');
+  });
+
+  it('the newest run per name decides', async () => {
+    expect(await client([ok(1, 'build-and-test (22)'), ok(2, 'sbom', 'failure'), ok(5, 'sbom')]).checkState('h')).toBe('success');
+    expect(await client([ok(1, 'build-and-test (22)'), ok(2, 'sbom'), ok(5, 'sbom', 'failure')]).checkState('h')).toBe('failure');
+  });
+
+  it('unreadable branch protection is pending (never a remembered list, never a merge)', async () => {
+    expect(await client([ok(1, 'build-and-test (22)'), ok(2, 'sbom')], null).checkState('h')).toBe('pending');
+  });
+});
+
+// Codex review of #1061: the exact counterexample — Actions `sbom` skipped, another app's `sbom` success.
+describe('githubLaneClient.checkState — the required producer (app_id) is part of the check identity', () => {
+  type Run = { id: number; name: string; status: string; conclusion: string | null; app: { id: number } };
+  const protection = { contexts: ['build-and-test (22)', 'sbom'], checks: [{ context: 'build-and-test (22)', app_id: 15368 }, { context: 'sbom', app_id: 15368 }] };
+  const client = (runs: Run[], prot: unknown = protection) => githubLaneClient({ GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't' } as NodeJS.ProcessEnv, (async (url: string) => {
+    const body = url.endsWith('/check-runs?per_page=100') ? { check_runs: runs } : url.endsWith('/status') ? { state: 'pending', statuses: [] }
+      : url.includes('/protection/required_status_checks') ? prot : null;
+    return { ok: body !== null, status: body === null ? 404 : 200, json: async () => body };
+  }) as unknown as typeof fetch)!;
+  const r = (id: number, name: string, conclusion: string, app: number): Run => ({ id, name, status: 'completed', conclusion, app: { id: app } });
+
+  it('Actions sbom=skipped then another app sbom=success is a failure, not a success', async () => {
+    expect(await client([r(1, 'build-and-test (22)', 'success', 15368), r(2, 'sbom', 'skipped', 15368), r(3, 'sbom', 'success', 999)]).checkState('h')).toBe('failure');
+  });
+  it('only another app reported the required context: pending (the required producer is missing)', async () => {
+    expect(await client([r(1, 'build-and-test (22)', 'success', 15368), r(3, 'sbom', 'success', 999)]).checkState('h')).toBe('pending');
+  });
+  it('control: the required producer succeeded; a context required from any app (app_id -1) takes any producer', async () => {
+    expect(await client([r(1, 'build-and-test (22)', 'success', 15368), r(2, 'sbom', 'success', 15368)]).checkState('h')).toBe('success');
+    const any = { checks: [{ context: 'build-and-test (22)', app_id: -1 }, { context: 'sbom', app_id: null }] };
+    expect(await client([r(1, 'build-and-test (22)', 'success', 7), r(2, 'sbom', 'success', 999)], any).checkState('h')).toBe('success');
+  });
 });

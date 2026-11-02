@@ -27,6 +27,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { budgetPause } from './inference-budget';
 import { FrontierExpertRegistryService, frontierExpertsEnabled } from './frontier-expert-registry-service';
 import { PacingFrontierIngestionService } from './pacing-frontier-ingestion-service';
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
@@ -137,8 +138,10 @@ export class FrontierExpertScheduler {
         result.failed.push({ stage: 'enrich', error: `source units: ${err instanceof Error ? err.message : String(err)}` });
       }
     }
+    // INFERENCE_BUDGET_THROTTLE=on over the Ollama budget: the model-calling stages (technique cards, capability reviews) pause
+    const throttled = budgetPause(this.db, 'frontier_experts');
     // E3: technique cards (claims + contradictions) from paper units, via the council runtime (default off)
-    if (techniqueCardsEnabled()) {
+    if (techniqueCardsEnabled() && !throttled) {
       try {
         const service = new TechniqueCardService(this.db);
         // KE-1: abstracts first (discovery notes, else ≤ 10 scholarly-adapter lookups), so units without one can be carded
@@ -157,7 +160,7 @@ export class FrontierExpertScheduler {
     } catch (err) {
       result.failed.push({ stage: 'enrich', error: `areas: ${err instanceof Error ? err.message : String(err)}` });
     }
-    if (frontierExpertPersonsEnabled()) await this.reviewCapabilityInferred(result);
+    if (frontierExpertPersonsEnabled() && !throttled) await this.reviewCapabilityInferred(result);
     this.report(result);
     return result;
   }

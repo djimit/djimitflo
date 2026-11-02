@@ -5,6 +5,7 @@ import { cohenKappa } from './honest-numbers';
 import { rng } from './gym-mutants';
 import { leaseIdentity } from './reviewer-independence-service';
 import { LoopEventService } from './loop-event-service';
+import { notFallbackGoalSql } from './ollama-outage-fallback';
 
 /**
  * F2 (operator-approved 10-10): does a checker of a different model family than the maker catch more defects?
@@ -126,7 +127,7 @@ export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.P
   let goals: Array<{ arm: string; version: string; n: number }> = [];
   try {
     goals = db.prepare(`SELECT json_extract(metadata, '$.checker_family_arm') AS arm, COALESCE(json_extract(metadata, '$.checker_family_version'), 'v1') AS version, COUNT(*) AS n FROM goals
-      WHERE json_extract(metadata, '$.checker_family_arm') IN ('same', 'cross') AND created_at >= ? GROUP BY 1, 2`).all(since) as typeof goals;
+      WHERE json_extract(metadata, '$.checker_family_arm') IN ('same', 'cross') AND created_at >= ? AND ${notFallbackGoalSql('goals.id')} GROUP BY 1, 2`).all(since) as typeof goals;
     leases = db.prepare(`SELECT l.loop_run_id AS run_id, r.goal_id, l.metadata, r.metadata AS run, r.created_at AS run_at, m.metadata AS maker,
         COALESCE(json_extract(l.metadata, '$.checker_family_version'), 'v1') AS version,
         (SELECT j.decision FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.subject_id = l.loop_run_id ORDER BY j.created_at DESC LIMIT 1) AS decision,
@@ -134,6 +135,7 @@ export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.P
       FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id JOIN goals g ON g.id = r.goal_id
       LEFT JOIN worker_leases m ON m.id = json_extract(l.metadata, '$.maker_lease_id')
       WHERE l.role = 'checker' AND l.status = 'completed' AND json_extract(l.metadata, '$.checker_family_arm') IN ('same', 'cross') AND g.created_at >= ?
+        AND ${notFallbackGoalSql('g.id')}
       ORDER BY l.created_at, l.rowid`).all(since) as typeof leases;
   } catch { /* missing tables */ }
   const current = checkerFamilyVersion(env);

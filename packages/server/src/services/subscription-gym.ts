@@ -82,8 +82,44 @@ export function isSubscriptionLimit(exitStatus: unknown, stdout: string, stderr:
   return LIMIT_RE.test(stderr) || LIMIT_RE.test(stdout.slice(-4_000));
 }
 
-/** The species hit its subscription limit within the backoff window. */
+/**
+ * One Claude subscription (Max) backoff for every caller: a limit hit by the claude gym species (loop_runs gym_result),
+ * an OLLAMA_OUTAGE_FALLBACK_RUNTIME lease (worker_leases subscription_limit_hit_at) or a PANEL_FALLBACK_RUNTIME seat
+ * (system_state 'subscription_limit:claude', the panel has no lease) benches all of them for SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS.
+ */
+const CLAUDE_LIMIT_KEY = 'subscription_limit:claude';
+export interface SubscriptionLimitHit { hit_at: string; source: string; until: string }
+
+/** Record a Claude subscription usage-limit hit (a caller without a lease / loop_run of its own, e.g. the panel). */
+export function recordSubscriptionLimit(db: Database, source: string, now = new Date()): void {
+  try {
+    db.prepare(`INSERT INTO system_state (key, value, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+      .run(CLAUDE_LIMIT_KEY, JSON.stringify({ subscription_limit_hit_at: now.toISOString(), source: source.slice(0, 80) }), now.toISOString());
+  } catch { /* system_state absent: the caller still treats this call as infra */ }
+}
+
+/** The latest Claude subscription limit hit within the backoff window over all callers, else null (unreadable source = skipped). */
+export function claudeSubscriptionBackoff(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): SubscriptionLimitHit | null {
+  const since = new Date(now - subscriptionLimitBackoffMs(env)).toISOString();
+  const hits: Array<{ hit_at: string; source: string }> = [];
+  const read = (fn: () => { hit_at: string | null; source: string } | undefined) => { try { const r = fn(); if (r?.hit_at && r.hit_at >= since) hits.push(r as { hit_at: string; source: string }); } catch { /* table absent */ } };
+  read(() => {
+    const row = db.prepare('SELECT value FROM system_state WHERE key = ?').get(CLAUDE_LIMIT_KEY) as { value: string } | undefined;
+    const v = row ? JSON.parse(row.value) as { subscription_limit_hit_at?: string; source?: string } : null;
+    return v ? { hit_at: v.subscription_limit_hit_at ?? null, source: v.source ?? 'unknown' } : undefined;
+  });
+  read(() => db.prepare(`SELECT MAX(json_extract(metadata, '$.subscription_limit_hit_at')) AS hit_at, 'runtime_fallback' AS source FROM worker_leases
+    WHERE json_extract(metadata, '$.runtime_fallback') IS NOT NULL AND json_extract(metadata, '$.subscription_limit_hit_at') >= ?`).get(since) as { hit_at: string | null; source: string });
+  read(() => db.prepare(`SELECT MAX(created_at) AS hit_at, 'gym' AS source FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = 'claude'
+    AND json_extract(metadata, '$.gym.subscription') = 1 AND json_extract(metadata, '$.gym_result.reason') = ? AND created_at >= ?`).get(LIMIT_HIT, since) as { hit_at: string | null; source: string });
+  const last = hits.sort((a, b) => (a.hit_at < b.hit_at ? 1 : -1))[0];
+  return last ? { ...last, until: new Date(Date.parse(last.hit_at) + subscriptionLimitBackoffMs(env)).toISOString() } : null;
+}
+
+/** The species hit its subscription limit within the backoff window (claude: any Claude subscription caller did). */
 export function inLimitBackoff(db: Database, key: string, now = Date.now(), env: NodeJS.ProcessEnv = process.env): boolean {
+  if (key === 'claude') return claudeSubscriptionBackoff(db, now, env) !== null;
   const since = new Date(now - subscriptionLimitBackoffMs(env)).toISOString();
   return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.subscription') = 1 AND json_extract(metadata, '$.gym_result.reason') = ? AND created_at >= ?`).get(key, LIMIT_HIT, since) as { n: number }).n > 0;

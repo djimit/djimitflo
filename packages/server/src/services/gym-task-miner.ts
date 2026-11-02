@@ -51,6 +51,23 @@ export function mineGymTasks(repoPath: string, opts: { sinceDays?: number; maxSo
     .filter((t) => existsInParent(repoPath, t.commit, t.source));
 }
 
+/**
+ * A frozen mined holdout task rebuilt from its own commit (prod 25-10: frozen commit 1a2431ef aged out of the 120-day window
+ * above and the epoch-1 trial starved on it). Same selection rules as the miner except the window and the live-service check:
+ * the task was eligible when it was frozen, and the worker replays the commit itself. Null when the commit is not in this
+ * checkout or no longer yields a task (a merge, a shape change, an added source file).
+ */
+export function minedTaskAt(repoPath: string, commit: string, opts: { maxSourceLines?: number } = {}): GymTask | null {
+  if (!/^[0-9a-f]{7,40}$/.test(commit)) return null;
+  try {
+    const commits = parseNumstat(execFileSync('git', ['-C', repoPath, 'log', '-1', '--numstat', '--format=@%H', commit, '--'],
+      { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 })).filter((c) => c.commit.startsWith(commit));
+    const names = new Set(commits.flatMap((c) => c.files.map((f) => SERVICE.exec(f.path)?.[1]).filter((n): n is string => Boolean(n))));
+    const [task] = selectGymTasks(commits, names, opts.maxSourceLines);
+    return task && existsInParent(repoPath, task.commit, task.source) ? task : null;
+  } catch { return null; }
+}
+
 function existsInParent(repoPath: string, commit: string, file: string): boolean {
   try { execFileSync('git', ['-C', repoPath, 'cat-file', '-e', `${commit}^:${file}`], { stdio: 'ignore' }); return true; } catch { return false; }
 }

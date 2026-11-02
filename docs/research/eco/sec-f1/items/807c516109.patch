@@ -1,0 +1,17 @@
+diff --git a/src/utils.ts b/src/utils.ts
+index cd206c7..a31b180 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -265,12 +265,6 @@ export namespace Utils {
+       }
+     }
+ 
+-    if (!verifyTxSignedBy(transaction, serverAccountID)) {
+-      throw new InvalidSep10ChallengeError(
+-        `Transaction not signed by server: '${serverAccountID}'`,
+-      );
+-    }
+-
+     return { tx: transaction, clientAccountID, matchedHomeDomain };
+   }
+ 

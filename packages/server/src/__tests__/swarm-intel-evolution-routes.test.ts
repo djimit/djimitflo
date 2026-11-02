@@ -83,6 +83,7 @@ describe('swarm intelligence plan and evolution contracts', () => {
     expect(stats.status).toBe(200);
     expect(stats.body).toMatchObject({ currentGeneration: 2, totalOutcomes: 2 });
     expect(stats.body.totalGenomes).toBeGreaterThanOrEqual(3);
-    expect(stats.body.topSkill).toBeTruthy();
+    // a manually reported outcome carries no skill delivery receipt (INT-004): stored and counted, never skill fitness
+    expect(stats.body).toMatchObject({ avgFitness: null, topSkill: null });
   });
 });
