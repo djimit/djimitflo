@@ -17,7 +17,7 @@ afterEach(() => { delete process.env.COMMONS_AGENDA_FROM_FAILURES; db.close(); }
 
 it('with the flag on, an undiscussed dream-state failure becomes the next topic, once', () => {
   const comms = new AgentCommunicationService(db);
-  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  comms.heartbeat('agent-a', 'codex', 'm', 'runtime_token'); comms.heartbeat('agent-b', 'opencode', 'm', 'runtime_token');
   expect(comms.socialize(0).messages[0].payload.params.topic_ref).not.toBe('run:r1'); // off by default
   process.env.COMMONS_AGENDA_FROM_FAILURES = 'true';
   const round = comms.socialize(0);
@@ -35,7 +35,7 @@ it('one thread per kind of failure per day: same loop, gates and cause is not di
       .run(`j-${id}`, id, `cause=${cause} conf=0.55 platform_fault=0.60`, now());
   };
   const comms = new AgentCommunicationService(db);
-  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  comms.heartbeat('agent-a', 'codex', 'm', 'runtime_token'); comms.heartbeat('agent-b', 'opencode', 'm', 'runtime_token');
   process.env.COMMONS_AGENDA_FROM_FAILURES = 'true';
   const first = comms.socialize(0).messages[0].payload.params;
   expect(first).toMatchObject({ topic_ref: 'run:r1', failure_signature: 'doc-drift-and-small-fix-loop|checker_verdict|parse_error' });

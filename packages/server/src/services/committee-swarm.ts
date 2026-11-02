@@ -1,8 +1,10 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { kbContext } from './kb-corpus';
-import { forecastScores } from './forecast-scoring';
+import { filterForPrompt } from './content-safety';
+import { forecastScores, RESOLVED } from './forecast-scoring';
 import { knowledgeOverview } from './knowledge-overview';
+import { markRun } from './scheduler-registry';
 
 /**
  * AR-W (operator 04-10): committee swarms on the workstation. For every new proposal a committee of member genomes
@@ -13,7 +15,9 @@ import { knowledgeOverview } from './knowledge-overview';
  * COMMITTEE_SWARM_ENABLED=true (default off); COMMITTEE_MAX_PER_DAY (default 40 jobs).
  *
  * Leakage: the question is frozen at enqueue time (before the proposal's goal exists) and every forecast carries that
- * moment as `as_of`; forecast-scoring counts a forecast only if `as_of` precedes the goal.
+ * moment as `as_of`; forecast-scoring counts a forecast only if `as_of` precedes the goal. DI-001: the members' recipe
+ * context is read at claim time, not at as_of, so each forecast also carries `context_at` and `outcome_known_at_context`;
+ * forecastScoresV2 drops forecasts whose context was assembled at or after the outcome. Older rows lack both (unrecorded).
  */
 export const committeeEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.COMMITTEE_SWARM_ENABLED === 'true';
 const maxPerDay = (env: NodeJS.ProcessEnv = process.env) => Number(env.COMMITTEE_MAX_PER_DAY) || 40;
@@ -81,16 +85,19 @@ export async function memberContext(db: Database, recipe: string, question: { pr
     case 'kb': return (await kbContext(db, { type: 'committee', id: subjectId }, text, 3).catch(() => null)) ?? '';
     case 'experts': {
       const ws = words(text); if (!ws.length) return '';
-      const rows = all<{ subject: string; relation: string; object: string; confidence: number }>(`SELECT subject, relation, object, confidence FROM expert_claims
+      const rows = all<{ id: string; subject: string; relation: string; object: string; confidence: number }>(`SELECT id, subject, relation, object, confidence FROM expert_claims
         WHERE ${ws.map(() => '(lower(subject) LIKE ? OR lower(object) LIKE ?)').join(' OR ')} ORDER BY confidence DESC LIMIT 5`, ...ws.flatMap((w) => [`%${w}%`, `%${w}%`]));
-      return cap(rows.map((r) => `- claim: ${r.subject} ${r.relation} ${r.object} (confidence ${Number(r.confidence).toFixed(2)})`));
+      // B19: claims are model output over untrusted abstracts; each needs a 'safe' verdict under enforce
+      const safe = await filterForPrompt(db, rows, (r) => ({ type: 'expert_claim', id: r.id }), (r) => `${r.subject} ${r.relation} ${r.object}`);
+      return cap(safe.map((r) => `- claim: ${r.subject} ${r.relation} ${r.object} (confidence ${Number(r.confidence).toFixed(2)})`));
     }
     case 'memory': return cap(all<{ title: string; content: string }>(`SELECT title, content FROM memory_candidates WHERE status = 'promoted' AND memory_type = 'engineering_rule'
       ORDER BY updated_at DESC LIMIT 3`).map((r) => `- rule: ${r.title}: ${r.content.replace(/\s+/g, ' ').slice(0, 300)}`));
     case 'skills': return cap(all<{ title: string }>(`SELECT title FROM self_improvements WHERE source = ? AND status IN ('verified','applied') AND id <> ?
       ORDER BY updated_at DESC LIMIT 5`, p.source ?? '', subjectId).map((r) => `- verified example: ${r.title}`));
-    case 'discoveries': return cap(all<{ t: string }>(`SELECT i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
-      WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' ORDER BY j.created_at DESC LIMIT 5`).map((r) => `- relevant discovery: ${r.t}`));
+    case 'discoveries': return cap((await filterForPrompt(db, all<{ id: string; t: string }>(`SELECT i.id, i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
+      WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' ORDER BY j.created_at DESC LIMIT 5`), (r) => ({ type: 'expert_unit', id: r.id }), (r) => r.t))
+      .map((r) => `- relevant discovery: ${r.t}`));
     default: return ''; // history (already in the frozen question) and none
   }
 }
@@ -103,7 +110,12 @@ export async function claimCommittee(db: Database, host: string, now = new Date(
   const job = db.prepare(`SELECT id, subject_id, question_json FROM committee_jobs WHERE created_at >= ? AND (status = 'queued' OR (status = 'claimed' AND claimed_at < ?))
     ORDER BY created_at LIMIT 1`).get(week, stale) as { id: string; subject_id: string; question_json: string } | undefined;
   if (!job) return null;
-  db.prepare("UPDATE committee_jobs SET status = 'claimed', host = ?, claimed_at = ? WHERE id = ?").run(host, now.toISOString(), job.id);
+  // DI-001 (PR #827: 49/69 forecasts were written after the outcome): members read their context NOW, not at as_of — stamp that
+  // moment and whether the proposal already had an outcome, so scoring can drop forecasts whose context could have seen it
+  const subject = db.prepare('SELECT status FROM self_improvements WHERE id = ?').get(job.subject_id) as { status: string } | undefined;
+  const outcomeKnown = subject !== undefined && RESOLVED.includes(subject.status) ? 1 : 0;
+  db.prepare("UPDATE committee_jobs SET status = 'claimed', host = ?, claimed_at = ?, context_at = ?, outcome_known_at_context = ? WHERE id = ?")
+    .run(host, now.toISOString(), now.toISOString(), outcomeKnown, job.id);
   const question = JSON.parse(job.question_json);
   const members = [];
   for (const m of activeMembers(db)) members.push({ ...m, context: await memberContext(db, m.knowledge, question, job.subject_id) });
@@ -112,30 +124,39 @@ export async function claimCommittee(db: Database, host: string, now = new Date(
 
 /** One forecast per member as a `forecast:committee:<member>` judgment, stamped with the job's as_of. */
 export function recordCommittee(db: Database, jobId: string, host: string, answers: unknown, now = new Date()): number {
-  const job = db.prepare('SELECT subject_id, as_of, host, status FROM committee_jobs WHERE id = ?').get(jobId) as { subject_id: string; as_of: string; host: string | null; status: string } | undefined;
+  const job = db.prepare('SELECT subject_id, as_of, host, status, context_at, outcome_known_at_context FROM committee_jobs WHERE id = ?').get(jobId) as
+    { subject_id: string; as_of: string; host: string | null; status: string; context_at: string | null; outcome_known_at_context: number | null } | undefined;
   if (!job || job.host !== host) throw new Error('COMMITTEE_JOB_NOT_FOUND');
+  // DI-001: a job claimed before the stamp existed stays unrecorded (no key at all, never backfilled)
+  const stamp = job.context_at ? { context_at: job.context_at, outcome_known_at_context: job.outcome_known_at_context === 1 } : {};
   if (job.status === 'done') throw new Error('COMMITTEE_JOB_ALREADY_DONE');
   if (!Array.isArray(answers)) throw new Error('COMMITTEE_ANSWERS_INVALID');
   const members = new Set(activeMembers(db).map((m) => m.id));
   const ins = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, model, created_at)
     VALUES (?, ?, 'self_improvement', ?, ?, 'shadow', ?, ?, ?, ?, ?)`);
   let n = 0;
-  for (const a of answers as Array<{ member?: unknown; p?: unknown; rationale?: unknown; model?: unknown }>) {
-    const p = Number(a?.p);
+  for (const a of answers as Array<{ member?: unknown; p?: unknown; rationale?: unknown; model?: unknown; confidence?: unknown }>) {
+    // E2: a failed member answer (no numeric p, or an error) is no forecast — Number(null|''|false) would have scored it as 0
+    const p = typeof a?.p === 'number' && !(a as { error?: unknown }).error ? a.p : NaN;
     if (typeof a?.member !== 'string' || !members.has(a.member) || !Number.isFinite(p) || p < 0 || p > 1) continue;
     const rationale = typeof a.rationale === 'string' ? a.rationale.slice(0, 500) : '';
+    // DI-001: the member's own confidence, only when it returned one as a number in [0, 1]
+    const confidence = typeof a.confidence === 'number' && Number.isFinite(a.confidence) && a.confidence >= 0 && a.confidence <= 1 ? { confidence: a.confidence } : {};
     ins.run(randomUUID(), `forecast:committee:${a.member}`, job.subject_id, jobId, p >= 0.5 ? 'yes' : 'no', rationale,
-      JSON.stringify({ p, as_of: job.as_of }), typeof a.model === 'string' ? a.model.slice(0, 80) : `remote:${host}`, now.toISOString());
+      JSON.stringify({ p, as_of: job.as_of, ...stamp, ...confidence }), typeof a.model === 'string' ? a.model.slice(0, 80) : `remote:${host}`, now.toISOString());
     n++;
   }
   // AR-W3: the committee's own forecast — members weighted by their measured skill, so the committee learns whom to trust
   const votes = db.prepare("SELECT judgment, answers_json FROM judgments WHERE state_hash = ? AND judgment LIKE 'forecast:committee:%'").all(jobId) as Array<{ judgment: string; answers_json: string }>;
   if (votes.length) {
     const w = memberWeights(db);
-    let num = 0; let den = 0;
-    for (const v of votes) { const m = v.judgment.slice('forecast:committee:'.length); const wt = w.get(m) ?? 1; num += wt * Number(JSON.parse(v.answers_json).p); den += wt; }
+    let num = 0; let den = 0; const ps: number[] = [];
+    for (const v of votes) { const m = v.judgment.slice('forecast:committee:'.length); const wt = w.get(m) ?? 1; const vp = Number(JSON.parse(v.answers_json).p); ps.push(vp); num += wt * vp; den += wt; }
+    // DI-001: the members' disagreement (unweighted; population sd) next to the aggregate
+    const mean = ps.reduce((a, b) => a + b, 0) / ps.length; const r4 = (x: number) => +x.toFixed(4);
+    const spread = { n: ps.length, min: r4(Math.min(...ps)), max: r4(Math.max(...ps)), range: r4(Math.max(...ps) - Math.min(...ps)), sd: r4(Math.sqrt(ps.reduce((a, b) => a + (b - mean) ** 2, 0) / ps.length)) };
     if (den > 0) ins.run(randomUUID(), 'forecast:committee', job.subject_id, jobId, num / den >= 0.5 ? 'yes' : 'no', `weighted mean of ${votes.length} members`,
-      JSON.stringify({ p: +(num / den).toFixed(4), as_of: job.as_of }), 'committee', now.toISOString());
+      JSON.stringify({ p: +(num / den).toFixed(4), as_of: job.as_of, ...stamp, spread }), 'committee', now.toISOString());
   }
   db.prepare("UPDATE committee_jobs SET status = 'done', finished_at = ? WHERE id = ?").run(now.toISOString(), jobId);
   return n;
@@ -202,7 +223,7 @@ export function evolveCommittee(db: Database, now = new Date(), env: NodeJS.Proc
 /** Hourly check; evolution itself runs at most once a day. */
 export function startCommitteeEvolution(db: Database, intervalMs = 3_600_000): (() => void) | null {
   if (!committeeEnabled()) return null;
-  const tick = () => { try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
+  const tick = () => { markRun('committee_evolution'); try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
   const t = setInterval(tick, intervalMs); t.unref?.();
   return () => clearInterval(t);
 }
@@ -244,10 +265,13 @@ export function recordResidentForecast(db: Database, q: { jobId: string; subject
 
 export const arenaGateEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.ARENA_GATE_ENABLED === 'true';
 /** Survival gate for a resident: no measurable call, or worse than the base rate on enough calls → stop scheduling it. */
-export function arenaGate(db: Database, agentId: string, now = new Date()): { allowed: boolean; reason: string } {
+export function arenaGate(db: Database, agentId: string, now = new Date(), opts: { forecastOnly?: boolean } = {}): { allowed: boolean; reason: string } {
   let score: ReturnType<typeof forecastScores>[number] | undefined;
   try { score = forecastScores(db).find((s) => s.forecaster === `forecast:resident:${agentId}`); } catch { /* no outcome tables */ }
   if (score && score.n >= EXTINCT_MIN_N && score.skill < 0) return { allowed: false, reason: `worse than the base rate on ${score.n} scored forecasts (skill ${score.skill.toFixed(2)})` };
+  // SOCIAL_AUTOPILOT_FORECAST_ONLY: residents no longer talk, so "talks without calls" cannot apply — and retiring on last week's
+  // chat would block the very forecasts that are their only remaining job. Only the skill rule above still retires.
+  if (opts.forecastOnly) return { allowed: true, reason: score ? `skill ${score.skill.toFixed(2)} on ${score.n} (forecast-only)` : 'not scored yet (forecast-only)' };
   const week = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const all = <T>(sql: string, ...a: unknown[]) => { try { return db.prepare(sql).get(...a) as T; } catch { return undefined; } };
   const questions = all<{ n: number }>('SELECT COUNT(*) AS n FROM committee_jobs WHERE created_at >= ?', week)?.n ?? 0;

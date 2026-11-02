@@ -49,6 +49,9 @@ it('pushes only the maker files and opens one draft PR per run', async () => {
   expect(req).toMatchObject({ head: 'agent/loop/run-1', base: 'main', draft: true });
   expect(req.body).toContain('checker: accepted');
   expect(fs.readFileSync(path.join(wt, '.git', 'config'), 'utf8')).not.toContain('t0ken'); // token never persisted
+  // P0-6: the pushed commit is recorded as the verified head that auto-merge binds to
+  const meta = JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run-1'").get() as { metadata: string }).metadata);
+  expect(meta.verified_head_sha).toBe(git(remote, 'rev-parse', 'agent/loop/run-1'));
   expect(await svc.openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
   expect(f).toHaveBeenCalledTimes(1);
 });
@@ -97,4 +100,81 @@ it('RX-6: a failing open-PR list never throttles (fail-open)', async () => {
   const f = gh('error');
   expect(await new LoopDraftPrService(db, f as unknown as typeof fetch, { ...env(), LOOP_DRAFT_PR_THROTTLE_MODE: 'enforce', LOOP_DRAFT_PR_MAX_OPEN: '0' }).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
   expect(events('draft_pr_throttled')).toEqual({ n: 0 });
+});
+
+// UX-10: a richer, safe body behind LOOP_PR_BODY_V2 (public repo: ids and aggregates only)
+const V1_BODY = 'Opened by the djimitflo loop for run `run-1`.\n\nReviewer verdicts:\n- checker: accepted\n\nFiles: `src/x.test.ts`\n\nDraft: a human reviews and merges.';
+const bodyOf = (f: ReturnType<typeof ok>) => JSON.parse(f.mock.calls[0][1].body as string).body as string;
+const seedV2 = () => {
+  db.prepare(`UPDATE loop_runs SET loop_name = 'mutation-gap', gates_json = ? WHERE id = 'run-1'`).run(JSON.stringify([
+    { name: 'deterministic_checks', status: 'pass', evidence: 'raw evidence text must never be published /srv/secret/path' },
+    { name: 'scope', status: 'pass', evidence: 'one file' },
+  ]));
+  const out = path.join(wt, '..', 'mut.out'); fs.writeFileSync(out, 'Mutation score 45.5 -> 93.9 (gain 48.4)\n');
+  db.prepare(`UPDATE worker_leases SET metadata = ? WHERE id = 'm1'`).run(JSON.stringify({ deterministic_checks: [
+    { name: 'test:changed', status: 'pass', exit_status: 0 }, { name: 'test:mutation:grounded', status: 'pass', exit_status: 0, stdout_path: out }] }));
+  db.prepare(`UPDATE worker_leases SET metadata = ? WHERE id = 'c1'`).run(JSON.stringify({ verdict: 'accepted', notes: 'token=ghp_' + 'a'.repeat(36) }));
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('s1', 'run-1', 'security_checker', 'opencode', 'completed', '{"verdict":"accepted"}', datetime('now'), datetime('now'))`).run();
+};
+
+it('UX-10: default (flag unset) body is byte-identical to the v1 body', async () => {
+  const f = ok(); await new LoopDraftPrService(db, f as unknown as typeof fetch, env()).openForRun('run-1');
+  expect(bodyOf(f)).toBe(V1_BODY);
+});
+
+it('UX-10: v2 adds lane, oracle result, gate summary, verdict labels, diff stat and mutation gain — without evidence text', async () => {
+  seedV2(); const f = ok();
+  await new LoopDraftPrService(db, f as unknown as typeof fetch, { ...env(), LOOP_PR_BODY_V2: 'true' }).openForRun('run-1');
+  const body = bodyOf(f);
+  expect(body).toContain('Lane: `mutation-gap`');
+  expect(body).toContain('Oracle checks: test:changed pass, test:mutation:grounded pass');
+  expect(body).toContain('Gates: deterministic_checks pass, scope pass');
+  expect(body).toContain('security_checker: accepted');
+  expect(body).toMatch(/Diff: 1 file, \+\d+ \/ -\d+/);
+  expect(body).toContain('Mutation score: 45.5 → 93.9');
+  expect(body).not.toContain('raw evidence'); expect(body).not.toContain('/srv/');
+  expect(body).not.toContain('Run:'); // no link without an https DJIMITFLO_PUBLIC_URL
+});
+
+it('UX-10: no run link when DJIMITFLO_PUBLIC_URL is not https', async () => {
+  seedV2(); const f = ok();
+  await new LoopDraftPrService(db, f as unknown as typeof fetch, { ...env(), LOOP_PR_BODY_V2: 'true', DJIMITFLO_PUBLIC_URL: 'http://10.0.0.1' }).openForRun('run-1');
+  expect(bodyOf(f)).not.toContain('Run:'); expect(bodyOf(f)).not.toContain('10.0.0.1');
+});
+
+it('UX-10: the run link appears with an https DJIMITFLO_PUBLIC_URL', async () => {
+  seedV2(); const f = ok();
+  await new LoopDraftPrService(db, f as unknown as typeof fetch, { ...env(), LOOP_PR_BODY_V2: 'true', DJIMITFLO_PUBLIC_URL: 'https://example.test/' }).openForRun('run-1');
+  expect(bodyOf(f)).toContain('Run: https://example.test/goals-loops?run=run-1');
+});
+
+it('UX-10: no secret pattern survives in the v2 body and the PR is still opened once per run', async () => {
+  seedV2(); const f = ok(); const svc = new LoopDraftPrService(db, f as unknown as typeof fetch, { ...env(), LOOP_PR_BODY_V2: 'true' });
+  await svc.openForRun('run-1');
+  const body = bodyOf(f);
+  expect(body).not.toMatch(/ghp_[a-zA-Z0-9]{36}/);
+  expect(body).not.toContain('t0ken');
+  await svc.openForRun('run-1');
+  expect(f).toHaveBeenCalledTimes(1);
+});
+
+function factoryRunRows() {
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, evidence_refs_json, grounding_json, created_at, updated_at)
+    VALUES ('p1', 'feature', 'Slug', 'd', 'r', 'operator_request', 'executing', 0.6, '["capability-request:req1"]', '{"target":"src/x.test.ts","acceptanceTest":"src/x.test.ts"}', ?, ?)`).run(now, now);
+  db.prepare(`INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES ('g1', 'o', 'low', 'running', '{}', 'p1', ?, ?)`).run(now, now);
+  db.prepare("UPDATE loop_runs SET goal_id = 'g1' WHERE id = 'run-1'").run();
+  return { ...env(), CAPABILITY_FACTORY_MODE: 'on' };
+}
+
+it('CAP-3: flag off — a factory run\'s draft PR creates no capability (today\'s behaviour)', async () => {
+  expect(await new LoopDraftPrService(db, ok() as unknown as typeof fetch, factoryRunRows()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(db.prepare('SELECT COUNT(*) AS n FROM swarm_capabilities').get()).toEqual({ n: 0 });
+});
+
+it('CAP-3: CAPABILITY_LIFECYCLE_V2=on — the draft PR creates the capfac candidate at the verified head', async () => {
+  expect(await new LoopDraftPrService(db, ok() as unknown as typeof fetch, { ...factoryRunRows(), CAPABILITY_LIFECYCLE_V2: 'on' }).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  const head = JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run-1'").get() as { metadata: string }).metadata).verified_head_sha as string;
+  expect(db.prepare("SELECT status, version, json_extract(metadata, '$.provenance.pr_url') AS pr FROM swarm_capabilities WHERE id = 'capfac:req1'").get())
+    .toEqual({ status: 'candidate', version: head.slice(0, 12), pr: 'https://github.com/o/r/pull/9' });
 });

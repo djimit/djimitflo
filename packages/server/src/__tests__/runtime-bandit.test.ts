@@ -38,3 +38,15 @@ it('a challenger that proved itself over enough runs gets the work without a cap
   expect(c?.species).toEqual(species[1]);
   expect(c?.reason).toMatch(/challenger sampled best with 20 outcomes/);
 });
+
+it('fitness audit 11-10: zeros that are not the species\' fault (infra, no change, eligible evolve loser) are neither win nor loss', () => {
+  outcomes('opencode', undefined, 3, 2);
+  const skills = new SkillEvolutionEngine(db);
+  for (const tag of ['outcome_class:infra_failed', 'outcome_class:no_change', 'evolve:lost_eligible']) {
+    skills.recordOutcome(`loop-maker:${LOOP}:opencode`, { success: false, tokensUsed: 0, durationMs: 1, domain: LOOP, evidenceRefs: [tag] });
+  }
+  // a real loss of an ineligible evolve loser still counts
+  skills.recordOutcome(`loop-maker:${LOOP}:opencode`, { success: false, tokensUsed: 0, durationMs: 1, domain: LOOP, evidenceRefs: ['evolve:lost_ineligible'] });
+  const c = chooseSpecies(db, LOOP, species, seeded(3), 0);
+  expect(c?.posterior[0]).toMatchObject({ species: 'opencode', runs: 6, ok: 3 });
+});

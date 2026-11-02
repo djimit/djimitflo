@@ -5,6 +5,16 @@ import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { useAuthStore } from '../lib/auth-store';
 
+/** UX-25: deny goes through the reason dialog: pick 'Other' and type the details (= the reason). */
+async function denyWith(detail: string, deny = () => fireEvent.click(screen.getAllByRole('button', { name: 'Deny', exact: true })[0])) {
+  deny();
+  await screen.findByRole('dialog');
+  fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Other' } });
+  fireEvent.change(screen.getByLabelText(/Details/), { target: { value: detail } });
+  fireEvent.click(screen.getByRole('button', { name: 'Deny request' }));
+}
+
+
 // UX-4: actions are gated by role; these cases exercise them as an admin
 beforeEach(() => { useAuthStore.setState({ user: { id: 'admin-fixture', email: 'admin@example.test', role: 'admin' } as never }); });
 
@@ -49,13 +59,13 @@ it('ignores a late previous-tab response', async () => {
 it('refreshes the current tab when an old-tab denial finishes', async () => {
   let complete!: (value: unknown) => void;
   let decided = false;
-  vi.stubGlobal('prompt', () => 'Evidence missing');
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
     if (options?.method === 'POST') return new Promise(resolve => { complete = resolve; });
     return ok({ approvals: url.endsWith('status=pending') ? (decided ? [] : [fixture]) : (decided ? [denied] : []) });
   }));
   render(<ApprovalQueuePage />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Deny', exact: true }));
+  await screen.findByRole('button', { name: 'Deny', exact: true });
+  await denyWith('Evidence missing');
   fireEvent.click(screen.getByRole('button', { name: 'Denied', exact: true }));
   await screen.findByText('No denied approvals found.');
   await act(async () => { decided = true; complete(ok(denied)); });
@@ -63,21 +73,21 @@ it('refreshes the current tab when an old-tab denial finishes', async () => {
 });
 
 it('rejects whitespace denial reasons locally without issuing a mutation', async () => {
-  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); vi.stubGlobal('prompt', () => '   ');
+  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
   render(<ApprovalCard approval={fixture} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Deny', exact: true }));
+  await denyWith('   ');
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'A denial reason is required.');
   expect(fetch).not.toHaveBeenCalled();
 });
 
 it('surfaces a denied mutation failure and retries with the real returned decision', async () => {
   const fetch = vi.fn().mockResolvedValueOnce(unavailable()).mockResolvedValueOnce(ok(denied));
-  vi.stubGlobal('fetch', fetch); vi.stubGlobal('prompt', () => ' Evidence missing ');
+  vi.stubGlobal('fetch', fetch);
   const updated = vi.fn(); render(<ApprovalCard approval={fixture} onUpdated={updated} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Deny', exact: true }));
+  await denyWith(' Evidence missing ');
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Approval service unavailable');
   expect(updated).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Deny', exact: true }));
+  await denyWith(' Evidence missing ');
   await waitFor(() => expect(updated).toHaveBeenCalledWith(denied));
   expect(screen.getByText('Evidence missing')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();

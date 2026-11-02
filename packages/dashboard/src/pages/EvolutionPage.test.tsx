@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { EvolutionBody, EvolutionPage } from './EvolutionPage';
 import { api, type EvolutionEvidence } from '../lib/api';
+import { visibleText } from '../test/visible-text';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -35,6 +36,10 @@ const FULL: EvolutionEvidence = {
   oracle: { ...EMPTY.oracle, n: 41, kappa: 0.31, kappa_ci: [0.12, 0.5], agreement: { all: 0.71, conf_ge_06: 0.8, conf_lt_06: 0.5 } },
   commons: { ...EMPTY.commons, k: 1, n: 18, rate: 0.056, ci: [0.001, 0.27] },
   forecasts_v2: { scored: 18, decision_grade: 1, decision_grade_skilled: 1, insufficient: 17 },
+  holdout_exposure: { limit: 10, reuse_risk: true, write_test_enabled: false, note: '', epochs: [
+    { holdout: 'mined', epoch: 0, tasks: 20, frozen_at: '2026-10-01T06:10:23Z', current: true, candidates: 11, decisions: 0, evaluations: 251, reuse_risk: true },
+    { holdout: 'mutant', epoch: 0, tasks: 20, frozen_at: '2026-10-02T23:22:59Z', current: true, candidates: 6, decisions: 8, evaluations: 140, reuse_risk: false },
+  ] },
 };
 
 it('UX-9: shows the four Realm Gates with their state as text and the reason', () => {
@@ -63,4 +68,261 @@ it('UX-9: a failed load shows the error instead of an empty page', async () => {
   vi.spyOn(api, 'getEvolutionEvidence').mockRejectedValue(new Error('Insufficient permissions'));
   render(<EvolutionPage />);
   expect((await screen.findByRole('alert')).textContent).toContain('Insufficient permissions');
+});
+
+it('earned auto-merge: shows the class state, why it was revoked, and the counts', () => {
+  const auto_merge: EvolutionEvidence['auto_merge'] = { mode: 'act', max_per_day: 10, audit_sample_pct: 10,
+    class: { state: 'revoked', reason: 'PR #700: reverted on main by rev1' },
+    counts: { merged: 4, merged_24h: 1, would_merge: 0, audit_samples: 1, audit_samples_open: 1, waiting: 0, ineligible: 2 }, ineligible_by_reason: {} };
+  const html = renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge }} />);
+  for (const text of ['Test-only auto-merge (mode act)', 'revoked', 'PR #700: reverted on main by rev1', 'n = 4 merged', '1 audit sample(s) open']) expect(html).toContain(text);
+  expect(renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge: { ...auto_merge, mode: 'off' } }} />)).not.toContain('Test-only auto-merge');
+});
+
+it('earned auto-merge: shows the re-check split (transient vs permanent) and the re-checks in 24 h when reported', () => {
+  const auto_merge: EvolutionEvidence['auto_merge'] = { mode: 'act', max_per_day: 10, audit_sample_pct: 10, class: { state: 'active' },
+    counts: { merged: 0, merged_24h: 0, would_merge: 0, audit_samples: 13, audit_samples_open: 13, waiting: 0, ineligible: 31 }, ineligible_by_reason: { checks_failed: 20, assertion_strength_missing: 11 },
+    recheck: { enabled: true, window_hours: 6, per_tick: 5, ineligible_by_class: { permanent: 0, transient: 31 }, by_decision_reason: {}, rechecked_24h: 5, rechecked_24h_by_decision: { waiting: 5 } } };
+  const html = renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge }} />);
+  for (const text of ['Re-check on (6 h window, ≤ 5 per tick)', 'ineligible 31 transient / 0 permanent', '5 re-checked in 24 h']) expect(html).toContain(text);
+  expect(renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge: { ...auto_merge, recheck: undefined } }} />)).not.toContain('Re-check');
+});
+
+it('§16 step 7: holdout exposure per epoch is shown with n and a reuse-risk flag; absent evidence renders nothing', () => {
+  const html = renderToStaticMarkup(<EvolutionBody data={FULL} />);
+  expect(html).toContain('mined epoch 0: 11 candidates (limit 10) — reuse risk, introduce a fresh epoch');
+  expect(html).toContain('mutant epoch 0: 6 candidates (limit 10)');
+  expect(renderToStaticMarkup(<EvolutionBody data={EMPTY} />)).not.toContain('reuse risk');
+});
+
+// L6-04: the registered experiments, each with its own evidence section and learning-ledger rows, read-only
+type Exp = NonNullable<EvolutionEvidence['experiments']>['experiments'][number];
+const power = (p: Partial<Exp['power']> = {}): Exp['power'] => ({ n_so_far: null, target_per_arm: null, days_to_stop: null, accrual_window_days: null, accrual_per_day: null,
+  projected_min_arm_n: null, projected_reaches_target: null, ...p });
+const exp = (e: Partial<Exp> & Pick<Exp, 'id'>): Exp => ({ flag: `${e.id}_MODE`, protocol: `docs/research/${e.id}.md`, started_at: '2026-10-12T00:00:00.000Z', target_n: 50,
+  stop_by: '2026-11-15T00:00:00.000Z', stop_note: 'stop condition added 2026-10-19', stop_source: `docs/research/${e.id}.md#amendment`, population: 'oracle_goals',
+  n_per_arm: null, min_arm_n: null, verdict: null, overdue: false, overdue_reason: null, power: power(), ...e });
+const EXPERIMENTS: Exp[] = [
+  // running, effect not computed yet (null diff)
+  exp({ id: 'ACE-001', n_per_arm: { '00': 3, '01': 2, '10': 0, '11': 1 }, min_arm_n: 0,
+    effects: { kb_retrieval: { metric: 'verified rate, factor on − off (interim, descriptive)', estimate: null, ci: null, p: null } } }),
+  // at target, no verdict: overdue, grandfathered over the WIP limit, started before the 7-day evidence window
+  exp({ id: 'MAKER-DEPS-001', started_at: '2026-10-01T00:00:00.000Z', target_n: 10, stop_by: '2026-12-16T00:00:00.000Z', n_per_arm: { A: 12, B: 10 }, min_arm_n: 10,
+    overdue: true, overdue_reason: 'every arm reached target 10 without a verdict',
+    approved_over_limit: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by',
+    effects: { deps_prep: { metric: 'ITT verified rate, B − A; cluster-bootstrap 95 % CI (descriptive)', estimate: 0.042, ci: [-0.11, 0.19], p: null } } }),
+  // closed with a recorded verdict
+  exp({ id: 'F2', verdict: 'reversed', n_per_arm: { same: 40, cross: 40 }, min_arm_n: 40, target_n: 40,
+    effects: { checker_family: { metric: 'Δkappa cross − same on outcome_wo_checker (final); seeded bootstrap 95 % CI', estimate: -0.21, ci: [-0.4, -0.02], p: 0.03 } } }),
+  // interim inconclusive: the registry keeps the verdict null (the stopping rule extends once), not windowed
+  exp({ id: 'TG-001', population: 'gym_tasks', started_at: '2026-10-11T23:20:22.000Z', target_n: 20, n_per_arm: { A: 20, B: 20 }, min_arm_n: 20 }),
+];
+const LEDGER: NonNullable<EvolutionEvidence['learning_ledger']> = {
+  loops_closed: { k: 0, n: 3, headline: 'loops closed 0/3' }, by_status: { ADOPTED: 0, REJECTED: 1, RUNNING: 2, INSUFFICIENT: 0, NOT_MEASURED: 0 }, note: '',
+  mechanisms: [
+    { mechanism: 'kb_retrieval', name: 'KB retrieval', data_source: 'ace', experiment: 'ACE-001', metric: 'verified rate, factor on − off (interim, descriptive)', estimate: null, ci: null, p: null, status: 'RUNNING', closed: false, note: 'ACE-001: n per arm …' },
+    { mechanism: 'deps_prep', name: 'Maker dependency preparation', data_source: 'deps', experiment: 'MAKER-DEPS-001', metric: 'ITT', estimate: 0.042, ci: [-0.11, 0.19], p: null, status: 'RUNNING', closed: false, note: '' },
+    { mechanism: 'checker_family', name: 'Checker family', data_source: 'f2', experiment: 'F2', metric: 'Δkappa', estimate: -0.21, ci: [-0.4, -0.02], p: 0.03, status: 'REJECTED', closed: false, note: '' },
+  ],
+};
+const cfCmp = { delta_kappa: null, delta_kappa_ci: null, fisher_p: 1, n: { same: 0, cross: 0 } };
+const EXP_DATA = {
+  ...FULL, at: '2026-10-24T00:00:00.000Z', window_days: 7,
+  experiments: { experiments: EXPERIMENTS, overdue: ['MAKER-DEPS-001'], no_stop_date: [], note: '',
+    wip: { population: 'oracle_goals', limit: 4, active: ['ACE-001', 'MAKER-DEPS-001'], active_count: 2, over_wip_limit: false, counted: ['ACE-001'],
+      approved_over_limit: [{ id: 'MAKER-DEPS-001', reason: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by' }], guard_ok: true } },
+  learning_ledger: LEDGER,
+  ace_001: { mode: 'on', target_per_arm: 50, status: 'collecting', analysis_since: '2026-10-17T00:00:00.000Z', delivery_invalid: 9,
+    delivery: { per_arm: {}, retrieval_rate: null, examples_rate: 0.8, fallback_reasons: { no_kb_hit: 2 } },
+    arms: { '00': { n: 3, verified: 1, verified_rate: 0.333, ci: [0.06, 0.79], graded_n: 0, graded_mean: null, tokens_mean: null },
+      '01': { n: 2, verified: 1, verified_rate: 0.5, ci: [0.09, 0.91], graded_n: 0, graded_mean: null, tokens_mean: null },
+      '10': { n: 0, verified: 0, verified_rate: null, ci: null, graded_n: 0, graded_mean: null, tokens_mean: null },
+      '11': { n: 1, verified: 0, verified_rate: 0, ci: [0, 0.79], graded_n: 0, graded_mean: null, tokens_mean: null } },
+    main_effects: { retrieval: { on_n: 1, off_n: 5, diff: null }, examples: { on_n: 3, off_n: 3, diff: null } }, note: '' },
+  maker_deps_001: { experiment: 'MAKER-DEPS-001', version: 'v1', mode: 'on', target_per_arm: 10, status: 'analysable', diff: 0.042, diff_ci_descriptive: [-0.11, 0.19],
+    arms: { A: { goals: 14, terminal: 12, verified: 6, regressed: 6, censored: 2, verified_rate: 0.5, preparations: 0, preparation_failed: 0, maker_leases: 14, maker_failed: 1, maker_timed_out: 0, tokens_mean: null },
+      B: { goals: 11, terminal: 10, verified: 5, regressed: 5, censored: 1, verified_rate: 0.5, preparations: 11, preparation_failed: 1, maker_leases: 11, maker_failed: 0, maker_timed_out: 0, tokens_mean: null } }, note: '' },
+  checker_family: { enabled: 'true', cross_model: 'kimi-k3', target_per_arm: 40, version: 'v2', versions: { v1: { label: 'closed 17-10 interim', closed: true, evidence: {} } },
+    same: {}, cross: {}, weak_fisher_p: 1,
+    primary: { ...cfCmp, delta_kappa: -0.21, delta_kappa_ci: [-0.4, -0.02], fisher_p: 0.03, n: { same: 40, cross: 40 }, endpoint: 'outcome_wo_checker', read: 'final' },
+    secondary_circular: { ...cfCmp, delta_kappa: 0.05, delta_kappa_ci: [-0.1, 0.2], n: { same: 40, cross: 40 }, endpoint: 'outcome', circular: true },
+    stop: { per_arm: 40, reached: true, verdict: 'reversed' }, note: '' },
+  tg_001: { mode: 'on', experiment_id: 'TG-001-r2', generation: 'r2', status: 'complete', tasks: 20, skipped: 0,
+    prior_generations: [{ generation: 'r1', experiment_id: 'TG-001', status: 'ABORTED_DATA_LOSS', frozen_at: '', first_attempt_at: '', attempts_executed: '', cause: 'provider rollback', pooled: false }],
+    arms: [{ arm: 'A', name: 'gym', n: 20, success: 9, rate: 0.45, ci95: [0.26, 0.66], failures: {}, tokens_mean: null, tokens_known: 0, duration_ms_mean: null, pending: 0, invalid: 1, infra_censored: 2 }],
+    paired: [{ arms: 'A-B', n_pairs: 19, effect: null, ci95: null, mcnemar_exact_p: null, excluded_tasks: 1 }],
+    prior_exposure: { exposed: 19, unexposed: 1, prior_attempts: 40 },
+    result: { verdict: 'inconclusive', falsified: null, supported: null, not_tested: [], next_experiment: null } },
+} as unknown as EvolutionEvidence;
+
+const rowText = (container: HTMLElement, id: string) => container.querySelector(`[data-experiment="${id}"]`)?.textContent ?? '';
+const detailText = (container: HTMLElement, id: string) => container.querySelector(`[data-experiment-detail="${id}"]`)?.textContent ?? '';
+
+it('L6-04: one row per registered experiment shows running, overdue, closed and interim-inconclusive states truthfully', () => {
+  const { container } = render(<EvolutionBody data={EXP_DATA} />);
+  expect(screen.getByRole('heading', { name: 'Experiments' })).toBeTruthy();
+  const ace = rowText(container, 'ACE-001');
+  expect(ace).toContain('running'); expect(ace).toContain('no verdict recorded'); expect(ace).toContain('00 3 · 01 2 · 10 0 · 11 1 / target 50');
+  const deps = rowText(container, 'MAKER-DEPS-001');
+  expect(deps).toContain('overdue'); expect(deps).toContain('every arm reached target 10 without a verdict'); expect(deps).toContain('no verdict recorded');
+  expect(deps).toContain('version v1');
+  const f2 = rowText(container, 'F2');
+  expect(f2).toContain('closed'); expect(f2).toContain('reversed'); expect(f2).toContain('version v2');
+  const tg = rowText(container, 'TG-001');
+  expect(tg).toContain('running'); expect(tg).toContain('interim result inconclusive — not a closing verdict'); expect(tg).toContain('no verdict recorded');
+});
+
+it('L6-04: a null effect or CI is shown as not computed, never as 0', () => {
+  const { container } = render(<EvolutionBody data={EXP_DATA} />);
+  const ace = detailText(container, 'ACE-001');
+  expect(ace).toContain('estimate not computed'); expect(ace).toContain('no CI computed');
+  expect(ace).not.toMatch(/estimate 0(\.0+)?\b/);
+  expect(ace).toContain('retrieval delivery unknown'); // null delivery rate
+  expect(ace).toContain('examples delivery 80 %');
+  expect(ace).toContain('arm 10: n = 0, verified rate unknown'); // null rate on an empty arm is not 0 %
+  // the paired TG effect with null estimate
+  expect(detailText(container, 'TG-001')).toContain('A-B: n pairs 19, effect not computed, no CI computed');
+});
+
+it('L6-04: reaching the target is never shown as supported; only a recorded verdict closes an experiment', () => {
+  const html = renderToStaticMarkup(<EvolutionBody data={EXP_DATA} />);
+  expect(html).not.toMatch(/supported/i);
+  expect(html).not.toContain('ADOPTED');
+  const { container } = render(<EvolutionBody data={EXP_DATA} />);
+  expect(rowText(container, 'MAKER-DEPS-001')).not.toContain('closed');
+  expect(detailText(container, 'MAKER-DEPS-001')).toContain('evidence status analysable — target reached, no analysis verdict recorded');
+});
+
+it('L6-04: each section states its own window; a grandfathered WIP exception is labelled with its reason', () => {
+  const { container } = render(<EvolutionBody data={EXP_DATA} />);
+  // MAKER-DEPS started before the 7-day evidence window: the section is not the whole experiment
+  expect(detailText(container, 'MAKER-DEPS-001')).toContain('section counts the last 7 d only (from 2026-10-17); the registry row counts from 2026-10-01');
+  expect(detailText(container, 'ACE-001')).toContain('section counts from analysis_since 2026-10-17 (Amendment 1); 9 earlier outcomes excluded');
+  expect(detailText(container, 'TG-001')).toContain('section is not windowed (whole experiment)');
+  expect(rowText(container, 'MAKER-DEPS-001')).toContain('grandfathered: running before the G1.5 WIP limit existed');
+  expect(rowText(container, 'ACE-001')).toContain('counts toward WIP limit 4');
+  expect(rowText(container, 'TG-001')).toContain('not on the oracle-goal population');
+  expect(container.textContent).toContain('2 active on oracle goals (limit 4): 1 counted, 1 grandfathered exception(s) — guard ok');
+});
+
+it('L6-04: circular / secondary endpoints, closed versions and prior generations are labelled as the evidence says', () => {
+  const { container } = render(<EvolutionBody data={EXP_DATA} />);
+  const f2 = detailText(container, 'F2');
+  expect(f2).toContain('primary (outcome_wo_checker, final)');
+  expect(f2).toContain('secondary, circular — contains the checker\'s own rejection');
+  expect(f2).toContain('v1 (closed 17-10 interim) reported apart, never pooled');
+  const tg = detailText(container, 'TG-001');
+  expect(tg).toContain('r1 ABORTED_DATA_LOSS — never pooled');
+  expect(tg).toContain('prior exposure: 19 exposed, 1 unexposed');
+});
+
+it('L6-04: the learning ledger shows mechanism, effect, CI and status, with null as not computed', () => {
+  const { container } = render(<EvolutionBody data={EXP_DATA} />);
+  expect(detailText(container, 'ACE-001')).toContain('KB retrieval (kb_retrieval): RUNNING — estimate not computed, no CI computed');
+  expect(detailText(container, 'F2')).toContain('Checker family (checker_family): REJECTED — estimate -0.210, CI [-0.400, -0.020]');
+  expect(container.textContent).toContain('loops closed 0/3');
+});
+
+it('L6-04: a server without the experiment registry renders an honest empty state', () => {
+  expect(renderToStaticMarkup(<EvolutionBody data={EMPTY} />)).toContain('Experiment registry not reported by this server.');
+});
+
+// UXE-00: value-gate decision card + settlement value (visibleText: shared helper, test/visible-text.ts)
+const AM: NonNullable<EvolutionEvidence['auto_merge']> = { mode: 'act', max_per_day: 10, audit_sample_pct: 10, class: { state: 'active' },
+  counts: { merged: 25, merged_24h: 1, would_merge: 0, audit_samples: 10, audit_samples_open: 2, waiting: 0, ineligible: 79 },
+  ineligible_by_reason: { not_open: 47, checks_failed: 15, assertion_strength_missing: 14, not_verified: 3 },
+  value_gate: { mode: 'shadow', lanes: 'all', kill_share_min: 0.2,
+    would_block: { value_signal_missing: 4, value_signal_low: 9 }, replay: { n: 25, pass: 11, low: 9, missing: 5 } } };
+const VG: EvolutionEvidence = { ...FULL, auto_merge: AM,
+  settlement_value: { threshold: 0.2, note: 'report only', by_lane: [
+    { lane: 'exports', n: 20, kill_share_now_median: 0.12, below: 14, share_below: 0.7, ci: [0.48, 0.85] },
+    { lane: 'test-gap', n: 6, kill_share_now_median: null, below: 0, share_below: 0, ci: [0, 0.39] } ] } };
+const section = (name: RegExp) => screen.getByRole('heading', { name }).closest('section')!;
+const vg = (over: object) => ({ ...VG, auto_merge: { ...AM, ...over } });
+const gate = (over: object) => vg({ value_gate: { ...AM.value_gate!, ...over } });
+const SHADOW = /shadow — did not act/;
+
+it('UXE-00: value gate shows mode, lanes, would-block and replay with n, labelled shadow', () => {
+  render(<EvolutionBody data={VG} />);
+  const g = visibleText(section(/value gate/i));
+  expect(g).toContain('shadow — did not act');
+  for (const re of [/no window/, /lanes all/i, /kill share minimum 0\.2/, /4 missing value signal/, /9 low value signal/, /n = 25/, /11 pass/]) expect(g).toMatch(re);
+});
+
+it('UXE-00: a lane list renders as the configured lanes', () => {
+  render(<EvolutionBody data={gate({ lanes: ['exports', 'test-gap'] })} />);
+  expect(visibleText(section(/value gate/i))).toMatch(/lanes exports, test-gap/);
+});
+
+it('UXE-00: mode on still labels would-block as did not act', () => {
+  const data = gate({ mode: 'on' });
+  render(<EvolutionBody data={{ ...data, auto_merge: { ...data.auto_merge!, ineligible_by_reason: { ...AM.ineligible_by_reason, value_signal_low: 3 } } }} />);
+  const g = visibleText(section(/value gate/i));
+  expect(g).toMatch(/unlisted lanes and earlier shadow stamps/);
+  expect(g).toContain('did not act');
+  expect(g).toMatch(/Blocked \(mode on, all loop runs\): 0 missing · 3 low/);
+  expect(visibleText(screen.getByRole('heading', { name: /value gate/i }))).not.toMatch(SHADOW);
+});
+
+it('UXE-00: auto_merge shadow labels the whole value gate shadow', () => {
+  render(<EvolutionBody data={{ ...gate({ mode: 'on' }), auto_merge: { ...gate({ mode: 'on' }).auto_merge!, mode: 'shadow' } }} />);
+  expect(visibleText(screen.getByRole('heading', { name: /value gate/i }))).toMatch(SHADOW);
+  expect(visibleText(section(/value gate/i))).toContain('shadow — did not act');
+});
+
+it('UXE-00: auto-merge off hides the value gate', () => {
+  render(<EvolutionBody data={vg({ mode: 'off' })} />);
+  expect(screen.queryByRole('heading', { name: /value gate/i })).toBeNull();
+});
+
+it('UXE-00: replay n 0 reads as not run, never as 0 pass', () => {
+  render(<EvolutionBody data={gate({ replay: { n: 0, pass: 0, low: 0, missing: 0 } })} />);
+  const g = visibleText(section(/value gate/i));
+  expect(g).toMatch(/replay not run: this decision has no replay evidence/i);
+  expect(g).not.toMatch(/\b0 pass/);
+});
+
+it('UXE-00: per-lane settlement value shows n and CI; small n reads insufficient', () => {
+  render(<EvolutionBody data={VG} />);
+  const sv = section(/settlement value/i);
+  const rows = within(sv).getAllByRole('row');
+  expect(within(sv).getByRole('table', { name: /settlement value by lane/i })).toBe(rows[0].closest('table'));
+  const r1 = visibleText(rows[1]); const r2 = visibleText(rows[2]);
+  for (const s of ['exports', '14/20', '0.12', '[48 %, 85 %]']) expect(r1).toContain(s);
+  expect(r2).toContain('insufficient (n = 6)');
+  expect(r2).toContain('unknown');
+  expect(r2).not.toContain('—');
+  expect(r2).not.toMatch(/\[\d+ %/);
+  expect(visibleText(sv)).toMatch(/report only/i);
+});
+
+it('UXE-00: an empty settlement value says so', () => {
+  render(<EvolutionBody data={{ ...VG, settlement_value: { threshold: 0.2, note: 'report only', by_lane: [] } }} />);
+  expect(visibleText(section(/settlement value/i))).toContain('No settled loop PR has a fresh-mutant kill share yet.');
+});
+
+it('UXE-00: ineligible reasons listed with counts, largest first, all time', () => {
+  render(<EvolutionBody data={VG} />);
+  const t = visibleText(section(/test-only auto-merge/i));
+  expect(t.indexOf('not_open 47')).toBeGreaterThan(-1);
+  expect(t.indexOf('not_open 47')).toBeLessThan(t.indexOf('checks_failed 15'));
+  expect(t).toMatch(/Ineligible by reason \(all loop runs, latest decision per run\)/);
+});
+
+it('UXE-00: read-only — no action control', () => {
+  render(<EvolutionBody data={VG} />);
+  for (const s of [section(/test-only auto-merge/i), section(/settlement value/i)]) {
+    for (const role of ['button', 'switch', 'checkbox', 'combobox', 'textbox', 'menuitem'] as const) expect(within(s).queryAllByRole(role)).toHaveLength(0);
+  }
+});
+
+it('UXE-00: absent value_gate says not reported', () => {
+  render(<EvolutionBody data={vg({ value_gate: undefined })} />);
+  expect(visibleText(section(/test-only auto-merge/i))).toContain('Value gate: not reported by this server');
+});
+
+it('UXE-00: visibleText ignores sr-only text', () => {
+  const { container } = render(<p>shown <span className="sr-only">hidden-value</span></p>);
+  expect(visibleText(container)).toContain('shown');
+  expect(visibleText(container)).not.toContain('hidden-value');
 });

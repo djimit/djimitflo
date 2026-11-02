@@ -12,6 +12,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { AgentRegistryService } from '../services/agent-registry-service';
 import { NlAgentFactory } from '../services/nl-agent-factory';
 import { randomUUID } from 'crypto';
+import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 
 export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -216,6 +217,14 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       if (!agent) {
         throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
       }
+      // Liveness is reported by the agent itself (principal subject = agent id) or by an operator with manage:config;
+      // write:evidence alone no longer lets one principal keep another agent "alive".
+      const principal = String(req.user?.sub ?? '');
+      const reportedAs = principal && principal === id ? 'self'
+        : ROLE_PERMISSIONS[req.user?.role as UserRole]?.includes('manage:config') ? 'operator' : null;
+      if (!reportedAs) {
+        throw createError(403, 'Only the agent itself or an operator (manage:config) may report this agent\'s heartbeat', 'HEARTBEAT_NOT_SELF');
+      }
 
       const now = new Date().toISOString();
       const currentMeta = JSON.parse(agent.metadata || '{}');
@@ -225,7 +234,7 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       }
       // Evidence writers may report liveness, not approve/reactivate agents or
       // replace operator-owned configuration such as system_prompt and tools.
-      const mergedMeta = { ...currentMeta, heartbeat: { reported_status: status, active_tasks, metadata: metadata || {} } };
+      const mergedMeta = { ...currentMeta, heartbeat: { reported_status: status, active_tasks, metadata: metadata || {}, reported_by: principal, reported_as: reportedAs, reported_at: now } };
 
       db.prepare(
         `UPDATE agents SET metadata = ?, last_heartbeat_at = ?, updated_at = ? WHERE id = ?`

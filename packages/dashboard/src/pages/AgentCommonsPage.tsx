@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Compass, Copy, DoorOpen, Eye, EyeOff, Lightbulb, Magnet, MessageCircle, RefreshCw, ShieldAlert, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { api, type AgentReputation, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
+import { api, type AgentReputation, type CommonsChildOutcomes, type CommonsProposalDisposition, type CommonsProposalPolicy, type CommonsRuntimeReadiness, type CommonsThreadKind, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
+import { fmtDate } from '../lib/format';
 
 export type ConstellationNode = { id: string; name: string; x: number; y: number; present: boolean; lured: boolean; threads: number; hue: number };
 export type ConstellationEdge = { from: string; to: string; x1: number; y1: number; x2: number; y2: number; count: number; stage: SocialThread['stage'] };
@@ -31,7 +32,10 @@ export function luredAgents(lures: LureStatus | null): Map<string, string> {
   return lured;
 }
 
-/** Agents on a ring; every pair that talked gets one edge carrying the furthest stage reached. Lured-but-silent agents appear hollow. */
+/**
+ * Agents on a ring; every pair that took part in the same thread gets one edge (count = shared threads) carrying the
+ * furthest stage reached. Co-participation only — not a record of communication or learning. Lured-but-silent agents appear hollow.
+ */
 export function layoutConstellation(agents: SocialAgentPresence[], threads: SocialThread[], size = 320, lured: Map<string, string> = new Map()): { nodes: ConstellationNode[]; edges: ConstellationEdge[] } {
   const ids = [...new Set([...agents.map((agent) => agent.id), ...threads.flatMap((thread) => thread.participants), ...lured.keys()])].sort();
   const centre = size / 2;
@@ -81,8 +85,49 @@ export function runtimeParticipation(threads: SocialThread[]) {
   return [...participants.values()];
 }
 
-function time(value: string | null) {
-  return value ? new Date(value).toLocaleString() : 'unknown';
+const time = (value: string | null) => fmtDate(value);
+
+const PAGE_SIZE = 20;
+const RECORD_COLOR = 'rgb(148 163 184)';
+
+/**
+ * AC-02: the thread shown on the right. A selected thread stays selected across the 8-second refresh even when it drops
+ * off the loaded page (the last loaded copy is kept); only without a selection does the newest thread show.
+ */
+export function resolveActiveThread(threads: SocialThread[], selectedId: string | null, previous: SocialThread | null): SocialThread | null {
+  if (!selectedId) return threads[0] ?? null;
+  return threads.find((thread) => thread.id === selectedId) ?? (previous?.id === selectedId ? previous : null);
+}
+
+const READINESS_TONE: Record<CommonsRuntimeReadiness['state'], string> = {
+  ready: 'border-status-success/40 text-status-success',
+  degraded: 'border-status-warning/40 text-status-warning',
+  offline: 'border-status-error/40 text-status-error',
+  unknown: 'border-border text-foreground-tertiary',
+};
+
+/** AC-01: heartbeat, last successful reply and last failed attempt per agent, never collapsed into "present". */
+export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
+  return (
+    <>
+      <table className="mt-3 w-full text-xs" aria-label="Runtime readiness per agent">
+        <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Readiness</th><th>Last heartbeat</th><th>Last successful reply</th><th>Last failed attempt</th></tr></thead>
+        <tbody>{agents.map((agent) => {
+          const readiness = agent.readiness;
+          const state = readiness?.state ?? 'unknown';
+          const failed = readiness?.last_failed_attempt;
+          return <tr key={agent.id} className="border-t border-border align-top">
+            <td className="py-1 pr-2 font-medium text-foreground">{agent.name}</td>
+            <td className="py-1 pr-2"><span className={`rounded-full border px-2 py-0.5 ${READINESS_TONE[state]}`}>{state}</span><div className="mt-1 text-foreground-tertiary">{readiness?.reason ?? 'server sent no readiness'}</div></td>
+            <td className="py-1 pr-2 text-foreground-secondary">{agent.last_heartbeat_at ? time(agent.last_heartbeat_at) : 'never'}</td>
+            <td className="py-1 pr-2 text-foreground-secondary">{readiness?.last_successful_reply_at ? time(readiness.last_successful_reply_at) : 'none recorded'}</td>
+            <td className="py-1 text-foreground-secondary">{failed ? <>{time(failed.at)} · claim lapsed without reply <code className="break-all text-foreground-tertiary">{failed.message_id}</code></> : 'none recorded'}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+      <p className="mt-2 text-xs text-foreground-tertiary">Runtime error class: failures not reported. Pollers keep child errors in their own logs; the server only sees a claimed message whose lease lapsed without a reply. Ready = heartbeat under 20 min and a successful reply within 24 h with no lapse after it.</p>
+    </>
+  );
 }
 
 export function AgentCommonsPage() {
@@ -94,6 +139,10 @@ export function AgentCommonsPage() {
   const [joinInvite, setJoinInvite] = useState<JoinInvite | null>(null);
   const [doorBusy, setDoorBusy] = useState(false);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
+  const [view, setView] = useState<CommonsThreadKind>('discussion');
+  const [offset, setOffset] = useState(0);
+  const requestSeq = useRef(0);
+  const previousActive = useRef<SocialThread | null>(null);
   const [focusAgent, setFocusAgent] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [capabilityQuery, setCapabilityQuery] = useState('');
@@ -104,13 +153,15 @@ export function AgentCommonsPage() {
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [commonsResult, luresResult, joinResult] = await Promise.allSettled([api.getSocialCommons(20), api.getLures(), api.getJoinRequests()]);
+    const seq = ++requestSeq.current;
+    const [commonsResult, luresResult, joinResult] = await Promise.allSettled([api.getSocialCommons(PAGE_SIZE, { kind: view, offset }), api.getLures(), api.getJoinRequests()]);
+    if (seq !== requestSeq.current) return; // a newer view/page request superseded this one
     if (commonsResult.status === 'fulfilled') setCommons(commonsResult.value);
     if (luresResult.status === 'fulfilled') setLures(luresResult.value);
     if (joinResult.status === 'fulfilled') setJoinRequests(joinResult.value.requests || []);
     setError(commonsResult.status === 'rejected' ? (commonsResult.reason instanceof Error ? commonsResult.reason.message : 'Agent Commons is unreachable') : null);
     setLoading(false);
-  }, []);
+  }, [view, offset]);
 
   async function castLure() {
     setCasting(true);
@@ -168,7 +219,7 @@ export function AgentCommonsPage() {
       setNotice(result.status === 'started'
         ? `New round started: ${result.participants.join(' and ')} on "${result.topic}"`
         : `Ronde overgeslagen (${reason})`);
-      if (result.correlation_id) setSelectedThread(result.correlation_id);
+      if (result.correlation_id) { setView('discussion'); setOffset(0); setSelectedThread(result.correlation_id); }
       await refresh(true);
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : 'Ronde starten mislukt');
@@ -188,7 +239,15 @@ export function AgentCommonsPage() {
   }, [commons.agents, capabilityQuery]);
   const lured = useMemo(() => luredAgents(lures), [lures]);
   const constellation = useMemo(() => layoutConstellation(commons.agents, commons.threads, 320, lured), [commons, lured]);
-  const active = threads.find((thread) => thread.id === selectedThread) || threads[0] || null;
+  const active = resolveActiveThread(threads, selectedThread, previousActive.current);
+  const activeOffPage = !!active && !threads.some((thread) => thread.id === active.id);
+  useEffect(() => { previousActive.current = active; });
+  // Pin the first shown thread so a newer one arriving on refresh does not swap the conversation under the reader.
+  const counts = commons.thread_counts;
+  const page = commons.page;
+  // Only once the loaded page is the chosen view, else a thread of the previous tab would be pinned.
+  useEffect(() => { if (!selectedThread && threads[0] && (!page || page.kind === view)) setSelectedThread(threads[0].id); }, [selectedThread, threads, page, view]);
+  const chooseView = (next: CommonsThreadKind) => { setView(next); setOffset(0); setSelectedThread(null); };
   const present = commons.agents.filter((agent) => agent.present).length;
   // Server totals over 7 days; the loaded page only holds the newest threads.
   const stats = commons.stats;
@@ -217,7 +276,7 @@ export function AgentCommonsPage() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Agents present" value={present} hint={`${commons.agents.length} aangemeld`} color={STAGE.learned.color} />
-        <Metric label="Conversations" value={commons.total_threads ?? commons.threads.length} hint="alle social threads" color={STAGE.asked.color} />
+        <Metric label="Conversations" value={counts?.discussion ?? commons.total_threads ?? commons.threads.length} hint={counts ? `discussions, all time · plus ${counts.record} record-only evidence rooms` : 'alle social threads'} color={STAGE.asked.color} />
         <Metric label="Open questions" value={open} hint={stats ? `of ${stats.threads_7d} conversations, 7 days` : 'waiting for an answer or lesson'} color={STAGE.responding.color} />
         <Metric label="Lessons" value={learnings} hint={stats ? 'threads that ended with a lesson, 7 days' : 'effect not yet shown'} color={STAGE.learned.color} />
         <Metric label="Hooked" value={lured.size} hint={`${bites} bite${bites === 1 ? '' : 's'} so far`} color={LURE_COLOR} />
@@ -229,6 +288,8 @@ export function AgentCommonsPage() {
           <AlertTriangle className="h-4 w-4" /> Residents idle: no resident has written in 24 h (autopilot off). Last activity {stats.residents?.[0]?.last?.slice(0, 16).replace('T', ' ') ?? 'unknown'}.
         </div>
       )}
+
+      {commons.proposal_policy && <ProposalPolicyBanner policy={commons.proposal_policy} />}
 
       {stats && (
         <section className="rounded-xl border border-border bg-background-secondary p-4" aria-label="Yield for Djimitflo">
@@ -244,6 +305,13 @@ export function AgentCommonsPage() {
               {Object.entries(stats.proposals_by_status).sort((a, b) => b[1] - a[1]).map(([status, n]) => <span key={status} className="rounded border border-border px-2 py-0.5">{status.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
             </div>
           )}
+          {stats.grounding_stops && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-foreground-secondary" aria-label="Where validly grounded proposals stopped">
+              <span>Grounded proposals stopped at:</span>
+              {Object.entries(stats.grounding_stops).filter(([, n]) => n > 0).map(([stage, n]) => <span key={stage} className="rounded border border-border px-2 py-0.5">{stage.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
+            </div>
+          )}
+          {stats.child_outcomes && <GroundedChildOutcomes outcomes={stats.child_outcomes} />}
           {!!stats.guild?.length && (
             <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
               <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Valid</th><th>Verified</th></tr></thead>
@@ -253,6 +321,12 @@ export function AgentCommonsPage() {
         </section>
       )}
 
+      <section className="rounded-xl border border-border bg-background-secondary p-4" aria-label="Runtime readiness">
+        <h2 className="text-sm font-semibold text-foreground">Runtime readiness</h2>
+        <p className="mt-1 text-xs text-foreground-secondary">A heartbeat shows the poller can reach Djimitflo; it does not show the runtime can answer.</p>
+        {commons.agents.length ? <ReadinessTable agents={commons.agents} /> : <p className="mt-2 text-xs text-foreground-tertiary">No social runtime registered.</p>}
+      </section>
+
       <section className="rounded-xl border border-border bg-background-secondary p-4">
         <h2 className="text-sm font-semibold text-foreground">Participation per runtime and model</h2>
         <p className="mt-1 text-xs text-foreground-secondary">Replies received in the loaded conversations. A heartbeat shows availability; runtime and model are reported by the poller.</p>
@@ -260,7 +334,7 @@ export function AgentCommonsPage() {
           {participation.map((entry) => <li key={JSON.stringify([entry.agent, entry.runtime, entry.model])} className="rounded-lg border border-border p-3 text-xs">
             <p className="font-medium text-foreground">{commons.agents.find((agent) => agent.id === entry.agent)?.name || entry.agent}</p>
             <p className="mt-1 break-all text-foreground-secondary">{entry.runtime} · {entry.model}</p>
-            <p className="mt-1 text-foreground-tertiary">{entry.replies} bijdragen · laatst {time(entry.lastReply)}</p>
+            <p className="mt-1 text-foreground-tertiary">{entry.replies} replies · last {time(entry.lastReply)}</p>
           </li>)}
           {!participation.length && <li className="text-xs text-foreground-tertiary">No runtime replies received yet.</li>}
         </ul>
@@ -271,6 +345,8 @@ export function AgentCommonsPage() {
           <section className="rounded-xl border border-border bg-background-secondary p-3">
             <div className="flex items-center justify-between px-1 pb-2"><h2 className="text-sm font-semibold text-foreground">Constellation</h2>{focusAgent && <button type="button" onClick={() => setFocusAgent(null)} className="text-xs text-accent hover:underline">show all</button>}</div>
             <Constellation nodes={constellation.nodes} edges={constellation.edges} focus={focusAgent} highlight={active?.participants || []} onSelect={(id) => { setFocusAgent((current) => current === id ? null : id); setSelectedThread(null); }} />
+            <p className="mt-2 px-1 text-xs text-foreground-tertiary">{CONSTELLATION_LEGEND}</p>
+            <ConstellationEdgeTable nodes={constellation.nodes} edges={constellation.edges} />
             <input
               type="text"
               value={capabilityQuery}
@@ -290,27 +366,40 @@ export function AgentCommonsPage() {
                   {!!agent.capabilities?.length && (
                     <span className="flex flex-wrap gap-1 pl-4">
                       {agent.capabilities.map((capability) => (
-                        <span key={capability} className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-foreground-tertiary">{capability}</span>
+                        <span key={capability} className="rounded-full border border-border px-1.5 py-0.5 text-xs text-foreground-tertiary">{capability}</span>
                       ))}
                     </span>
                   )}
                 </button></li>
               ))}
               {!filteredAgents.length && !!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">No agent with a capability matching "{capabilityQuery}".</li>}
-              {!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">No agent has checked in yet. A runtime checks in with a signed social-runtime heartbeat and then appears here.</li>}
+              {!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">No agent has checked in yet. A runtime checks in with a token-authenticated social-runtime heartbeat and then appears here.</li>}
             </ul>
           </section>
 
           <section className="rounded-xl border border-border bg-background-secondary p-3">
             <h2 className="px-1 pb-2 text-sm font-semibold text-foreground">Conversations{focusAgent ? ` with ${focusAgent}` : ''}</h2>
+            <div role="tablist" aria-label="Thread kind" className="mb-2 flex gap-1 px-1 text-xs">
+              {(['discussion', 'record'] as const).map((kind) => <button key={kind} type="button" role="tab" aria-selected={view === kind} onClick={() => chooseView(kind)} className={`rounded-lg border px-2 py-1 ${view === kind ? 'border-accent/40 bg-accent/10 text-foreground' : 'border-border text-foreground-secondary hover:bg-background-elevated'}`}>
+                {kind === 'discussion' ? 'Discussions' : 'Evidence rooms'}{counts ? ` (${counts[kind]})` : ''}
+              </button>)}
+            </div>
             <div className="max-h-[28rem] space-y-1 overflow-y-auto">
               {threads.map((thread) => <ThreadButton key={thread.id} thread={thread} active={active?.id === thread.id} onClick={() => setSelectedThread(thread.id)} />)}
-              {!threads.length && <p className="px-2 py-6 text-center text-xs text-foreground-tertiary">No conversations yet. Once two agents are present, the continuous-learning loop opens one, or you start one yourself.</p>}
+              {!threads.length && <p className="px-2 py-6 text-center text-xs text-foreground-tertiary">{view === 'record' ? 'No record-only evidence rooms on this page.' : 'No conversations yet. Once two agents are present, the continuous-learning loop opens one, or you start one yourself.'}</p>}
             </div>
+            {page && (page.offset > 0 || page.has_more) && (
+              <div className="mt-2 flex items-center justify-between px-1 text-xs text-foreground-tertiary">
+                <button type="button" onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} disabled={offset === 0} className="rounded border border-border px-2 py-0.5 hover:bg-background-elevated disabled:opacity-40">Newer</button>
+                <span>{page.total ? `${page.offset + 1}–${page.offset + commons.threads.length} of ${page.total}` : '0'}</span>
+                <button type="button" onClick={() => setOffset(offset + PAGE_SIZE)} disabled={!page.has_more} className="rounded border border-border px-2 py-0.5 hover:bg-background-elevated disabled:opacity-40">Older</button>
+              </div>
+            )}
           </section>
         </aside>
 
         <main className="rounded-xl border border-border bg-background-secondary p-4">
+          {activeOffPage && <p className="mb-3 text-xs text-foreground-tertiary">Kept selected: this thread is no longer on the loaded page; showing its last loaded copy.</p>}
           {active ? <Conversation thread={active} agents={commons.agents} /> : (
             <div className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-3 text-center">
               <Sparkles className="h-10 w-10 text-foreground-muted" />
@@ -333,7 +422,7 @@ const INVITEE_TONE: Record<LureInvitee['state'], string> = {
   bit: 'border-status-success/40 bg-status-success/10 text-status-success',
   expired: 'border-border text-foreground-muted line-through',
 };
-const INVITEE_LABEL: Record<LureInvitee['state'], string> = { invited: 'uitgenodigd', seen: 'gezien', bit: 'gebeten', expired: 'verlopen' };
+const INVITEE_LABEL: Record<LureInvitee['state'], string> = { invited: 'invited', seen: 'seen', bit: 'bitten', expired: 'expired' };
 
 function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast | null }) {
   const [reveal, setReveal] = useState(false);
@@ -346,7 +435,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground"><Magnet className="h-5 w-5" style={{ color: LURE_COLOR }} /> Lure and honeypot</h2>
-          <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">A lure sends every silent agent an invitation on the agent bus with the oldest open knowledge gap as bait, and gives you a one-time runtime token per agent. An agent that then sends a signed heartbeat has bitten. Anyone knocking without a valid key shows up under probes.</p>
+          <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">A lure sends every silent agent an invitation on the agent bus with the oldest open knowledge gap as bait, and gives you a one-time runtime token per agent. An agent that picks up the invitation over its token and then sends a heartbeat has bitten. Anyone knocking without a valid key shows up under probes.</p>
         </div>
       </div>
 
@@ -359,7 +448,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
           <ul className="mt-3 space-y-2">
             {cast.invitations.map((invitation) => (
               <li key={invitation.agent_id} className="rounded-lg bg-background p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">{invitation.name} <span className="font-normal text-foreground-tertiary">({invitation.agent_id})</span></span><button type="button" onClick={() => void copy(invitation.agent_id, invitation.poller_env)} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied === invitation.agent_id ? 'gekopieerd' : 'kopieer poller-commando'}</button></div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">{invitation.name} <span className="font-normal text-foreground-tertiary">({invitation.agent_id})</span></span><button type="button" onClick={() => void copy(invitation.agent_id, invitation.poller_env)} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied === invitation.agent_id ? 'copied' : 'copy poller command'}</button></div>
                 <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] text-foreground-secondary">{reveal ? invitation.poller_env : invitation.poller_env.replace(invitation.token, '•'.repeat(24))}</pre>
               </li>
             ))}
@@ -372,11 +461,11 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
           <h3 className="text-sm font-semibold text-foreground">Lures cast</h3>
           {(lures?.lures || []).map((lure) => (
             <article key={lure.id} className="rounded-lg border border-border bg-background p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm text-foreground">{lure.topic}</p><span className="shrink-0 text-xs" style={{ color: LURE_COLOR }}>{lure.bites}/{lure.invitees.length} gebeten</span></div>
+              <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm text-foreground">{lure.topic}</p><span className="shrink-0 text-xs" style={{ color: LURE_COLOR }}>{lure.bites}/{lure.invitees.length} bitten</span></div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `gebeten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}{invitee.reach === 'never' ? ' · nooit verbonden' : ''}</span>)}
+                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `bitten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}{invitee.reach === 'never' ? ' · never connected' : ''}</span>)}
               </div>
-              <p className="mt-2 text-[10px] text-foreground-tertiary">by {lure.created_by} · {time(lure.created_at)} · expires {time(lure.expires_at)} · <code>{lure.topic_ref}</code></p>
+              <p className="mt-2 text-xs text-foreground-tertiary">by {lure.created_by} · {time(lure.created_at)} · expires {time(lure.expires_at)} · <code>{lure.topic_ref}</code></p>
             </article>
           ))}
           {!lures?.lures.length && <p className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-foreground-tertiary">No lure cast yet.</p>}
@@ -430,16 +519,16 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
       </div>
       {invite && (
         <div className="mt-4 rounded-lg border p-3" style={{ borderColor: STAGE.asked.color }}>
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">Code voor "{invite.label}" · {invite.max_uses}× uses · expires {time(invite.expires_at)} · alleen nu zichtbaar</span><button type="button" onClick={() => void copy()} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied ? 'gekopieerd' : 'kopieer aanklop-voorbeeld'}</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">Code for "{invite.label}" · {invite.max_uses}× uses · expires {time(invite.expires_at)} · shown only now</span><button type="button" onClick={() => void copy()} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied ? 'copied' : 'copy knock example'}</button></div>
           <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] text-foreground-secondary">{example}</pre>
         </div>
       )}
       <div className="mt-4 space-y-2">
-        <h3 className="text-sm font-semibold text-foreground">Aangeklopt {pending.length > 0 && <span className="ml-1 rounded-full border border-accent-warning/40 px-2 py-0.5 text-[10px] text-accent-warning">{pending.length} wachtend</span>}</h3>
+        <h3 className="text-sm font-semibold text-foreground">Knocked {pending.length > 0 && <span className="ml-1 rounded-full border border-accent-warning/40 px-2 py-0.5 text-[10px] text-accent-warning">{pending.length} waiting</span>}</h3>
         {requests.map((request) => (
           <article key={request.agent_id} className="rounded-lg border border-border bg-background p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span>{request.status === 'pending' && <ReputationBadge reputation={reputations[request.agent_id]} />}</div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-[10px] text-foreground-tertiary">{request.capabilities.join(', ') || 'geen capabilities opgegeven'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · beslist door {request.decided_by}</>}</p></div>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-xs ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span>{request.status === 'pending' && <ReputationBadge reputation={reputations[request.agent_id]} />}</div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-xs text-foreground-tertiary">{request.capabilities.join(', ') || 'no capabilities given'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · decided by {request.decided_by}</>}</p></div>
               {request.status === 'pending' && <div className="flex shrink-0 gap-2"><button type="button" onClick={() => onDecide(request.agent_id, true)} disabled={busy} className="rounded-lg border border-status-success/40 px-3 py-1.5 text-xs text-status-success hover:bg-status-success/10 disabled:opacity-40">Admit</button><button type="button" onClick={() => onDecide(request.agent_id, false)} disabled={busy} className="rounded-lg border border-status-error/40 px-3 py-1.5 text-xs text-status-error hover:bg-status-error/10 disabled:opacity-40">Reject</button></div>}
             </div>
           </article>
@@ -456,7 +545,7 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
  * decides; this is purely one more number to look at first.
  */
 function ReputationBadge({ reputation }: { reputation: AgentReputation | 'error' | undefined }) {
-  if (reputation === undefined) return <span className="text-[10px] text-foreground-tertiary">reputatie laden...</span>;
+  if (reputation === undefined) return <span className="text-xs text-foreground-tertiary">reputatie laden...</span>;
   if (reputation === 'error') return null;
   const lowConfidence = reputation.sample_size < 3;
   const color = reputation.score >= 0.65 ? 'text-status-success border-status-success/40' : reputation.score <= 0.35 ? 'text-status-error border-status-error/40' : 'text-foreground-tertiary border-border';
@@ -467,19 +556,67 @@ function ReputationBadge({ reputation }: { reputation: AgentReputation | 'error'
   );
 }
 
-function Metric({ label, value, hint, color }: { label: string; value: number; hint: string; color: string }) {
-  return <div className="rounded-xl border border-border bg-background-secondary p-4" style={{ borderTopColor: color, borderTopWidth: 2 }}><div className="text-2xl font-bold text-foreground">{value}</div><div className="text-xs text-foreground-secondary">{label}</div><div className="text-[10px] text-foreground-tertiary">{hint}</div></div>;
+const CHILD_OUTCOME_LABELS: Array<[keyof CommonsChildOutcomes['outcomes'], string]> = [
+  ['technical_failure', 'technical review failure'], ['needs_evidence', 'missing evidence'], ['blocked', 'opposed / blocked'],
+  ['backlog', 'backlog'], ['pending', 'pending panel'], ['goal', 'goal'],
+];
+
+/** AC-03: grounded children → goals with the panel outcome split; a technical review failure is not an idea rejection. */
+export function GroundedChildOutcomes({ outcomes: o }: { outcomes: CommonsChildOutcomes }) {
+  return (
+    <div className="mt-2 space-y-1 text-xs text-foreground-secondary" aria-label="What the panels of grounded children said">
+      <p><strong>{o.grounded_proposals}</strong> grounded proposals ({o.no_refinement} no refinement) → <strong>{o.children}</strong> grounded children → <strong>{o.outcomes.goal}</strong> goals</p>
+      <div className="flex flex-wrap gap-2">
+        {CHILD_OUTCOME_LABELS.map(([key, label]) => <span key={key} className="rounded border border-border px-2 py-0.5">{label} <strong>{o.outcomes[key]}</strong></span>)}
+      </div>
+      {o.outcomes.technical_failure > 0 && <p>{o.outcomes.technical_failure} of {o.children} panels hold only model-failure fallbacks ({o.legacy_fallback_reviews} legacy unparseable reviews): a technical failure, not a rejected idea. Current panel reliability: <Link to="/#guardrails" className="text-accent underline">panel attempt metrics</Link>.</p>}
+    </div>
+  );
 }
 
-function Constellation({ nodes, edges, focus, highlight, onSelect }: { nodes: ConstellationNode[]; edges: ConstellationEdge[]; focus: string | null; highlight: string[]; onSelect: (id: string) => void }) {
+function Metric({ label, value, hint, color }: { label: string; value: number; hint: string; color: string }) {
+  return <div className="rounded-xl border border-border bg-background-secondary p-4" style={{ borderTopColor: color, borderTopWidth: 2 }}><div className="text-2xl font-bold text-foreground">{value}</div><div className="text-xs text-foreground-secondary">{label}</div><div className="text-xs text-foreground-tertiary">{hint}</div></div>;
+}
+
+/** A line joins two agents that took part in the same thread (co-participation) — not a record that they communicated or learned. */
+export const CONSTELLATION_LEGEND = 'Lines join agents that took part in the same thread (co-participation), not proof that they communicated or learned from each other. Width = shared threads; colour = furthest stage any shared thread reached.';
+
+const pairLabel = (edge: ConstellationEdge, name: (id: string) => string) =>
+  `${name(edge.from)} and ${name(edge.to)}: same thread, ${edge.count} shared ${edge.count === 1 ? 'thread' : 'threads'}, furthest stage ${STAGE[edge.stage].label}`;
+
+/** The constellation's edges as a table (W3C complex-image long description): one row per drawn line. */
+export function ConstellationEdgeTable({ nodes, edges }: { nodes: ConstellationNode[]; edges: ConstellationEdge[] }) {
+  const name = (id: string) => nodes.find((node) => node.id === id)?.name || id;
   return (
-    <svg viewBox="0 0 320 320" role="img" aria-label="Agent constellation" className="w-full rounded-lg bg-background">
+    <details className="mt-2 text-xs">
+      <summary className="cursor-pointer text-foreground-secondary">Same-thread pairs as a table ({edges.length})</summary>
+      {edges.length ? (
+        <table className="mt-2 w-full" aria-label="Agent pairs that took part in the same thread">
+          <thead><tr className="text-left text-foreground-tertiary"><th scope="col" className="py-1">Agent A</th><th scope="col">Agent B</th><th scope="col" className="text-right">Shared threads</th><th scope="col" className="pl-2">Furthest stage</th></tr></thead>
+          <tbody>{edges.map((edge) => (
+            <tr key={`${edge.from}:${edge.to}`} className="border-t border-border" data-testid="constellation-pair">
+              <td className="py-1 pr-2 text-foreground">{name(edge.from)}</td>
+              <td className="py-1 pr-2 text-foreground">{name(edge.to)}</td>
+              <td className="py-1 text-right tabular-nums">{edge.count}</td>
+              <td className="py-1 pl-2">{STAGE[edge.stage].label}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      ) : <p className="mt-2 text-foreground-tertiary">No two agents share a thread yet.</p>}
+    </details>
+  );
+}
+
+export function Constellation({ nodes, edges, focus, highlight, onSelect }: { nodes: ConstellationNode[]; edges: ConstellationEdge[]; focus: string | null; highlight: string[]; onSelect: (id: string) => void }) {
+  const name = (id: string) => nodes.find((node) => node.id === id)?.name || id;
+  return (
+    <svg viewBox="0 0 320 320" role="img" aria-label={`Agent constellation: ${nodes.length} agents, ${edges.length} same-thread pairs. ${CONSTELLATION_LEGEND}`} className="w-full rounded-lg bg-background">
       <defs><radialGradient id="commons-glow"><stop offset="0%" stopColor="rgb(60 120 255)" stopOpacity="0.25" /><stop offset="100%" stopColor="rgb(60 120 255)" stopOpacity="0" /></radialGradient></defs>
       <circle cx="160" cy="160" r="150" fill="url(#commons-glow)" />
       {edges.map((edge) => {
         const lit = highlight.includes(edge.from) && highlight.includes(edge.to);
         const dim = focus && edge.from !== focus && edge.to !== focus;
-        return <line key={`${edge.from}:${edge.to}`} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} stroke={STAGE[edge.stage].color} strokeWidth={Math.min(6, 1 + edge.count)} strokeOpacity={dim ? 0.1 : lit ? 0.95 : 0.4} strokeDasharray={lit ? '6 6' : undefined} className={lit ? 'commons-flow' : undefined} strokeLinecap="round" />;
+        return <line key={`${edge.from}:${edge.to}`} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} stroke={STAGE[edge.stage].color} strokeWidth={Math.min(6, 1 + edge.count)} strokeOpacity={dim ? 0.1 : lit ? 0.95 : 0.4} strokeDasharray={lit ? '6 6' : undefined} className={lit ? 'commons-flow' : undefined} strokeLinecap="round"><title>{pairLabel(edge, name)}</title></line>;
       })}
       {nodes.map((node) => {
         const color = `hsl(${node.hue} 80% 60%)`;
@@ -500,25 +637,26 @@ function Constellation({ nodes, edges, focus, highlight, onSelect }: { nodes: Co
 }
 
 function ThreadButton({ thread, active, onClick }: { thread: SocialThread; active: boolean; onClick: () => void }) {
-  const stage = STAGE[thread.stage];
+  const stage = thread.kind === 'record' ? { label: 'Record', color: RECORD_COLOR, icon: Lightbulb } : STAGE[thread.stage];
   const Icon = stage.icon;
   return (
     <button type="button" onClick={onClick} className={`w-full rounded-lg border p-2 text-left ${active ? 'border-accent/40 bg-accent/10' : 'border-transparent hover:bg-background-elevated'}`}>
       <div className="flex items-start gap-2"><Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: stage.color }} /><span className="line-clamp-2 text-xs font-medium text-foreground">{thread.topic}</span></div>
-      <div className="mt-1 flex items-center justify-between text-[10px] text-foreground-tertiary"><span className="truncate">{thread.participants.join(' + ')}</span><span style={{ color: stage.color }}>{stage.label}</span></div>
+      <div className="mt-1 flex items-center justify-between text-xs text-foreground-tertiary"><span className="truncate">{thread.participants.join(' + ')}</span><span style={{ color: stage.color }}>{stage.label}</span></div>
     </button>
   );
 }
 
 export function Conversation({ thread, agents }: { thread: SocialThread; agents: SocialAgentPresence[] }) {
   const stage = STAGE[thread.stage];
+  const record = thread.kind === 'record';
   const name = (id: string) => agents.find((agent) => agent.id === id)?.name || id;
   const side = (id: string) => thread.participants.indexOf(id) % 2 === 0 ? 'items-start' : 'items-end';
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
-        <div className="min-w-0"><h2 className="text-lg font-semibold text-foreground">{thread.topic}</h2><p className="mt-1 text-xs text-foreground-tertiary">{thread.participants.map(name).join(' + ')} · gestart {time(thread.started_at)} · laatst {time(thread.last_activity_at)}{thread.topic_ref && <> · <code className="text-accent">{thread.topic_ref}</code></>}</p></div>
-        <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ color: stage.color, borderColor: stage.color }}>{stage.label}</span>
+        <div className="min-w-0"><h2 className="text-lg font-semibold text-foreground">{thread.topic}</h2><p className="mt-1 text-xs text-foreground-tertiary">{thread.participants.map(name).join(' + ')} · started {time(thread.started_at)} · last {time(thread.last_activity_at)}{thread.topic_ref && <> · <code className="text-accent">{thread.topic_ref}</code></>}</p></div>
+        <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ color: record ? RECORD_COLOR : stage.color, borderColor: record ? RECORD_COLOR : stage.color }}>{record ? 'Record' : stage.label}</span>
       </div>
       {thread.topic_ref?.startsWith('message:') && <p className="text-xs text-accent">Topic raised by an agent · bron {thread.topic_ref}</p>}
       <ol className="space-y-4">
@@ -528,7 +666,9 @@ export function Conversation({ thread, agents }: { thread: SocialThread; agents:
           </li>
         ))}
       </ol>
-      {thread.stage !== 'learned' && <p className="flex items-center gap-2 text-xs text-foreground-tertiary"><span className="h-2 w-2 animate-pulse rounded-full bg-accent-warning" /> Waiting for the next runtime turn</p>}
+      {record
+        ? <p className="text-xs text-foreground-tertiary">Record-only evidence room: addressed to no runtime inbox, so no runtime reply is scheduled. Agents or operators may add evidence explicitly.</p>
+        : thread.stage !== 'learned' && <p className="flex items-center gap-2 text-xs text-foreground-tertiary"><span className="h-2 w-2 animate-pulse rounded-full bg-accent-warning" /> Waiting for the next runtime turn</p>}
     </div>
   );
 }
@@ -558,10 +698,11 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
             <Facet label="Improvement proposal" value={message.proposed_improvement || null} color={STAGE.learned.color} />
             <Facet label="Stop condition" value={message.stop_condition} color="rgb(239 68 68)" />
           </div>
-          {message.proposed_improvement && <p className="mt-3 text-xs text-foreground-secondary">{message.improvement_id ? <>Registered proposal <code>{message.improvement_id}</code> · {message.improvement_status || 'status unknown'}{message.improvement_status === 'proposed' && <> · <Link to="/compliance#improvement-inbox-title" className="text-accent underline">Open review-inbox</Link></>}</> : 'Idea under discussion · no registered improvement proposal yet'}</p>}
-          {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Recorded as a reflection candidate{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · niet gepromoot zonder review</div>}
+          {message.proposed_improvement && (message.improvement_id || !message.proposal_disposition) && <p className="mt-3 text-xs text-foreground-secondary">{message.improvement_id ? <>Registered proposal <code>{message.improvement_id}</code> · {message.improvement_status || 'status unknown'}{message.improvement_status === 'proposed' && <> · <Link to="/compliance#improvement-inbox-title" className="text-accent underline">Open review-inbox</Link></>}</> : 'Idea under discussion · no registered improvement proposal yet'}</p>}
+          {message.proposal_disposition && <p className="mt-2 text-xs text-foreground-secondary" data-proposal-reason={message.proposal_disposition.reason}>{proposalDispositionText(message.proposal_disposition)}</p>}
+          {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Recorded as a reflection candidate{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · not promoted without review</div>}
         </>}
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
     </article>
   );
 }
@@ -569,4 +710,42 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
 function Facet({ label, value, color }: { label: string; value: string | null; color: string }) {
   if (!value) return null;
   return <div className="rounded-lg border border-border bg-background-elevated p-2.5"><div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>{label}</div><p className="mt-1 text-xs text-foreground-secondary">{value}</p></div>;
+}
+
+const WORKER_LABEL: Record<string, string> = { commons_proposal_review: 'Commons proposal review', grounding_agenda: 'grounding agenda', grounding_apply: 'grounding apply', failure_agenda: 'failure agenda' };
+const POLICY_HEADLINE: Record<CommonsProposalPolicy['state'], string> = {
+  disabled: 'Reflection recorded; proposal generation disabled by policy',
+  exhausted: 'Reflection proposals: rate limit reached for the rolling window',
+  open: 'Reflection proposals admitted up to the cap',
+  uncapped: 'Reflection proposals: no cap set',
+};
+
+/** AC-10: the effective admission policy, read from the server — not a claim about why any one historical message has no proposal. */
+export function ProposalPolicyBanner({ policy }: { policy: CommonsProposalPolicy }) {
+  const stopped = policy.state === 'disabled' || policy.state === 'exhausted';
+  return (
+    <section role="status" aria-label="Proposal admission policy" className={`rounded-xl border p-4 text-sm ${stopped ? 'border-status-warning/30 bg-status-warning/10' : 'border-border bg-background-secondary'}`}>
+      <p className="flex items-center gap-2 font-semibold text-foreground">{stopped && <ShieldAlert className="h-4 w-4 text-status-warning" />}{POLICY_HEADLINE[policy.state]}</p>
+      <p className="mt-1 text-xs text-foreground-secondary"><code>{policy.env}={policy.cap ?? 'unset'}</code> · scope {policy.scope} · source {policy.source} · window rolling {policy.window_hours} h · {policy.created_in_window} created in the window{policy.remaining !== null && policy.state !== 'disabled' ? ` · ${policy.remaining} remaining` : ''}</p>
+      {policy.state === 'disabled' && <p className="mt-1 text-xs text-foreground-secondary">Conversations still record reflections, but ordinary ideas cannot currently enter the proposal queue through this route.</p>}
+      <p className="mt-1 text-xs text-foreground-tertiary">The cap is shared by every reflection producer ({policy.shared_producers.join(', ')}); raising it is not a Commons-only change.</p>
+      {!!policy.workers.length && <div className="mt-2 flex flex-wrap gap-2 text-xs text-foreground-secondary" aria-label="Commons workers">{policy.workers.map((w) => <span key={w.id} className="rounded border border-border px-2 py-0.5" title={w.env}>{WORKER_LABEL[w.id] ?? w.id} <strong>{w.enabled ? 'on' : 'off'}</strong></span>)}</div>}
+    </section>
+  );
+}
+
+/** AC-10: the reason recorded for this message; 'unknown' is shown as unknown, never inferred from the current cap. */
+export function proposalDispositionText(d: CommonsProposalDisposition): string {
+  const window = `scope ${d.scope ?? 'global'} · source ${d.source ?? 'reflection'} · window rolling 24 h`;
+  switch (d.reason) {
+    case 'policy_disabled': return `Reflection recorded; proposal generation disabled by policy (REFLECTION_PROPOSALS_MAX_PER_DAY=0 · ${window})`;
+    case 'rate_limited': return `Reflection recorded; no proposal — rate limit reached (${d.created_in_window ?? '?'} of cap ${d.cap ?? '?'} in the rolling 24 h, shared by all reflection producers)`;
+    case 'duplicate': return d.proposal_id ? `Same idea as an active proposal: linked to existing proposal ${d.proposal_id}` : 'Same idea as an active proposal (not linked)';
+    case 'pending_grounding': return `Proposal ${d.proposal_id ?? ''} registered, parked until grounded (target file + test)`;
+    case 'created': return `Proposal ${d.proposal_id ?? ''} created; it goes to specialist-panel review`;
+    case 'runtime_failure': return `Proposal step failed at runtime (${d.error_code ?? 'unknown error'}); the reply to this message was rolled back`;
+    case 'not_applicable': return d.detail === 'grounding_thread' ? 'Grounding thread: the result grounds the existing proposal, no new proposal'
+      : d.detail === 'proposal_review_thread' ? 'Proposal-review thread: no proposals about proposals' : 'No improvement proposed in this reply';
+    default: return 'Proposal reason unknown: recorded before per-message reasons were kept';
+  }
 }

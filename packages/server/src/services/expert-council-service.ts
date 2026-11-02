@@ -8,18 +8,23 @@
  * is only used when FRONTIER_EXPERTS_RUNTIME is configured, otherwise the council abstains (BLOCKED).
  */
 
+import { firstJsonObject as scanJson, jsonRepairEnabled, repairModelJson } from './model-json';
+import { z } from 'zod';
 import type { Database } from 'better-sqlite3';
 import { FrontierExpertRegistryService, type ClaimRelation } from './frontier-expert-registry-service';
 import { ExpertResolverService, type ResolveOptions, type ResolvedExpert } from './expert-resolver-service';
 import { buildPerspectivePrompt, validatePerspectiveOutput, type PerspectiveOutput } from './expert-perspective-builder';
 import { procedureForCapability } from './frontier-expert-skills';
 import { quoteUntrusted } from './expert-perspective-builder';
+import { filterForPrompt } from './content-safety';
 import { AuditService } from './audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 import { normalizeName } from './expert-evidence-enrichment-service';
 import { selectingRunner } from './model-selector';
+import { recordAbstentionGap } from './knowledge-gaps';
 
-export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string) => Promise<unknown>;
+/** purpose: the caller's identity on the model-call ledger row (default 'frontier_experts:<role>'). */
+export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string, purpose?: string) => Promise<unknown>;
 
 export interface CouncilPerspective {
   expert_id: string;
@@ -54,23 +59,8 @@ export interface CouncilResult {
  * the schema example ({"checks":[...]}); "first { to last }" broke on all three (prod 2026-09-26: 43 of 50 reviews).
  * Scans every "{" and returns the first balanced, parseable object; null when there is none.
  */
-export function firstJsonObject(content: string): Record<string, unknown> | null {
-  const text = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
-  for (let start = text.indexOf('{'); start >= 0; start = text.indexOf('{', start + 1)) {
-    let depth = 0; let inString = false; let escaped = false;
-    for (let i = start; i < text.length; i += 1) {
-      const ch = text[i];
-      if (inString) { if (escaped) escaped = false; else if (ch === '\\') escaped = true; else if (ch === '"') inString = false; continue; }
-      if (ch === '"') inString = true;
-      else if (ch === '{') depth += 1;
-      else if (ch === '}' && --depth === 0) {
-        try { const value = JSON.parse(text.slice(start, i + 1)); if (value && typeof value === 'object' && !Array.isArray(value)) return value; } catch { /* not JSON: try the next "{" */ }
-        break;
-      }
-    }
-  }
-  return null;
-}
+// UX-19: the scanner moved to model-json (shared with the panel review); re-exported for existing importers
+export { firstJsonObject } from './model-json';
 
 /**
  * Model-backed runner, resolved lazily: the provider module (social-runtime-providers, PR #223) may not be
@@ -105,18 +95,29 @@ export async function createModelPerspectiveRunner(env: NodeJS.ProcessEnv = proc
   const spec = providersModule.parseRuntimeSpec(text, { runtime: 'ollama', model: 'qwen2.5:14b-instruct-q4_K_M' });
   const providers = providersModule.providerEnvFromEnv(env);
   if (!providersModule.isRuntimeConfigured(spec, providers)) return null;
+  // UX-19: an unusable answer gets one repair call (LLM_JSON_REPAIR_ENABLED); flag off = exactly the old result
+  const usableSchema = z.record(z.string(), z.unknown()).refine((o) => frontierUsable(o));
+  const parseOrRepair = async (content: unknown, model: string, system: string): Promise<Record<string, unknown> | null> => {
+    const text = String(content ?? '');
+    const json = scanJson(text);
+    if ((json && frontierUsable(json)) || !jsonRepairEnabled(env)) return json;
+    const repaired = await repairModelJson({ db, consumer: 'frontier_experts', model, raw: text, schema: usableSchema,
+      shape: 'the JSON object described in the instructions above', env,
+      ask: async (prompt) => String((await providersModule.chat({ ...spec, model }, providers, system, prompt, undefined, undefined, undefined, { maxTokens: 4096 })).content ?? '') });
+    return repaired ? scanJson(repaired) : json;
+  };
   const runner: PerspectiveRunner = async (_role, system, user) => {
     const result = await providersModule.chat(spec, providers, system, user, undefined, undefined, undefined, { maxTokens: 8192 });
-    return firstJsonObject(result.content);
+    return parseOrRepair(result.content, spec.model, system);
   };
   // MS-2: with a database and MODEL_SELECTOR_MODE shadow|enforce the shared expert runner goes through the cost-aware selector
   if (db && (env.MODEL_SELECTOR_MODE === 'shadow' || env.MODEL_SELECTOR_MODE === 'enforce')) {
     const ask = async (model: string, system: string, user: string) => {
       const result = await providersModule.chat({ ...spec, model }, providers, system, user, undefined, undefined, undefined, { maxTokens: 8192 });
-      return { json: firstJsonObject(result.content), chars: String(result.content ?? '').length };
+      return { json: await parseOrRepair(result.content, model, system), chars: String(result.content ?? '').length };
     };
     const select = selectingRunner(db, 'frontier_experts', spec.model, ask, frontierUsable, frontierAgree, env);
-    return { runner: async (_role, system, user) => select(system, user), label: `${spec.runtime}:${spec.model}` };
+    return { runner: async (role, system, user, purpose) => select(system, user, purpose ?? `frontier_experts:${role}`), label: `${spec.runtime}:${spec.model}` };
   }
   return { runner, label: `${spec.runtime}:${spec.model}` };
 }
@@ -141,6 +142,7 @@ export class ExpertCouncilService {
 
   async convene(question: string, selection: ResolveOptions = {}, options: { maxParallel?: number; adversarial?: boolean; language?: 'en' | 'nl' } = {}): Promise<CouncilResult> {
     const resolution = this.resolver.resolve(question, selection);
+    recordAbstentionGap(this.db, resolution); // K2: KNOWLEDGE_GAP_MODE=shadow, never throws
     const empty = (reason: string): CouncilResult => ({ abstained: true, reason, resolution, perspectives: [], claims: [], relations: [], agreements: [], disagreements: [], uncertainties: [], adversarial: null, unsupported_attribution_count: 0, rejected_perspectives: [] });
     if (resolution.abstained) return empty(resolution.reason ?? 'no_experts');
     if (!this.modelRunnerResolved) {
@@ -202,8 +204,13 @@ export class ExpertCouncilService {
         return [{ ...item, excerpt: this.excerpt(row.metadata_json) ?? '', authors: authors.filter((author) => normalizeName(author) === normalizeName(name)), author_list_scope: 'matching subject only', total_authors: authors.length }];
       }),
     }));
-    const capabilities = dossier(expertId);
-    const reviewerCapabilities = dossier(reviewerId);
+    // B19: dossier titles and excerpts are untrusted; under CONTENT_SAFETY_MODE=enforce items without a 'safe' verdict are left out
+    const gated = async (items: ReturnType<typeof dossier>) => {
+      for (const item of items) item.evidence = await filterForPrompt(this.db, item.evidence, (evidence) => ({ type: 'expert_evidence', id: evidence.id }), (evidence) => `${evidence.title}\n${evidence.excerpt}`);
+      return items;
+    };
+    const capabilities = await gated(dossier(expertId));
+    const reviewerCapabilities = await gated(dossier(reviewerId));
     if (!capabilities.length || !reviewerCapabilities.some((item) => item.evidence.length)) throw new Error('EXPERT_REVIEW_EVIDENCE_REQUIRED');
     const model = this.runner ? { runner: this.runner, label: this.runtimeLabel } : await createModelPerspectiveRunner(process.env, this.db);
     if (!model) throw new Error('FRONTIER_EXPERTS_RUNTIME_NOT_CONFIGURED');
@@ -214,7 +221,7 @@ export class ExpertCouncilService {
     });
     const payload = JSON.stringify({ target: compact(target.canonical_name, capabilities), reviewer: compact(reviewer.canonical_name, reviewerCapabilities) });
     if (payload.length > 60_000) throw new Error('EXPERT_REVIEW_CONTEXT_TOO_LARGE');
-    const raw = await model.runner('perspective', `${system} For every supported decision, cite at least one exact id from EACH dossier (target in evidence_refs, reviewer in reviewer_evidence_refs) and explain the methodological connection. If the reviewer lens cannot substantiate the assessment, return uncertain, never invent a connection.`, quoteUntrusted(payload, 60_000)) as { checks?: unknown } | null;
+    const raw = await model.runner('perspective', `${system} For every supported decision, cite at least one exact id from EACH dossier (target in evidence_refs, reviewer in reviewer_evidence_refs) and explain the methodological connection. If the reviewer lens cannot substantiate the assessment, return uncertain, never invent a connection.`, quoteUntrusted(payload, 60_000), 'frontier_experts:review') as { checks?: unknown } | null;
     if (!Array.isArray(raw?.checks) || raw.checks.length !== capabilities.length) throw new Error('EXPERT_REVIEW_OUTPUT_INVALID');
     const reviewerRefs = new Set(reviewerCapabilities.flatMap((item) => item.evidence.map((evidence) => evidence.id)));
     const seen = new Set<string>();
@@ -235,7 +242,9 @@ export class ExpertCouncilService {
   }
 
   private async perspective(question: string, expert: ResolvedExpert, language?: 'en' | 'nl'): Promise<CouncilPerspective | null> {
-    const evidence = this.db.prepare("SELECT id, kind, tier, title, url, metadata_json FROM expert_evidence WHERE expert_id = ? AND lifecycle = 'active' AND kind NOT IN ('signature', 'secondary', 'other') ORDER BY tier, created_at LIMIT 12").all(expert.expert_id) as Array<{ id: string; kind: string; tier: number; title: string; url: string | null; metadata_json: string }>;
+    const rows = this.db.prepare("SELECT id, kind, tier, title, url, metadata_json FROM expert_evidence WHERE expert_id = ? AND lifecycle = 'active' AND kind NOT IN ('signature', 'secondary', 'other') ORDER BY tier, created_at LIMIT 12").all(expert.expert_id) as Array<{ id: string; kind: string; tier: number; title: string; url: string | null; metadata_json: string }>;
+    // B19: titles and abstracts are untrusted; under CONTENT_SAFETY_MODE=enforce only items with a 'safe' verdict are quoted
+    const evidence = await filterForPrompt(this.db, rows, (item) => ({ type: 'expert_evidence', id: item.id }), (item) => `${item.title}\n${this.excerpt(item.metadata_json) ?? ''}`);
     const prompt = buildPerspectivePrompt({
       expert: { id: expert.expert_id, canonical_name: expert.canonical_name, capabilities: expert.capabilities.map((capability) => capability.id) },
       question, language,

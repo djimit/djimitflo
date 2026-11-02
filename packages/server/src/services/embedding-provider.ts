@@ -1,3 +1,5 @@
+import { measured } from './model-selector';
+
 export interface EmbeddingProvider {
   readonly id: string;
   embed(text: string): Promise<number[]>;
@@ -11,6 +13,12 @@ function validateEmbedding(value: unknown, providerId: string): number[] {
 }
 
 async function postJson(url: string, body: unknown, headers: Record<string, string>, timeoutMs: number): Promise<unknown> {
+  // UX-18: one ledger row per embedding request (model from the body; never the input text)
+  const model = typeof (body as { model?: unknown })?.model === 'string' ? (body as { model: string }).model : 'unknown';
+  return measured({ consumer: 'embeddings', model, provider: 'embedding-provider', taskKind: 'embed' }, () => postJsonRaw(url, body, headers, timeoutMs));
+}
+
+async function postJsonRaw(url: string, body: unknown, headers: Record<string, string>, timeoutMs: number): Promise<unknown> {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },

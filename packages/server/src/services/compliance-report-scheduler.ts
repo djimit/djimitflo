@@ -21,6 +21,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { ComplianceAuditService } from './compliance-audit-service';
+import { guardTick, markRun } from './scheduler-registry';
 
 type ReportGenerator = Pick<ComplianceAuditService, 'generateReport'>;
 type ComplianceReport = ReturnType<ComplianceAuditService['generateReport']>;
@@ -41,9 +42,9 @@ export class ComplianceReportScheduler {
   start(): boolean {
     if (process.env.COMPLIANCE_REPORT_SCHEDULER_ENABLED !== 'true') return false;
     const intervalMs = this.intervalHours() * HOUR_MS;
-    this.timer = setInterval(() => this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('compliance_report', () => this.tick()), intervalMs);
     this.timer.unref();
-    this.tick(); // catch-up on boot
+    guardTick('compliance_report', () => this.tick())(); // catch-up on boot
     return true;
   }
 
@@ -64,6 +65,7 @@ export class ComplianceReportScheduler {
 
   /** Generate a report unless one of the configured type already exists within the current interval. */
   tick(): ComplianceReport | null {
+    markRun('compliance_report'); // Cockpit 3.0: execution evidence for the scheduler registry
     const type = this.reportType();
     const since = new Date(Date.now() - this.intervalHours() * HOUR_MS).toISOString();
     const recent = this.db.prepare(

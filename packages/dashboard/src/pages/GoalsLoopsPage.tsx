@@ -2,14 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, GitBranch, Play, Plus, RefreshCw, ShieldCheck, Split, Square, Target, Timer, Workflow, XCircle } from 'lucide-react';
 import { api, type GoalRecord, type LoopCatalogItem, type LoopGate, type LoopReviewBundle, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
+import { useDialog } from '../components/ConfirmDialog';
+import { GymRunPanel, isGymRun } from '../components/GymRunPanel';
 
 export function GoalsLoopsPage() {
+  const dialog = useDialog();
   const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
   const canIntervene = useAuthStore((state) => state.hasPermission('manage:config'));
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [runs, setRuns] = useState<LoopRunRecord[]>([]);
   const [catalog, setCatalog] = useState<LoopCatalogItem[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  // UX-10: loop draft-PR bodies link here with ?run=<id>
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('run'));
   const [bundle, setBundle] = useState<LoopReviewBundle | null>(null);
   const [repositoryPath, setRepositoryPath] = useState('');
   const [selectedLoopName, setSelectedLoopName] = useState('doc-drift-and-small-fix-loop');
@@ -24,10 +28,12 @@ export function GoalsLoopsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // UX-005: a requested run is shown only if it is that run — never another run's evidence as a fallback
   const selectedRun = useMemo(
-    () => runs.find((run) => run.id === selectedRunId) || runs[0] || null,
+    () => (selectedRunId ? runs.find((run) => run.id === selectedRunId) ?? null : runs[0] ?? null),
     [runs, selectedRunId]
   );
+  const [runLookupError, setRunLookupError] = useState<{ id: string; message: string } | null>(null);
   const selectedBundle = bundle?.run.id === selectedRun?.id ? bundle : null;
   const selectedRunRef = useRef<string | null>(null);
   selectedRunRef.current = selectedRun?.id || null;
@@ -46,6 +52,17 @@ export function GoalsLoopsPage() {
     }
     void loadBundle(selectedRun.id);
   }, [selectedRun?.id]);
+
+  // UX-005: the run list holds only the newest runs; a linked older run is fetched by its id
+  useEffect(() => {
+    if (loading || !selectedRunId || runs.some((run) => run.id === selectedRunId)) return;
+    let active = true;
+    setRunLookupError(null);
+    api.getLoopRun(selectedRunId)
+      .then((run) => { if (active) setRuns((current) => current.some((r) => r.id === run.id) ? current : [run, ...current]); })
+      .catch((err) => { if (active) setRunLookupError({ id: selectedRunId, message: err instanceof Error ? err.message : String(err) }); });
+    return () => { active = false; };
+  }, [loading, selectedRunId, runs]);
 
   async function refresh() {
     setLoading(true);
@@ -122,7 +139,7 @@ export function GoalsLoopsPage() {
 
   async function completeLoop() {
     if (!selectedRun || selectedRun.status !== 'ready_for_human_merge' || !canApprove) return;
-    const confirmed = window.confirm(`Confirm human approval to complete loop ${selectedRun.id}? The server records your authenticated identity and rechecks all verification gates. This does not merge, push, or deploy changes.`);
+    const confirmed = await dialog.confirm(`Complete loop ${selectedRun.id}?`, 'The server records your authenticated identity and rechecks all verification gates. This does not merge, push, or deploy changes.', 'Confirm human approval');
     if (!confirmed) return;
     await api.completeLoopRun(selectedRun.id, true);
   }
@@ -160,19 +177,21 @@ export function GoalsLoopsPage() {
     setNotice('Operator pause released. Runtime dispatch still requires an explicit action.');
   }
   async function injectKnowledge(goalId: string) {
-    const evidence = window.prompt('Enter knowledge to inject:');
-    if (evidence === null) return;
+    const answer = await dialog.ask({ title: 'Inject knowledge', fields: [{ name: 'evidence', label: 'Knowledge to inject', multiline: true, required: true }], confirmLabel: 'Inject' });
+    if (answer === null) return;
+    const evidence = answer.evidence;
     if (!evidence.trim()) throw new Error('Knowledge text is required');
     const result = await api.request<{ claim_id: string }>(`/intervention/${goalId}/inject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predicate: 'recommends', subject_ref: `goal:${goalId}`, confidence: 0.9, evidence: evidence.trim() }) });
     setNotice(`Knowledge proposal stored: ${result.claim_id}. Operator input is not independently verified evidence.`);
   }
   async function overrideGate(goalId: string) {
-    const gate = window.prompt('Gate name for advisory decision (verification gates are not overridden):');
-    if (gate === null) return;
-    const decision = window.prompt('Advisory decision (proceed/stop); this does not execute or stop workers:');
-    if (decision === null) return;
-    const reason = window.prompt('Reason:');
-    if (reason === null) return;
+    const answer = await dialog.ask({ title: 'Advisory gate decision', message: 'Verification gates are not overridden; this does not execute or stop workers.', fields: [
+      { name: 'gate', label: 'Gate name', required: true },
+      { name: 'decision', label: 'Advisory decision', options: ['proceed', 'stop'], required: true },
+      { name: 'reason', label: 'Reason', multiline: true, required: true },
+    ], confirmLabel: 'Record advice' });
+    if (answer === null) return;
+    const { gate, decision, reason } = answer;
     if (!gate.trim() || !['proceed','stop'].includes(decision.trim()) || !reason.trim()) throw new Error('Gate, proceed/stop decision and reason are required');
     await api.request(`/intervention/${goalId}/override`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gate: gate.trim(), decision: decision.trim(), reason: reason.trim() }) });
     setNotice('Gate advice recorded. Verification evidence, approvals and worker execution are unchanged.');
@@ -180,12 +199,13 @@ export function GoalsLoopsPage() {
 
   async function splitFinding(findingId: string) {
     if (!selectedRun) return;
-    const reason = window.prompt('Split reason');
-    if (!reason) return;
-    const first = window.prompt('First child finding');
-    if (!first) return;
-    const second = window.prompt('Second child finding');
-    if (!second) return;
+    const answer = await dialog.ask({ title: 'Split finding', fields: [
+      { name: 'reason', label: 'Split reason', required: true },
+      { name: 'first', label: 'First child finding', multiline: true, required: true },
+      { name: 'second', label: 'Second child finding', multiline: true, required: true },
+    ], confirmLabel: 'Split' });
+    if (answer === null) return;
+    const { reason, first, second } = answer;
     await api.splitLoopFinding(selectedRun.id, {
       finding_id: findingId,
       reason,
@@ -203,6 +223,7 @@ export function GoalsLoopsPage() {
 
   return (
     <div className="p-8 space-y-6">
+      {dialog.element}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Goals & Loops</h1>
@@ -443,6 +464,9 @@ export function GoalsLoopsPage() {
                 </div>
               </div>
 
+              {/* gym runs have no worker leases: their claim, result and outcome are read from the run itself */}
+              {isGymRun(selectedRun) && <GymRunPanel key={selectedRun.id} run={selectedBundle?.run ?? selectedRun} />}
+
               <section className="bg-background-secondary border border-border rounded-lg p-5">
                 <h3 className="text-lg font-semibold text-foreground mb-3">Gates</h3>
                 <div className="space-y-2">
@@ -471,6 +495,7 @@ export function GoalsLoopsPage() {
                       onExecuteChecker={() => void runAction(`execute-checker-${lease.id}`, () => executeChecker(lease))}
                       selectedRuntime={runtime}
                       makerCompleted={selectedBundle.leases.some((maker) => maker.id === lease.metadata.maker_lease_id && maker.role === 'maker' && maker.status === 'completed')}
+                      runMakerCost={makerCost(selectedBundle.leases)}
                       busy={actionId !== null || loading || runLocked}
                     />
                   )) : (
@@ -521,6 +546,12 @@ export function GoalsLoopsPage() {
                 </div>
               </section>
             </>
+          ) : selectedRunId && runLookupError?.id === selectedRunId ? (
+            <div role="alert" className="bg-background-secondary border border-status-error/30 rounded-lg p-8 text-status-error">
+              Run {selectedRunId} is unavailable: {runLookupError.message}. No other run&apos;s evidence is shown; pick a run from the list.
+            </div>
+          ) : selectedRunId && !loading ? (
+            <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading run {selectedRunId}…</div>
           ) : (
             <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Select a loop run.</div>
           )}
@@ -579,6 +610,7 @@ function LeaseRow({
   selectedRuntime,
   makerCompleted,
   busy,
+  runMakerCost,
 }: {
   lease: WorkerLeaseRecord;
   onExecute: () => void;
@@ -589,6 +621,7 @@ function LeaseRow({
   selectedRuntime: 'manual' | 'codex' | 'opencode';
   makerCompleted: boolean;
   busy: boolean;
+  runMakerCost?: MakerCost;
 }) {
   const isReviewer = lease.role === 'checker' || lease.role === 'security_checker';
   const canVerdict = isReviewer && lease.status === 'prepared' && lease.runtime === 'manual' && !lease.metadata.execution_task_id;
@@ -621,6 +654,7 @@ function LeaseRow({
           <span className="truncate">Artifacts: {hasArtifacts ? 'yes' : 'no'}</span>
         </div>
       )}
+      {lease.role === 'maker' && isAsgRecord(lease.metadata.asg) && <AsgPanel asg={lease.metadata.asg} cost={runMakerCost} />}
       {(canExecute || canExecuteChecker || canVerdict || canRetry) && (
         <div className="mt-3 flex flex-wrap gap-2">
           {canExecute && (
@@ -646,6 +680,57 @@ function LeaseRow({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+interface MakerCost { tokens: number; leases: number; failed: number; unknown: number }
+/** Every maker attempt of the run, failed ones included; tokens the runtime did not report stay unknown (never 0). */
+function makerCost(leases: WorkerLeaseRecord[]): MakerCost {
+  const makers = leases.filter((l) => l.role === 'maker');
+  const known = makers.map((l) => (l.metadata.runtime_usage as { total_tokens?: number } | undefined)?.total_tokens).filter((t): t is number => typeof t === 'number');
+  return { tokens: known.reduce((a, b) => a + b, 0), leases: makers.length, failed: makers.filter((l) => l.status === 'failed').length, unknown: makers.length - known.length };
+}
+
+interface AsgSkillRef { skill_id: string; version: number; digest: string; state: string }
+interface AsgRecord {
+  mode: string; requested?: string; blocked_by?: string[]; lane?: string; route_executed?: string;
+  decision: { route: string; reason_codes: string[]; policy: { id: string; version: number; hash: string }; feature_schema_hash: string; skill: AsgSkillRef | null; prefix?: AsgSkillRef | null; alternatives: Array<{ route: string; skill: string | null; reason: string }> };
+  outcome?: {
+    execution_status: string; verification_status: string; result: string; rescued: boolean;
+    incident: { class: string; timed_out: boolean; token_budget_hit: boolean } | null; failure: { class: string; recoverable: boolean } | null;
+    effects: { expected: string[]; observed: string[]; out_of_scope: string[]; declared_untouched: string[]; bounded: boolean };
+    verifier: { command: string | null; exit: number | null } | null;
+  };
+}
+const isAsgRecord = (v: unknown): v is AsgRecord => Boolean(v && typeof v === 'object' && (v as AsgRecord).decision && typeof (v as AsgRecord).decision.route === 'string');
+const skillLabel = (s: AsgSkillRef | null | undefined) => (s ? `${s.skill_id}@${s.version} · ${s.digest.slice(0, 12)} · ${s.state}` : 'none');
+
+/** ASG-001 (ASG_MODE): route, execution error and task result are shown apart, never merged into one status. */
+function AsgPanel({ asg, cost }: { asg: AsgRecord; cost?: MakerCost }) {
+  const d = asg.decision; const o = asg.outcome;
+  return (
+    <div className="mt-2 rounded border border-border p-2 text-xs text-foreground-secondary space-y-1" data-testid="asg-panel">
+      <div className="font-medium text-foreground">Skill granularity (ASG {asg.mode}{asg.blocked_by?.length ? `, on blocked by ${asg.blocked_by.join(', ')}` : ''})</div>
+      <div>Route: <span className="text-foreground">{d.route}</span> ({d.reason_codes.join(', ')}) · executed {asg.route_executed ?? d.route}</div>
+      <div>Policy: {d.policy.id} v{d.policy.version} · {d.policy.hash} · features {d.feature_schema_hash}</div>
+      <div>Skill: {skillLabel(d.skill)}{d.prefix ? ` · prefix ${skillLabel(d.prefix)}` : ''}</div>
+      {d.alternatives.length > 0 && <div>Alternatives: {d.alternatives.map((a) => `${a.route}${a.skill ? ` ${a.skill}` : ''} (${a.reason})`).join('; ')}</div>}
+      {o ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <span>Execution: <span className="text-foreground">{o.execution_status}</span></span>
+            <span>Verification: <span className="text-foreground">{o.verification_status}</span>{o.verifier?.command ? ` (${o.verifier.command}, exit ${o.verifier.exit ?? '?'})` : ''}</span>
+            <span>Result: <span className="text-foreground">{o.result}</span></span>
+          </div>
+          <div>Effects: expected {o.effects.expected.join(', ') || 'none'} · observed {o.effects.observed.join(', ') || 'none'}{o.effects.out_of_scope.length ? ` · out of scope ${o.effects.out_of_scope.join(', ')}` : ''} · {o.effects.bounded ? 'bounded to the worktree' : 'external effects unknown'}</div>
+          {o.incident && <div>Incident: {o.incident.class}{o.incident.timed_out ? ' (timeout)' : ''}{o.incident.token_budget_hit ? ' (token brake)' : ''}</div>}
+          {o.failure && <div>Failure: {o.failure.class} · {o.failure.recoverable ? 'recoverable' : 'not recoverable'}</div>}
+          <div>Recovery: {o.rescued ? 'end state verified after the exception (no re-run)' : 'none (v1: no macro adapter, so no macro → micro recovery on this runtime)'}</div>
+        </>
+      ) : <div>Outcome: pending</div>}
+      {cost && <div>Cost, every maker attempt of this run: {cost.tokens.toLocaleString('en-US')} tokens over {cost.leases} lease(s), {cost.failed} failed{cost.unknown ? `, ${cost.unknown} with unknown usage` : ''}</div>}
+      {d.skill && <div>Lineage/admission: lifecycle {d.skill.state}; executes only when eligible or active</div>}
     </div>
   );
 }

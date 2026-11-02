@@ -10,8 +10,8 @@ let db: Database.Database; let q: LocalShadowQueue;
 const ON = { TYPESAFE_LOCAL_SHADOW_ENABLED: 'true', TYPESAFE_LOCAL_SHADOW_SAMPLE: '0.2' };
 const enqueue = (id = 'u1', random = 0.1, env: NodeJS.ProcessEnv = ON) =>
   localShadow(db, discoveryRelevance, { type: 'expert_unit', id }, 'h', { title: 'x', note: 'token=abcdefghij' }, discoveryRelevance.questions, undefined, env, () => random);
-beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); q = new LocalShadowQueue(db); });
-afterEach(() => { db.close(); vi.useRealTimers(); });
+beforeEach(() => { vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow'); db = new Database(':memory:'); db.exec(schema); runMigrations(db); q = new LocalShadowQueue(db); });
+afterEach(() => { db.close(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 const judged = () => db.prepare("SELECT judgment, mode, decision, reason, model, error FROM judgments").all();
 
 it('queues a sampled judgment (scrubbed) instead of calling anything; off without the flag or outside the sample', () => {
@@ -51,4 +51,14 @@ it('does not queue judgments the local shadow cannot decide (prod 29-09: kb_pass
   const dynamic = { id: 'kb_passage_relevance', questions: { p0: { type: 'noul' as const, instructions: 'x' } }, decide: () => ({ decision: 'yes' as const, reason: '' }) };
   localShadow(db, dynamic, { type: 'specialist_panel', id: 'p' }, 'h', {}, dynamic.questions, undefined, ON, () => 0);
   expect(q.claim('workstation')).toEqual([]);
+});
+
+it("'off' means no call and no row: jobs queued while a judgment was on are never handed out or recorded after it is switched off", () => {
+  enqueue('u1'); enqueue('u2');
+  const [claimed] = q.claim('workstation', 1); // u1 is with the workstation when the operator switches the judgment off
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'off');
+  expect(q.claim('workstation')).toEqual([]); // u2 is not handed out
+  q.record(claimed.id, 'workstation', { model: 'local', answers: { relevance: { type: 'choice', choice: 'lane_technique', confidence: 0.9, probabilities: {} }, actionable: { type: 'noul', noul: 0.9 } } });
+  expect(judged()).toEqual([]);
+  expect(db.prepare("SELECT status, COUNT(*) n FROM local_shadow_jobs GROUP BY status").all()).toEqual([{ status: 'skipped', n: 2 }]);
 });

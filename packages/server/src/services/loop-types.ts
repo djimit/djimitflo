@@ -13,7 +13,12 @@ export type { LoopFinding };
 
 export type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 export type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
-export type GateStatus = 'pass' | 'fail' | 'skipped';
+/**
+ * E2 observation validity: 'fail' = durable evidence shows the invariant failed; 'unknown' = the evidence needed to decide is
+ * missing/unavailable (insufficient evidence — never a negative verdict, but still blocks certification/completion/merge);
+ * 'skipped' = genuinely not applicable to this run.
+ */
+export type GateStatus = 'pass' | 'fail' | 'unknown' | 'skipped';
 export type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
 
 export type { LoopName };
@@ -39,6 +44,30 @@ export interface LoopGate {
   status: GateStatus;
   evidence: string;
 }
+
+/**
+ * P0-8: the one "this gate passed" rule. A security review that was skipped (the run is not high-risk) counts as a pass —
+ * certification (certifyLoopRun) and the daemon's learning outcome (skill_outcomes, bandit, proposal outcome) both use it,
+ * so a run is never 'regressed' for a learner while 'verified' in outcome_credits.
+ */
+export const gatePasses = (gate: Pick<LoopGate, 'name' | 'status'>): boolean =>
+  gate.status === 'pass' || (gate.name === 'security_checker_verdict' && gate.status === 'skipped') || autoMergeMayAct(gate);
+/**
+ * U4a: no_automatic_merge reads 'skipped' (not applicable) while LOOP_AUTO_MERGE_TEST_ONLY=act — the loop may merge, so it
+ * cannot attest "did not merge". That is information, not a failed gate: every pass rule counts it as it counted the old
+ * hard-coded pass, so certification and completion are unchanged.
+ */
+export const autoMergeMayAct = (gate: Pick<LoopGate, 'name' | 'status'>): boolean => gate.name === 'no_automatic_merge' && gate.status === 'skipped';
+/** The daemon's strict completion rule: every gate 'pass' (the act-mode no_automatic_merge notice included, see above). */
+export const gatePassesStrict = (gate: Pick<LoopGate, 'name' | 'status'>): boolean => gate.status === 'pass' || autoMergeMayAct(gate);
+/** P0-8: every gate passed under {@link gatePasses}; no gates is not a pass. */
+export const allGatesPassed = (gates: ReadonlyArray<Pick<LoopGate, 'name' | 'status'>>): boolean => gates.length > 0 && gates.every(gatePasses);
+/** Certification's rule (certifyLoopRun): the run reached ready_for_human_merge/completed and every recorded gate passed. */
+export const runCertified = (run: { status: string; gates: ReadonlyArray<Pick<LoopGate, 'name' | 'status'>> }): boolean =>
+  (run.status === 'ready_for_human_merge' || run.status === 'completed') && allGatesPassed(run.gates);
+/** A maker lease replaced by a retry; verification leaves it out of the run's active makers. */
+export const isSupersededMaker = (lease: { role: string; metadata: Record<string, unknown> }): boolean =>
+  lease.role === 'maker' && typeof lease.metadata.superseded_by_maker_lease_id === 'string';
 
 export interface LoopRunRecord {
   id: string;
@@ -179,6 +208,12 @@ export interface RuntimeExecutionResult {
   stderr: string;
   runtimePid?: number;
   events?: import('@djimitflo/shared').ExecutionEventCreateInput[];
+  /** the engine path: `exitCode` is the gate's status-derived 0/1; these are what the OS child itself reported (absent = it equals exitCode) */
+  processExitCode?: number | null;
+  exitObserved?: boolean;
+  tokenBudgetHit?: boolean;
+  /** the executor's own failure message (e.g. 'spawn opencode ENOENT'), classified with the stderr tail */
+  runtimeMessage?: string;
 }
 
 export interface RuntimeStopResult {
@@ -203,8 +238,20 @@ export interface CheckerVerdictInput {
   maker_lease_id?: string;
   verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
   notes?: string;
-  /** P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). */
-  manual_attestation?: { reviewer: string; reason: string };
+  /**
+   * P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). P0-5: reviewer_type says what reviewed —
+   * 'heuristic' (an automated rule, e.g. the PR-review webhook) is never a human or independent review; absent = legacy/human.
+   */
+  manual_attestation?: { reviewer: string; reason: string; reviewer_type?: 'human' | 'heuristic' };
+}
+
+/**
+ * P0-4: the authenticated principal that submits a verdict (route layer: req.user). Only a verdict submitted with an actor
+ * is recorded as human attestation; the body's reviewer string is never trusted as identity.
+ */
+export interface VerdictActor {
+  id: string;
+  email?: string;
 }
 
 export interface RunChecksInput {

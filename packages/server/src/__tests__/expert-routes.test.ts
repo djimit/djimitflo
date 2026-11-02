@@ -14,6 +14,8 @@ describe('frontier expert routes (§35: broad reads, governed mutation)', () => 
   const user: Record<string, unknown> = { sub: 'op-1', email: 'operator@test' };
 
   beforeEach(() => {
+    // FE-AREAS: this suite covers the legacy people pipeline, which only runs with FRONTIER_EXPERT_PERSONS_ENABLED=true
+    process.env.FRONTIER_EXPERT_PERSONS_ENABLED = 'true';
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -23,7 +25,7 @@ describe('frontier expert routes (§35: broad reads, governed mutation)', () => 
     app = express().use(express.json()).use('/swarms', createSwarmRoutes(db, auth)).use(errorHandler);
     delete process.env.DJIMITFLO_FRONTIER_EXPERTS_ENABLED;
   });
-  afterEach(() => db.close());
+  afterEach(() => { delete process.env.FRONTIER_EXPERT_PERSONS_ENABLED; db.close(); });
 
   it('lists, filters and resolves experts with provenance, and validates input', async () => {
     const active = await request(app).get('/swarms/expert/experts?state=ACTIVE&capability=ai_security&limit=5');

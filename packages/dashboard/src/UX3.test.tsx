@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -31,6 +32,9 @@ it.each(['/swarm', '/fleet-cockpit', '/tasks/t1', '/swarm-mission-control/proof-
   window.history.pushState({}, '', path);
   const view = render(<App />);
   await waitFor(() => expect(view.container.querySelector('main h1, main h2, main [role="alert"]')).toBeTruthy(), { timeout: 5000 });
+  // the provider opens its socket in an effect: wait for it (CI Node 22 once counted 0), then make sure no second one follows
+  await waitFor(() => expect(sockets).toBe(1), { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 50));
   expect(sockets).toBe(1);
 });
 
@@ -52,7 +56,7 @@ it('UX-3: the cockpit refetches on its interval and on an approval message, and 
   const get = vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue(cockpit as never);
   const handlers = new Map<string, (m: WebSocketMessage) => void>();
   const subscribe = (type: string, h: (m: WebSocketMessage) => void) => { handlers.set(type, h); return () => handlers.delete(type); };
-  render(<WsContext.Provider value={{ subscribe: subscribe as never, isConnected: true }}><OperatorCockpitPage /></WsContext.Provider>);
+  render(<WsContext.Provider value={{ subscribe: subscribe as never, isConnected: true }}><MemoryRouter><OperatorCockpitPage /></MemoryRouter></WsContext.Provider>);
   await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
   expect(await screen.findByText(/updated \d+ s ago/)).toBeTruthy();
   await act(async () => { vi.advanceTimersByTime(30_000); });

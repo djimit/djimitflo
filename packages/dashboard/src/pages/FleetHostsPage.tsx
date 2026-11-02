@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { RefreshCw, Server } from 'lucide-react';
 import { api } from '../lib/api';
 import { useResource } from '../hooks/useResource';
+import { RuntimeHealthSection } from './RuntimeHealthPage';
 import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 const fetchFleet = () => api.getFleetHosts();
@@ -109,7 +110,7 @@ export function FleetHostsPage() {
                   {open === c.id && c.output !== null && <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-background-tertiary p-2 text-xs">{c.output}</pre>}
                 </td>
                 <td className={tone[c.status] ?? ''}>{c.status.replace('_', ' ')}{c.exit_code !== null ? ` (${c.exit_code})` : ''}</td>
-                <td>{c.requested_by}{c.approved_by ? ` / ${c.approved_by}` : ''}</td>
+                <td>{c.requested_by}{c.approved_by ? ` / ${c.approved_by}` : ''}{c.self_approved ? ' (self-approved)' : ''}</td>
                 <td className="whitespace-nowrap space-x-1">
                   {c.status === 'pending_approval' && <>
                     <button type="button" className={button} disabled={busy !== null || !canDecide} title={canDecide ? undefined : needsText(P.fleetCommandDecide)} onClick={() => void act(`a-${c.id}`, () => api.approveFleetCommand(c.id, c.command_sha256))}>Approve</button>
@@ -122,6 +123,7 @@ export function FleetHostsPage() {
           </table>
         )}
       </section>
+      <RuntimeHealthSection />
     </div>
   );
 }

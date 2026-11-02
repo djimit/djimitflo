@@ -9,6 +9,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import type { WebSocketService } from '../services/websocket-service';
 import type { TelegramApiService } from '../services/telegram-api-service';
 import { setPushSender, startOperatorDigest } from '../services/operator-push';
+import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 
 export function parseTelegramAllowedUsers(value = ''): number[] {
   return value.split(',').map((part) => part.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
@@ -24,7 +25,20 @@ export function parseTelegramUserMap(value = ''): Record<string, string> {
   } catch { return {}; }
 }
 
-export function telegramConfigStatus(env: NodeJS.ProcessEnv = process.env, configured = Boolean(env.TELEGRAM_BOT_TOKEN)) {
+/**
+ * TG-2 (prod 2026-10-06): Approve/Deny buttons are authorised ONLY by the D3 table telegram_identities (an active user
+ * whose role holds approve:task) — TELEGRAM_USER_MAP only links chat commands. The status used to report ready from the
+ * env alone while every button press was refused, so readiness now requires at least one D3 approver identity.
+ */
+export function approverIdentityCount(db: Database | undefined): number | null {
+  if (!db) return null;
+  try {
+    const rows = db.prepare(`SELECT u.role FROM telegram_identities t JOIN users u ON u.id = t.user_id WHERE u.is_active = 1`).all() as Array<{ role: UserRole }>;
+    return rows.filter((r) => (ROLE_PERMISSIONS[r.role] ?? []).includes('approve:task')).length;
+  } catch { return 0; } // table missing on an old schema = no approver
+}
+
+export function telegramConfigStatus(env: NodeJS.ProcessEnv = process.env, configured = Boolean(env.TELEGRAM_BOT_TOKEN), db?: Database) {
   const allowedUsers = parseTelegramAllowedUsers(env.TELEGRAM_ALLOWED_USERS);
   const userMap = parseTelegramUserMap(env.TELEGRAM_USER_MAP);
   const missing_env = [
@@ -34,14 +48,23 @@ export function telegramConfigStatus(env: NodeJS.ProcessEnv = process.env, confi
     ['TELEGRAM_WEBHOOK_SECRET', env.TELEGRAM_WEBHOOK_SECRET],
     ['TELEGRAM_USER_MAP', env.TELEGRAM_USER_MAP],
   ].filter(([, value]) => !value).map(([key]) => key);
+  const approvers = approverIdentityCount(db);
+  const envReady = Boolean(env.TELEGRAM_BOT_TOKEN && allowedUsers.length > 0 && env.TELEGRAM_WEBHOOK_URL && env.TELEGRAM_WEBHOOK_SECRET);
+  const blocking = [
+    ...missing_env.filter((k) => k !== 'TELEGRAM_USER_MAP'),
+    ...(approvers === null ? ['approver identity unknown (no database)'] : approvers === 0
+      ? ['no telegram_identities row for an active user with approve:task — add it on /decisions (Telegram identities); TELEGRAM_USER_MAP does not authorise buttons'] : []),
+  ];
 
   return {
     configured,
-    ready: Boolean(env.TELEGRAM_BOT_TOKEN && allowedUsers.length > 0 && env.TELEGRAM_WEBHOOK_URL && env.TELEGRAM_WEBHOOK_SECRET && Object.keys(userMap).length > 0),
+    ready: envReady && (approvers ?? 0) > 0,
     allowed_user_count: allowedUsers.length,
     webhook_configured: Boolean(env.TELEGRAM_WEBHOOK_URL),
     linked_identity_count: Object.keys(userMap).length,
+    approver_identity_count: approvers,
     missing_env,
+    blocking,
   };
 }
 
@@ -88,7 +111,7 @@ export function createTelegramRoutes(db: Database, auth?: AuthMiddleware, _wsSer
 
   // GET /api/telegram/status — bot configuration status
   router.get('/status', requireAuth, (_req, res) => {
-    res.json(telegramConfigStatus(process.env, bot.isConfigured()));
+    res.json(telegramConfigStatus(process.env, bot.isConfigured(), db));
   });
 
   return router;
