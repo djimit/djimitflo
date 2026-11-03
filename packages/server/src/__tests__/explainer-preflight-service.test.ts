@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
   ExplainerPreflightService,
+  type PreflightCheck,
   type PreflightReport,
 } from "../services/explainer-preflight-service";
 import type {
@@ -91,6 +92,12 @@ function makeCritic(score: number): ExplainerCriticResult {
   };
 }
 
+function checkNamed(report: PreflightReport, name: string): PreflightCheck {
+  const found = report.checks.find((c) => c.name === name);
+  if (!found) throw new Error(`check ${name} not found in report`);
+  return found;
+}
+
 describe("ExplainerPreflightService", () => {
   let dir: string;
 
@@ -109,6 +116,35 @@ describe("ExplainerPreflightService", () => {
     expect(result.passed).toBe(true);
     expect(result.blocking_checks).toEqual([]);
     expect(result.checks.every((c) => c.passed)).toBe(true);
+    expect(checkNamed(result, "openmythos_score").message).toBe(
+      "OpenMythos score 92 meets threshold 85",
+    );
+    expect(checkNamed(result, "secret_scan_clean").message).toBe(
+      "No secrets detected in cloned repository",
+    );
+    expect(checkNamed(result, "fact_citations_verified").message).toBe(
+      "5 cited facts meet minimum 5",
+    );
+    expect(checkNamed(result, "license_footer_present").message).toBe(
+      "License attribution present in generated content",
+    );
+    expect(checkNamed(result, "accessibility_labels_present").message).toBe(
+      "Textual equivalents present for architecture content",
+    );
+    expect(checkNamed(result, "bundle_files_exist").message).toBe(
+      "Bundle content files exist on disk (or inline content is present)",
+    );
+  });
+
+  it("approves a bundle whose OpenMythos score is exactly at the threshold", () => {
+    const service = new ExplainerPreflightService();
+    const bundle = makeBundle(dir);
+    const result = service.check(bundle, makeCritic(85), []);
+    expect(result.passed).toBe(true);
+    expect(checkNamed(result, "openmythos_score").passed).toBe(true);
+    expect(checkNamed(result, "openmythos_score").message).toBe(
+      "OpenMythos score 85 meets threshold 85",
+    );
   });
 
   it("blocks a bundle with a low OpenMythos score", () => {
@@ -117,6 +153,9 @@ describe("ExplainerPreflightService", () => {
     const result = service.check(bundle, makeCritic(70), []);
     expect(result.passed).toBe(false);
     expect(result.blocking_checks).toContain("openmythos_score");
+    expect(checkNamed(result, "openmythos_score").message).toBe(
+      "OpenMythos score 70 below threshold 85",
+    );
   });
 
   it("blocks a bundle when secret findings exist", () => {
@@ -125,6 +164,9 @@ describe("ExplainerPreflightService", () => {
     const result = service.check(bundle, makeCritic(92), ["api-key in .env"]);
     expect(result.passed).toBe(false);
     expect(result.blocking_checks).toContain("secret_scan_clean");
+    expect(checkNamed(result, "secret_scan_clean").message).toBe(
+      "1 secret finding(s) detected; redaction required",
+    );
   });
 
   it("blocks a bundle with too few cited facts", () => {
@@ -135,6 +177,48 @@ describe("ExplainerPreflightService", () => {
     const result = service.check(bundle, makeCritic(92), []);
     expect(result.passed).toBe(false);
     expect(result.blocking_checks).toContain("fact_citations_verified");
+    expect(checkNamed(result, "fact_citations_verified").message).toBe(
+      "Only 0 valid cited facts; minimum 5 required",
+    );
+  });
+
+  it("blocks a bundle whose facts only have whitespace source refs", () => {
+    const service = new ExplainerPreflightService();
+    const bundle = makeBundle(dir, {
+      facts: Array.from({ length: 6 }, (_, i) => ({
+        id: `fact-${i}`,
+        claim: `claim ${i}`,
+        source_ref: "   ",
+        source_type: "file_line",
+        confidence: 0.9,
+      })),
+    });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(result.passed).toBe(false);
+    expect(result.blocking_checks).toContain("fact_citations_verified");
+    expect(checkNamed(result, "fact_citations_verified").passed).toBe(false);
+  });
+
+  it("approves a bundle with one undefined source ref among enough valid facts", () => {
+    const service = new ExplainerPreflightService();
+    const facts = Array.from({ length: 5 }, (_, i) => ({
+      id: `fact-${i}`,
+      claim: `claim ${i}`,
+      source_ref: `src/cli.py:${10 + i}`,
+      source_type: "file_line",
+      confidence: 0.9,
+    }));
+    facts.push({
+      id: "fact-blank",
+      claim: "no ref",
+      source_ref: undefined as unknown as string,
+      source_type: "file_line",
+      confidence: 0.4,
+    });
+    const bundle = makeBundle(dir, { facts });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(result.passed).toBe(true);
+    expect(checkNamed(result, "fact_citations_verified").passed).toBe(true);
   });
 
   it("blocks a bundle missing license attribution", () => {
@@ -147,6 +231,27 @@ describe("ExplainerPreflightService", () => {
     const result = service.check(bundle, makeCritic(92), []);
     expect(result.passed).toBe(false);
     expect(result.blocking_checks).toContain("license_footer_present");
+    expect(checkNamed(result, "license_footer_present").message).toBe(
+      "License attribution missing from generated content",
+    );
+  });
+
+  it("approves a bundle whose license lives only in a section", () => {
+    const service = new ExplainerPreflightService();
+    const mdPath = join(dir, "no-license.md");
+    const llmsPath = join(dir, "no-license.txt");
+    writeFileSync(mdPath, "# project\n\nDescription only.");
+    writeFileSync(llmsPath, "Description only.");
+    const bundle = makeBundle(dir, {
+      explainer_md: mdPath,
+      llms_txt: llmsPath,
+      sections: { overview: "overview text", health: "Licensed under Apache 2.0." },
+    });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(checkNamed(result, "license_footer_present").passed).toBe(true);
+    expect(checkNamed(result, "license_footer_present").message).toBe(
+      "License attribution present in generated content",
+    );
   });
 
   it("blocks a bundle with architecture content but no textual equivalents", () => {
@@ -156,11 +261,82 @@ describe("ExplainerPreflightService", () => {
     const result = service.check(bundle, makeCritic(92), []);
     expect(result.passed).toBe(false);
     expect(result.blocking_checks).toContain("accessibility_labels_present");
+    expect(checkNamed(result, "accessibility_labels_present").message).toBe(
+      "Architecture content present but no textual equivalents found",
+    );
+  });
+
+  it("approves a bundle that has no architecture section", () => {
+    const service = new ExplainerPreflightService();
+    const bundle = makeBundle(dir, {
+      sections: { overview: "overview text", health: "health text" },
+    });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(result.passed).toBe(true);
+    expect(checkNamed(result, "accessibility_labels_present").passed).toBe(true);
+    expect(checkNamed(result, "accessibility_labels_present").message).toBe(
+      "Textual equivalents present for architecture content",
+    );
   });
 
   it("blocks a bundle when bundle files are missing", () => {
     const service = new ExplainerPreflightService();
     const bundle = makeBundle(dir, { explainer_md: "/does/not/exist.md" });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(result.passed).toBe(false);
+    expect(result.blocking_checks).toContain("bundle_files_exist");
+    expect(checkNamed(result, "bundle_files_exist").message).toBe(
+      "Bundle content missing (path does not resolve or inline content empty)",
+    );
+  });
+
+  it("approves a bundle with inline (non-path) content", () => {
+    const service = new ExplainerPreflightService();
+    const bundle = makeBundle(dir, {
+      explainer_md: "inline explainer markdown body",
+      llms_txt: "inline llms text body",
+      sections: { overview: "overview text", architecture: "architecture text", health: "Licensed under MIT." },
+    });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(result.passed).toBe(true);
+    expect(checkNamed(result, "bundle_files_exist").passed).toBe(true);
+    expect(checkNamed(result, "bundle_files_exist").message).toBe(
+      "Bundle content files exist on disk (or inline content is present)",
+    );
+  });
+
+  it("blocks an inline-content bundle when the markdown body is empty", () => {
+    const service = new ExplainerPreflightService();
+    const bundle = makeBundle(dir, {
+      explainer_md: "",
+      llms_txt: "inline llms text body",
+      sections: { overview: "overview text", architecture: "architecture text", health: "Licensed under MIT." },
+    });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(result.passed).toBe(false);
+    expect(result.blocking_checks).toContain("bundle_files_exist");
+  });
+
+  it("blocks an inline-content bundle when the llms body is empty", () => {
+    const service = new ExplainerPreflightService();
+    const bundle = makeBundle(dir, {
+      explainer_md: "inline explainer markdown body",
+      llms_txt: "",
+      sections: { overview: "overview text", architecture: "architecture text", health: "Licensed under MIT." },
+    });
+    const result = service.check(bundle, makeCritic(92), []);
+    expect(result.passed).toBe(false);
+    expect(result.blocking_checks).toContain("bundle_files_exist");
+  });
+
+  it("blocks an inline-content bundle when there are no facts", () => {
+    const service = new ExplainerPreflightService();
+    const bundle = makeBundle(dir, {
+      explainer_md: "inline explainer markdown body",
+      llms_txt: "inline llms text body",
+      facts: [],
+      sections: { overview: "overview text", architecture: "architecture text", health: "Licensed under MIT." },
+    });
     const result = service.check(bundle, makeCritic(92), []);
     expect(result.passed).toBe(false);
     expect(result.blocking_checks).toContain("bundle_files_exist");
