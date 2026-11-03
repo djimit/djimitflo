@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { AgentRetirementService } from '../services/agent-retirement-service';
+import { param } from './params';
 
 export function createRetirementRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -9,7 +10,7 @@ export function createRetirementRoutes(db: Database, auth?: AuthMiddleware): Rou
   const service = new AgentRetirementService(db);
 
   router.get('/plan/:agentId', requirePermission('read:evidence'), (req, res) => {
-    res.json(service.planRetirement(req.params.agentId));
+    res.json(service.planRetirement(param(req, 'agentId')));
   });
 
   router.post('/retire/:agentId', requirePermission('write:governance'), async (req, res) => {
@@ -18,12 +19,12 @@ export function createRetirementRoutes(db: Database, auth?: AuthMiddleware): Rou
       res.status(400).json({ error: { message: 'reason is required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    const plan = await service.retireAgent(req.params.agentId, reason, req.user!.sub);
+    const plan = await service.retireAgent(param(req, 'agentId'), reason, req.user!.sub);
     res.json(plan);
   });
 
   router.get('/status/:agentId', requirePermission('read:evidence'), (req, res) => {
-    res.json(service.getRetirementStatus(req.params.agentId));
+    res.json(service.getRetirementStatus(param(req, 'agentId')));
   });
 
   router.get('/list', requirePermission('read:evidence'), (_req, res) => {

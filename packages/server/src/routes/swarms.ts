@@ -49,6 +49,7 @@ import { recordAbstentionGap } from '../services/knowledge-gaps';
 import { gapDemandByCapability } from '../services/evolution-feedback';
 import { learningCurveView, usageWindow } from '../services/swarm-learning-curve';
 import { missionDetail } from '../services/mission-detail';
+import { param } from './params';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -162,7 +163,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     res.json({ panels: specialistPanels.listPanels(boundedLimit(req.query.limit)) });
   });
   router.get('/specialist-panels/:id', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(specialistPanels.getPanel(req.params.id)); } catch (error: any) {
+    try { res.json(specialistPanels.getPanel(param(req, 'id'))); } catch (error: any) {
       next(error?.message === 'SPECIALIST_PANEL_NOT_FOUND'
         ? createError(404, 'specialist panel not found', 'SPECIALIST_PANEL_NOT_FOUND')
         : error);
@@ -178,7 +179,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
   router.post('/specialist-panels/:id/reviews', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.json(specialistPanels.submitReview(req.params.id, req.body, req.user?.sub || req.user?.email)); } catch (error: any) {
+    try { res.json(specialistPanels.submitReview(param(req, 'id'), req.body, req.user?.sub || req.user?.email)); } catch (error: any) {
       if (error.message?.startsWith('SPECIALIST_')) {
         next(createError(409, error.message, error.message));
       } else {
@@ -187,7 +188,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
   router.post('/specialist-panels/:id/backlog', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(specialistPanels.projectPanelToBacklog(req.params.id)); } catch (error) { next(error); }
+    try { res.status(201).json(specialistPanels.projectPanelToBacklog(param(req, 'id'))); } catch (error) { next(error); }
   });
 
   // OpenCode health
@@ -203,7 +204,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     try { res.status(201).json(intelligence.createHypothesis(req.body || {})); } catch (error) { try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); } }
   });
   router.post('/intelligence/hypotheses/:id/transition', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.json(intelligence.transitionHypothesis(req.params.id, req.body.state, req.body.evidence_refs)); } catch (error) { try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); } }
+    try { res.json(intelligence.transitionHypothesis(param(req, 'id'), req.body.state, req.body.evidence_refs)); } catch (error) { try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); } }
   });
 
   // Mission control is authenticated at the /swarms mount, but mutations also
@@ -223,26 +224,26 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   // mission detail page: the same join for one mission plus its runs, leases, tasks, decisions, tokens and provenance (read-only)
   const missionDetailLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }); // per-route limiter CodeQL can see; /api also caps 300/min
   router.get('/intelligence/missions/:id/execution', missionDetailLimiter, requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(missionDetail(db, req.params.id)); } catch (error) {
+    try { res.json(missionDetail(db, param(req, 'id'))); } catch (error) {
       try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
     }
   });
   router.get('/intelligence/missions/:id', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(missionsSvc().getMission(req.params.id)); } catch (error) {
+    try { res.json(missionsSvc().getMission(param(req, 'id'))); } catch (error) {
       try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
     }
   });
-  router.post('/intelligence/missions/:id/transition', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().transitionMission(req.params.id, req.body.status, req.body)); });
-  router.get('/intelligence/missions/:id/tasks', requirePermission('read:evidence'), (req, res) => { res.json({ tasks: missionsSvc().listTasks(req.params.id) }); });
+  router.post('/intelligence/missions/:id/transition', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().transitionMission(param(req, 'id'), req.body.status, req.body)); });
+  router.get('/intelligence/missions/:id/tasks', requirePermission('read:evidence'), (req, res) => { res.json({ tasks: missionsSvc().listTasks(param(req, 'id')) }); });
   router.post('/intelligence/missions/:id/tasks', requirePermission('write:swarm_action'), (req, res) => { res.status(201).json(missionsSvc().createTask({ ...req.body, mission_id: req.params.id })); });
-  router.post('/intelligence/tasks/:id/transition', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().transitionTask(req.params.id, req.body.status, req.body)); });
-  router.get('/intelligence/missions/:id/decisions', requirePermission('read:evidence'), (req, res) => { res.json({ decisions: missionsSvc().listDecisions(req.params.id) }); });
+  router.post('/intelligence/tasks/:id/transition', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().transitionTask(param(req, 'id'), req.body.status, req.body)); });
+  router.get('/intelligence/missions/:id/decisions', requirePermission('read:evidence'), (req, res) => { res.json({ decisions: missionsSvc().listDecisions(param(req, 'id')) }); });
   router.post('/intelligence/decisions', requirePermission('write:swarm_action'), (req, res) => { res.status(201).json(missionsSvc().recordDecision(req.body)); });
 
   // Circuit breaker
-  router.get('/intelligence/circuit-breaker/:scope', requirePermission('read:evidence'), (req, res) => { res.json(missionsSvc().checkCircuitBreaker(req.params.scope)); });
-  router.post('/intelligence/circuit-breaker/:scope/failure', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().recordCircuitBreakerFailure(req.params.scope)); });
-  router.post('/intelligence/circuit-breaker/:scope/reset', requirePermission('write:swarm_action'), (req, res) => { missionsSvc().resetCircuitBreaker(req.params.scope); res.json({ reset: true }); });
+  router.get('/intelligence/circuit-breaker/:scope', requirePermission('read:evidence'), (req, res) => { res.json(missionsSvc().checkCircuitBreaker(param(req, 'scope'))); });
+  router.post('/intelligence/circuit-breaker/:scope/failure', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().recordCircuitBreakerFailure(param(req, 'scope'))); });
+  router.post('/intelligence/circuit-breaker/:scope/reset', requirePermission('write:swarm_action'), (req, res) => { missionsSvc().resetCircuitBreaker(param(req, 'scope')); res.json({ reset: true }); });
 
   // Expert Swarm
   router.post('/expert/dispatch', requirePermission('write:swarm_action'), route(async (req, res) => {
@@ -280,7 +281,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   }));
   router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
     const reg = registry();
-    const expert = reg.get(req.params.id);
+    const expert = reg.get(param(req, 'id'));
     if (!expert || (!frontierExpertPersonsEnabled() && (expert.kind ?? 'person') === 'person')) throw createError(404, 'Expert not found', 'EXPERT_NOT_FOUND');
     const asOf = typeof req.query.as_of === 'string' ? req.query.as_of : null;
     res.json({
@@ -301,7 +302,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/expert/experts/:id/transition', requirePermission('write:swarm_action'), route((req, res) => {
     const actor = operatorActor(req);
     const to = String(req.body?.to || '') as ExpertLifecycleState;
-    try { res.json(registry().transition(req.params.id, to, { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); }
+    try { res.json(registry().transition(param(req, 'id'), to, { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); }
     catch (error) { const message = error instanceof Error ? error.message : 'EXPERT_TRANSITION_FAILED'; const code = message.split(':')[0]; throw createError(code === 'EXPERT_NOT_FOUND' ? 404 : 409, message, code); }
   }));
   const registryError = (error: unknown): never => { const message = error instanceof Error ? error.message : 'EXPERT_GOVERNANCE_FAILED'; const code = message.split(':')[0]; throw createError(code.endsWith('NOT_FOUND') ? 404 : 409, message, code); };
@@ -309,13 +310,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     const actor = operatorActor(req);
     const decision = String(req.body?.decision || '');
     if (!['checked', 'approved', 'revoked'].includes(decision)) throw createError(400, 'decision must be checked, approved or revoked', 'VALIDATION_ERROR');
-    try { res.json(registry().reviewCapability(req.params.id, req.params.capability, decision as 'checked' | 'approved' | 'revoked', { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); } catch (error) { registryError(error); }
+    try { res.json(registry().reviewCapability(param(req, 'id'), param(req, 'capability'), decision as 'checked' | 'approved' | 'revoked', { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); } catch (error) { registryError(error); }
   }));
   router.post('/expert/experts/:id/deprecate', requirePermission('write:swarm_action'), route((req, res) => {
     const actor = operatorActor(req);
     const reason = String(req.body?.reason || '');
     if (!['stale', 'unsupported', 'superseded', 'misattributed'].includes(reason)) throw createError(400, 'reason must be stale, unsupported, superseded or misattributed', 'VALIDATION_ERROR');
-    try { res.json(registry().deprecate(req.params.id, { reason: reason as 'stale' | 'unsupported' | 'superseded' | 'misattributed', actor, note: typeof req.body?.note === 'string' ? req.body.note : undefined })); } catch (error) { registryError(error); }
+    try { res.json(registry().deprecate(param(req, 'id'), { reason: reason as 'stale' | 'unsupported' | 'superseded' | 'misattributed', actor, note: typeof req.body?.note === 'string' ? req.body.note : undefined })); } catch (error) { registryError(error); }
   }));
   // Operator triggers for ingestion and enrichment (§33, §51): bounded, idempotent, never advancing past CAPABILITY_INFERRED.
   router.post('/expert/ingest/pacing', requirePermission('write:swarm_action'), route(async (req, res) => {
@@ -335,7 +336,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     if (!frontierExpertsEnabled()) throw createError(409, 'Frontier experts are disabled', 'FRONTIER_EXPERTS_DISABLED');
     const reviewerId = typeof req.body?.reviewer_id === 'string' ? req.body.reviewer_id.trim() : '';
     if (!reviewerId) throw createError(400, 'reviewer_id is required', 'VALIDATION_ERROR');
-    try { res.json(await new ExpertCouncilService(db).reviewExpert(req.params.id, reviewerId, actor)); }
+    try { res.json(await new ExpertCouncilService(db).reviewExpert(param(req, 'id'), reviewerId, actor)); }
     catch (error) { registryError(error); }
   }));
   router.post('/expert/council', requirePermission('write:swarm_action'), route(async (req, res) => {

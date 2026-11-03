@@ -13,6 +13,7 @@ import { AgentRegistryService } from '../services/agent-registry-service';
 import { NlAgentFactory } from '../services/nl-agent-factory';
 import { randomUUID } from 'crypto';
 import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
+import { param } from './params';
 
 export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -301,7 +302,7 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.post('/:id/approve', requireAuth, requirePermission('manage:config'), (req, res, next) => {
     try {
       const factory = new NlAgentFactory(db);
-      factory.approveAgent(req.params.id);
+      factory.approveAgent(param(req, 'id'));
 
       const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id) as any;
       res.json({

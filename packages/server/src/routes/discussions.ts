@@ -11,6 +11,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import type { WebSocketService } from '../services/websocket-service';
 import { WebSocketEventType } from '@djimitflo/shared';
 import { DiscussionTurnService } from '../services/discussion-turn-service';
+import { param } from './params';
 
 function mapDiscussionTurnError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -189,7 +190,7 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // PATCH /api/discussions/:id - Update discussion
   router.patch('/:id', requirePermission('create:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const discussion = loadDiscussionOr404(db, id, res);
       if (!discussion) return;
 
@@ -225,7 +226,7 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // POST /api/discussions/:id/proposals - Add proposal to discussion
   router.post('/:id/proposals', requirePermission('create:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const discussion = loadDiscussionOr404(db, id, res);
       if (!discussion) return;
 
@@ -297,7 +298,7 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // POST /api/discussions/:id/votes - Cast vote on a proposal
   router.post('/:id/votes', requirePermission('create:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const discussion = loadDiscussionOr404(db, id, res);
       if (!discussion) return;
 
@@ -373,7 +374,7 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // POST /api/discussions/:id/consensus - Calculate consensus
   router.post('/:id/consensus', requirePermission('create:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const discussion = loadDiscussionOr404(db, id, res);
       if (!discussion) return;
 
@@ -500,7 +501,7 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // POST /api/discussions/:id/turns - Append a turn (one open turn at a time)
   router.post('/:id/turns', requirePermission('create:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const { agent_id, content, parent_turn_id } = req.body || {};
       const turn = turns.appendTurn(id, { agent_id, content, parent_turn_id: parent_turn_id ?? null });
       broadcastTurn(WebSocketEventType.DISCUSSION_TURN_ADDED, { discussion_id: id, turn });
@@ -529,7 +530,7 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // POST /api/discussions/:id/tick - Computed-on-read next-speaker hint
   router.post('/:id/tick', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const hint = turns.computeNextTurn(id);
       res.json({ discussion_id: id, ...hint });
     } catch (error) {
@@ -544,7 +545,8 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // PATCH /api/discussions/:id/turns/:turnId - Commit or supersede a turn
   router.patch('/:id/turns/:turnId', requirePermission('create:task'), (req, res, next) => {
     try {
-      const { id, turnId } = req.params;
+      const id = param(req, 'id');
+      const turnId = param(req, 'turnId');
       const { status } = req.body || {};
       if (status !== 'committed' && status !== 'superseded') {
         throw createError(400, "status must be 'committed' or 'superseded'", 'INVALID_INPUT');

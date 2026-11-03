@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback = 20): number {
   if (value === undefined) return fallback;
@@ -42,7 +43,7 @@ export function createMetaOrchestrationRoutes(
   // GET /api/meta/tuning/:goalType
   router.get('/tuning/:goalType', requireEvidenceRead, (req, res) => {
     if (!metaOrchestration) return notEnabled(req, res);
-    res.json(metaOrchestration.getLoopTuning(req.params.goalType));
+    res.json(metaOrchestration.getLoopTuning(param(req, 'goalType')));
   });
 
   // GET /api/meta/tuning-history
@@ -61,13 +62,13 @@ export function createMetaOrchestrationRoutes(
   // GET /api/meta/routing/:taskType
   router.get('/routing/:taskType', requireEvidenceRead, (req, res) => {
     if (!metaOrchestration) return notEnabled(req, res);
-    res.json(metaOrchestration.getRoutingOptimization(req.params.taskType));
+    res.json(metaOrchestration.getRoutingOptimization(param(req, 'taskType')));
   });
 
   // GET /api/meta/strategy/:goalType
   router.get('/strategy/:goalType', requireEvidenceRead, (req, res) => {
     if (!metaOrchestration) return notEnabled(req, res);
-    res.json(metaOrchestration.getStrategyRecommendation(req.params.goalType));
+    res.json(metaOrchestration.getStrategyRecommendation(param(req, 'goalType')));
   });
 
   // POST /api/meta/predict
