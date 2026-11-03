@@ -1,0 +1,635 @@
+{
+ "schema": "causal-evolution-003/fitness-validity-matrix/v1",
+ "snapshot": {
+  "prod_commit": "5dfc6cdb",
+  "probes_utc": "2026-10-22T20:19Z-20:23Z"
+ },
+ "constructs": [
+  "test_execution_success",
+  "assertion_strength",
+  "mutation_detection",
+  "functional_correctness",
+  "generalization",
+  "regression_resistance",
+  "retained_downstream_utility"
+ ],
+ "legend": {
+  "yes": "measures it",
+  "partial": "partly or indirectly",
+  "no": "does not",
+  "unknown": "no evidence",
+  "n/a": "not applicable"
+ },
+ "classification_tags": [
+  "VERIFIED",
+  "SUPPORTED",
+  "HYPOTHESIS",
+  "UNKNOWN",
+  "FALSIFIED"
+ ],
+ "reward_hacking_ids": "see B_FITNESS_VALIDITY.md §5 (R1-R12)",
+ "no_composite": "No weighted or composite score is proposed (directive B).",
+ "rows": [
+  {
+   "id": "FV01",
+   "proxy": "verified label (proposal status 'verified')",
+   "where": "loop-verification-service.ts gates + checker + security checker",
+   "acting": "acting",
+   "consumers": [
+    "runtime bandit (skill_outcomes success)",
+    "merge eligibility",
+    "fitness-view"
+   ],
+   "measures": {
+    "test_execution_success": "yes",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "partial",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "a correct, useful change; for test lanes: a test that detects faults",
+   "measurement_error": {
+    "type": "structural + sampling",
+    "value": "verified vs not-verified graded kill: +0.014, 95% CI [-0.215, +0.231], MDE 0.35 (n 50 vs 7)"
+   },
+   "discrimination_evidence": "none on fault detection; the 7 not-verified tests were reviewer evidence blocks after passing all deterministic gates",
+   "reward_hacking_openings": [
+    "R7"
+   ],
+   "validity_verdict": "invalid for test strength",
+   "classification": "VERIFIED",
+   "evidence": [
+    "B §2",
+    "AN B1",
+    "data/graded-labels.json"
+   ],
+   "recommendation": "never use as a fitness signal for test-writing lanes; keep as an eligibility filter"
+  },
+  {
+   "id": "FV02",
+   "proxy": "tests_lint_typecheck gate (test:changed, lint, type-check)",
+   "where": "package.json:19; LOOP_DAEMON_CHECK_SCRIPTS",
+   "acting": "acting",
+   "consumers": [
+    "verification",
+    "gym prod gates"
+   ],
+   "measures": {
+    "test_execution_success": "yes",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "the change builds and its tests pass",
+   "measurement_error": {
+    "type": "flake",
+    "value": "UNKNOWN (no re-run study in prod); MFR 0 infra of 80"
+   },
+   "discrimination_evidence": "discriminates execution failures (81 gym prod-gate failures on test:changed, P4)",
+   "reward_hacking_openings": [],
+   "validity_verdict": "valid for execution only",
+   "classification": "VERIFIED",
+   "evidence": [
+    "P4 gym_prod_gates.failed_checks"
+   ],
+   "recommendation": "retain as eligibility filter"
+  },
+  {
+   "id": "FV03",
+   "proxy": "test:mutation:grounded (Stryker gain)",
+   "where": "scripts/mutation-gain.mjs",
+   "acting": "acting in mutation-gap lane; vacuous elsewhere",
+   "consumers": [
+    "verification"
+   ],
+   "measures": {
+    "test_execution_success": "n/a",
+    "assertion_strength": "no",
+    "mutation_detection": "yes in mutation lane; vacuous pass elsewhere",
+    "functional_correctness": "no",
+    "generalization": "partial",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "the new test kills more Stryker mutants than the committed one (>= +10 pt or >= 90)",
+   "measurement_error": {
+    "type": "labelling",
+    "value": "exits 0 with 'skipped' when MUTATE_FILE/MUTATE_TEST are unset; recorded as pass on 57/57 graded exports/test-gap runs"
+   },
+   "discrimination_evidence": "in lane: mutation_score 0.888 (n 25)",
+   "reward_hacking_openings": [
+    "R2"
+   ],
+   "validity_verdict": "valid in lane, mislabelled outside it",
+   "classification": "VERIFIED",
+   "evidence": [
+    "scripts/mutation-gain.mjs:10-11",
+    "AN B1"
+   ],
+   "recommendation": "record 'skipped' instead of 'pass' when it is a no-op"
+  },
+  {
+   "id": "FV04",
+   "proxy": "assertion-strength (deterministic, shadow)",
+   "where": "test-assertion-strength.ts:14-30 (weak share <= 0.5, >= 1 expect, target imported)",
+   "acting": "shadow; gates auto-merge eligibility",
+   "consumers": [
+    "loop-auto-merge.ts:150-151",
+    "improvement-requeue"
+   ],
+   "measures": {
+    "test_execution_success": "no",
+    "assertion_strength": "partial",
+    "mutation_detection": "no",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "tests that would fail on wrong code",
+   "measurement_error": {
+    "type": "construct",
+    "value": "54/54 pass in the graded population, incl. 21 of the 23 zero-kill tests (2 had no verdict)"
+   },
+   "discrimination_evidence": "none at threshold 0.5 on this population; designed after F1 kind-B (3/7 toBeDefined swaps accepted by the LLM checker)",
+   "reward_hacking_openings": [
+    "R3"
+   ],
+   "validity_verdict": "non-discriminating at its threshold",
+   "classification": "VERIFIED",
+   "evidence": [
+    "AN B1",
+    "F1"
+   ],
+   "recommendation": "keep as a cheap floor; do not treat as evidence of strength; an executed kill share is the strength measure"
+  },
+  {
+   "id": "FV05",
+   "proxy": "graded mutant kill, k=3 (prod)",
+   "where": "graded-fitness.ts:108-145 (targetMutants seeded by run id)",
+   "acting": "shadow",
+   "consumers": [
+    "graded contest (shadow)",
+    "DREAM_PROMOTION_RULE=graded (not in force)",
+    "settlement kill share"
+   ],
+   "measures": {
+    "test_execution_success": "partial",
+    "assertion_strength": "partial",
+    "mutation_detection": "yes",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "fault-detection power of the test",
+   "measurement_error": {
+    "type": "sampling",
+    "value": "parallel-forms r 0.50 [0.21, 0.74] (two fresh 3-sets, n 40); 0.57 [0.29, 0.79] (control retries, n 37); prod set vs fresh 0.12 [-0.16, 0.41] (range-restricted)"
+   },
+   "discrimination_evidence": "discriminates within lane (exports mean 0.283, 9% full kill, P4) but noisily",
+   "reward_hacking_openings": [
+    "R4",
+    "R5"
+   ],
+   "validity_verdict": "valid construct, unreliable at k=3",
+   "classification": "SUPPORTED",
+   "evidence": [
+    "AN B2",
+    "MFR results.json"
+   ],
+   "recommendation": "k >= 9-12 per family, two families reported separately, size reported next to it"
+  },
+  {
+   "id": "FV06",
+   "proxy": "Stryker mutation score (mutation-gap lane)",
+   "where": "graded-fitness.ts:122-127 (mutation_score = after/100)",
+   "acting": "acting via the lane gate",
+   "consumers": [
+    "verification (gain gate)"
+   ],
+   "measures": {
+    "test_execution_success": "partial",
+    "assertion_strength": "partial",
+    "mutation_detection": "yes",
+    "functional_correctness": "no",
+    "generalization": "partial",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "fault-detection power",
+   "measurement_error": {
+    "type": "sampling",
+    "value": "UNKNOWN reliability; 21/21 graded rows verified, so no label contrast"
+   },
+   "discrimination_evidence": "in lane only",
+   "reward_hacking_openings": [
+    "R5"
+   ],
+   "validity_verdict": "valid; cross-family transfer UNKNOWN",
+   "classification": "SUPPORTED",
+   "evidence": [
+    "P4 graded pools"
+   ],
+   "recommendation": "use as the second family in STR-001 / GR-REL-001"
+  },
+  {
+   "id": "FV07",
+   "proxy": "held-out fresh mutants (offline harness, never shown)",
+   "where": "MFR-001 harness, assertNoLeak",
+   "acting": "offline",
+   "consumers": [
+    "MFR-001",
+    "STR-001"
+   ],
+   "measures": {
+    "test_execution_success": "partial",
+    "assertion_strength": "partial",
+    "mutation_detection": "yes",
+    "functional_correctness": "no",
+    "generalization": "yes",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "generalising fault detection",
+   "measurement_error": {
+    "type": "sampling",
+    "value": "same k=3 reliability as FV05; one generator family"
+   },
+   "discrimination_evidence": "discriminated FEEDBACK vs CONTROL: -0.142 [-0.250, -0.033] (registered)",
+   "reward_hacking_openings": [
+    "R11 (hung mutant run counted as kill in the harness, skipped in prod)"
+   ],
+   "validity_verdict": "best existing endpoint",
+   "classification": "VERIFIED",
+   "evidence": [
+    "MFR"
+   ],
+   "recommendation": "primary endpoint for test-writing operators; add a second family and k >= 9"
+  },
+  {
+   "id": "FV08",
+   "proxy": "gym prod-gated pass (ELIGIBLE_GATED)",
+   "where": "genome-registry.ts:253-255; dream-evolution.ts gatedEvidence",
+   "acting": "acting (genome promotion)",
+   "consumers": [
+    "evaluateTrials",
+    "headroom precheck",
+    "Gate A"
+   ],
+   "measures": {
+    "test_execution_success": "yes",
+    "assertion_strength": "no",
+    "mutation_detection": "partial",
+    "functional_correctness": "partial",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "a maker that repairs code under prod gates",
+   "measurement_error": {
+    "type": "saturation + delivery",
+    "value": "epoch-0 parent 15/20, 32/40; 6 of 16 trials no_headroom; fire check off for all 339 epoch-0 mutant attempts (P7)"
+   },
+   "discrimination_evidence": "proxy 0.867 vs prod gate 0.311 (mined), 0.919 vs 0.395 (mutant)",
+   "reward_hacking_openings": [
+    "R8",
+    "R9",
+    "R12"
+   ],
+   "validity_verdict": "valid for the gym task set; transfer to prod UNKNOWN (TG-001 inconclusive)",
+   "classification": "VERIFIED",
+   "evidence": [
+    "P4 gym_prod_gates",
+    "P2",
+    "P7"
+   ],
+   "recommendation": "keep for gym trials; pin model/worker per attempt; run an A/A noise floor first"
+  },
+  {
+   "id": "FV09",
+   "proxy": "merge survival (>= 50% added lines at +14 d)",
+   "where": "merge-survival.ts:21",
+   "acting": "acting (Gate B, fitness-view weight 3)",
+   "consumers": [
+    "Gate B",
+    "fitness-view (shadow)"
+   ],
+   "measures": {
+    "test_execution_success": "no",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "partial"
+   },
+   "intended_outcome": "the change is still valuable later",
+   "measurement_error": {
+    "type": "ceiling",
+    "value": "22 survived / 0 regressed; cannot fail in practice"
+   },
+   "discrimination_evidence": "none",
+   "reward_hacking_openings": [
+    "R6"
+   ],
+   "validity_verdict": "invalid as a learning label",
+   "classification": "VERIFIED",
+   "evidence": [
+    "P4 merge"
+   ],
+   "recommendation": "report only; replace by paired settlement execution"
+  },
+  {
+   "id": "FV10",
+   "proxy": "settlement execution (re-run at origin/main + fresh-mutant kill share)",
+   "where": "settlement-execution.ts",
+   "acting": "shadow",
+   "consumers": [
+    "evolution evidence"
+   ],
+   "measures": {
+    "test_execution_success": "yes",
+    "assertion_strength": "no",
+    "mutation_detection": "partial",
+    "functional_correctness": "no",
+    "generalization": "partial",
+    "regression_resistance": "partial",
+    "retained_downstream_utility": "partial"
+   },
+   "intended_outcome": "merged tests still pass and still detect faults later",
+   "measurement_error": {
+    "type": "sampling + pairing",
+    "value": "16 pass / 0 fail; kill share now 0.40 (n 15); 0 maker-time pairs"
+   },
+   "discrimination_evidence": "no negatives yet",
+   "reward_hacking_openings": [],
+   "validity_verdict": "promising, not yet informative",
+   "classification": "VERIFIED",
+   "evidence": [
+    "P4 settlement_execution"
+   ],
+   "recommendation": "pair with maker-time scores (EVO E5)"
+  },
+  {
+   "id": "FV11",
+   "proxy": "outcome attribution (maker vs reviewer vs environment)",
+   "where": "outcome-attribution.ts; OUTCOME_ATTRIBUTION_ENABLED=true",
+   "acting": "acting (filters bandit losses)",
+   "consumers": [
+    "runtime bandit",
+    "fitness-view"
+   ],
+   "measures": {
+    "test_execution_success": "n/a",
+    "assertion_strength": "n/a",
+    "mutation_detection": "n/a",
+    "functional_correctness": "n/a",
+    "generalization": "n/a",
+    "regression_resistance": "n/a",
+    "retained_downstream_utility": "n/a"
+   },
+   "intended_outcome": "a validity condition on every fitness component",
+   "measurement_error": {
+    "type": "classification",
+    "value": "operator-audited CAR 0 (small n)"
+   },
+   "discrimination_evidence": "n/a",
+   "reward_hacking_openings": [],
+   "validity_verdict": "validity condition, not fitness",
+   "classification": "SUPPORTED",
+   "evidence": [
+    "EVO FITNESS"
+   ],
+   "recommendation": "retain"
+  },
+  {
+   "id": "FV12",
+   "proxy": "specialist panel / committee verdicts",
+   "where": "specialist-panel-service.ts; memory-candidate-review-scheduler.ts",
+   "acting": "acting (proposal approval, memory promotion)",
+   "consumers": [
+    "self-improvement approval",
+    "memory promotion"
+   ],
+   "measures": {
+    "test_execution_success": "no",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "partial",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "a proposal or memory that will help",
+   "measurement_error": {
+    "type": "judgment",
+    "value": "panel Brier 0.33 (BEAM B7); 0/20 forecasters decision-grade"
+   },
+   "discrimination_evidence": "panel-approved proposals: 10 verified / 8 regressed / 6 infra / 5 archived (JEV)",
+   "reward_hacking_openings": [
+    "R10"
+   ],
+   "validity_verdict": "insufficient as fitness; approval is not an outcome",
+   "classification": "VERIFIED",
+   "evidence": [
+    "JEV §6.1",
+    "P4 gates D"
+   ],
+   "recommendation": "never a fitness source; memory promotion awaits the 27-10 readout"
+  },
+  {
+   "id": "FV13",
+   "proxy": "LLM checker verdict",
+   "where": "loop-worker-executor-service.ts (checker lease)",
+   "acting": "acting",
+   "consumers": [
+    "verification"
+   ],
+   "measures": {
+    "test_execution_success": "no",
+    "assertion_strength": "partial",
+    "mutation_detection": "no",
+    "functional_correctness": "partial",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "defective diffs rejected",
+   "measurement_error": {
+    "type": "judgment",
+    "value": "F1 AUC 0.875 (n 40) -> 0.95 (14-10); kappa(checker, outcome) 0.318 (L3v2)"
+   },
+   "discrimination_evidence": "validated for gross defects; accepts 3/7 kind-B weakenings",
+   "reward_hacking_openings": [],
+   "validity_verdict": "valid verifier for gross defects, not a strength measure",
+   "classification": "VERIFIED",
+   "evidence": [
+    "F1",
+    "L3v2"
+   ],
+   "recommendation": "retain"
+  },
+  {
+   "id": "FV14",
+   "proxy": "security checker verdict",
+   "where": "security_checker lease",
+   "acting": "acting",
+   "consumers": [
+    "verification"
+   ],
+   "measures": {
+    "test_execution_success": "no",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "no security regression",
+   "measurement_error": {
+    "type": "judgment",
+    "value": "SEC-F1 AUC 0.975, 19/20 caught, 0/26 false rejects"
+   },
+   "discrimination_evidence": "validated",
+   "reward_hacking_openings": [],
+   "validity_verdict": "valid for its own construct",
+   "classification": "VERIFIED",
+   "evidence": [
+    "SEC"
+   ],
+   "recommendation": "retain"
+  },
+  {
+   "id": "FV15",
+   "proxy": "bandit success rate per species",
+   "where": "runtime-bandit.ts:41-43",
+   "acting": "acting",
+   "consumers": [
+    "species share"
+   ],
+   "measures": {
+    "test_execution_success": "yes",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "partial",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "the species that produces better changes",
+   "measurement_error": {
+    "type": "label validity",
+    "value": "inherits FV01; OPE of an alternative policy +0.0018 [-0.0112, 0.0144]"
+   },
+   "discrimination_evidence": "no bandit-vs-no-bandit estimate",
+   "reward_hacking_openings": [
+    "R7"
+   ],
+   "validity_verdict": "insufficient",
+   "classification": "VERIFIED",
+   "evidence": [
+    "P4 ope, learning_ledger"
+   ],
+   "recommendation": "shadow-read graded Q per species before any change"
+  },
+  {
+   "id": "FV16",
+   "proxy": "forecast:jev_calibrated",
+   "where": "forecasters.ts:50",
+   "acting": "shadow",
+   "consumers": [],
+   "measures": {
+    "test_execution_success": "no",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "P(proposal verifies)",
+   "measurement_error": {
+    "type": "calibration",
+    "value": "Brier 0.250 vs constant-prevalence 0.2496"
+   },
+   "discrimination_evidence": "no skill",
+   "reward_hacking_openings": [],
+   "validity_verdict": "no skill; a fitness quantity, never a gate",
+   "classification": "VERIFIED",
+   "evidence": [
+    "JEV §4.2"
+   ],
+   "recommendation": "retain as a zero-cost measurement only"
+  },
+  {
+   "id": "FV17",
+   "proxy": "hack detector + canaries",
+   "where": "gym-hack-classifier.ts; GYM_CANARY_RATE",
+   "acting": "shadow / acting (canary voids)",
+   "consumers": [
+    "gym"
+   ],
+   "measures": {
+    "test_execution_success": "no",
+    "assertion_strength": "no",
+    "mutation_detection": "no",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "no gaming of the gym oracle",
+   "measurement_error": {
+    "type": "sensitivity",
+    "value": "0/163 flagged; 0/9 canaries passed; sensitivity UNKNOWN (no planted hack)"
+   },
+   "discrimination_evidence": "UNKNOWN",
+   "reward_hacking_openings": [],
+   "validity_verdict": "untested sensitivity",
+   "classification": "UNKNOWN",
+   "evidence": [
+    "P4 hack_rate"
+   ],
+   "recommendation": "plant known hacks to measure sensitivity before trusting 0"
+  },
+  {
+   "id": "FV18",
+   "proxy": "graded contest (shadow) as a selection signal",
+   "where": "evolve-selection.ts + graded-fitness.ts",
+   "acting": "shadow",
+   "consumers": [],
+   "measures": {
+    "test_execution_success": "partial",
+    "assertion_strength": "partial",
+    "mutation_detection": "yes",
+    "functional_correctness": "no",
+    "generalization": "no",
+    "regression_resistance": "no",
+    "retained_downstream_utility": "no"
+   },
+   "intended_outcome": "pick the sibling with the strongest test",
+   "measurement_error": {
+    "type": "between-sibling variance",
+    "value": "12/16 scored contests all siblings tied; 2 disagreements; mean +0.042 graded if switched"
+   },
+   "discrimination_evidence": "little to select on",
+   "reward_hacking_openings": [
+    "R4"
+   ],
+   "validity_verdict": "valid but low-yield at k=3",
+   "classification": "SUPPORTED",
+   "evidence": [
+    "AN B3",
+    "data/contest-graded.json"
+   ],
+   "recommendation": "cheap to keep in shadow; raise k before acting"
+  }
+ ]
+}

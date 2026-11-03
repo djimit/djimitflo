@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Network, Plus, Globe } from 'lucide-react';
 import { api } from '../lib/api';
+import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
 
 interface Peer {
   id: string;
@@ -18,20 +19,24 @@ export function FederationPage() {
   const [showRegister, setShowRegister] = useState(false);
   const [peerUrl, setPeerUrl] = useState('');
   const [trustLevel, setTrustLevel] = useState('medium');
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  const [registerError, setRegisterError] = useState<string | null>(null);
 
   const loadData = () => {
+    const failed: string[] = [];
     Promise.all([
-      api.request('/federation/peers').catch(() => ({ peers: [] })),
-      api.request('/federation/capabilities').catch(() => ({ capabilities: [] })),
+      api.request('/federation/peers').catch(softFail(failed, 'peers', { peers: [] })),
+      api.request('/federation/capabilities').catch(softFail(failed, 'capabilities', { capabilities: [] })),
     ]).then(([peersRes, capsRes]: any) => {
       setPeers(peersRes.peers || []);
       setCapabilities(capsRes.capabilities || []);
-    }).finally(() => setLoading(false));
+    }).finally(() => { setLoadErrors(failed); setLoading(false); });
   };
 
   useEffect(() => { loadData(); }, []);
 
   const handleRegister = async () => {
+    setRegisterError(null);
     try {
       await api.request('/federation/register', {
         method: 'POST',
@@ -41,7 +46,7 @@ export function FederationPage() {
       setShowRegister(false);
       setPeerUrl('');
       loadData();
-    } catch (e) { console.error('Register failed:', e); }
+    } catch (e) { setRegisterError(`Could not register peer: ${e instanceof Error ? e.message : String(e)}`); }
   };
 
   if (loading) return <div className="p-8 text-foreground-tertiary">Loading federation data...</div>;
@@ -60,6 +65,8 @@ export function FederationPage() {
         </button>
       </div>
 
+      <LoadErrorNotice failed={loadErrors} />
+
       {showRegister && (
         <div className="bg-background-secondary border border-accent/20 rounded-lg p-6 space-y-4">
           <h2 className="text-lg font-semibold text-foreground">Register New Peer</h2>
@@ -73,6 +80,7 @@ export function FederationPage() {
             <button onClick={handleRegister} className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90">Register</button>
             <button onClick={() => setShowRegister(false)} className="px-4 py-2 bg-background border border-border rounded-lg">Cancel</button>
           </div>
+          {registerError && <p role="alert" className="text-sm text-status-error">{registerError}</p>}
         </div>
       )}
 

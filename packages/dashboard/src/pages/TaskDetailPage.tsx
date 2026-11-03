@@ -25,6 +25,7 @@ export function TaskDetailPage() {
   const [loadErrors, setLoadErrors] = useState<{ task: string | null; events: string | null; approvals: string | null }>({ task: null, events: null, approvals: null });
   const [executing, setExecuting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [executor, setExecutor] = useState('');
@@ -122,6 +123,7 @@ export function TaskDetailPage() {
     if (!taskId || recoveryHold) return;
     
     setExecuting(true);
+    setActionError(null);
     try {
       const selectedExecutor = executor || String(task?.metadata?.executor || 'opencode');
       const result = await api.executeTask(taskId, selectedExecutor);
@@ -131,8 +133,7 @@ export function TaskDetailPage() {
         setTask((prev) => prev ? { ...prev, status: TaskStatus.CANCELLED } : prev);
       }
     } catch (error) {
-      console.error('Failed to execute task:', error);
-      alert(`Failed to execute task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setActionError(`Could not execute task: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setExecuting(false);
     }
@@ -146,12 +147,12 @@ export function TaskDetailPage() {
     }
     
     setCancelling(true);
+    setActionError(null);
     try {
       await api.cancelTask(taskId);
       // Task status will be updated via WebSocket
     } catch (error) {
-      console.error('Failed to cancel task:', error);
-      alert(`Failed to cancel task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setActionError(`Could not cancel task: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setCancelling(false);
     }
@@ -255,6 +256,7 @@ export function TaskDetailPage() {
               </label>
             )}
             {runtimeError && <span role="alert" className="text-sm text-status-error">{runtimeError}</span>}
+            {actionError && <span role="alert" className="text-sm text-status-error">{actionError}</span>}
             {task.status === 'awaiting_approval' && (
               <span className="flex items-center gap-2 px-4 py-2 bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg">
                 <AlertTriangle className="w-4 h-4" />

@@ -77,7 +77,9 @@ const MECHANISMS: Array<{ mechanism: string; name: string; data_source: string; 
 ];
 
 const excludesZero = (ci: [number, number] | null) => ci !== null && (ci[0] > 0 || ci[1] < 0);
-const fromVerdict = (v: string | null): LearningStatus => (v === null ? 'RUNNING' : v === 'supported' ? 'ADOPTED' : v === 'falsified' || v === 'reversed' ? 'REJECTED' : 'INSUFFICIENT');
+/** the verdict's leading word, case-insensitive: an operator close such as 'FALSIFIED (rules not above withheld)' reads as 'falsified' */
+const fromVerdict = (v: string | null): LearningStatus => { const k = v?.trim().split(/[\s(]/)[0].toLowerCase() ?? null;
+  return k === null ? 'RUNNING' : k === 'supported' ? 'ADOPTED' : k === 'falsified' || k === 'reversed' ? 'REJECTED' : 'INSUFFICIENT'; };
 
 export function learningLedger(db: Database, experiments: ExperimentRow[], ope: OpeResult | null) {
   const rows: LedgerRow[] = MECHANISMS.map((m) => {
@@ -89,7 +91,7 @@ export function learningLedger(db: Database, experiments: ExperimentRow[], ope: 
       const status = fromVerdict(e.verdict);
       const ci = eff?.ci ?? null;
       return { ...base, metric: eff?.metric ?? null, estimate: eff?.estimate ?? null, ci, p: eff?.p ?? null, status, closed: status === 'ADOPTED' && excludesZero(ci),
-        note: e.error ? `evidence unreadable: ${e.error}` : `${m.experiment}: n per arm ${JSON.stringify(e.n_per_arm)} of target ${e.target_n}, stop_by ${e.stop_by?.slice(0, 10) ?? 'none'}${e.verdict ? `, verdict ${e.verdict}` : ''}` };
+        note: e.error ? `evidence unreadable: ${e.error}` : `${m.experiment}: n per arm ${JSON.stringify(e.n_per_arm)} of target ${e.target_n}, stop_by ${e.stop_by?.slice(0, 10) ?? 'none'}${e.verdict ? `, verdict ${e.verdict}` : ''}${eff?.withheld ? `; estimate ${eff.withheld}` : ''}` };
     }
     if (m.mechanism === 'genomes') {
       type G = { active: number; trial: number; decided: number };

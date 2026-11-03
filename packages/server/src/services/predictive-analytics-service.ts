@@ -12,6 +12,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 
 interface Prediction {
   loopRunId?: string;
@@ -99,7 +100,7 @@ export class PredictiveAnalyticsService {
     const goalTypes = this.db.prepare(`
       SELECT json_extract(metadata, '$.goal_type') as goal_type, COUNT(*) as count
       FROM loop_runs
-      WHERE metadata IS NOT NULL
+      WHERE metadata IS NOT NULL AND ${realRunSql()}
       GROUP BY goal_type
     `).all() as any[];
 
@@ -111,7 +112,7 @@ export class PredictiveAnalyticsService {
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successes,
           AVG(CASE WHEN completed_at IS NOT NULL THEN (julianday(completed_at) - julianday(created_at)) * 86400000 ELSE NULL END) as avg_duration
         FROM loop_runs
-        WHERE json_extract(metadata, '$.goal_type') = ?
+        WHERE json_extract(metadata, '$.goal_type') = ? AND ${realRunSql()}
       `).get(gt.goal_type) as any;
 
       patterns.push({
@@ -126,6 +127,7 @@ export class PredictiveAnalyticsService {
     const runtimes = this.db.prepare(`
       SELECT runtime, COUNT(*) as count
       FROM worker_leases
+      WHERE ${realRunIdSql('loop_run_id')}
       GROUP BY runtime
     `).all() as any[];
 
@@ -135,7 +137,7 @@ export class PredictiveAnalyticsService {
           COUNT(*) as total,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successes
         FROM worker_leases
-        WHERE runtime = ?
+        WHERE runtime = ? AND ${realRunIdSql('loop_run_id')}
       `).get(rt.runtime) as any;
 
       patterns.push({
@@ -158,8 +160,8 @@ export class PredictiveAnalyticsService {
     totalPatterns: number;
     dataPoints: number;
   } {
-    const loops = (this.db.prepare('SELECT COUNT(*) as c FROM loop_runs').get() as any)?.c || 0;
-    const completed = (this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'completed'").get() as any)?.c || 0;
+    const loops = (this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE ${realRunSql()}`).get() as any)?.c || 0;
+    const completed = (this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'completed' AND ${realRunSql()}`).get() as any)?.c || 0;
     const patterns = this.analyzePatterns();
 
     return {
@@ -196,7 +198,7 @@ export class PredictiveAnalyticsService {
         EXISTS (SELECT 1 FROM worker_leases wl WHERE wl.loop_run_id = lr.id
           AND json_extract(wl.metadata, '$.token_accounting.price_version') IS NOT NULL) as any_dated_price
       FROM loop_runs lr
-      WHERE (? = '' OR json_extract(lr.metadata, '$.goal_type') = ?)
+      WHERE ${realRunSql('lr')} AND (? = '' OR json_extract(lr.metadata, '$.goal_type') = ?)
         AND (? = '' OR lr.mode = ?)
         AND (? = '' OR EXISTS (
           SELECT 1 FROM worker_leases runtime_lease
@@ -287,10 +289,10 @@ export class PredictiveAnalyticsService {
     const recommendations: string[] = [];
 
     // Check failure metadata completeness
-    const failedLeases = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'failed'").get() as any;
+    const failedLeases = this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE status = 'failed' AND ${realRunIdSql('loop_run_id')}`).get() as any;
     const failedWithMetadata = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
-      WHERE status = 'failed'
+      WHERE status = 'failed' AND ${realRunIdSql('loop_run_id')}
       AND json_extract(metadata, '$.exit_status') IS NOT NULL
       AND json_extract(metadata, '$.exit_status') != ''
     `).get() as any;
@@ -301,10 +303,10 @@ export class PredictiveAnalyticsService {
     }
 
     // Check block reason completeness
-    const blockedLoops = this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'").get() as any;
+    const blockedLoops = this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked' AND ${realRunSql()}`).get() as any;
     const blockedWithReason = this.db.prepare(`
       SELECT COUNT(*) as c FROM loop_runs
-      WHERE status = 'blocked'
+      WHERE status = 'blocked' AND ${realRunSql()}
       AND json_extract(metadata, '$.block_reason') IS NOT NULL
       AND json_extract(metadata, '$.block_reason') != ''
     `).get() as any;
@@ -314,7 +316,7 @@ export class PredictiveAnalyticsService {
       recommendations.push(`Block reason completeness: ${(blockReasonCompleteness * 100).toFixed(0)}% — verifyLoopRun should record block reasons`);
     }
 
-    // Count stale leases
+    // Count stale leases (live state: every stale lease needs the cleanup, synthetic ones included)
     const stalePrepared = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
       WHERE status = 'prepared' AND created_at < datetime('now', '-24 hours')

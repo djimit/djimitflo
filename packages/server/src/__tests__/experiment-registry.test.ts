@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { EXPERIMENT_WIP_LIMIT, TG_001_CLOSED, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
+import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, experimentDefs, experimentsReport, recordTreatmentEnvBoundaries, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { readFileSync } from 'fs';
@@ -95,9 +95,36 @@ it('TG-001 is closed INCONCLUSIVE at 20 tasks by the operator (amendment 2026-10
   // the same definition without the close is reported past stop_by: the close is what stops it, not the stop date passing
   const open: ExperimentDef = { ...tg, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
   expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['TG-001']);
-  // other experiments are unchanged: none carries a close, and an open one past its stop date is still overdue
-  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['TG-001']);
+  // other experiments are unchanged: only TG-001 and memory-holdout carry a close, and an open one past its stop date is still overdue
+  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['TG-001', 'memory-holdout']);
   expect(stalls).toContain('experiment:X1');
+});
+
+it('EXP-3 memory-holdout is closed FALSIFIED at its single registered readout (2026-10-27); experiment_overdue no longer raises it', () => {
+  expect(MEMORY_HOLDOUT_CLOSED).toEqual({ verdict: 'FALSIFIED (rules not above withheld)', decided_on: '2026-10-27',
+    source: 'docs/research/intelligence-metrics/EXP-3_RESULT.md#decision-under-the-registered-rules' });
+  const mh = experimentDefs().find((d) => d.id === 'memory-holdout')!;
+  expect(mh.closed).toBe(MEMORY_HOLDOUT_CLOSED);
+  expect(mh.status(db, {}, NOW, mh.started_at).verdict).toBe('FALSIFIED (rules not above withheld)');
+  // past stop_by (2026-10-27): reported closed with the verdict, not overdue, no stall
+  const late = Date.parse('2026-10-28T12:00:00Z');
+  const r = experimentsReport(db, {}, late);
+  expect(r.experiments.find((e) => e.id === 'memory-holdout')).toMatchObject({ verdict: 'FALSIFIED (rules not above withheld)', overdue: false, overdue_reason: null,
+    closed: MEMORY_HOLDOUT_CLOSED });
+  expect(r.overdue).not.toContain('memory-holdout');
+  // a read-out experiment no longer counts as active on the oracle-goal population
+  expect(r.wip.active).not.toContain('memory-holdout');
+  expect(detectStallsWithHealth(db, late, {}).stalls.map((s) => s.subsystem)).not.toContain('experiment:memory-holdout');
+  // the same definition without the close is overdue: the close is what stops it
+  const open: ExperimentDef = { ...mh, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
+  expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['memory-holdout']);
+});
+
+it('EXP-3 close cites the result document and a heading that exists in it', () => {
+  const [file, anchor] = MEMORY_HOLDOUT_CLOSED.source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Decision under the registered rules');
 });
 
 it('evolution-evidence carries the registry as the experiments section', () => {
@@ -129,8 +156,9 @@ it('CI guard: the registered oracle-population experiments fit the WIP limit; a 
 
 it('reports active vs the limit and over_wip_limit; a read-out experiment is no longer active', () => {
   const r = experimentsReport(db, {}, NOW);
-  expect(r.wip).toMatchObject({ limit: 4, active_count: 6, over_wip_limit: true, guard_ok: true });
-  expect(r.wip.counted).toEqual(['ACE-001', 'STE-001', 'X1', 'memory-holdout']);
+  // memory-holdout read out (closed FALSIFIED 2026-10-27): five active, three counted against the limit
+  expect(r.wip).toMatchObject({ limit: 4, active_count: 5, over_wip_limit: true, guard_ok: true });
+  expect(r.wip.counted).toEqual(['ACE-001', 'STE-001', 'X1']);
   const def = (id: string, verdict: string | null): ExperimentDef => ({ id, flag: 'T', protocol: 'p.md', started_at: '2026-10-01T00:00:00.000Z', target_n: 10, stop_by: null,
     stop_note: '', stop_source: 's', population: 'oracle_goals', status: () => ({ n_per_arm: { a: 1 }, verdict }) });
   const five = ['A', 'B', 'C', 'D', 'E'].map((id) => def(id, null));
@@ -174,4 +202,69 @@ it('PL-001: registered with the protocol stop rule — a decide-start date befor
   const started = experimentsReport(db, {}, NOW).experiments.find((e) => e.id === 'PL-001')!;
   expect(started).toMatchObject({ started_at: '2026-11-01T10:00:00.000Z', stop_by: '2026-11-15T10:00:00.000Z' });
   expect(experimentDefs().find((d) => d.id === 'PL-001')!.stop_by).toBe('2026-11-25T00:00:00.000Z'); // the registered date is unchanged
+});
+
+// E-assumptions A18: experiments share the oracle-goal population; EXP-3's action (LOOP_MEMORY_RULES_ENABLED=false, 10-27)
+// changed the maker context of four others and each protocol had to add the period boundary by hand
+it('A18: every running experiment declares the env names that alter its treatment, its own flag first', () => {
+  const running = ['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'PL-001'];
+  for (const d of experimentDefs().filter((x) => running.includes(x.id))) {
+    expect(d.treatment_env?.[0], d.id).toBe(d.flag);
+    expect(d.treatment_env!.every((n) => /^[A-Z][A-Z0-9_]+$/.test(n)), d.id).toBe(true);
+  }
+  const memory = experimentDefs().filter((d) => d.treatment_env?.includes('LOOP_MEMORY_RULES_ENABLED')).map((d) => d.id);
+  expect(memory).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2']);
+});
+
+// E-assumptions A18/C8 (re-20261030): at 10-30 09:42 LOOP_BANDIT_MAX_SHARE went 0.8 → default 0.1, an acting flag that
+// changes the maker-species mix of the shared oracle-goal population, and 0 period boundaries were written: no experiment
+// declared it. Every env name maker selection reads must be a treatment variable of every running oracle-population experiment.
+const MAKER_SELECTION_SOURCES = ['runtime-bandit.ts', 'remote-maker-queue.ts', 'meta-orchestration-service.ts'];
+const envNames = (src: string) => [...src.matchAll(/(?:process\.)?env\.([A-Z][A-Z0-9_]+)|env\[['"]([A-Z][A-Z0-9_]+)['"]\]/g)].map((m) => m[1] ?? m[2]);
+function makerSelectionEnv(): string[] {
+  const dir = join(__dirname, '../services');
+  const daemon = readFileSync(join(dir, 'loop-daemon.ts'), 'utf8');
+  // loop-daemon's maker selection: from the operator's explicit maker runtime through the bandit choice (5b), up to D2
+  const start = daemon.indexOf('const makerRuntime = '); const end = daemon.indexOf('// D2: attribute the maker to its strategy genome');
+  expect(start, 'loop-daemon maker selection start marker').toBeGreaterThan(0); expect(end, 'loop-daemon maker selection end marker').toBeGreaterThan(start);
+  expect(daemon.slice(start, end)).toMatch(/chooseSpecies\(.*banditSpecies\(\)/); // the bandit (runtime-bandit.ts) chooses
+  expect(daemon.slice(start, end)).toContain('assertRuntimeAvailable('); // remote is available only under REMOTE_MAKER_ENABLED
+  return [...new Set([...envNames(daemon.slice(start, end)), ...MAKER_SELECTION_SOURCES.flatMap((f) => envNames(readFileSync(join(dir, f), 'utf8')))])].sort();
+}
+it('C8: every env name read by loop-daemon maker selection is a treatment variable of every running oracle-population experiment', () => {
+  const names = makerSelectionEnv();
+  for (const n of ['LOOP_BANDIT_ENABLED', 'LOOP_BANDIT_SPECIES', 'LOOP_BANDIT_MAX_SHARE', 'REMOTE_MAKER_ENABLED', 'META_TUNING_MIN_CONFIDENCE']) expect(names).toContain(n);
+  const oracle = experimentDefs().filter((d) => d.population === 'oracle_goals' && !d.closed);
+  expect(oracle.map((d) => d.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2']);
+  for (const d of oracle) {
+    const undeclared = names.filter((n) => !d.treatment_env?.includes(n));
+    expect(undeclared, `${d.id}: maker-selection env not declared as treatment_env`).toEqual([]);
+    expect(d.treatment_env?.[0], d.id).toBe(d.flag);
+  }
+});
+
+it('C8: changing LOOP_BANDIT_MAX_SHARE between boots writes a period boundary for ACE-001, STE-001, MAKER-DEPS-001, X1 and F2', () => {
+  const t = (d: string) => Date.parse(`2026-10-${d}T09:42:39Z`);
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_BANDIT_MAX_SHARE: '0.8' }, t('29'))).toEqual([]);
+  const rows = recordTreatmentEnvBoundaries(db, {}, t('30')); // unset → code default 0.1
+  expect(rows.map((r) => [r.experiment_id, r.env_name, r.previous, r.current])).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2'].map((id) => [id, 'LOOP_BANDIT_MAX_SHARE', '0.8', null]));
+  expect(experimentsReport(db, {}, t('30') + 1000).experiments.find((e) => e.id === 'PL-001')?.period_boundaries).toEqual([]); // gym population: not altered
+});
+
+it('A18: toggling LOOP_MEMORY_RULES_ENABLED between boots records a period boundary for ACE-001 (and every experiment it alters)', () => {
+  const t = (d: string) => Date.parse(`2026-10-${d}T06:00:00Z`);
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'true', ACE_001_MODE: 'on' }, t('20'))).toEqual([]); // first boot: nothing to compare
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'true', ACE_001_MODE: 'on' }, t('21'))).toEqual([]); // unchanged
+  const rows = recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'false', ACE_001_MODE: 'on' }, t('27'));
+  expect(rows.map((r) => r.experiment_id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2']);
+  expect(rows[0]).toEqual({ experiment_id: 'ACE-001', env_name: 'LOOP_MEMORY_RULES_ENABLED', previous: 'true', current: 'false', at: '2026-10-27T06:00:00.000Z' });
+  const report = experimentsReport(db, {}, t('28'));
+  expect(report.experiments.find((e) => e.id === 'ACE-001')?.period_boundaries).toEqual([{ at: '2026-10-27T06:00:00.000Z', env: 'LOOP_MEMORY_RULES_ENABLED', from: 'true', to: 'false' }]);
+  expect(report.experiments.find((e) => e.id === 'PL-001')?.period_boundaries).toEqual([]);
+  // the evolution-evidence experiments section carries the same boundaries
+  expect(buildEvolutionEvidence(db, {}, t('28')).experiments.experiments.find((e) => e.id === 'F2')?.period_boundaries).toHaveLength(1);
+  // the next boot with the same env adds nothing; unsetting a flag is a change too
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'false', ACE_001_MODE: 'on' }, t('28'))).toEqual([]);
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'false' }, t('29'))).toEqual([
+    { experiment_id: 'ACE-001', env_name: 'ACE_001_MODE', previous: 'on', current: null, at: '2026-10-29T06:00:00.000Z' }]);
 });

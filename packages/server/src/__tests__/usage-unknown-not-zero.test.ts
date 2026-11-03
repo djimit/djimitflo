@@ -6,7 +6,7 @@ import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { ace001Evidence } from '../services/ace-001';
 import { callCost, modelEvidence, recordModelCall } from '../services/model-selector';
-import { LoopBudgetService } from '../services/loop-budget-service';
+import { LoopBudgetService, modelPrice, modelPriceEntry } from '../services/loop-budget-service';
 
 // Forensic audit 2026-10-26: L-F04 (partial/fallback prices), L-F05 (missing usage → 0), CODE-007 (economy dollars without a dated price).
 let db: Database.Database;
@@ -16,10 +16,10 @@ afterEach(() => db.close());
 describe('L-F05: missing tokens or duration never improve efficiency or an arm mean', () => {
   it('a 0-token / 0-duration outcome (missing usage coalesced to 0) does not raise skill efficiency; coverage is reported', () => {
     const engine = new SkillEvolutionEngine(db);
-    engine.recordOutcome('s', { success: true, tokensUsed: 4000, durationMs: 60_000, domain: 'fleet' });
+    engine.recordOutcome('s', { success: true, tokensUsed: 4000, durationMs: 60_000, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] });
     expect(engine.measuredTraits('s').efficiency).toBe(0.25);
-    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet' }); // producer sent no usage
-    engine.recordOutcome('s', { success: true, tokensUsed: null, durationMs: 0, domain: 'fleet' });
+    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] }); // producer sent no usage
+    engine.recordOutcome('s', { success: true, tokensUsed: null, durationMs: 0, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] });
     const t = engine.measuredTraits('s');
     expect(t.efficiency).toBe(0.25); // was (0.25 + 1) / 2 = 0.625: the missing report scored maximal efficiency
     expect(t.reliability).toBe(1); // the outcomes still count as outcomes
@@ -28,7 +28,7 @@ describe('L-F05: missing tokens or duration never improve efficiency or an arm m
 
   it('only missing usage gives efficiency null, never 1', () => {
     const engine = new SkillEvolutionEngine(db);
-    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet' });
+    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] });
     expect(engine.measuredTraits('s')).toMatchObject({ efficiency: null, efficiency_coverage: { known: 0, total: 1 } });
   });
 
@@ -143,5 +143,17 @@ describe('CODE-007: run economy dollars come only from a dated model price', () 
   it('a cost without a price_version is not a dated price', () => {
     run('r-undated'); lease('m1', 'r-undated', 'opencode', { runtime_usage: { total_tokens: 1100 }, token_accounting: { ...priced(0.5), price_version: null } });
     expect(new LoopBudgetService(db, {} as never).computeEfficiencyMetric('r-undated').dollarsSpent).toBeNull();
+  });
+});
+
+// E-assumptions A4/C13 (re-20261030): an LLM_PRICE_PER_MTOK entry without an output price was read as output 0
+// (loop-budget-service.ts:127) — a price invented as free. A missing side is no price; an explicit 0 stays 0.
+describe('C13: a missing output price is no price, never 0', () => {
+  it('model=in (no output) and model=in/ are unpriced; model=in/0 is an explicit free output', () => {
+    expect(modelPrice('m', { LLM_PRICE_PER_MTOK: 'm=2' })).toBeNull();
+    expect(modelPrice('m', { LLM_PRICE_PER_MTOK: 'm=2/' })).toBeNull();
+    expect(modelPriceEntry('m', { LLM_PRICE_PER_MTOK: 'm=2/abc' })).toBeNull();
+    expect(modelPrice('m', { LLM_PRICE_PER_MTOK: 'm=2/0' })).toEqual({ input: 2, output: 0 });
+    expect(modelPrice('m', { LLM_PRICE_PER_MTOK: 'other=1/1,m=2/10' })).toEqual({ input: 2, output: 10 });
   });
 });
