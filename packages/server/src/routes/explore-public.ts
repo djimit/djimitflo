@@ -9,6 +9,7 @@ import { ExplorePublicPageService } from "../services/explore-public-page-servic
 import { ExploreOpenGraphService } from "../services/explore-opengraph-service";
 import { OpenMythosEvalService } from "../services/openmythos-eval-service";
 import { securityHeaders } from "../middleware/security-headers";
+import { param } from "./params";
 
 const OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
@@ -31,7 +32,8 @@ export function createExplorePublicRoutes(db: Database): Router {
 
   // GET /explore/:owner/:repo — public explainer page
   router.get("/:owner/:repo", publicPageLimiter, (req, res) => {
-    const { owner, repo } = req.params;
+    const owner = param(req, "owner");
+    const repo = param(req, "repo");
     if (!validRepositoryPath(owner, repo)) {
       res.status(400).type("text/plain").send("Invalid repository path.");
       return;
@@ -49,7 +51,8 @@ export function createExplorePublicRoutes(db: Database): Router {
 
   // GET /explore/:owner/:repo/llms.txt — plain text knowledge pack
   router.get("/:owner/:repo/llms.txt", publicPageLimiter, (req, res) => {
-    const { owner, repo } = req.params;
+    const owner = param(req, "owner");
+    const repo = param(req, "repo");
     if (!validRepositoryPath(owner, repo)) {
       res.status(400).type("text/plain").send("Invalid repository path.");
       return;
@@ -65,7 +68,8 @@ export function createExplorePublicRoutes(db: Database): Router {
 
   // GET /explore/:owner/:repo/opengraph.svg — shareable card
   router.get("/:owner/:repo/opengraph.svg", publicPageLimiter, (req, res) => {
-    const { owner, repo } = req.params;
+    const owner = param(req, "owner");
+    const repo = param(req, "repo");
     if (!validRepositoryPath(owner, repo)) {
       res.status(400).type("text/plain").send("Invalid repository path.");
       return;
@@ -97,7 +101,8 @@ export function createExplorePublicRoutes(db: Database): Router {
 
   // GET /explore/:owner/:repo/badge.svg — README embed widget
   router.get("/:owner/:repo/badge.svg", publicPageLimiter, (req, res) => {
-    const { owner, repo } = req.params;
+    const owner = param(req, "owner");
+    const repo = param(req, "repo");
     if (!validRepositoryPath(owner, repo)) {
       res.status(400).type("text/plain").send("Invalid repository path.");
       return;
