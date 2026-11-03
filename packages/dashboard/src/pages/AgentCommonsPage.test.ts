@@ -187,3 +187,10 @@ it('AC-10: renders the recorded reason on the message, links a duplicate, and sa
   expect(unknown).toContain('Proposal reason unknown');
   expect(unknown).not.toContain('disabled by policy');
 });
+
+it('UX-28: the split-out agent list labels presence in English and lists every agent', async () => {
+  const { AgentList } = await import('./agent-commons/AgentList');
+  const html = renderToStaticMarkup(createElement(AgentList, { agents: [agents[0], { ...agents[1], capabilities: ['research'] }], focusAgent: null, onFocus: () => undefined }));
+  for (const text of ['>A<', '>B<', '>codex<', '>silent<', '>research<']) expect(html).toContain(text);
+  expect(renderToStaticMarkup(createElement(AgentList, { agents: [{ ...agents[0], runtime: null }], focusAgent: null, onFocus: () => undefined }))).toContain('>present<');
+});

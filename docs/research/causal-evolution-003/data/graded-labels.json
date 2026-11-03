@@ -1,0 +1,1596 @@
+{
+ "source": "probes/p1-graded-labels.js, prod 2026-10-22T20:19Z, build 5dfc6cdb; one row per loop run (deciding completed maker lease with metadata.graded.score); same population as settlement-execution.ts gradedVsLabels",
+ "selection_into_graded": {
+  "exports|none|verified": 20,
+  "exports|none|regressed": 21,
+  "mutation|none|regressed": 27,
+  "mutation|none|infra_failed": 15,
+  "mutation|none|verified": 11,
+  "exports|graded|verified": 57,
+  "test-gap|none|verified": 8,
+  "mutation|graded|verified": 25,
+  "exports|none|infra_failed": 8,
+  "exports|graded|regressed": 9,
+  "exports|skip:baseline red|verified": 2,
+  "test-gap|graded|verified": 3,
+  "mutation|none|no_change": 5,
+  "test-gap|none|regressed": 2,
+  "exports|none|needs_more_evidence": 1
+ },
+ "flags": {
+  "GRADED_FITNESS_MODE": "shadow",
+  "GRADED_CONTEST_MODE": "shadow",
+  "WEAK_ASSERTION_CHECK_MODE": "shadow",
+  "SETTLEMENT_EXECUTION_MODE": "shadow",
+  "LOOP_DAEMON_CHECK_SCRIPTS": "test:changed,lint,type-check,test:mutation:grounded",
+  "LOOP_BANDIT_SPECIES": "opencode,remote@workstation/atomic@llama-router",
+  "LOOP_BANDIT_MAX_SHARE": "0.8",
+  "GENOME_APPLY_MODE": null,
+  "LOOP_AUTO_MERGE_MODE": null,
+  "MEMORY_HOLDOUT_RATE": "0.3"
+ },
+ "rows": [
+  {
+   "run": "f6b3d1e5",
+   "created": "2026-10-09T13:08:54.226Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 68,
+   "species": "opencode",
+   "assertion_strength_shadow": null,
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "4d0a3c95",
+   "created": "2026-10-09T18:22:11.818Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 155,
+   "species": "opencode",
+   "assertion_strength_shadow": null,
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "0329bf0c",
+   "created": "2026-10-09T21:32:54.917Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 92,
+   "species": "opencode",
+   "assertion_strength_shadow": null,
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "48d7ae17",
+   "created": "2026-10-10T10:02:40.922Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 1,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 42,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "7fa4a014",
+   "created": "2026-10-10T13:47:50.967Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 39,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "7119bd88",
+   "created": "2026-10-10T13:47:44.665Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 57,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "f5679cf2",
+   "created": "2026-10-10T17:13:08.465Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.968,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 36,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "764fadd1",
+   "created": "2026-10-10T19:23:52.493Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 162,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "f87cd5a8",
+   "created": "2026-10-10T19:24:12.744Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 53,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "40e931ce",
+   "created": "2026-10-10T19:23:59.494Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 59,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "43e26cfe",
+   "created": "2026-10-11T03:08:33.682Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 116,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "602a4365",
+   "created": "2026-10-11T03:08:41.287Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 76,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "75b93d7d",
+   "created": "2026-10-12T16:54:08.635Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 134,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "4c000ee2",
+   "created": "2026-10-12T16:54:15.250Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.849,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 188,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "b1ac5b20",
+   "created": "2026-10-12T17:44:12.614Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.667,
+   "killed": 2,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 180,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "4eb398f7",
+   "created": "2026-10-12T17:47:13.134Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 63,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "680082e6",
+   "created": "2026-10-12T18:57:47.827Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 98,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "96c3a57d",
+   "created": "2026-10-12T18:57:41.254Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 54,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "a72bc908",
+   "created": "2026-10-12T18:57:54.026Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.918,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 78,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "a4c792b9",
+   "created": "2026-10-13T18:02:03.572Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "regressed",
+   "rstatus": "blocked",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:insufficient_evidence"
+   ],
+   "diff_lines": 69,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "a8f53a5a",
+   "created": "2026-10-13T18:05:46.072Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 122,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "1a143b26",
+   "created": "2026-10-13T18:07:35.571Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.774,
+   "killed": null,
+   "total": null,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 221,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "8e7a1d6f",
+   "created": "2026-10-13T18:02:10.662Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 120,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "84b2088c",
+   "created": "2026-10-13T19:01:59.503Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 1,
+   "killed": 3,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 79,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "81ecceb2",
+   "created": "2026-10-13T19:02:05.645Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 64,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "a406a477",
+   "created": "2026-10-13T19:01:53.130Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 45,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "c34e9354",
+   "created": "2026-10-13T22:28:52.005Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.837,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 97,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "f98c2388",
+   "created": "2026-10-13T23:01:26.896Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.945,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 283,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "091c9540",
+   "created": "2026-10-14T00:19:01.756Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 1,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 59,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "69785628",
+   "created": "2026-10-14T01:06:18.536Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.88,
+   "killed": null,
+   "total": null,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 268,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "7905c499",
+   "created": "2026-10-14T19:35:46.465Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "regressed",
+   "rstatus": "blocked",
+   "checkers": [
+    "checker:completed:insufficient_evidence",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 55,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "72dfb04f",
+   "created": "2026-10-14T19:36:42.583Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 144,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "dc007c3b",
+   "created": "2026-10-14T19:37:19.476Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 141,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "6e89a509",
+   "created": "2026-10-14T20:19:12.867Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.667,
+   "killed": 2,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 133,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "be76da3d",
+   "created": "2026-10-14T22:42:49.510Z",
+   "lane": "test-gap",
+   "kind": "mutant_kill",
+   "score": 0.667,
+   "killed": 2,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 136,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "3dabe91f",
+   "created": "2026-10-14T22:44:22.361Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "regressed",
+   "rstatus": "blocked",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:insufficient_evidence"
+   ],
+   "diff_lines": 76,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "a5b5c56c",
+   "created": "2026-10-14T23:51:36.637Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.955,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 242,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "054a3e32",
+   "created": "2026-10-15T06:49:13.123Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.947,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 101,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "8a5a87aa",
+   "created": "2026-10-15T19:34:29.337Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 91,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "cdc159b5",
+   "created": "2026-10-15T19:34:36.357Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 108,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "47d2c63e",
+   "created": "2026-10-15T19:36:05.675Z",
+   "lane": "test-gap",
+   "kind": "mutant_kill",
+   "score": 1,
+   "killed": 1,
+   "total": 1,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 90,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "68399c16",
+   "created": "2026-10-15T20:49:29.531Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 147,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "57b611fe",
+   "created": "2026-10-15T20:49:57.945Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 127,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "e25a1cc8",
+   "created": "2026-10-15T20:49:44.121Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.667,
+   "killed": 2,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 176,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "6bb89464",
+   "created": "2026-10-16T00:00:27.070Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 125,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "22342bad",
+   "created": "2026-10-16T00:00:20.265Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 219,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "8f0ea68e",
+   "created": "2026-10-16T00:00:42.664Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 1,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 60,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "66744f94",
+   "created": "2026-10-16T05:50:17.157Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.859,
+   "killed": null,
+   "total": null,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 227,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "4d5798ba",
+   "created": "2026-10-16T21:52:12.133Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.667,
+   "killed": 2,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "regressed",
+   "rstatus": "blocked",
+   "checkers": [
+    "checker:completed:insufficient_evidence",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 187,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "e9600e91",
+   "created": "2026-10-16T21:52:40.662Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 165,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "827a2c01",
+   "created": "2026-10-16T21:54:56.292Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.667,
+   "killed": 2,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 148,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "2d6ec59e",
+   "created": "2026-10-17T14:00:34.319Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 1,
+   "killed": 3,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 75,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "175b3ee3",
+   "created": "2026-10-17T14:00:18.651Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 84,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "a003e4dd",
+   "created": "2026-10-17T14:00:48.535Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 148,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "83f0ff57",
+   "created": "2026-10-18T04:48:14.446Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 115,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "6f77e7ec",
+   "created": "2026-10-18T04:50:51.720Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 66,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "e8ecd6de",
+   "created": "2026-10-18T14:01:00.676Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "regressed",
+   "rstatus": "blocked",
+   "checkers": [
+    "checker:failed:insufficient_evidence",
+    "security_checker:failed:insufficient_evidence",
+    "checker:failed:insufficient_evidence"
+   ],
+   "diff_lines": 51,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "0338a286",
+   "created": "2026-10-18T14:05:22.477Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "regressed",
+   "rstatus": "blocked",
+   "checkers": [
+    "checker:failed:insufficient_evidence",
+    "security_checker:failed:insufficient_evidence",
+    "checker:failed:insufficient_evidence"
+   ],
+   "diff_lines": 106,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "d6596f2c",
+   "created": "2026-10-18T20:25:06.709Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.698,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 156,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "533f57db",
+   "created": "2026-10-19T05:31:16.455Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.802,
+   "killed": null,
+   "total": null,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 224,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "e20880c4",
+   "created": "2026-10-19T19:04:20.163Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 1,
+   "killed": 2,
+   "total": 2,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 56,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "2b1a8676",
+   "created": "2026-10-19T19:05:27.386Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 50,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "3cddbd32",
+   "created": "2026-10-19T19:12:32.173Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.824,
+   "killed": null,
+   "total": null,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 136,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "e5c7718d",
+   "created": "2026-10-19T22:23:31.962Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 42,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "55e836ca",
+   "created": "2026-10-19T22:24:09.855Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 97,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "99ba099f",
+   "created": "2026-10-19T22:24:56.506Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 1,
+   "killed": null,
+   "total": null,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 15,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "aa171ecb",
+   "created": "2026-10-19T23:28:23.561Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.667,
+   "killed": 2,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "regressed",
+   "rstatus": "blocked",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:failed:null"
+   ],
+   "diff_lines": 140,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "88525ca7",
+   "created": "2026-10-19T23:28:39.687Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 141,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "cd858975",
+   "created": "2026-10-20T14:25:56.627Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 1,
+   "killed": 3,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 94,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "2492a3bf",
+   "created": "2026-10-20T22:06:22.397Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 116,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "ed5e5578",
+   "created": "2026-10-20T23:21:27.919Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.912,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 251,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "e92cec15",
+   "created": "2026-10-21T05:06:20.156Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.838,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 186,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "16ffcee2",
+   "created": "2026-10-21T11:11:54.367Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.815,
+   "killed": null,
+   "total": null,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 153,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "b758387b",
+   "created": "2026-10-21T16:46:51.595Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "remote",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 192,
+   "species": "remote-atomic",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "98cb6b0d",
+   "created": "2026-10-21T18:04:07.620Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0.333,
+   "killed": 1,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 148,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "f565c77b",
+   "created": "2026-10-21T22:34:37.526Z",
+   "lane": "mutation",
+   "kind": "mutation_score",
+   "score": 0.851,
+   "killed": null,
+   "total": null,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 258,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "4cc3526b",
+   "created": "2026-10-22T00:00:04.217Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 55,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  },
+  {
+   "run": "3bed48b5",
+   "created": "2026-10-21T23:59:56.491Z",
+   "lane": "exports",
+   "kind": "mutant_kill",
+   "score": 0,
+   "killed": 0,
+   "total": 3,
+   "runtime": "opencode",
+   "sstatus": "verified",
+   "rstatus": "completed",
+   "checkers": [
+    "checker:completed:accepted",
+    "security_checker:completed:accepted"
+   ],
+   "diff_lines": 95,
+   "species": "opencode",
+   "assertion_strength_shadow": "pass",
+   "mutation_grounded_check": "pass"
+  }
+ ]
+}

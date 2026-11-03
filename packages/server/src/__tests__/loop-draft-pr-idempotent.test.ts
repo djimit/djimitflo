@@ -99,7 +99,8 @@ it('PRC-1: a closed PR for the branch is never adopted and no new PR is opened �
   expect((db.prepare("SELECT message FROM loop_events WHERE event_type = 'draft_pr_failed' ORDER BY created_at").all() as Array<{ message: string }>).map((e) => e.message).at(-1)).toBe('Draft PR not opened: closed_pr_exists');
   expect(count('draft_pr_failed')).toBe(2); // counts toward the 3-failure stop
   const on422 = github({ existing: [{ html_url: 'https://github.com/o/r/pull/47', number: 47, state: 'closed' }], post: { status: 422 } });
-  db.prepare("DELETE FROM loop_events").run(); db.prepare("UPDATE loop_runs SET metadata='{}' WHERE id='run-1'").run(); git(wt, 'reset', '-q', 'HEAD~1'); // first attempt again: POST → 422 → only a closed match
+  db.prepare("DELETE FROM loop_events").run(); db.prepare("UPDATE loop_runs SET metadata='{}' WHERE id='run-1'").run(); git(wt, 'reset', '-q', 'HEAD~1'); git(remote, 'branch', '-D', 'agent/loop/run-1'); // first attempt again: POST → 422 → only a closed match
+  // the remote branch goes too: a re-commit in the next second has a new sha, and pushing it over the old branch would be rejected (flaky in CI)
   expect(await new LoopDraftPrService(db, on422 as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
   expect(db.prepare("SELECT message FROM loop_events WHERE event_type = 'draft_pr_failed'").all()).toEqual([{ message: 'Draft PR not opened: closed_pr_exists' }]);
   expect(meta().pr_url).toBeUndefined();

@@ -163,9 +163,12 @@ export class ExecutableSkills {
       const manifest = skill.metadata.manifest as Record<string, unknown> | undefined;
       return JSON.stringify(['disallowed-tools', 'disallowed_tools', 'denied_tools', 'forbidden_tools'].map(key => [skill.metadata[key], manifest?.[key]]));
     };
-    if (p.skill.tools.some(tool => !pkg.skill.tools.includes(tool) || !record.allowed_actions.includes(tool) || record.forbidden_actions.includes(tool))
+    if (p.skill.tools.some(tool => !pkg.skill.tools.includes(tool) || record.forbidden_actions.includes(tool))
       || denies(p.skill) !== denies(pkg.skill)) throw new Error('SKILL_PARENT_SCOPE_EXCEEDED');
-    return record;
+    // The registry's one derived-capability rule (OMEGA slice 4): never more allowed actions than the exact parent version.
+    const parentVersion = `${record.id}@${record.version}`;
+    new SwarmIntelligenceService(this.db).assertWithinParents(p.skill.tools, [parentVersion]);
+    return { record, parentVersion };
   }
 
   /** Harvest the package made by a completed task; independent verification must already exist. No self-approval. */
@@ -194,10 +197,10 @@ export class ExecutableSkills {
       }
       return registry.createCandidate({ id: capabilityId, kind: 'skill', owner: actor, version: p.contract.version,
         risk_ceiling: 'medium', input_schema_ref: `${capabilityId}#input`, output_schema_ref: `${capabilityId}#output`,
-        allowed_actions: p.skill.tools, forbidden_actions: [...new Set(['change_security_gates', 'self_approve', 'merge', 'deploy', ...(parent?.forbidden_actions ?? [])])],
+        allowed_actions: p.skill.tools, forbidden_actions: [...new Set(['change_security_gates', 'self_approve', 'merge', 'deploy', ...(parent?.record.forbidden_actions ?? [])])],
         required_evidence: [`task:${taskId}`, `evidence:${verification.id}`, `package:${p.contentHash}`],
         removal_strategy: 'Retire this exact capability version through the existing registry; retain prior version and evidence for rollback.',
-        metadata: { ...(p.contract.parent ? { parent: p.contract.parent } : {}), executable_skill: p.contract, package_hash: p.contentHash, source_task_id: taskId,
+        metadata: { ...(parent ? { parent_versions: [parent.parentVersion] } : {}), executable_skill: p.contract, package_hash: p.contentHash, source_task_id: taskId,
           agent_skill_id: id, agent_skill_version: p.skill.version, agent_skill_content_hash: p.skill.contentHash },
       });
     }).immediate();

@@ -571,7 +571,11 @@ describe('explicit bounded parent variation', () => {
     expect(goal.metadata.skill_factory_parent).toEqual(parent);
     const child = variationReceipt(parent); const result = service.capture(child.id,child.taskId,'fixture-owner');
     expect(result.status).toBe('candidate'); expect(result.live_route_allowed).toBe(false);
-    expect(result.metadata.parent).toEqual(parent);
+    // Lineage uses the registry's one mechanism (metadata.parent_versions); the content-hash pin stays in the contract.
+    const parentRecord = new SwarmIntelligenceService(db).getCapability(parent.capability_id);
+    expect(result.metadata.parent_versions).toEqual([`${parentRecord.id}@${parentRecord.version}`]);
+    expect((result.metadata.executable_skill as { parent?: unknown }).parent).toEqual(parent);
+    expect(result.metadata).not.toHaveProperty('parent');
     const repeated = service.request('increment-number','Improve','fixture-owner',undefined,parent);
     expect(repeated.status === 'implementation_required' && repeated.goal_id).toBe(first.goal_id);
   });
@@ -597,6 +601,11 @@ describe('explicit bounded parent variation', () => {
     expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_CONTRACT_MISMATCH');
     altered.contract={...child.p.contract,input:{type:'object',properties:{other:'number'},required:['other']}};
     expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_CONTRACT_MISMATCH');
+  });
+  it('enforces the parent version allowed actions through the registry lineage rule', () => {
+    const parent = parentFixture(); const child = variationReceipt(parent);
+    db.prepare("UPDATE swarm_capabilities SET allowed_actions_json='[\"Read\"]' WHERE id=?").run(parent.capability_id);
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('CAPABILITY_ACTIONS_EXCEED_PARENT');
   });
   it('rejects relaxed deny declarations and equal versions; preserves canonical forbidden actions', () => {
     const parent = parentFixture();

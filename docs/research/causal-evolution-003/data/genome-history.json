@@ -1,0 +1,329 @@
+{
+ "source": "probes/p2-genomes-gym.js + p3-gym-walltime.js, prod 2026-10-22T20:21Z. Outcome counts of the two open epoch-1 trial genomes and of the epoch-1 parent are deliberately NOT included (registered readout, EPOCH1-TRIAL-PREREG.md).",
+ "genomes": [
+  {
+   "id": "baseline",
+   "parent_id": null,
+   "gene": "baseline",
+   "origin": "baseline",
+   "status": "active",
+   "created_at": "2026-10-01T06:08:41.547Z",
+   "nlines": 0,
+   "note": "today's assignment without extra strategy lines"
+  },
+  {
+   "id": "g-66888bad",
+   "parent_id": "baseline",
+   "gene": "anti_pattern",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-01T06:08:41.547Z",
+   "nlines": 3,
+   "note": "holdout 15/20 vs parent 15/20; discordant 0 vs 0, McNemar p=1.000; out of scope 1 vs 1"
+  },
+  {
+   "id": "g-bd95355c",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-01T06:08:41.547Z",
+   "nlines": 3,
+   "note": "holdout 14/20 vs parent 15/20; discordant 1 vs 2, McNemar p=0.875; out of scope 1 vs 1"
+  },
+  {
+   "id": "g-deee9593",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-01T06:08:41.547Z",
+   "nlines": 3,
+   "note": "holdout 14/20 vs parent 15/20; discordant 0 vs 1, McNemar p=1.000; out of scope 1 vs 1"
+  },
+  {
+   "id": "g-e32039ea",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-02T11:04:41.292Z",
+   "nlines": 4,
+   "note": "holdout 15/20 vs parent 15/20; discordant 0 vs 0, McNemar p=1.000; out of scope 1 vs 1"
+  },
+  {
+   "id": "g-e4170670",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-03T00:10:18.374Z",
+   "nlines": 3,
+   "note": "holdout 31/40 vs parent 32/40; mutant discordant 0 vs 1, McNemar p=1.000; mined discordant 1 vs 1; out of scope 0 vs 1"
+  },
+  {
+   "id": "g-edd57f1f",
+   "parent_id": "baseline",
+   "gene": "anti_pattern",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-03T00:10:18.374Z",
+   "nlines": 1,
+   "note": "holdout 30/40 vs parent 32/40; mutant discordant 0 vs 0, McNemar p=1.000; mined discordant 0 vs 2; out of scope 1 vs 1"
+  },
+  {
+   "id": "g-6f5afad2",
+   "parent_id": "baseline",
+   "gene": "anti_pattern",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-04T11:05:14.799Z",
+   "nlines": 4,
+   "note": "holdout 33/40 vs parent 32/40; mutant discordant 0 vs 0, McNemar p=1.000; mined discordant 1 vs 0; out of scope 0 vs 1"
+  },
+  {
+   "id": "g-2bb23f56",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-04T11:05:14.799Z",
+   "nlines": 4,
+   "note": "holdout 33/40 vs parent 32/40; mutant discordant 0 vs 0, McNemar p=1.000; mined discordant 2 vs 1; out of scope 0 vs 1"
+  },
+  {
+   "id": "g-a030e6dc",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-04T11:05:14.799Z",
+   "nlines": 4,
+   "note": "holdout 31/40 vs parent 32/40; mutant discordant 0 vs 0, McNemar p=1.000; mined discordant 1 vs 2; out of scope 0 vs 1"
+  },
+  {
+   "id": "g-e1df1dbe",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "retired",
+   "created_at": "2026-10-06T14:12:18.992Z",
+   "nlines": 4,
+   "note": "holdout 33/40 vs parent 32/40; mutant discordant 0 vs 0, McNemar p=1.000; mined discordant 2 vs 1; out of scope 0 vs 1"
+  },
+  {
+   "id": "g-a0e2b254",
+   "parent_id": "baseline",
+   "gene": "anti_pattern",
+   "origin": "dream",
+   "status": "inconclusive",
+   "created_at": "2026-10-06T14:12:18.992Z",
+   "nlines": 3,
+   "note": "no_headroom: parent fails 3 of 20; \u2265 5 needed for any significant win"
+  },
+  {
+   "id": "g-df8443b9",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "inconclusive",
+   "created_at": "2026-10-06T14:12:18.992Z",
+   "nlines": 3,
+   "note": "no_headroom: parent fails 3 of 20; \u2265 5 needed for any significant win"
+  },
+  {
+   "id": "g-d0ed987c",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "inconclusive",
+   "created_at": "2026-10-07T12:25:09.430Z",
+   "nlines": 3,
+   "note": "no_headroom: parent fails 3 of 20; \u2265 5 needed for any significant win"
+  },
+  {
+   "id": "g-fbc9cabf",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "inconclusive",
+   "created_at": "2026-10-08T00:24:08.449Z",
+   "nlines": 5,
+   "note": "no_headroom: parent fails 3 of 20; \u2265 5 needed for any significant win"
+  },
+  {
+   "id": "g-4bfea50b",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "inconclusive",
+   "created_at": "2026-10-09T00:57:05.477Z",
+   "nlines": 5,
+   "note": "no_headroom: parent fails 3 of 20; \u2265 5 needed for any significant win"
+  },
+  {
+   "id": "g-6e0237af",
+   "parent_id": "baseline",
+   "gene": "anti_pattern",
+   "origin": "dream",
+   "status": "inconclusive",
+   "created_at": "2026-10-09T00:57:05.477Z",
+   "nlines": 1,
+   "note": "no_headroom: parent fails 3 of 20; \u2265 5 needed for any significant win"
+  },
+  {
+   "id": "g-a187f81f",
+   "parent_id": "baseline",
+   "gene": "strategy_lines",
+   "origin": "dream",
+   "status": "trial",
+   "created_at": "2026-10-16T23:50:32.546Z",
+   "nlines": 2,
+   "note": "Successful cards consistently show small, localized changes in a single test file, suggesting that conservative pattern-matching reduces inc"
+  },
+  {
+   "id": "g-d14c1156",
+   "parent_id": "baseline",
+   "gene": "playbook",
+   "origin": "dream",
+   "status": "trial",
+   "created_at": "2026-10-16T23:50:32.546Z",
+   "nlines": 4,
+   "note": "lane playbook doc-drift-and-small-fix-loop sha256 60ff6c89873bc231d391cc82ab9d5882ff32aa509ba61b37910ee3e2dc5d361e"
+  }
+ ],
+ "trial_diagnostics": [
+  {
+   "trial_id": "g-a030e6dc",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 1,
+   "mined_c": 2,
+   "state": "blind",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-06T14:12:18.948Z"
+  },
+  {
+   "trial_id": "g-a0e2b254",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 0,
+   "mined_c": 0,
+   "state": "no_headroom",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-07T12:25:09.312Z"
+  },
+  {
+   "trial_id": "g-df8443b9",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 0,
+   "mined_c": 0,
+   "state": "no_headroom",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-07T12:25:09.312Z"
+  },
+  {
+   "trial_id": "g-e1df1dbe",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 2,
+   "mined_c": 1,
+   "state": "blind",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-07T12:25:09.379Z"
+  },
+  {
+   "trial_id": "g-d0ed987c",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 0,
+   "mined_c": 0,
+   "state": "no_headroom",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-07T13:25:09.441Z"
+  },
+  {
+   "trial_id": "g-fbc9cabf",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 0,
+   "mined_c": 0,
+   "state": "no_headroom",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-08T00:27:37.653Z"
+  },
+  {
+   "trial_id": "g-4bfea50b",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 0,
+   "mined_c": 0,
+   "state": "no_headroom",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-09T01:06:09.648Z"
+  },
+  {
+   "trial_id": "g-6e0237af",
+   "epoch": 0,
+   "tier_set": "2,3",
+   "deciding_n": 20,
+   "f_parent_failures": 3,
+   "b": 0,
+   "c": 0,
+   "mined_b": 0,
+   "mined_c": 0,
+   "state": "no_headroom",
+   "power_q8_l05": 0,
+   "recorded_at": "2026-10-09T01:06:09.648Z"
+  }
+ ],
+ "gym_walltime": [
+  {
+   "k": "non-trial",
+   "n": 530,
+   "h": 224.31937465444207,
+   "avg_min": 1.058110257803972
+  },
+  {
+   "k": "trial",
+   "n": 415,
+   "h": 50.4717094860971,
+   "avg_min": 0.3040464426873319
+  }
+ ],
+ "gym_trial_attempts_before_2026_10_16": [
+  {
+   "n": 379,
+   "h": 45.319175619632006
+  }
+ ]
+}

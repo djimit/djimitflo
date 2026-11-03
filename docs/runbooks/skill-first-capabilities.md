@@ -222,7 +222,12 @@ The parent must be live and hash-matched. The normal prepare/advance/capture rou
 creates a new immutable version; schemas, dependencies and denied actions remain
 fixed, allowed tools may only narrow. Repeated requests reuse the active parent-bound
 goal. Capture requires the owner's canonical factory run, completed maker task and
-independent exact-package receipt. A child never inherits approval.
+independent exact-package receipt. A child never inherits approval. Registry
+lineage is the capability lifecycle's one mechanism (OMEGA slice 4): the candidate
+records `metadata.parent_versions` = `["<parent id>@<parent version>"]` and capture
+runs `assertWithinParents` (`CAPABILITY_ACTIONS_EXCEED_PARENT`); the exact parent
+content hash stays in the contract's `parent`. Versions are immutable through
+`registerCapability` (`CAPABILITY_IMMUTABLE`).
 
 ## Executable provider usage candidate
 
