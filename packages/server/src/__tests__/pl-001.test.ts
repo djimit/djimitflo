@@ -399,7 +399,8 @@ it('off mode is identical: PL_001_MODE unset, off, or on without a procedure_lin
       const c = svc.claim('workstation', [SPECIES], new Date('2026-10-26T12:00:00.000Z'), { capabilities: caps }) as Claim;
       const row = d.prepare('SELECT loop_name, mode, status, metadata, created_at FROM loop_runs').all();
       const pl = d.prepare('SELECT (SELECT COUNT(*) FROM pl_experiments) + (SELECT COUNT(*) FROM pl_attempts) AS n').get();
-      return { c: JSON.stringify({ ...c, runId: 'x' }), row: JSON.stringify(row), pl };
+      // the run id is random per claim; it also appears as gym.gate_policy.attempt_id (gym-gate-policy binding)
+      return { c: JSON.stringify({ ...c, runId: 'x' }), row: JSON.stringify(row).split(c.runId).join('x'), pl };
     } finally { d.close(); }
   };
   const unset = run(null, CAPS.capabilities);

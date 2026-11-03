@@ -41,6 +41,7 @@ import type { ForecasterScoreV2 } from './forecast-scoring';
 import { extraRepos } from './repo-registry';
 import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
+import { activeGatePolicyInput, currentPolicyIdentity, gatePolicyClause, policyKey, requireGatePolicyHash } from './gym-gate-policy';
 import { experimentsReport } from './experiment-registry';
 import { learningLedger } from './learning-ledger';
 import { fleetSignatureEvidence } from './fleet-event-signatures';
@@ -347,7 +348,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   // success (proxy) vs how often the production checks + lane diff limit agreed. A gated run carries gym_result.prod_gates
   // exactly when its proxy oracle succeeded (the worker runs the gates only then).
   const gateRuns = `FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.prod_gates') = 1
-    AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') AND created_at >= ?`;
+    AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') AND created_at >= ?${gatePolicyClause(activeGatePolicyInput(env), env)}`;
   const gym_prod_gates = {
     by_kind: all<{ kind: string; scored: number; proxy_success: number; prod_gate_success: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.kind') = 'write_test' THEN 'write_test'
         WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind, COUNT(*) AS scored,
@@ -356,7 +357,15 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       ${gateRuns} GROUP BY 1 ORDER BY 1`, since)
       .map((r) => ({ ...r, proxy_rate: r.scored ? +(r.proxy_success / r.scored).toFixed(3) : null, prod_gate_rate: r.scored ? +(r.prod_gate_success / r.scored).toFixed(3) : null })),
     failed_checks: all<{ check: string; n: number }>(`SELECT g.key AS "check", COUNT(*) AS n FROM loop_runs r, json_each(json_extract(r.metadata, '$.gym_result.prod_gates')) g
-      WHERE r.loop_name = 'evolution-gym' AND json_extract(r.metadata, '$.gym.prod_gates') = 1 AND g.value = 'fail' AND r.created_at >= ? GROUP BY 1 ORDER BY n DESC, 1`, since),
+      WHERE r.loop_name = 'evolution-gym' AND json_extract(r.metadata, '$.gym.prod_gates') = 1 AND g.value = 'fail' AND r.created_at >= ?${gatePolicyClause(activeGatePolicyInput(env), env, 'r')} GROUP BY 1 ORDER BY n DESC, 1`, since),
+    // optional gate-policy binding (gym-gate-policy): the current policy identity key, whether eligibility requires it, and
+    // the gated scored attempts per recorded identity ('unrecorded' = claimed before the binding existed; never back-filled)
+    gate_policy: { current: policyKey(currentPolicyIdentity(activeGatePolicyInput(env), env)), required: requireGatePolicyHash(env),
+      by_identity: all<{ identity: string; n: number }>(`SELECT COALESCE(json_extract(metadata, '$.gym.gate_policy.policy_id') || '/' || json_extract(metadata, '$.gym.gate_policy.policy_version')
+        || '/' || json_extract(metadata, '$.gym.gate_policy.canonicalization_version') || '/' || json_extract(metadata, '$.gym.gate_policy.evaluator_version')
+        || '/' || json_extract(metadata, '$.gym.gate_policy.config_digest'), 'unrecorded') AS identity, COUNT(*) AS n FROM loop_runs
+        WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.prod_gates') = 1 AND json_extract(metadata, '$.gym.canary') IS NULL
+        AND json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') AND created_at >= ? GROUP BY 1 ORDER BY n DESC, 1`, since) },
 
     // SUBSCRIPTION_GYM_SPECIES: claude/codex on flat subscriptions in the local gym — attempts, successes (Wilson), limit hits
     subscription_species: subscriptionGymEvidence(db, since, env),
