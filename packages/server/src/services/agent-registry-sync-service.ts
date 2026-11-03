@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { agentRegistryAuthHeaders } from './fleet-bus-auth';
 
 /**
  * Pull-only mirror of the Djimit agent registry (`AGENT_REGISTRY_URL`, e.g. http://100.86.47.122:8088) into
@@ -23,7 +24,7 @@ export class AgentRegistrySyncService {
     const base = registryUrl();
     if (!base) return { synced: 0, status: 'DISABLED' };
     try {
-      const response = await this.fetchFn(`${base}/agents`, { signal: AbortSignal.timeout(10_000) });
+      const response = await this.fetchFn(`${base}/agents`, { headers: agentRegistryAuthHeaders(), signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error(`registry returned ${response.status}`);
       const list = await response.json();
       if (!Array.isArray(list)) throw new Error('registry did not return a list');

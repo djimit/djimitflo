@@ -22,10 +22,10 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 let seq = 0;
 /** one scored gym attempt; `graded` (when given) lands as a `graded:<x>` evidence ref on its skill outcome, as the gym writes it */
 const gymRun = (commit: string, genomeId: string, ok: boolean, graded?: number, opts: { gated?: boolean; at?: string } = {}) => {
-  const id = `r${seq++}`; const at = opts.at ?? '2026-10-08T11:00:00Z';
+  const id = `r${seq++}`; const at = opts.at ?? '2026-10-08T11:00:00Z'; const gated = opts.gated ?? true; // P0: trial evidence is production-gated unless a test says otherwise
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId, ...(opts.gated ? { prod_gates: 1 } : {}) },
-    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red' } }), at, at);
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId, ...(gated ? { prod_gates: 1 } : {}) },
+    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(gated && ok ? { prod_gates: { lint: 'pass' } } : {}) } }), at, at);
   db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, domain, model, evidence_refs_json, created_at) VALUES (?, 'loop-maker:gym:atomic', ?, 'gym', 'llama-router', ?, ?)")
     .run(`o-${id}`, ok ? 1 : 0, JSON.stringify([`gym:${commit}`, `loop_run:${id}`, ...(graded === undefined ? [] : [`graded:${graded}`, 'graded_kind:mutants_killed'])]), '2026-10-08T11:00:00Z');
 };
@@ -176,14 +176,14 @@ it('WT-HOLDOUT: shadow — under McNemar the write_test scores land in the grade
 it('WT-HOLDOUT headroom (graded): judged on the parent\'s most recent GATED results, not its older ungated passes', () => {
   vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('DREAM_PROMOTION_RULE', 'graded');
   trial('g-gate');
-  commits.forEach((c) => gymRun(c, BASELINE_GENOME, true, 1, { at: '2026-10-08T09:00:00Z' })); // ungated: 20/20, mean 1
+  commits.forEach((c) => gymRun(c, BASELINE_GENOME, true, 1, { gated: false, at: '2026-10-08T09:00:00Z' })); // ungated: 20/20, mean 1
   expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]); // no gated result yet: headroom unknown, the trial runs
   commits.forEach((c, i) => gymRun(c, BASELINE_GENOME, i >= 8, i >= 8 ? 1 : 0, { gated: true, at: '2026-10-08T10:00:00Z' })); // gated: fails 8
-  commits.forEach((c) => gymRun(c, BASELINE_GENOME, true, 1, { at: '2026-10-08T11:00:00Z' })); // a newer ungated pass does not hide them
+  commits.forEach((c) => gymRun(c, BASELINE_GENOME, true, 1, { gated: false, at: '2026-10-08T11:00:00Z' })); // a newer ungated pass does not hide them
   expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]);
   expect(status('g-gate')).toBe('trial');
-  vi.stubEnv('DREAM_PROMOTION_RULE', 'mcnemar'); // other rules: unchanged, the latest result of any kind
-  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-gate', f: 0, n: 20, needed: 5 }]);
+  vi.stubEnv('DREAM_PROMOTION_RULE', 'mcnemar'); // P0 (13-10): every rule reads the gated results — the ungated 20/20 no longer settles it
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]);
 });
 
 it('WT-HOLDOUT headroom (graded): the write_test holdout\'s graded mean decides; < 0.95 is headroom, ≥ 0.95 is not, unscored waits', () => {

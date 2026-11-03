@@ -84,7 +84,7 @@ describe('TG and historical rows', () => {
     new RemoteGymService(db, () => []).record('tg-run', 'workstation', { status: 'success', reason: 'tests green, source only', prod_gates: { lint: 'pass' } });
     const m = meta('tg-run');
     expect(m.gym).toEqual(tgMeta.gym);
-    expect(m.gym_result).toEqual({ status: 'success', reason: 'tests green, source only', prod_gates: { lint: 'pass' } });
+    expect(m.gym_result).toEqual({ status: 'success', reason: 'tests green, source only', tokens: null, prod_gates: { lint: 'pass' } }); // tokens: main's result shape
     expect(attemptGatePolicy(JSON.stringify(m))).toEqual({ status: 'unrecorded' });
   });
   it('a TG-001 claim carries no gate_policy', () => {
