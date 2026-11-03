@@ -6,6 +6,7 @@ import { resetTypesafeBreaker } from '../services/typesafe-client';
 import { discoveryRelevance } from '../services/judgments/discovery-relevance';
 import { FrontierExpertRegistryService } from '../services/frontier-expert-registry-service';
 import { ExpertSourceUnitsService } from '../services/expert-source-units-service';
+import { buildProvenance } from '../services/judgment-provenance';
 
 const ans = (relevance: string, conf: number, actionable: number) => ({ relevance: { type: 'choice', choice: relevance, confidence: conf, probabilities: {} }, actionable: { type: 'noul', noul: actionable } }) as never;
 let db: Database.Database;
@@ -170,16 +171,22 @@ it('KE-2: under FRONTIER_UNITS_REQUIRE_RELEVANCE a gate-rejected discovery that 
 
 it('KE-2: backfillRejectedOverrides turns existing rejected-but-yes verdicts into units once (not auto-run)', () => {
   busEvent('arxiv:2610.62001', 'Trapped-ion qubit calibration');
-  const j = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
-    VALUES (?, 'discovery_relevance', 'discovery_rejected', ?, 'h', 'shadow', ?, 'r', ?, ?)`);
-  j.run('j1', 'arxiv:2610.62001', 'yes', JSON.stringify(ans('open_problem', 0.9, 0.8)), new Date().toISOString());
-  j.run('j2', 'arxiv:2610.62002', 'no', JSON.stringify(ans('off_topic', 0.9, 0.1)), new Date().toISOString());
-  j.run('j3', 'arxiv:2610.62003', 'yes', JSON.stringify(ans('open_problem', 0.9, 0.8)), new Date().toISOString()); // no bus event: skipped
+  busEvent('arxiv:2610.62004', 'Trapped-ion qubit readout');
+  const j = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at, provenance_json)
+    VALUES (?, 'discovery_relevance', 'discovery_rejected', ?, 'h', 'shadow', ?, 'r', ?, ?, ?)`);
+  const prov = (ref: string) => JSON.stringify(buildProvenance({ writer: 'test', def: discoveryRelevance, mode: 'shadow', state: { title: ref }, subject: { type: 'discovery_rejected', id: ref }, stateHash: 'h', at: new Date().toISOString(), model: 'jev-1.13.0', decision: 'yes' }));
+  j.run('j1', 'arxiv:2610.62001', 'yes', JSON.stringify(ans('open_problem', 0.9, 0.8)), new Date().toISOString(), prov('arxiv:2610.62001'));
+  j.run('j2', 'arxiv:2610.62002', 'no', JSON.stringify(ans('off_topic', 0.9, 0.1)), new Date().toISOString(), prov('arxiv:2610.62002'));
+  j.run('j3', 'arxiv:2610.62003', 'yes', JSON.stringify(ans('open_problem', 0.9, 0.8)), new Date().toISOString(), prov('arxiv:2610.62003')); // no bus event: skipped
+  // DI-001 B: a pre-activation 'yes' (provenance NULL, as every historical row) is not used for this NEW promotion
+  j.run('j4', 'arxiv:2610.62004', 'yes', JSON.stringify(ans('open_problem', 0.9, 0.8)), new Date().toISOString(), null);
+  db.prepare("UPDATE judgments SET provenance_json = NULL WHERE id = 'j4'").run();
   const svc = new ExpertSourceUnitsService(db);
-  expect(svc.backfillRejectedOverrides()).toEqual({ candidates: 2, created: 1, missing_event: 1, known: 0 });
+  expect(svc.backfillRejectedOverrides()).toEqual({ candidates: 3, created: 1, missing_event: 1, known: 0, no_provenance: 1 });
   expect(meta('arxiv:2610.62001')).toMatchObject({ derived: 'taxonomy_override:jev', backfill: true });
+  expect(db.prepare('SELECT COUNT(*) n FROM expert_identities WHERE aliases_json LIKE ?').get('%"arxiv:2610.62004"%')).toEqual({ n: 0 });
   expect(db.prepare("SELECT subject_type FROM judgments WHERE id = 'j1'").get()).toEqual({ subject_type: 'expert_unit' });
-  expect(svc.backfillRejectedOverrides()).toEqual({ candidates: 1, created: 0, missing_event: 1, known: 0 });
+  expect(svc.backfillRejectedOverrides()).toEqual({ candidates: 2, created: 0, missing_event: 1, known: 0, no_provenance: 1 });
 });
 
 it('KE-5: errored discovery_relevance judgments are retried once by the tick (bounded), and the retry is recorded', async () => {
@@ -211,4 +218,25 @@ it('KE-5: errored discovery_relevance judgments are retried once by the tick (bo
   expect(svc.retryErroredRelevance(50)).toEqual({ retried: 1 });
   await vi.waitFor(() => expect(errors()).toBe(5));
   expect(svc.retryErroredRelevance(50)).toEqual({ retried: 0 });
+});
+
+it('AUTHZ-F2: a verdict re-pointed at the unit it created keeps provenance consistent: evidence_reference names the judged discovery, subject_rewrite names the move', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: ans('lane_technique', 0.9, 0.7) }) }));
+  const svc = new ExpertSourceUnitsService(db);
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.63001', title: 'Mutation-guided test generation for coding agents', agent: 'djimitflo-scout' })).toBe('pending');
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.63002', title: 'Trapped-ion qubit calibration III', agent: 'djimitflo-scout' })).toBe('irrelevant'); // KE-2 override
+  await vi.waitFor(() => expect((db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get() as { n: number }).n).toBe(2));
+  const rows = db.prepare("SELECT subject_type, subject_id, provenance_json FROM judgments WHERE judgment = 'discovery_relevance' ORDER BY created_at, rowid").all() as Array<{ subject_type: string; subject_id: string; provenance_json: string }>;
+  expect(rows).toHaveLength(2);
+  const from = ['discovery_pending:arxiv:2610.63001', 'discovery_rejected:arxiv:2610.63002'];
+  rows.forEach((row, i) => {
+    expect(row.subject_type).toBe('expert_unit');
+    const p = JSON.parse(row.provenance_json);
+    expect(p.status).toBe('recorded');
+    expect(p.evidence_reference.startsWith(`${from[i]}#state=`)).toBe(true);
+    expect(p.subject_rewrite).toMatchObject({ from: { type: from[i].split(':')[0], id: from[i].slice(from[i].indexOf(':') + 1) }, to: { type: 'expert_unit', id: row.subject_id }, reason: 'expert_unit_created' });
+  });
 });

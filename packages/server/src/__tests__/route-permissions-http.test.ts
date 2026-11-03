@@ -60,9 +60,7 @@ describe('route permissions preserve existing role and activation boundaries', (
     app.use('/apex', auth.requireAuth, createApexRoutes(db, auth, false));
     app.use('/intel', auth.requireAuth, createSwarmIntelRoutes(db, auth));
     const { createSwarmRoutes } = await import('../routes/swarms');
-    const { createMemoryEvolutionRoutes } = await import('../routes/memory-evolution');
     app.use('/swarms', auth.requireAuth, createSwarmRoutes(db, auth));
-    app.use('/memory-evolution', auth.requireAuth, createMemoryEvolutionRoutes(db, auth));
     app.use('/skills', auth.requireAuth, createSkillRoutes(db, auth));
     app.use('/api/skills', auth.requireAuth, createSkillRoutes(db, auth));
     app.use(errorHandler);
@@ -194,33 +192,5 @@ describe('route permissions preserve existing role and activation boundaries', (
     }
     expect(db.prepare('SELECT COUNT(*) AS n FROM swarm_missions').get()).toEqual({ n: 2 });
     expect(db.prepare('SELECT COUNT(*) AS n FROM swarm_tasks').get()).toEqual({ n: 1 });
-  });
-
-  it('keeps memory evolution ingestion and governance actions behind explicit permissions', async () => {
-    const before = {
-      candidates: db.prepare('SELECT COUNT(*) AS n FROM memory_candidates').get(),
-      goals: db.prepare('SELECT COUNT(*) AS n FROM goals').get(),
-      leases: db.prepare('SELECT COUNT(*) AS n FROM memory_evolution_leases').get(),
-    };
-    const candidateIds: string[] = [];
-    for (const role of Object.values(UserRole)) {
-      const ingest = await call(role, '/memory-evolution/ingest', { agent_id: `agent-${role}`, content: `trace-${role}` }, 'post');
-      const ingestAllowed = [UserRole.ADMIN, UserRole.MAKER, UserRole.CHECKER].includes(role);
-      expect(ingest.status, `${role} ingest`).toBe(ingestAllowed ? 201 : 403);
-      if (ingestAllowed) candidateIds.push(ingest.body.candidate.id);
-      expect((await request(app).get('/memory-evolution/leases').set('Authorization', `Bearer ${tokens.get(role)}`)).status, `${role} read`).toBe(200);
-      const evolve = await call(role, '/memory-evolution/evolve', { action: 'evaluate', candidate_ids: candidateIds.slice(0, 1) }, 'post');
-      expect(evolve.status, `${role} evolve`).toBe(role === UserRole.ADMIN ? 200 : 403);
-    }
-    const adminCandidate = candidateIds[0];
-    expect((await call(UserRole.ADMIN, '/memory-evolution/promote/missing', {}, 'post')).status).toBe(404);
-    expect((await call(UserRole.MAKER, `/memory-evolution/promote/${adminCandidate}`, {}, 'post')).status).toBe(403);
-    expect((await call(UserRole.ADMIN, '/memory-evolution/leases', { loop_run_id: 'permission-loop', role: 'memory_evaluator' }, 'post')).status).toBe(201);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM memory_candidates').get()).toEqual({ n: 3 });
-    expect(db.prepare('SELECT COUNT(*) AS n FROM goals').get()).toEqual({ n: 1 });
-    expect(db.prepare('SELECT COUNT(*) AS n FROM memory_evolution_leases').get()).toEqual({ n: 1 });
-    expect(before.candidates).toEqual({ n: 0 });
-    expect(before.goals).toEqual({ n: 0 });
-    expect(before.leases).toEqual({ n: 0 });
   });
 });

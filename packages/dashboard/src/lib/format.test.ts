@@ -25,11 +25,24 @@ describe('UX-5: one locale and shared formatters', () => {
     expect(since('2026-10-06T07:00:00Z', now)).toBe('5 h ago');
     expect(since('2026-10-01T12:00:00Z', now)).toBe('5 d ago');
   });
+
+  it('DF-05: a future timestamp reads as scheduled, never as elapsed', () => {
+    const now = Date.parse('2026-10-23T12:00:00Z');
+    expect(since('2026-10-27T00:00:00Z', now)).toBe('scheduled in 4 d');
+    expect(since('2026-10-23T17:00:00Z', now)).toBe('scheduled in 5 h');
+    expect(since('2026-10-23T12:20:00Z', now)).toBe('scheduled in < 1 h');
+    expect(since('not-a-date', now)).toBe('unknown');
+    expect(since('2026-10-23T12:02:00Z', now)).toBe('< 1 h ago'); // server clock a little ahead is not a schedule
+  });
 });
 
 /** UX-5: the UI is English-only; these Dutch fragments were translated and must not come back. */
 const DUTCH = [/\bNog geen\b/, /\bgeen capabilities\b/, /\bbeslist door\b/, /\bgekopieerd\b/, /\bkopieer\b/, /\bniet gepromoot\b/,
-  /\balleen nu zichtbaar\b/, /\bCode voor\b/, /\bBeste strategie\b/, /\bbijdragen\b/, /· gestart /, /· laatst /, /\baanklop/, /\bDe emitter draait\b/, /\bAangeklopt\b/, /\bwachtend\b/, /'uitgenodigd'|'gebeten'|'verlopen'/, /\bgebeten\b/, /\bnooit verbonden\b/];
+  /\balleen nu zichtbaar\b/, /\bCode voor\b/, /\bBeste strategie\b/, /\bbijdragen\b/, /· gestart /, /· laatst /, /\baanklop/, /\bDe emitter draait\b/, /\bAangeklopt\b/, /\bwachtend\b/, /'uitgenodigd'|'gebeten'|'verlopen'/, /\bgebeten\b/, /\bnooit verbonden\b/,
+  // UX-28: Agent Commons, Authority Ledger and Interaction Board leftovers
+  /\baanwezig/, /'stil'/, /\baangemeld\b/, /\bmislukt\b/, /\bRonde\b/, /\bcooldown actief\b/, /\bovergeslagen\b/, /\bUitnodigingscode\b/, /\bBeslissing\b/i,
+  /\balle social threads\b/, /\bverberg tokens\b/, /\btoon tokens\b/, /\breputatie\b/, /\bweinig data\b/, /· bron /, />aan \{/, /\bbewijs \(/,
+  /\bTotaal events\b/, />Tijd</, />Bron</, /\bAangevraagd\b/, /\bbeslissingsketen\b/, /\bAlle beslissingen\b/, /\brelatiebeeld\b/, /\bgescheiden\b/];
 const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f);
   return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) ? [p] : [];

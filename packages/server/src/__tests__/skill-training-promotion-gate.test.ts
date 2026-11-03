@@ -61,6 +61,15 @@ describe('SkillTrainingPromotionGate', () => {
       .toThrow(/SKILL_TRAINING_PROMOTION_GATE_UNAVAILABLE:/);
   });
 
+  it('fails closed with UNCONFIGURED (no machine-specific default runner) when the runner env is unset or blank', () => {
+    for (const v of [undefined, '  ']) {
+      if (v === undefined) delete process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER; else process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER = v;
+      expect(() => new SkillTrainingPromotionGate().assertPass({ id: 'skill-u', kind: 'skill' }))
+        .toThrow(/^SKILL_TRAINING_PROMOTION_GATE_UNCONFIGURED:skill-u:DJIMIT_SKILL_TRAINING_EVAL_RUNNER unset$/);
+    }
+    expect(new SkillTrainingPromotionGate().assertPass({ id: 'adapter-u', kind: 'runtime_adapter' })).toEqual({ passed: true, skipped: true, evidenceRef: null });
+  });
+
   it('throws FAILED including stderr content when runner exits non-zero', () => {
     runner('process.stderr.write("boom"); process.exit(2);\n');
     expect(() => new SkillTrainingPromotionGate().assertPass({ id: 'skill-f', kind: 'skill' }))

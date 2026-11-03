@@ -30,8 +30,8 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 const gymRun = (commit: string, genomeId: string, ok: boolean) => {
   const id = `r${seq++}`; const at = '2026-10-11T11:00:00Z';
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId },
-    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red' } }), at, at);
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId, prod_gates: 1 },
+    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(ok ? { prod_gates: { lint: 'pass' } } : {}) } }), at, at);
   db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, domain, model, evidence_refs_json, created_at) VALUES (?, 'loop-maker:gym:atomic', ?, 'gym', 'llama-router', ?, ?)")
     .run(`o-${id}`, ok ? 1 : 0, JSON.stringify([`gym:${commit}`, `loop_run:${id}`]), at);
 };

@@ -9,7 +9,8 @@ import { decisionsInbox } from '../services/decisions-inbox';
 let db: Database.Database;
 const NOW = Date.now();
 const iso = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
-const ON = { OUTCOME_ATTRIBUTION_ENABLED: 'true' } as NodeJS.ProcessEnv;
+// capability chain (stall-watch): a configured environment, so a missing skills dir / eval runner here is not a waiting stall
+const ON = { OUTCOME_ATTRIBUTION_ENABLED: 'true', DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename } as NodeJS.ProcessEnv;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = OFF'); });
 afterEach(() => db.close());
 const proposal = (id: string, status: string, o: { title?: string; source?: string; created?: number } = {}) => db.prepare(`INSERT INTO self_improvements
@@ -50,7 +51,7 @@ it('an unattributed regression is unknown, not maker, and keeps the guardrail ou
   expect(reg.ok).toBe(false);
 });
 
-it('counts each loop PR once and a proposal waiting in two sections once', () => {
+it('counts each loop PR once; a pre-screen label is optional labelling, so a proposal in two sections is not double-counted', () => {
   prRun('1'); prRun('2', { state: 'open' }); prRun('3', { state: 'merged' }); prRun('4', { state: 'merged', survived: true, settled_at: iso(1) });
   proposal('r1', 'regressed'); attribute('r1', 'maker_failure'); prescreenNo('r1');
   db.exec('CREATE TABLE IF NOT EXISTS social_join_requests (id TEXT, status TEXT)'); // created by the social service at runtime; missing = total unknown
@@ -58,7 +59,9 @@ it('counts each loop PR once and a proposal waiting in two sections once', () =>
   expect(n.open_prs).toBe(2); // never-polled + open
   expect(n.draft_prs).toBe(1); // merged, still settling — not the never-polled PR again
   expect([n.requeue, n.labels, n.shared_subjects]).toEqual([1, 1, 1]);
-  expect(n.total).toBe(2 + 1 + 1 - 1);
+  // human decisions only: 2 open loop PRs (flagged, no audit sample) + 1 requeue; the D5 label is optional_labelling
+  expect([n.flagged_prs, n.audit_batch, n.optional_labelling?.d5]).toEqual([2, 0, 1]);
+  expect(n.total).toBe(2 + 1);
 });
 
 it('reflection inflow is NOT_APPLICABLE with reflection proposals capped at 0; the expired-approvals limit names its rule', () => {

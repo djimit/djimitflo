@@ -48,6 +48,7 @@ export function decisionContextJudgment(count: number): JudgmentDef {
   }
   return {
     id: 'decision_context',
+    policyVersion: '1',
     questions,
     decide(a) {
       const picked = Object.keys(a).filter((k) => (a[k]?.noul ?? 0) > RELEVANT);

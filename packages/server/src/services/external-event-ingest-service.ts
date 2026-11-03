@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { OutcomeLearningService } from './outcome-learning-service';
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
 import { checkContentSafety, contentSafetyApplies } from './content-safety';
+import { ensureFleetSignatureTables, fleetSignatureMode, pruneFleetNonces, recordFleetVerdict, verifyFleetEvent, type FleetVerification } from './fleet-event-signatures';
+import { fleetBusAuthHeaders } from './fleet-bus-auth';
 
 const nonBlank = z.string().trim().min(1);
 const decodeField = (value: unknown): unknown => {
@@ -17,7 +19,13 @@ export const listField = (value: unknown): string[] => {
   if (typeof v === 'string' && v.trim().startsWith('[')) { try { v = JSON.parse(v); } catch { return []; } }
   return Array.isArray(v) ? v.filter((x) => x !== null && x !== undefined).map(String) : [];
 };
-const SIGNAL_PREFIXES = ['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
+const SKILL_NAME_RE = /^[A-Za-z0-9][\w.-]{0,63}$/;
+const SKILL_SHA_RE = /^[a-f0-9]{64}$/;
+export const MAX_OUTCOME_SKILLS = 8;
+// z.coerce turns null / '' / '  ' into 0: those (and the bus's 'null') are unknown, so they become undefined before coercing
+const optionalCount = z.preprocess((v) => (v === null || (typeof v === 'string' && (v.trim() === '' || v.trim() === 'null')) ? undefined : v),
+  z.coerce.number().int().nonnegative().optional());
+const SIGNAL_PREFIXES =['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
 
 /**
  * Plan N2: one light outcome contract for every agent in the fleet (Hermes, Eve-V, maintainer, DeerFlow, Scallop, workers).
@@ -30,25 +38,66 @@ const agentOutcomeSchema = z.object({
   // the Redis-backed bus hands every field back as a string (prod 2026-09-28: success "true" matched no event)
   success: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()),
   model: z.string().max(120).optional(),
-  tokens: z.coerce.number().int().nonnegative().optional(),
-  duration_ms: z.coerce.number().int().nonnegative().optional(),
+  tokens: optionalCount,
+  duration_ms: optionalCount,
   ref: z.string().max(300).optional(),
+  // Skill identity (skill inventory 2026-10-26, intervention 1): the skill that ran and the sha256 of its installed SKILL.md.
+  // A malformed value is dropped (stays NULL), never repaired or invented; the outcome itself still scores.
+  skill: z.string().regex(SKILL_NAME_RE).optional().catch(undefined),
+  skill_sha: z.string().regex(SKILL_SHA_RE).optional().catch(undefined),
+  // One run = one outcome, carrying every declared skill (audit L-F05). More than 8 entries, or not a list, is dropped whole.
+  skills: z.preprocess(decodeField, z.array(z.unknown()).max(MAX_OUTCOME_SKILLS)).optional().catch(undefined),
 });
 
-/** N2: score every stored agent.outcome that has no fleet skill outcome yet (idempotent; also catches up earlier events). */
-export function scoreAgentOutcomes(db: Database): number {
+/**
+ * The skills one outcome names: `skills` entries, then the single `skill`/`skill_sha`, deduped by name. A malformed name is
+ * dropped; a malformed hash, or two different hashes for one name, leaves that skill unhashed (null, never a guess).
+ */
+export function declaredSkills(o: { skill?: string; skill_sha?: string; skills?: unknown[] }): Array<{ name: string; sha: string | null }> {
+  const entries = [...(o.skills ?? []), ...(o.skill ? [{ name: o.skill, sha: o.skill_sha }] : [])];
+  const out = new Map<string, string | null | undefined>(); // undefined = no hash seen yet
+  for (const e of entries) {
+    const { name, sha } = (e && typeof e === 'object' ? e : {}) as { name?: unknown; sha?: unknown };
+    if (typeof name !== 'string' || !SKILL_NAME_RE.test(name)) continue;
+    const h = typeof sha === 'string' && SKILL_SHA_RE.test(sha) ? sha : undefined;
+    const seen = out.get(name);
+    if (seen === undefined) out.set(name, h);
+    else if (h !== undefined && h !== seen) out.set(name, null);
+  }
+  return [...out].map(([name, sha]) => ({ name, sha: sha ?? null }));
+}
+
+/**
+ * N2: score every stored agent.outcome that has no fleet skill outcome yet (idempotent; also catches up earlier events).
+ * P0-3: under FLEET_EVENT_SIGNATURES=enforce only `verified` events score; an event refused under enforce is never scored,
+ * also not by a later catch-up in off/shadow.
+ */
+export function scoreAgentOutcomes(db: Database, env: NodeJS.ProcessEnv = process.env): number {
   const engine = new SkillEvolutionEngine(db); let n = 0;
   let rows: Array<{ id: string; payload: string }> = [];
+  const signatureClause = fleetSignatureMode(env) === 'enforce'
+    ? `AND EXISTS (SELECT 1 FROM fleet_event_signatures f WHERE f.event_id = e.id AND f.verdict = 'verified')`
+    : `AND NOT EXISTS (SELECT 1 FROM fleet_event_signatures f WHERE f.event_id = e.id AND f.mode = 'enforce' AND f.verdict <> 'verified')`;
   try {
+    ensureFleetSignatureTables(db);
     rows = db.prepare(`SELECT e.id, e.payload FROM external_events e WHERE e.event_type = 'agent.outcome'
-      AND NOT EXISTS (SELECT 1 FROM skill_outcomes s WHERE s.domain = 'fleet' AND s.task_id = e.id) LIMIT 500`).all() as typeof rows;
+      AND NOT EXISTS (SELECT 1 FROM skill_outcomes s WHERE s.domain = 'fleet' AND s.task_id = e.id) ${signatureClause} LIMIT 500`).all() as typeof rows;
   } catch { return 0; } // skill_outcomes not created yet
   for (const row of rows) {
     const o = agentOutcomeSchema.safeParse(JSON.parse(row.payload));
     if (!o.success) continue;
+    // Each named skill is one `skill:<name>` ref and, when hashed, one `skill-sha:<name>@<sha>` ref (the ledger counts distinct
+    // hashes per skill from these). skill_content_hash is one column, so it is set only when the run names exactly one skill.
+    // A bare hash identifies nothing.
+    const skills = declaredSkills(o.data);
+    const evidenceRefs = [...new Set([...(o.data.ref ? [o.data.ref] : []), ...skills.map((s) => `skill:${s.name}`),
+      ...skills.filter((s) => s.sha).map((s) => `skill-sha:${s.name}@${s.sha}`)])];
+    const only = skills.length === 1 ? skills[0].sha : null;
     engine.recordOutcome(`agent:${o.data.agent}:${o.data.task_kind}`, {
-      success: o.data.success, tokensUsed: o.data.tokens ?? 0, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
-      agentId: o.data.agent, taskId: row.id, ...(o.data.model ? { model: o.data.model } : {}), ...(o.data.ref ? { evidenceRefs: [o.data.ref] } : {}),
+      // unknown tokens stay NULL (#1015). duration_ms is NOT NULL DEFAULT 0 in skill_outcomes, so an absent one is still 0 there.
+      success: o.data.success, tokensUsed: o.data.tokens ?? null, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
+      agentId: o.data.agent, taskId: row.id, ...(o.data.model ? { model: o.data.model } : {}), ...(evidenceRefs.length ? { evidenceRefs } : {}),
+      ...(only ? { skillContentHash: only } : {}),
     }); n += 1;
   }
   return n;
@@ -110,7 +159,9 @@ export class ExternalEventIngestService {
 
   /**
    * Native work intake for roborev review findings (they used to be shipped to Paperclip as issues).
-   * Idempotent on the event's dedupe_key; a malformed finding is skipped, never thrown.
+   * Idempotent on the event's dedupe_key; a malformed finding is skipped, never thrown. A storage failure (SQLite, including
+   * the required work_item.created outbox insert, CODE-003) is rethrown: the poll transaction rolls back without advancing
+   * the cursor, so the next poll retries the finding instead of skipping it.
    */
   private materializeRoborevFinding(event: Record<string, unknown>): void {
     try {
@@ -127,7 +178,10 @@ export class ExternalEventIngestService {
         recommended_loop: event.task_type === 'review_fix' ? 'repo-maintenance-loop' : 'research-loop',
         metadata: { repo: event.repo ?? null, sha: event.sha ?? null, finding_class: event.finding_class ?? null, affected_files: listField(event.affected_files), labels: listField(event.labels), blocked_by: listField(event.blocked_by), task_type: event.task_type ?? null },
       });
-    } catch { /* never let one finding break event ingestion */ }
+    } catch (error) {
+      if (isStorageError(error)) throw error;
+      /* a malformed finding (a validation error) never breaks event ingestion */
+    }
   }
 
   async pollOnce(): Promise<number> {
@@ -138,7 +192,7 @@ export class ExternalEventIngestService {
     let newestCursor: string | undefined;
     while (true) {
       const url = `${this.busUrl.replace(/\/$/, '')}/events/${encodeURIComponent(this.stream)}?count=${count}`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      const response = await fetch(url, { headers: fleetBusAuthHeaders(), signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error(`event bus returned ${response.status}`);
       const body = await response.json() as { events?: unknown };
       if (!Array.isArray(body.events)) throw new Error('event bus returned an invalid events contract');
@@ -164,6 +218,10 @@ export class ExternalEventIngestService {
     let inserted = 0;
     // JEV-BURST: one service per batch, so its fleet-source gate (~0.7 s per evaluation on prod) runs once per source, not per event
     const sourceUnits = sourceUnitsEnabled() ? new ExpertSourceUnitsService(this.db) : null;
+    // P0-3 (FLEET_EVENT_SIGNATURES shadow|enforce): verify each NEW agent.outcome against the server-side host key registry
+    const signatureMode = fleetSignatureMode();
+    if (signatureMode !== 'off') ensureFleetSignatureTables(this.db);
+    const known = this.db.prepare('SELECT 1 FROM external_events WHERE id = ?');
     const transaction = this.db.transaction(() => {
       for (const event of events) {
         if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
@@ -184,12 +242,21 @@ export class ExternalEventIngestService {
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
         if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
+        // a redelivered event is ignored by the insert below, so it keeps its first verdict (and does not burn a nonce)
+        let verification: FleetVerification | null = null;
+        if (eventType === 'agent.outcome' && signatureMode !== 'off' && !known.get(id)) {
+          verification = verifyFleetEvent(this.db, normalizedEvent);
+        }
         // K1 (shadow): untrusted text from fleet agents is checked before it can reach any prompt
         if (eventType.startsWith('discovery.') && contentSafetyApplies('external_event')) {
           void checkContentSafety(this.db, { type: 'external_event', id }, [normalizedEvent.title, normalizedEvent.note].filter((v) => typeof v === 'string').join('\n')).catch(() => undefined);
         }
         if (eventType.startsWith('discovery.') && sourceUnits) {
-          try { sourceUnits.ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
+          try {
+            // DI-001 C: a discovery not judged because of DISCOVERY_RELEVANCE_PAUSED is stored marked, so it can be judged later
+            const result = sourceUnits.ingestDiscovery(normalizedEvent);
+            if (result.startsWith('paused-')) normalizedEvent = { ...normalizedEvent, relevance: 'unjudged', relevance_paused: result.slice('paused-'.length), relevance_paused_at: new Date().toISOString() };
+          } catch { /* never let one discovery break ingestion */ }
         }
         const added = insert.run(
           id,
@@ -206,8 +273,10 @@ export class ExternalEventIngestService {
           JSON.stringify(normalizedEvent),
         ).changes;
         inserted += added;
+        if (added && verification) recordFleetVerdict(this.db, id, verification, signatureMode);
 
       }
+      if (signatureMode !== 'off') pruneFleetNonces(this.db);
       scoreAgentOutcomes(this.db);
       // Close the existing ingestion seam before advancing its cursor. Replay
       // also materializes historical observations left by older deployments.
@@ -237,4 +306,10 @@ export class ExternalEventIngestService {
       if (this.running) this.timer = setTimeout(() => void this.poll(), this.pollMs);
     }
   }
+}
+
+/** better-sqlite3 errors carry a SQLITE_* code; validation errors from the services do not. */
+function isStorageError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && code.startsWith('SQLITE_');
 }

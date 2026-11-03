@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ShieldCheck, TrendingUp, TrendingDown, Minus, RefreshCw, FlaskConical } from 'lucide-react';
-import { api, type AgentGovernanceScore, type OpenMythosRun } from '../lib/api';
+import { api, type AgentGovernanceScore, type GovernanceScoreCohort, type OpenMythosRun } from '../lib/api';
+
+/**
+ * DF-01: only a score that is (or, from an older server, may be) on the 0–5
+ * governance scale AND lies in 0–5 is ranked, trended or colored as one. A 0–100
+ * critic grade or an unknown-scale value is shown apart, never as a 0–5 score.
+ */
+function isGovernanceScore(score: GovernanceScoreCohort & { overallScore: number }): boolean {
+  return (score.scale === undefined || score.scale === '0-5')
+    && Number.isFinite(score.overallScore) && score.overallScore >= 0 && score.overallScore <= 5;
+}
+
+function formatScore(score: GovernanceScoreCohort & { overallScore: number }): string {
+  if (isGovernanceScore(score)) return score.overallScore.toFixed(2);
+  if (score.scale === '0-100') return `${score.overallScore.toFixed(0)}/100`;
+  return `${score.overallScore} (scale unknown)`;
+}
 
 function scoreColor(score: number): string {
   if (score >= 4) return 'text-status-completed';
@@ -16,6 +32,7 @@ function TrendIcon({ trend }: { trend: AgentGovernanceScore['trend'] }) {
 
 export function GovernanceScorecardPage() {
   const [leaderboard, setLeaderboard] = useState<AgentGovernanceScore[]>([]);
+  const [otherScores, setOtherScores] = useState<AgentGovernanceScore[]>([]);
   const [runs, setRuns] = useState<OpenMythosRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +47,11 @@ export function GovernanceScorecardPage() {
         api.getOpenMythosLeaderboard(),
         api.getOpenMythosRuns(20),
       ]);
-      setLeaderboard(board.leaderboard);
+      setLeaderboard(board.leaderboard.filter(isGovernanceScore));
+      setOtherScores([
+        ...(board.otherCohorts ?? []).flatMap((cohort) => cohort.scores),
+        ...board.leaderboard.filter((score) => !isGovernanceScore(score)),
+      ]);
       setRuns(recent.runs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load governance data');
@@ -78,7 +99,7 @@ export function GovernanceScorecardPage() {
 
       {loading ? (
         <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading governance data...</div>
-      ) : leaderboard.length === 0 ? (
+      ) : leaderboard.length === 0 && otherScores.length === 0 ? (
         <div className="bg-background-secondary border border-border rounded-lg p-12 text-center">
           <ShieldCheck className="w-12 h-12 text-foreground-muted mx-auto mb-4" />
           <p className="text-foreground-secondary">No governance evaluations recorded yet.</p>
@@ -87,9 +108,10 @@ export function GovernanceScorecardPage() {
       ) : (
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">Leaderboard</h2>
-          <div className="space-y-4">
+          {leaderboard.length === 0 && <p className="text-sm text-foreground-secondary">No 0–5 governance evaluations recorded yet.</p>}
+          <ol aria-label="Governance ranking (0–5)" className="space-y-4">
             {leaderboard.map((agent, rank) => (
-              <div key={agent.agentId} className="border-l-2 border-border pl-4 py-2">
+              <li key={agent.agentId} className="border-l-2 border-border pl-4 py-2">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-xs font-mono text-foreground-tertiary">#{rank + 1}</span>
                   <span className="text-sm font-medium text-foreground">{agent.agentId}</span>
@@ -114,9 +136,28 @@ export function GovernanceScorecardPage() {
                       ))}
                   </div>
                 )}
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
+        </div>
+      )}
+
+      {!loading && otherScores.length > 0 && (
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-foreground mb-1">Other score scales</h2>
+          <p className="text-xs text-foreground-tertiary mb-4">Different benchmark or scale — not comparable with, and never ranked against, the 0–5 governance scores.</p>
+          <ul aria-label="Other score scales" className="space-y-2">
+            {otherScores.map((score) => (
+              <li key={`${score.cohort ?? 'unknown'}:${score.agentId}`} className="flex items-center gap-3 flex-wrap border-l-2 border-border pl-3 py-1">
+                <span className="text-sm text-foreground">{score.agentId}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-background-elevated text-foreground-secondary font-mono">{score.benchmark ?? 'unknown benchmark'}</span>
+                <span className="text-sm font-semibold text-foreground-secondary">{formatScore(score)}</span>
+                <span className="text-xs text-foreground-tertiary">
+                  {score.totalCases} cases · {score.lastEvalAt ? new Date(score.lastEvalAt).toLocaleString() : 'n/a'}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -137,7 +178,7 @@ export function GovernanceScorecardPage() {
                   run.status === 'failed' ? 'bg-status-error/10 text-status-error' :
                   'bg-background-elevated text-foreground-secondary'
                 }`}>{run.status}</span>
-                <span className={`text-sm font-semibold ${scoreColor(run.overallScore)}`}>{run.overallScore.toFixed(2)}</span>
+                <span className={`text-sm font-semibold ${isGovernanceScore(run) ? scoreColor(run.overallScore) : 'text-foreground-secondary'}`}>{formatScore(run)}</span>
                 <span className="text-xs text-foreground-tertiary">
                   {run.completedCases}/{run.totalCases} cases
                   {run.oracleCases !== null && ` · ${run.oracleCases} oracle`}

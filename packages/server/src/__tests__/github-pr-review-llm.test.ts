@@ -82,12 +82,10 @@ describe('GitHub pull_request review webhook (Phase 2: real LLM checker path)', 
     process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
 
     ghHandler = (args) => {
-      if (args[0] === 'pr' && args[1] === 'diff') return 'diff --git a/feature.txt b/feature.txt\n+hello from the PR\n';
-      if (args[0] === 'pr' && args[1] === 'view') {
-        return JSON.stringify({ title: 'Add feature', url: 'https://github.com/owner/repo/pull/9', additions: 1, deletions: 0, changedFiles: 1, files: [{ path: 'feature.txt' }] });
-      }
+      // the diff comes from git in the worktree (CODE-005); gh only reports the PR's current head and receives the result
+      if (args[0] === 'pr' && args[1] === 'view' && args.includes('headRefOid')) return JSON.stringify({ headRefOid: prSha });
       if (args[0] === 'pr' && args[1] === 'comment') return '';
-      if (args[0] === 'api') return JSON.stringify({ id: 999 });
+      if (args[0] === 'api' && args[1] === `repos/owner/repo/statuses/${prSha}`) return JSON.stringify({ id: 999 });
       throw new Error(`unexpected gh invocation: ${args.join(' ')}`);
     };
 

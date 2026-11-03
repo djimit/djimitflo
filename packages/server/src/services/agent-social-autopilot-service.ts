@@ -17,6 +17,7 @@ import { commonsIdea } from './judgments/commons-idea';
 import { AgentCommunicationService, type AgentMessage, type SocialRuntimeReply } from './agent-communication-service';
 import { RuntimeGovernanceService } from './runtime-governance-service';
 import { arenaGate, arenaGateEnabled, parseForecastText, pendingResidentQuestion, recordResidentForecast } from './committee-swarm';
+import { budgetPause } from './inference-budget';
 import {
   chat as providerChat, isRuntimeConfigured, parseResidentRuntimes, parseRuntimeSpec, providerEnvFromEnv, PROVIDER_KINDS,
   type ProviderEnv, type ProviderKind, type RuntimeSpec,
@@ -122,6 +123,8 @@ export function extractReply(text: string): SocialRuntimeReply {
     creative_alternative: String(value.creative_alternative), stop_condition: String(value.stop_condition),
     ...Object.fromEntries(['interest', 'ecosystem_component', 'proposed_improvement'].filter(key => typeof value[key] === 'string').map(key => [key, value[key]])),
     evidence_refs: Array.isArray(value.evidence_refs) ? value.evidence_refs.filter((item): item is string => typeof item === 'string') : [],
+    // AC-06: passed through untouched; respondSocial ignores it unless the thread is a Commons investigation (COMMONS_INVESTIGATION_MODE)
+    ...(value.artefact && typeof value.artefact === 'object' && !Array.isArray(value.artefact) ? { artefact: value.artefact } : {}),
   };
 }
 
@@ -239,6 +242,7 @@ export class AgentSocialAutopilotService {
   async tick(): Promise<AutopilotTick> {
     const result: AutopilotTick = { heartbeats: 0, replies: 0, attempts: 0, failures: 0, round_started: false, skipped: null };
     if (this.config.runtime === 'off' || this.stopped || this.busy) return { ...result, skipped: this.busy ? 'busy' : this.stopped ? 'stopped' : 'off' };
+    if (budgetPause(this.db, 'residents')) return { ...result, skipped: 'inference_budget' }; // INFERENCE_BUDGET_THROTTLE=on
     this.busy = true;
     const controller = new AbortController();
     this.activeTick = controller;
@@ -381,9 +385,13 @@ export class AgentSocialAutopilotService {
   }
 }
 
-/** Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'. */
+/**
+ * Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'.
+ * AUTHZ-F3: only while the commons_contribution judgment itself is on — the rows of a judgment that was switched off are
+ * stale and must not gate anything (prod: off since 09-30 while the gate kept reading pre-09-30 verdicts).
+ */
 export function threadGated(db: Database, message: AgentMessage, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true') return false;
+  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true' || judgmentMode(commonsContribution.id, env) === 'off') return false;
   const threadId = String(message.payload?.thread_id || '');
   if (!threadId) return false;
   try {

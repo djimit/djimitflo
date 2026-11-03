@@ -27,18 +27,33 @@ import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
+import { startAutoRequeue } from '../services/auto-requeue';
+import { autoRequeueMaxPerTick, autoRequeueMode } from '../services/requeue-policy';
 import { DeadCodeSourceService, deadCodeLaneEnabled } from '../services/dead-code-source-service';
-import { EvolutionGymService, gymEnabled } from '../services/evolution-gym-service';
+import { FindingFixSourceService, findingFixMode } from '../services/finding-fix-source';
+import { AdvisoryExposureService, advisoryExposureMode } from '../services/advisory-exposure';
+import { EvolutionGymService, gymArmed } from '../services/evolution-gym-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
-import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
+import { startSchedulerWatchdog, startStallWatch, type Stall } from '../services/stall-watch';
+import { pushStall } from '../services/operator-push';
 import { startInterestFeedback } from '../services/interest-feedback';
+import { startEvolutionFeedback } from '../services/evolution-feedback';
+import { startEvidenceRoom } from '../services/commons-evidence-room';
+import { startInvestigationOutcomes } from '../services/commons-investigation';
+import { startCommonsFalsifier } from '../services/commons-falsifier';
+import { startSettlementExecution } from '../services/settlement-execution';
+import { startFleetRepair } from '../services/fleet-repair';
+import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
+import { gymOrphanSweepMode } from '../services/remote-gym-service';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startLoopAutoMerge } from '../services/loop-auto-merge';
+import { startDraftPrRetry } from '../services/loop-draft-pr-service';
+import { ciWatchIntervalMs, startLoopPrCiWatch } from '../services/loop-pr-ci-watch';
 import { startCommitteeEvolution } from '../services/committee-swarm';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
@@ -152,14 +167,54 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Dead-code lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // Finding-fix lane (G2.2): one ESLint pack-v1 finding per proposal; shadow records only; human approval and merge. Default off.
+  try {
+    if (noteScheduler('finding_fix_lane', 'FINDING_FIX_LANE', findingFixMode() !== 'off', 12 * 3_600_000)) {
+      const findingFix = new FindingFixSourceService(db);
+      findingFix.start();
+      registerRestart('finding_fix_lane', () => { findingFix.stop(); findingFix.start(); });
+      lifecycleManager.register({ serviceName: 'FindingFixSource', stop: () => findingFix.stop() });
+      console.log(`🔧 Finding-fix lane ${findingFixMode()} (max ${Number(process.env.FINDING_FIX_MAX_PER_DAY) || 2} proposals/day, 1 in flight).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Finding-fix lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Advisory exposure (Track A): EVE-V advisory ids → OSV → lockfile verdicts (shadow judgments + feedback events); on: one
+  // bump proposal per affected (repo, package), <= 2/day, panel + human approval and merge. Default off.
+  try {
+    if (noteScheduler('advisory_exposure', 'ADVISORY_EXPOSURE_MODE', advisoryExposureMode() !== 'off', 3_600_000)) {
+      const advisory = new AdvisoryExposureService(db);
+      advisory.start();
+      registerRestart('advisory_exposure', () => { advisory.stop(); advisory.start(); });
+      lifecycleManager.register({ serviceName: 'AdvisoryExposure', stop: () => advisory.stop() });
+      console.log(`🛡️  Advisory exposure ${advisoryExposureMode()} (OSV <= 20 fetches/h, max 2 proposals/day).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Advisory exposure failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Auto-requeue (REQUEUE_AUTO_MODE, requeue-policy.ts): requeues retryable failures once and dismisses the rest after 14 d,
+  // so routine requeue rows leave the operator's /decisions queue. Default off; shadow records judgments only.
+  try {
+    if (noteScheduler('auto_requeue', 'REQUEUE_AUTO_MODE', autoRequeueMode() !== 'off', 3_600_000)) {
+      let stopAutoRequeue = startAutoRequeue(db);
+      registerRestart('auto_requeue', () => { stopAutoRequeue?.(); stopAutoRequeue = startAutoRequeue(db); });
+      lifecycleManager.register({ serviceName: 'AutoRequeue', stop: () => stopAutoRequeue?.() });
+      console.log(`🔁 Auto-requeue ${autoRequeueMode()} (max ${autoRequeueMaxPerTick()} requeues/tick, hourly).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Auto-requeue failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
   try {
-    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymEnabled(), 3_600_000)) {
+    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymArmed(), 3_600_000)) {
       const gym = new EvolutionGymService(db, recoverySvc);
       gym.start();
       registerRestart('evolution_gym', () => { gym.stop(); gym.start(); });
       lifecycleManager.register({ serviceName: 'EvolutionGym', stop: () => gym.stop() });
-      console.log(`🏋️ Evolution gym on (max ${Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12} attempts/day).`);
+      console.log(`🏋️ Evolution gym on (max ${Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12} attempts/day${process.env.SUBSCRIPTION_GYM_SPECIES ? `; subscription species: ${process.env.SUBSCRIPTION_GYM_SPECIES}` : ''}).`);
     }
   } catch (error) {
     console.warn('⚠️  Evolution gym failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -210,11 +265,72 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Interest feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // K5: daily evolution digest outward (judgment row; on: outbox djimitflo.feedback.evolution + one Commons thread). EVOLUTION_FEEDBACK_MODE=shadow|on.
+  try {
+    const stopEvolutionFeedback = startEvolutionFeedback(db);
+    if (stopEvolutionFeedback) { lifecycleManager.register({ serviceName: 'EvolutionFeedback', stop: stopEvolutionFeedback }); console.log('📣 Evolution feedback on (daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Evolution feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Commons evidence room: one read-only thread per verified / regressed loop run + its survival follow-up. COMMONS_EVIDENCE_ROOM_MODE=on.
+  try {
+    const stopEvidenceRoom = startEvidenceRoom(db);
+    if (stopEvidenceRoom) { lifecycleManager.register({ serviceName: 'EvidenceRoom', stop: stopEvidenceRoom }); console.log('🧾 Commons evidence room on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Evidence room failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // AC-07 Commons investigation outcomes: panel/goal/run/verification/survival of a Commons-originated proposal back into its
+  // thread (shadow: judgment rows only). COMMONS_INVESTIGATION_MODE=shadow|on.
+  try {
+    const stopInvestigationOutcomes = startInvestigationOutcomes(db);
+    if (stopInvestigationOutcomes) { lifecycleManager.register({ serviceName: 'CommonsInvestigationOutcomes', stop: stopInvestigationOutcomes }); console.log('🔁 Commons investigation outcomes on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons investigation outcomes failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // AR5 Commons falsifier niche (shadow): evidence-room tests run red at base → green on a later main; ≤ 5 runs / 24 h. COMMONS_FALSIFIER_MODE=shadow.
+  try {
+    const stopFalsifier = startCommonsFalsifier(db, recoverySvc);
+    if (stopFalsifier) { lifecycleManager.register({ serviceName: 'CommonsFalsifier', stop: stopFalsifier }); console.log('🧪 Commons falsifier on (shadow, hourly).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons falsifier failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // L3-v2 §5.1–2 execution-based settlement (shadow): merged loop PRs ≥ 14 d re-run their tests at origin/main; ≤ 4 PRs / day. SETTLEMENT_EXECUTION_MODE=shadow.
+  try {
+    const stopSettlementExec = startSettlementExecution(db, recoverySvc);
+    if (stopSettlementExec) { lifecycleManager.register({ serviceName: 'SettlementExecution', stop: stopSettlementExec }); console.log('🧪 Settlement execution on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Settlement execution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Track B EVE-V cron repair (shadow): fleet jobs with >= 3 verified agent.outcome failures in 7 d → one fleet_repair_candidate judgment / day. FLEET_REPAIR_MODE=shadow.
+  try {
+    const stopFleetRepair = startFleetRepair(db);
+    if (stopFleetRepair) { lifecycleManager.register({ serviceName: 'FleetRepair', stop: stopFleetRepair }); console.log('🔧 Fleet repair on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Fleet repair failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.
+  try {
+    let stopValueAllocator = startValueAllocator(db);
+    registerRestart('value_allocator', () => { stopValueAllocator?.(); stopValueAllocator = startValueAllocator(db); });
+    noteScheduler('value_allocator', 'VALUE_ALLOCATOR_MODE', !!stopValueAllocator, 6 * 3_600_000);
+    if (stopValueAllocator) { lifecycleManager.register({ serviceName: 'ValueAllocator', stop: () => stopValueAllocator?.() }); console.log('⚖️  Value allocator on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Value allocator failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // Y3: dreaming as mutation — daily mutants of the maker genome, judged on the frozen gym holdout. DREAM_EVOLUTION_ENABLED=true.
   try {
     let stopDream = startDreamEvolution(db);
     registerRestart('dream_evolution', () => { stopDream?.(); stopDream = startDreamEvolution(db); });
     noteScheduler('dream_evolution', 'DREAM_EVOLUTION_ENABLED', !!stopDream, 3_600_000);
+    // the orphaned remote gym run sweep rides the dream-evolution tick (GYM_ORPHAN_SWEEP=shadow|on, default off)
+    noteScheduler('gym_orphan_sweep', 'GYM_ORPHAN_SWEEP', !!stopDream && gymOrphanSweepMode() !== 'off', 3_600_000);
     if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: () => stopDream?.() }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -260,6 +376,26 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Loop auto-merge failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // PRC-1: certified runs whose draft PR failed (< 3 times) are retried; a PR an earlier attempt opened is adopted. LOOP_DRAFT_PR_RETRY=shadow|on.
+  try {
+    let stopDraftPrRetry = startDraftPrRetry(db);
+    registerRestart('draft_pr_retry', () => { stopDraftPrRetry?.(); stopDraftPrRetry = startDraftPrRetry(db); });
+    noteScheduler('draft_pr_retry', 'LOOP_DRAFT_PR_RETRY', !!stopDraftPrRetry, 15 * 60_000);
+    if (stopDraftPrRetry) { lifecycleManager.register({ serviceName: 'DraftPrRetry', stop: () => stopDraftPrRetry?.() }); console.log('🔁 Draft PR retry on (every 15 min).'); }
+  } catch (error) {
+    console.warn('⚠️  Draft PR retry failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // PRC-2: record-only CI watch (required checks on the head of open loop PRs → metadata.ci + ci_red/ci_green). LOOP_PR_CI_WATCH=shadow.
+  try {
+    let stopCiWatch = startLoopPrCiWatch(db);
+    registerRestart('loop_pr_ci_watch', () => { stopCiWatch?.(); stopCiWatch = startLoopPrCiWatch(db); });
+    noteScheduler('loop_pr_ci_watch', 'LOOP_PR_CI_WATCH', !!stopCiWatch, ciWatchIntervalMs());
+    if (stopCiWatch) { lifecycleManager.register({ serviceName: 'LoopPrCiWatch', stop: () => stopCiWatch?.() }); console.log('👀 Loop PR CI watch on (shadow, record-only).'); }
+  } catch (error) {
+    console.warn('⚠️  Loop PR CI watch failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // P0.1 scheduler self-heal watchdog: armed-but-not-ticking ⇒ diagnose ⇒ one bounded restart (act) ⇒ verify ⇒ quarantine + escalate.
   // SCHEDULER_SELF_HEAL_MODE=shadow (default: diagnose + escalate, no restart) | act | off.
   try {
@@ -271,8 +407,10 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).
   try {
-    let stopStallWatch = startStallWatch(db);
-    registerRestart('stall_watch', () => { stopStallWatch?.(); stopStallWatch = startStallWatch(db); });
+    // O1a: a new stall is persisted (judgments 'stall') and pushed once through the operator push path (TELEGRAM_PUSH_ENABLED)
+    const notifyStall = (s: Stall) => pushStall(db, s);
+    let stopStallWatch = startStallWatch(db, undefined, notifyStall);
+    registerRestart('stall_watch', () => { stopStallWatch?.(); stopStallWatch = startStallWatch(db, undefined, notifyStall); });
     noteScheduler('stall_watch', 'STALL_WATCH_ENABLED', !!stopStallWatch, 3_600_000);
     if (stopStallWatch) { lifecycleManager.register({ serviceName: 'StallWatch', stop: () => stopStallWatch?.() }); console.log('🚨 Stall watch on (hourly).'); }
   } catch (error) {

@@ -122,7 +122,7 @@ export class ExplainerDiscoveryService {
     };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
 
-    const response = await this.fetcher(url.toString(), { headers });
+    const response = await this.fetcher(url.toString(), { headers, signal: AbortSignal.timeout(15_000) });
 
     if (response.status === 403) {
       return { repos: [], hasMore: false, rateLimited: true };

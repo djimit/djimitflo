@@ -8,6 +8,7 @@ import { LoopService } from './loop-service';
 import { NestedSpawnService } from './nested-spawn-service';
 import fs from 'fs';
 import { ContextInjectionService } from './context-injection-service';
+import { withoutHiddenChecks } from './fail-before-pass-after';
 
 type ProofRunStatus = 'completed' | 'rolled_back';
 type ProofRunRuntime = 'mock' | 'codex' | 'opencode';
@@ -266,6 +267,51 @@ export class ProofRunService {
     }
 
     return summary;
+  }
+
+  /**
+   * Knowledge/memory injection: retrieve swarm memory + OKF knowledge relevant to the maker's
+   * task and append it to the work assignment, so specialists operate WITH retrieved memory +
+   * skills instead of blind. Best-effort and non-fatal. Sources that were skipped (e.g. a swarm
+   * collection at another embedding dimension, CODE-002) are persisted on the maker lease as
+   * `context_retrieval.unavailable`, so a failed source is distinguishable from "no matching
+   * memory" even when another source did supply context.
+   */
+  async injectMakerContext(makerLease: { id: string; metadata: Record<string, unknown> }): Promise<void> {
+    const record = (patch: Record<string, unknown>) => {
+      const row = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLease.id) as { metadata?: string } | undefined;
+      const existing = row ? this.parseJson(row.metadata || '{}') : {};
+      this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?').run(JSON.stringify({ ...existing, ...patch }), new Date().toISOString(), makerLease.id);
+    };
+    try {
+      const assignmentFile = typeof makerLease.metadata.assignment_file === 'string' ? makerLease.metadata.assignment_file : '';
+      if (!assignmentFile || !fs.existsSync(assignmentFile)) return;
+      const assignmentText = fs.readFileSync(assignmentFile, 'utf8');
+      const finding = (assignmentText.match(/## Finding[\s\S]*?$/) || [assignmentText])[0].slice(0, 500);
+      const contextInjector = new ContextInjectionService(this.db);
+      // G8+G12: retrieve procedural rules (distilled from prior runs) + general context.
+      // This closes the self-improvement loop: distilled rules from run N are
+      // injected into run N+1's maker assignment.
+      const snapshot = await contextInjector.injectContextSnapshot(`DjimFlo control-plane loop: ${finding}`, true);
+      const unavailable = snapshot.unavailable ?? [];
+      const patch: Record<string, unknown> = {
+        context_retrieval: { sha256: snapshot.sha256, sources: snapshot.sources, degraded: unavailable.length > 0, unavailable },
+      };
+      const swarmContext = snapshot.text;
+      if (swarmContext) {
+        fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
+        // G5: record the injected memory trust_scores on the maker lease so the
+        // production certificate can gate on low-trust memory (injected_memory_trust).
+        const trustMatches = [...swarmContext.matchAll(/\[trust:(\d+\.\d+)\]/g)];
+        if (trustMatches.length > 0) patch.injected_memory_trust_scores = trustMatches.map((m) => parseFloat(m[1]));
+      }
+      record(patch);
+    } catch (error) {
+      // Context retrieval is best-effort; never fail the proof on the knowledge layer.
+      try {
+        record({ context_retrieval: { degraded: true, unavailable: [], error: error instanceof Error ? error.message : String(error) } });
+      } catch { /* best-effort */ }
+    }
   }
 
   private findLeaseByRole(
@@ -639,38 +685,7 @@ export class ProofRunService {
 
       this.ensureProofRunMetadata(loopRunId, proofRunId, { runtime });
 
-      // Knowledge/memory injection: retrieve swarm memory + OKF knowledge relevant to the
-      // maker's task and append it to the work assignment, so specialists operate WITH
-      // retrieved memory + skills instead of blind. Best-effort and non-fatal: empty/failed
-      // retrieval (no key, empty store, ollama/qdrant down) just yields no context.
-      try {
-        const assignmentFile = typeof makerPrepared.metadata.assignment_file === 'string'
-          ? makerPrepared.metadata.assignment_file
-          : '';
-        if (assignmentFile && fs.existsSync(assignmentFile)) {
-          const assignmentText = fs.readFileSync(assignmentFile, 'utf8');
-          const finding = (assignmentText.match(/## Finding[\s\S]*?$/) || [assignmentText])[0].slice(0, 500);
-          const contextInjector = new ContextInjectionService(this.db);
-          // G8+G12: retrieve procedural rules (distilled from prior runs) + general context.
-          // This closes the self-improvement loop: distilled rules from run N are
-          // injected into run N+1's maker assignment.
-          const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true);
-          if (swarmContext) {
-            fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
-            // G5: record the injected memory trust_scores on the maker lease so the
-            // production certificate can gate on low-trust memory (injected_memory_trust).
-            const trustMatches = [...swarmContext.matchAll(/\[trust:(\d+\.\d+)\]/g)];
-            if (trustMatches.length > 0) {
-              const scores = trustMatches.map((m) => parseFloat(m[1]));
-              const existingRow = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerPrepared.id) as { metadata?: string } | undefined;
-            const existingMeta = existingRow ? JSON.parse(existingRow.metadata || '{}') as Record<string, unknown> : {};
-            this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?').run(JSON.stringify({ ...existingMeta, injected_memory_trust_scores: scores }), new Date().toISOString(), makerPrepared.id);
-            }
-          }
-        }
-      } catch {
-        // Context retrieval is best-effort; never fail the proof on the knowledge layer.
-      }
+      await this.injectMakerContext(makerPrepared);
 
       await this.loops.executeWorker(loopRunId, {
         lease_id: makerPrepared.id,
@@ -820,11 +835,12 @@ export class ProofRunService {
         base.memory_flywheel_reason = memResult.reason || 'unknown';
       }
       // G12: distill an actionable rule from this run's evidence (procedural memory).
-      // This closes the self-improvement loop: the distilled rule is stored in the
-      // procedural store and retrievable by future runs via ContextInjectionService
-      // with storeFilter='procedural'. Best-effort — never fail the proof on distillation.
+      // AUTHZ-F1: the rule is an engineering_rule (review_required) and is only PROPOSED here. Promotion — which puts it
+      // into maker prompts (assignment-context) — needs the operator through the memory promote route (approve:task +
+      // human_approved); this service has proposal authority only and never approves its own output.
+      // Best-effort — never fail the proof on distillation.
       try {
-        const distilled = this.memory.distillFromRun({
+        this.memory.distillFromRun({
           loopRunId,
           capabilityId: '',
           runtime,
@@ -832,14 +848,8 @@ export class ProofRunService {
           makerLeaseId: '',
           checkerLeaseId: '',
           keyLearning: `Runtime ${runtime} proof run succeeded with ${makerLease ? 'maker' : 'no'} lease. The approach (codex headless, sandboxed, --ignore-user-config) is effective for this capability.`,
-          metadata: base,
+          metadata: { ...base, awaiting_human_review: true },
         });
-        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
-        const distilledResult = await this.memory.upsertToSwarmMemory(distilled.id);
-        if (!distilledResult.ok) {
-          base.memory_flywheel_degraded = true;
-          base.memory_flywheel_reason = distilledResult.reason || 'unknown';
-        }
       } catch { /* best-effort: never fail the proof on distillation */ }
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
       await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
@@ -848,9 +858,10 @@ export class ProofRunService {
       try { this.intelligence.autoPromoteFromEvidence(makerCapId); } catch { /* best-effort */ }
     } catch (error) {
       proofRunError = error instanceof Error ? error : new Error(String(error));
-      // G12: distill a failure rule — learn what NOT to do next time.
+      // G12: distill a failure rule — learn what NOT to do next time. AUTHZ-F1: proposed only (it embeds raw error text);
+      // the operator promotes it, or not, through the memory promote route.
       try {
-        const failureRule = this.memory.distillFromRun({
+        this.memory.distillFromRun({
           loopRunId,
           capabilityId: '',
           runtime,
@@ -858,14 +869,8 @@ export class ProofRunService {
           makerLeaseId: '',
           checkerLeaseId: '',
           keyLearning: `Runtime ${runtime} proof run FAILED: ${proofRunError.message}. Consider a different runtime, splitting the finding, or checking the worktree state before retrying.`,
-          metadata: { ...base, error: proofRunError.message },
+          metadata: { ...base, error: proofRunError.message, awaiting_human_review: true },
         });
-        this.memory.promote(failureRule.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
-        const failureResult = await this.memory.upsertToSwarmMemory(failureRule.id);
-        if (!failureResult.ok) {
-          base.memory_flywheel_degraded = true;
-          base.memory_flywheel_reason = failureResult.reason || 'unknown';
-        }
       } catch { /* best-effort */ }
       if (proofRunError.message.startsWith('PROOF_RUN_RUNTIME_') || proofRunError.message === 'PROOF_RUN_VERIFICATION_BLOCKED' || proofRunError.message === 'PROOF_RUN_COMPLETE_FAILED') {
         throw proofRunError;
@@ -1235,12 +1240,12 @@ export class ProofRunService {
     // G30: the memory_curator is the active curator — after the nested spawn completes,
     // the curator distills a rule from the run's evidence (not the proof-run-service
     // inline call). This makes the curator the active distiller, not a placeholder.
+    // AUTHZ-F1: the curator proposes; it does not promote (the rule is review_required until the operator approves it).
     try {
       const curatorLeaseId = nested.child_lease_id;
       const curatorResult = results.find((r) => r.lease.id === curatorLeaseId);
       if (curatorResult && curatorResult.lease.status === 'completed') {
-        
-        const distilled = this.memory.distillFromRun({
+        this.memory.distillFromRun({
           loopRunId,
           capabilityId: '',
           runtime: String(curatorResult.lease.runtime || ''),
@@ -1248,14 +1253,8 @@ export class ProofRunService {
           makerLeaseId: String(nested.root_lease_id),
           checkerLeaseId: String(curatorLeaseId),
           keyLearning: `Memory curator distilled: runtime ${curatorResult.lease.runtime} succeeded. The nested specialist approach (planner + curator, parallel, sandboxed) is effective.`,
-          metadata: { curator_active: true, curator_lease_id: curatorLeaseId },
+          metadata: { curator_active: true, curator_lease_id: curatorLeaseId, awaiting_human_review: true },
         });
-        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'memory_curator' });
-        const curatedResult = await this.memory.upsertToSwarmMemory(distilled.id);
-        if (!curatedResult.ok) {
-          // memory flywheel degraded — proof still succeeds, but flag it in metadata for observability
-          // (no throw: curator distillation is best-effort; the flag surfaces in run metadata)
-        }
       }
     } catch { /* best-effort: never fail the proof on curator distillation */ }
   }
@@ -1355,7 +1354,7 @@ export class ProofRunService {
     const maker = rows.find((candidate) => candidate.role === 'maker' && candidate.status === 'completed');
     if (!maker) return false;
     const metadata = this.parseJson(String(maker.metadata || '{}'));
-    const checks = Array.isArray(metadata.deterministic_checks) ? metadata.deterministic_checks : [];
+    const checks = Array.isArray(metadata.deterministic_checks) ? withoutHiddenChecks(metadata.deterministic_checks) : [];
     return checks.length > 0 && checks.every((check) => {
       return typeof check === 'object' && check !== null && (check as { status?: unknown }).status === 'pass';
     });

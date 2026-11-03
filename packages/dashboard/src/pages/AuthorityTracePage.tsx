@@ -72,14 +72,14 @@ export function AuthorityTracePage() {
           <ShieldCheck className="w-8 h-8" /> Authority Ledger
         </h1>
         <p className="text-foreground-secondary mt-2">
-          Append-only LifecycleEvents (djimit.io/v1alpha1) over de beslissingsketen:
-          editoriaal, runtime, approvals en evidence.
+          Append-only LifecycleEvents (djimit.io/v1alpha1) over the decision chain:
+          editorial, runtime, approvals and evidence.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-background-secondary border border-border rounded-xl p-4">
-          <div className="text-sm text-foreground-secondary">Totaal events</div>
+          <div className="text-sm text-foreground-secondary">Total events</div>
           <div className="text-2xl font-bold text-foreground">{stats?.note ? '—' : total}</div>
         </div>
         {(stats?.by_decision ?? []).map((d) => (
@@ -97,7 +97,7 @@ export function AuthorityTracePage() {
           onChange={(e) => setDecision(e.target.value)}
           className="bg-background-secondary border border-border rounded-lg px-3 py-1.5 text-sm text-foreground"
         >
-          <option value="ALL">Alle beslissingen</option>
+          <option value="ALL">All decisions</option>
           <option value="ALLOW">ALLOW</option>
           <option value="DENY">DENY</option>
           <option value="HOLD">HOLD</option>
@@ -108,12 +108,12 @@ export function AuthorityTracePage() {
         <table className="w-full text-sm">
           <thead className="text-foreground-secondary border-b border-border">
             <tr>
-              <th className="text-left p-3">Tijd</th>
+              <th className="text-left p-3">Time</th>
               <th className="text-left p-3">Seq</th>
-              <th className="text-left p-3">Vorige, Aangevraagd</th>
-              <th className="text-left p-3">Beslissing</th>
+              <th className="text-left p-3">Previous → requested</th>
+              <th className="text-left p-3">Decision</th>
               <th className="text-left p-3">Actor</th>
-              <th className="text-left p-3">Bron</th>
+              <th className="text-left p-3">Source</th>
             </tr>
           </thead>
           <tbody>
