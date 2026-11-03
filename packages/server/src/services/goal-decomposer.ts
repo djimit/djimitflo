@@ -112,10 +112,48 @@ export class GoalDecomposer {
       fallback: false,
     });
 
+    // Register the DAG as an observed mission/tasks in Swarm Mission Control,
+    // so capability/claim-driven planning has somewhere to land instead of
+    // living only in goal.metadata. Default-off: creates rows in 'observed'
+    // status only (see SwarmIntelligenceService.createMission/createTask) —
+    // nothing here executes anything; a human (or a separately gated policy
+    // check) still has to transition the mission forward.
+    if (process.env.GOAL_DECOMPOSER_AUTO_MISSIONS === 'true') {
+      this.registerMission(goalId, goal.objective, nodes);
+    }
+
     return {
       goal_id: goalId,
       nodes,
       fallback: false,
     };
+  }
+
+  private registerMission(goalId: string, objective: string, nodes: DAGNode[]): void {
+    try {
+      const mission = this.intelligence.createMission({
+        goal_id: goalId,
+        title: objective.slice(0, 120),
+        description: `Auto-decomposed from goal ${goalId} by GoalDecomposer`,
+        risk_class: 'medium',
+        metadata: { source: 'goal-decomposer-auto' },
+      });
+      for (const node of nodes) {
+        this.intelligence.createTask({
+          mission_id: mission.id,
+          title: `${node.step} (${node.role})`,
+          description: `Step '${node.step}', depends on: ${node.dependencies.join(', ') || 'none'}`,
+          capability_id: node.capability_id,
+          metadata: { source: 'goal-decomposer-auto', runtime: node.runtime },
+        });
+      }
+    } catch (err) {
+      // Best-effort: a mission-registration failure must not block decomposition.
+      swarmEventBus.emit('convergence', {
+        decomposition: 'auto_mission_failed',
+        goal_id: goalId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }

@@ -12,8 +12,11 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
 import type { TelegramApiService } from './telegram-api-service';
+import { mayActViaTelegram, mayApproveViaTelegram } from './telegram-identity';
+import { CALLBACK_DATA_MAX_BYTES, triageEnabled, type TriageButton } from './operator-push';
 
 interface TelegramConfig {
   botToken: string;
@@ -66,8 +69,11 @@ export class TelegramBotService {
       text: string;
       message_id: number;
     };
+    callback_query?: { id: string; from: { id: number }; data?: string; message?: { chat: { id: number } } };
   }): Promise<void> {
-    if (!this.config || !payload.message) return;
+    if (!this.config) return;
+    if (payload.callback_query) { await this.handleCallback(payload.callback_query); return; }
+    if (!payload.message) return;
 
     const { chat, from, text, message_id } = payload.message;
     if (!chat || !from || !Number.isSafeInteger(chat.id) || !Number.isSafeInteger(from.id) || typeof text !== 'string') return;
@@ -174,7 +180,7 @@ export class TelegramBotService {
   /**
    * Send a message to a Telegram chat.
    */
-  async sendMessage(chatId: number, text: string): Promise<void> {
+  async sendMessage(chatId: number, text: string, replyMarkup?: unknown): Promise<void> {
     if (!this.config?.botToken) return;
 
     try {
@@ -186,6 +192,7 @@ export class TelegramBotService {
           chat_id: chatId,
           text: this.escapeMarkdown(text),
           parse_mode: 'MarkdownV2',
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
         }),
       });
       const result = await response.json() as { ok?: boolean };
@@ -208,15 +215,121 @@ export class TelegramBotService {
   }
 
   /**
-   * Send approval request to Telegram.
+   * UX-12: approval request with one-tap buttons. `text` is pre-built and redacted by operator-push (ids + aggregates).
+   * The buttons only carry the approval id; the decision runs through the API as the mapped user (see handleCallback).
    */
-  async requestApproval(approvalId: string, action: string, reason: string): Promise<void> {
+  async requestApproval(approvalId: string, text: string, openUrl?: string | null): Promise<void> {
     if (!this.config) return;
-
-    const text = `⚠️ *Approval Required*\n\nAction: ${action}\nReason: ${reason}\n\nReply: \`/approve ${approvalId}\` or \`/reject ${approvalId}\``;
-
+    const keyboard = { inline_keyboard: [[
+      { text: 'Approve', callback_data: `ap:${approvalId}` }, { text: 'Deny', callback_data: `dn:${approvalId}` },
+      ...(openUrl ? [{ text: 'Open', url: openUrl }] : []),
+    ]] };
     for (const userId of this.config.allowedUsers) {
-      await this.sendMessage(userId, text);
+      await this.sendMessage(userId, text, keyboard);
+    }
+  }
+
+  /** One-tap triage (D5 label / memory review). Buttons carry only a kind + id; see handleTriageCallback. */
+  async requestTriage(text: string, buttons: TriageButton[], openUrl?: string | null): Promise<void> {
+    if (!this.config) return;
+    const keyboard = { inline_keyboard: [[...buttons.map((b) => ({ text: b.text, callback_data: b.data })), ...(openUrl ? [{ text: 'Open', url: openUrl }] : [])]] };
+    for (const userId of this.config.allowedUsers) {
+      await this.sendMessage(userId, text, keyboard);
+    }
+  }
+
+  /** Fixed deny reasons for the one-tap picker (callback_data stays under Telegram's 64-byte limit). */
+  static readonly DENY_REASONS: Record<string, string> = { s: 'Out of scope', r: 'Too risky', w: 'Wrong change', l: 'Not now' };
+
+  /**
+   * UX-12 buttons. Only an allowlisted, active, D3-mapped user whose role holds approve:task may decide; the call goes
+   * through the normal approval API as that user, so SELF_APPROVAL_FORBIDDEN and every other server rule still apply.
+   */
+  async handleCallback(q: { id: string; from: { id: number }; data?: string; message?: { chat: { id: number } } }): Promise<string> {
+    const chatId = q.message?.chat?.id ?? q.from?.id;
+    if (!Number.isSafeInteger(chatId) || Buffer.byteLength(q.data ?? '', 'utf8') > CALLBACK_DATA_MAX_BYTES) return 'invalid';
+    if (/^(pl|mp|mr):/.test(q.data ?? '')) return this.handleTriageCallback(q, chatId);
+    const m = /^(ap|dn|rs):([A-Za-z0-9-]{1,64})(?::([srwl]))?$/.exec(q.data ?? '');
+    if (!m) return 'invalid';
+    const actor = mayApproveViaTelegram(this.db, q.from?.id);
+    if (!actor || !this.config?.allowedUsers.includes(q.from.id)) {
+      await this.sendMessage(chatId, '⛔ Not allowed: this Telegram account is not mapped to a user who may approve.');
+      return 'refused';
+    }
+    const [, kind, approvalId, reasonCode] = m;
+    if (kind === 'dn') {
+      await this.sendMessage(chatId, `Deny ${approvalId}: pick a reason`, { inline_keyboard: [Object.entries(TelegramBotService.DENY_REASONS)
+        .map(([code, label]) => ({ text: label, callback_data: `rs:${approvalId}:${code}` }))] });
+      return 'reason_asked';
+    }
+    try {
+      if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
+      if (kind === 'ap') {
+        await this.api.request(actor.userId, `/approvals/${encodeURIComponent(approvalId)}/approve`, 'POST');
+        await this.sendMessage(chatId, `✅ Approved: ${approvalId}`);
+        return 'approved';
+      }
+      const reason = TelegramBotService.DENY_REASONS[reasonCode ?? ''] ?? 'Denied via Telegram';
+      await this.api.request(actor.userId, `/approvals/${encodeURIComponent(approvalId)}/deny`, 'POST', { reason });
+      await this.sendMessage(chatId, `❌ Denied: ${approvalId} (${reason})`);
+      return 'denied';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === 'APPROVAL_ALREADY_PROCESSED') {
+        // TG-3: say who decided (ids/actor names only) instead of a bare error
+        const row = this.db.prepare('SELECT status, approved_by, updated_at FROM approvals WHERE id = ?').get(approvalId) as { status: string; approved_by: string | null; updated_at: string | null } | undefined;
+        const when = row?.updated_at ? ` at ${new Date(row.updated_at).toISOString().replace(/\.\d{3}Z$/, 'Z')}` : '';
+        await this.sendMessage(chatId, `✅ Already ${row?.status ?? 'decided'} by ${row?.approved_by || 'a rule'}${when}`);
+        return 'already_decided';
+      }
+      await this.sendMessage(chatId, message.startsWith('SELF_APPROVAL_FORBIDDEN') ? '⛔ You cannot approve your own request.' : `Error: ${message}`);
+      return message.startsWith('SELF_APPROVAL_FORBIDDEN') ? 'self_approval' : 'error';
+    }
+  }
+
+  /**
+   * One-tap triage. The payload is only a kind and an id: `pl:<id>:o|w` (D5 label: correct / wrong rejection),
+   * `mp:<id>` / `mr:<id>` (promote / reject a memory candidate). Authorised exactly like approvals: a D3-mapped, active
+   * user whose role holds the permission the web route demands (write:governance for labels, approve:task for memory),
+   * every check audited. The id is looked up before anything runs; the action itself goes through the same API route
+   * the /decisions page calls, as that user — so a promote records the mapped user as the human approver.
+   */
+  private async handleTriageCallback(q: { from: { id: number }; data?: string }, chatId: number): Promise<string> {
+    const m = /^(pl|mp|mr):([A-Za-z0-9-]{1,60})(?::([ow]))?$/.exec(q.data ?? '');
+    if (!m || (m[1] === 'pl') !== Boolean(m[3])) return 'invalid';
+    const [, kind, id, code] = m;
+    const actor = kind === 'pl' ? mayActViaTelegram(this.db, q.from?.id, 'label', 'write:governance') : mayActViaTelegram(this.db, q.from?.id, 'memory', 'approve:task');
+    if (!actor || !this.config?.allowedUsers.includes(q.from.id)) {
+      await this.sendMessage(chatId, `⛔ Not allowed: this Telegram account is not mapped to a user who may ${kind === 'pl' ? 'label pre-screen rejections' : 'review memory'}.`);
+      return 'refused';
+    }
+    if (!triageEnabled()) { await this.sendMessage(chatId, 'Triage via Telegram is switched off (TELEGRAM_TRIAGE_ENABLED). Use the dashboard.'); return 'disabled'; }
+    try {
+      if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
+      if (kind === 'pl') {
+        const row = this.db.prepare(`SELECT s.id, s.title FROM self_improvements s WHERE s.id = ? AND EXISTS (SELECT 1 FROM judgments j
+          WHERE j.judgment = 'proposal_prescreen' AND j.subject_id = s.id AND j.decision = 'no')`).get(id) as { id: string; title: string } | undefined;
+        if (!row) { await this.sendMessage(chatId, 'Not found: no pre-screen rejection with that id.'); return 'not_found'; }
+        const label = code === 'o' ? 'ok' : 'wrong';
+        await this.api.request(actor.userId, `/self-improve/proposals/${encodeURIComponent(row.id)}/prescreen-label`, 'POST', { label });
+        await this.sendMessage(chatId, `🏷 Labelled ${label === 'ok' ? 'correct rejection' : 'wrong rejection'}: ${row.title.slice(0, 120)}`);
+        return 'labelled';
+      }
+      const row = this.db.prepare('SELECT id, title, status FROM memory_candidates WHERE id = ?').get(id) as { id: string; title: string; status: string } | undefined;
+      if (!row) { await this.sendMessage(chatId, 'Not found: no memory candidate with that id.'); return 'not_found'; }
+      if (!['review_required', 'candidate'].includes(row.status)) { await this.sendMessage(chatId, `Already ${row.status}: ${row.title.slice(0, 120)}`); return 'already_decided'; }
+      if (kind === 'mp') {
+        // same body as the dashboard's Promote; the route takes the approver from the token (the mapped user), never from the body
+        await this.api.request(actor.userId, `/swarms/memory/candidates/${encodeURIComponent(row.id)}/promote`, 'POST', { sinks: ['okf'], human_approved: true });
+        await this.sendMessage(chatId, `✅ Promoted: ${row.title.slice(0, 120)}`);
+        return 'promoted';
+      }
+      await this.api.request(actor.userId, `/swarms/memory/candidates/${encodeURIComponent(row.id)}/reject`, 'POST', { reason: 'Rejected via Telegram' });
+      await this.sendMessage(chatId, `❌ Rejected: ${row.title.slice(0, 120)}`);
+      return 'rejected';
+    } catch (error) {
+      await this.sendMessage(chatId, `Error: ${error instanceof Error ? error.message : String(error)}`);
+      return 'error';
     }
   }
 
@@ -288,10 +401,10 @@ export class TelegramBotService {
 
   private async sendMissionControl(chatId: number): Promise<void> {
     const stats = {
-      loops: (this.db.prepare("SELECT COUNT(*) as c FROM loop_runs").get() as any)?.c || 0,
+      loops: (this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE ${realRunSql()}`).get() as any)?.c || 0,
       goals: (this.db.prepare("SELECT COUNT(*) as c FROM goals").get() as any)?.c || 0,
       agents: (this.db.prepare("SELECT COUNT(*) as c FROM agents").get() as any)?.c || 0,
-      leases: (this.db.prepare("SELECT COUNT(*) as c FROM worker_leases").get() as any)?.c || 0,
+      leases: (this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE ${realRunIdSql('loop_run_id')}`).get() as any)?.c || 0,
     };
 
     await this.sendMessage(chatId,

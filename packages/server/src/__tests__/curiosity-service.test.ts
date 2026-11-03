@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { CuriosityService } from '../services/curiosity-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { SelfImprovementService } from '../services/self-improvement-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 
@@ -179,5 +180,56 @@ describe('G41: Curiosity Service', () => {
     curiosity.start();
     curiosity.stop();
     expect(true).toBe(true);
+  });
+
+  describe('feeding detected gaps into the reviewed self-improvement pipeline', () => {
+    // Found 2026-09-21: generateFromGaps() existed, tested, unused since
+    // before this session — scanForGaps()'s output only ever reached
+    // swarm_claims, never a place that could turn a gap into reviewed work.
+    const improvements = () => new SelfImprovementService(db);
+
+    // A confidence gap is an actionable finding (old, low-confidence claims); a coverage gap is a count heuristic.
+    const staleLowConfidence = () => {
+      const old = new Date(Date.now() - 40 * 86400000).toISOString();
+      for (const id of ['a', 'b', 'c']) claim(`stale-${id}`, { confidence: 0.2, created_at: old });
+    };
+
+    it('creates a real self-improvement proposal from a detected (non-coverage) gap', async () => {
+      staleLowConfidence();
+      const report = await curiosity.scanForGaps();
+      expect(report.gaps.some(gap => gap.type === 'confidence')).toBe(true);
+      const proposals = improvements().listImprovements('proposed');
+      expect(proposals.length).toBeGreaterThan(0);
+      expect(proposals[0].source).toBe('gap_analysis');
+    });
+
+    it('does not turn a coverage (count-heuristic) gap into a proposal, but still publishes it as a claim', async () => {
+      claim('maker'); claim('checker');
+      const report = await curiosity.scanForGaps();
+      expect(report.gaps.every(gap => gap.type === 'coverage')).toBe(true);
+      expect(report.published).toBeGreaterThan(0);
+      expect(improvements().listImprovements().filter(p => p.source === 'gap_analysis')).toHaveLength(0);
+    });
+
+    it('does not create a duplicate proposal when the same still-open gap is re-detected on a later scan', async () => {
+      staleLowConfidence();
+      await curiosity.scanForGaps();
+      const afterFirst = improvements().listImprovements('proposed').length;
+      expect(afterFirst).toBeGreaterThan(0);
+      await curiosity.scanForGaps(); // same underlying claims, same gap, re-detected
+      expect(improvements().listImprovements('proposed').length).toBe(afterFirst);
+    });
+
+    it('still completes and returns its report even if proposal generation throws', async () => {
+      const spy = vi.spyOn(SelfImprovementService.prototype, 'generateFromGaps').mockImplementation(() => { throw new Error('simulated failure'); });
+      try {
+        claim('maker'); claim('checker');
+        const report = await curiosity.scanForGaps();
+        expect(report.gapsFound).toBeGreaterThan(0);
+        expect(report.published).toBeGreaterThan(0);
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 });

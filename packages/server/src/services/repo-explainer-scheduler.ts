@@ -65,6 +65,8 @@ export interface SchedulerStatus {
   failed_today: number;
   budget: SchedulerBudget;
   paused: boolean;
+  /** Newest failed jobs with the reason stored on their task (29 failed silently on a missing corpus file). */
+  recent_failures: Array<{ full_name: string; error: string | null; finished_at: string | null }>;
 }
 
 export class RepoExplainerScheduler {
@@ -137,8 +139,17 @@ export class RepoExplainerScheduler {
       last_bundle_at: string | null;
     }>;
 
-    const candidates: RefreshCandidate[] = [];
+    // A task can own several bundles, so the bundle join above yields one row per bundle.
+    // Keep only the newest per repository: duplicates collide on the unique dedupe_key
+    // when scheduled (found in production: fleet/run and refresh-stale both returned 500).
+    const newestPerRepo = new Map<string, (typeof rows)[number]>();
     for (const row of rows) {
+      const seen = newestPerRepo.get(row.discovered_repository_id);
+      if (!seen || (row.last_bundle_at ?? "") > (seen.last_bundle_at ?? "")) newestPerRepo.set(row.discovered_repository_id, row);
+    }
+
+    const candidates: RefreshCandidate[] = [];
+    for (const row of newestPerRepo.values()) {
       const bundleMeta = row.bundle_metadata ? JSON.parse(row.bundle_metadata) : {};
       const lastBundleCommit = bundleMeta.source_commit ?? null;
       let reason: RefreshCandidate["reason"];
@@ -370,6 +381,14 @@ export class RepoExplainerScheduler {
       failed_today: Number(counts.failed_today ?? 0),
       budget: this.getBudget(now),
       paused: this.isPaused(),
+      // Only failures that still matter: last 7 days, and the task has not completed since (prod 2026-09-24: the list kept
+      // showing the 2026-09-12 missing-corpus ENOENT for repos that had published bundles long since).
+      recent_failures: this.db.prepare(`
+        SELECT REPLACE(t.remote_url, 'https://github.com/', '') AS full_name, t.error_message AS error, j.finished_at AS finished_at
+        FROM explainer_jobs j JOIN explainer_tasks t ON t.id = j.task_id
+        WHERE j.status = 'failed' AND t.status <> 'completed' AND COALESCE(j.finished_at, j.updated_at) >= ?
+        ORDER BY COALESCE(j.finished_at, j.updated_at) DESC LIMIT 5
+      `).all(new Date(now.getTime() - 7 * 86_400_000).toISOString()) as SchedulerStatus['recent_failures'],
     };
   }
 

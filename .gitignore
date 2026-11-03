@@ -100,3 +100,17 @@ benchmarks/live-test-e2e/*/
 djimitflo-knowledge/
 djimitflo-knowledge-skill-intelligence/
 djimitflo-ruvnet-evolution/
+
+# Stryker (mutation lane)
+.stryker-tmp/
+reports/mutation/
+
+# generated artefacts that were committed by accident (cleanup 2026-09-25)
+.playwright-cli/
+output/
+drift*.json
+.tmp-*
+*.bak
+benchmarks/*.js
+benchmarks/*.d.ts
+benchmarks/*.map

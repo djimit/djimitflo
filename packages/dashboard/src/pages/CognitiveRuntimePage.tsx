@@ -103,7 +103,7 @@ export function CognitiveRuntimePage() {
       )}
 
       <div className="bg-background-elevated rounded-xl border border-border p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-2">Beste strategie</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-2">Best strategy</h2>
         {strategy && 'successRate' in strategy ? (
           <div className="text-sm space-y-1">
             <div className="font-medium text-foreground">{strategy.name}</div>
@@ -113,7 +113,7 @@ export function CognitiveRuntimePage() {
             </div>
           </div>
         ) : (
-          <p className="text-foreground-tertiary text-sm">Nog geen strategie (≥3 episodes nodig)</p>
+          <p className="text-foreground-tertiary text-sm">No strategy yet (needs ≥ 3 episodes)</p>
         )}
       </div>
 

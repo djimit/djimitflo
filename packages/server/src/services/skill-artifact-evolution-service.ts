@@ -3,6 +3,15 @@ import type { Database } from 'better-sqlite3';
 import type { SkillLoaderService } from './skill-loader-service';
 import type { OpenMythosEvalService, EvalRunResult } from './openmythos-eval-service';
 import { OpenMythosEvalService as OpenMythosEvalServiceImpl } from './openmythos-eval-service';
+import { COMPLETED_UNVERIFIED_REF, DELIVERED_ATTRIBUTION_SQL } from './skill-evolution-engine';
+
+/**
+ * A source outcome is a verified, delivered one in main's attribution model (INT-004 receipt ref `skill_delivery:delivered`
+ * + passed task verification), never a bare process exit.
+ */
+export const verifiedDeliveredOutcomeSql = (): string => `success = 1 AND ${DELIVERED_ATTRIBUTION_SQL}
+  AND evidence_refs_json NOT LIKE '%"${COMPLETED_UNVERIFIED_REF}"%'`; // a function: the import cycle via swarm-intelligence-service
+
 
 type Candidate = {
   id: string; skill_id: string; version: string; content_hash: string; source_package_hash: string;
@@ -23,11 +32,9 @@ export class SkillArtifactEvolutionService {
     const skill = input.loader.getSkill(input.skillId);
     if (!skill || !input.actor.trim()) throw new Error('SKILL_EVOLUTION_SKILL_OR_ACTOR_REQUIRED');
     if (skill.contentHash !== input.baselineHash) throw new Error('SKILL_EVOLUTION_BASELINE_HASH_MISMATCH');
-    const sourceOutcome = this.db.prepare(`SELECT o.id, d.skill_version FROM skill_outcomes o JOIN skill_delivery_receipts d
-      ON d.attempt_id = o.attempt_id AND d.skill_id = o.skill_id AND d.skill_version = o.skill_version
-      AND d.skill_content_hash = o.skill_content_hash
-      WHERE o.task_id = ? AND o.skill_id = ? AND o.skill_content_hash = ? AND o.success = 1
-      ORDER BY o.created_at DESC LIMIT 1`).get(input.sourceTaskId, input.skillId, input.baselineHash) as { id: string; skill_version: string } | undefined;
+    const sourceOutcome = this.db.prepare(`SELECT id, skill_version FROM skill_outcomes
+      WHERE task_id = ? AND skill_id = ? AND skill_content_hash = ? AND skill_version IS NOT NULL AND ${verifiedDeliveredOutcomeSql()}
+      ORDER BY created_at DESC LIMIT 1`).get(input.sourceTaskId, input.skillId, input.baselineHash) as { id: string; skill_version: string } | undefined;
     if (!sourceOutcome) throw new Error('SKILL_EVOLUTION_DELIVERED_SOURCE_OUTCOME_REQUIRED');
     const verifiedBaseline = (this.db.prepare(`SELECT metadata FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed' AND completed_cases = total_cases ORDER BY finished_at DESC`).all(input.skillId) as Array<{ metadata: string }>)
@@ -97,7 +104,10 @@ export class SkillArtifactEvolutionService {
     const candidateRun = await evals.runEval(candidate.skill_id, undefined, input.model, input.caseIds, {
         kind: 'skill', id: candidate.skill_id, version: candidate.version, contentHash: candidate.content_hash, instructions: candidate.instructions,
       });
-    const result = this.classifyComparison(baseRun, candidateRun, candidate);
+    // The evaluator build is pinned on the comparison, not on the OpenMythos run receipt (a build hash never enters run
+    // metadata, E01): both runs execute in this process, so they share this build by construction.
+    const evaluatorBuildSha = process.env.DJIMITFLO_BUILD_SHA?.trim() || null;
+    const result = this.classifyComparison(baseRun, candidateRun, candidate, evaluatorBuildSha);
     (result.manifest as Record<string, unknown>).evaluated_by = input.actor;
     const comparisonId = randomUUID();
     this.db.prepare(`INSERT INTO skill_evolution_comparisons
@@ -134,16 +144,13 @@ export class SkillArtifactEvolutionService {
     const candidate = comparison.manifest.candidate;
     const currentSubjectDigest = process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST?.trim();
     const currentJudgeDigest = process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST?.trim();
-    const currentJudgeBackend = process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? 'ollama' : 'judge_service';
-    const currentJudgeModel = currentJudgeBackend === 'ollama'
-      ? process.env.OPENMYTHOS_JUDGE_MODEL?.trim() || 'qwen2.5:14b-instruct-q4_K_M'
-      : 'djimitflo-judge-service';
-    const judgeDigestMatches = baseline.judge_backend === 'judge_service'
-      ? identity.evaluator_build_sha && baseline.judge_model_digest === identity.evaluator_build_sha
-      : currentJudgeDigest && baseline.judge_model_digest === currentJudgeDigest;
+    // OpenMythos always judges on Ollama (there is no JudgeService path; OPENMYTHOS_USE_JUDGE_SERVICE changes nothing).
+    const currentJudgeBackend = 'ollama';
+    const currentJudgeModel = process.env.OPENMYTHOS_JUDGE_MODEL || 'qwen2.5:14b-instruct-q4_K_M';
+    const judgeDigestMatches = currentJudgeDigest && baseline.judge_model_digest === currentJudgeDigest;
     if (identity.corpus_sha256 !== baseline.corpus_sha256 || identity.corpus_version !== baseline.corpus_version
       || identity.oracle_anchors_sha256 !== baseline.oracle_anchors_sha256
-      || !identity.evaluator_build_sha || identity.evaluator_build_sha !== baseline.evaluator_build_sha
+      || !identity.evaluator_build_sha || identity.evaluator_build_sha !== comparison.manifest.evaluator_build_sha
       || !currentSubjectDigest || currentSubjectDigest !== baseline.subject_model_digest
       || baseline.judge_backend !== currentJudgeBackend || baseline.judge_model !== currentJudgeModel
       || baseline.subject_model_digest !== candidate.subject_model_digest || !judgeDigestMatches) {
@@ -196,7 +203,7 @@ export class SkillArtifactEvolutionService {
       comparison: this.latestComparison(candidate.id) };
   }
 
-  private classifyComparison(baseline: EvalRunResult, candidate: EvalRunResult, artifact: Candidate) {
+  private classifyComparison(baseline: EvalRunResult, candidate: EvalRunResult, artifact: Candidate, evaluatorBuildSha: string | null) {
     const baseMeta = this.runMetadata(baseline.id);
     const candidateMeta = this.runMetadata(candidate.id);
     const exactCases = (run: EvalRunResult) => run.results.map((result) => result.caseId);
@@ -222,7 +229,7 @@ export class SkillArtifactEvolutionService {
       && baseMeta.score_valid === true && candidateMeta.score_valid === true
       && baseMeta.certification_eligible === true && candidateMeta.certification_eligible === true
       && baseMeta.subject_model === candidateMeta.subject_model
-      && baseMeta.evaluator_build_sha && baseMeta.evaluator_build_sha === candidateMeta.evaluator_build_sha
+      && evaluatorBuildSha
       && baseMeta.subject_model_digest && baseMeta.subject_model_digest === candidateMeta.subject_model_digest
       && baseMeta.judge_backend === candidateMeta.judge_backend
       && baseMeta.judge_model === candidateMeta.judge_model
@@ -243,7 +250,8 @@ export class SkillArtifactEvolutionService {
     return { verdict, reason, cases, manifest: { baseline: baseMeta, candidate: candidateMeta,
       baseline_run_ms: Date.parse(baseline.finishedAt) - Date.parse(baseline.startedAt),
       candidate_run_ms: Date.parse(candidate.finishedAt) - Date.parse(candidate.startedAt),
-      case_ids: exactCases(baseline), candidate_case_ids: exactCases(candidate), comparison: 'same-run-settings-and-pinned-case-identities' } };
+      case_ids: exactCases(baseline), candidate_case_ids: exactCases(candidate), comparison: 'same-run-settings-and-pinned-case-identities',
+      evaluator_build_sha: evaluatorBuildSha } };
   }
 
   private runMetadata(runId: string): Record<string, any> {

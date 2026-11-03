@@ -1,3 +1,4 @@
+import { measured } from './model-selector';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { swarmEventBus } from './swarm-event-bus';
@@ -260,10 +261,14 @@ export class CouncilOrchestrator {
           || (session.risk_class === 'high' && session.mode === 'council'),
       };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Persist why: this used to reach only the in-process event bus, so 11/13 production
+      // sessions showed 'failed' with no reason. The phase reached is the status before failing.
+      this.recordFailure(sessionId, message);
       this.updateSessionPhase(sessionId, 'failed');
       swarmEventBus.emit('council:session:failed', {
         session_id: sessionId,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       });
       throw error;
     }
@@ -274,7 +279,13 @@ export class CouncilOrchestrator {
    * through the LiteLLM proxy (OpenAI-compatible), which fronts
    * OpenAI/Anthropic/Google/OpenRouter with one code path.
    */
-  private async callModel(
+  /** UX-18: every council model call is a ledger row (consumer 'council'); the prompt is never stored. */
+  private callModel(model: CouncilModelRecord, prompt: string): Promise<{ content: string; tokens: number; latencyMs: number }> {
+    return measured({ consumer: 'council', model: model.model_name, provider: model.provider, taskKind: 'perspective', tokensIn: Math.ceil(prompt.length / 4) },
+      () => this.callModelRaw(model, prompt), (r) => ({ outChars: r.content.length, tokensOut: r.tokens }), this.db);
+  }
+
+  private async callModelRaw(
     model: CouncilModelRecord,
     prompt: string,
   ): Promise<{ content: string; tokens: number; latencyMs: number }> {
@@ -290,7 +301,7 @@ export class CouncilOrchestrator {
           prompt,
           stream: false,
           think: false,
-          options: { num_predict: Math.max(32, Math.min(Number(process.env.COUNCIL_OLLAMA_MAX_TOKENS || 128), 2048)) },
+          options: { num_predict: Math.max(32, Math.min(Number(process.env.COUNCIL_OLLAMA_MAX_TOKENS || 512), 2048)) },
         }),
         signal: AbortSignal.timeout(120_000),
       });
@@ -533,6 +544,16 @@ export class CouncilOrchestrator {
       disagreement_score: disagreement,
     });
     return { output: result.output, confidence: result.confidence };
+  }
+
+  private recordFailure(sessionId: string, message: string): void {
+    try {
+      const row = this.db.prepare('SELECT status, metadata FROM council_sessions WHERE id = ?').get(sessionId) as { status: string; metadata: string | null } | undefined;
+      if (!row) return;
+      const metadata = JSON.parse(row.metadata || '{}');
+      metadata.failure = { message: message.slice(0, 500), phase: row.status, at: new Date().toISOString() };
+      this.db.prepare('UPDATE council_sessions SET metadata = ? WHERE id = ?').run(JSON.stringify(metadata), sessionId);
+    } catch { /* best-effort: never mask the original failure */ }
   }
 
   private updateSessionPhase(sessionId: string, phase: CouncilPhase): void {

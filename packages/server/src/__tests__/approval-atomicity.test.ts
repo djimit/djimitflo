@@ -74,6 +74,27 @@ it('persists expired decision refusal and its audit once, outside the throwing t
   expect(publish).toHaveBeenCalledTimes(1);
 });
 
+it('cancels the task instead of leaving it stuck in awaiting_approval forever when its approval expires', () => {
+  const pending = create();
+  db.prepare('UPDATE approvals SET expires_at=? WHERE id=?').run(new Date(Date.now() - 1000).toISOString(), pending.id);
+
+  expect(service.getLatestPendingForTask(task.id)).toBeNull();
+
+  expect((db.prepare('SELECT status FROM tasks WHERE id=?').get(task.id) as { status: string }).status).toBe('cancelled');
+  expect(db.prepare("SELECT count(*) n FROM audit_events WHERE action='task_cancelled_after_approval_expiry'").get()).toEqual({ n: 1 });
+});
+
+it('does not touch a task that already moved past awaiting_approval for an unrelated reason', () => {
+  const pending = create();
+  db.prepare('UPDATE approvals SET expires_at=? WHERE id=?').run(new Date(Date.now() - 1000).toISOString(), pending.id);
+  db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(task.id);
+
+  service.getLatestPendingForTask(task.id);
+
+  expect((db.prepare('SELECT status FROM tasks WHERE id=?').get(task.id) as { status: string }).status).toBe('completed');
+  expect(db.prepare("SELECT count(*) n FROM audit_events WHERE action='task_cancelled_after_approval_expiry'").get()).toEqual({ n: 0 });
+});
+
 it('publishes create, decision and expiry only after their transactions commit', () => {
   const observations: { transaction: boolean; auditRows: unknown }[] = [];
   publish.mockImplementation(() => observations.push({ transaction: db.inTransaction, auditRows: auditCount() }));
@@ -82,7 +103,10 @@ it('publishes create, decision and expiry only after their transactions commit',
   db.prepare('UPDATE approvals SET expires_at=? WHERE id=?').run('invalid-expiry', expired.id);
   service.getLatestPendingForTask(task.id);
   expect(observations.map(row => row.transaction)).toEqual([false, false, false, false]);
-  expect(observations.map(row => row.auditRows)).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }]);
+  // The 4th observation is 5, not 4: expiry now also cancels the still-
+  // awaiting_approval task in the same transaction, adding a second audit row
+  // (task_cancelled_after_approval_expiry) alongside approval_expired.
+  expect(observations.map(row => row.auditRows)).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }, { n: 5 }]);
 });
 
 it.each(['create', 'decide', 'expire'])('post-commit notification failure does not undo or obscure %s', operation => {

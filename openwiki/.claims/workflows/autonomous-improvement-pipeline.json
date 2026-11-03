@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:419c98b7227095ed6d54b29cb1eef1a3026fac0d2812884f4a9474d0d28d9530",
+  "claims": [
+    {
+      "id": "claim_77753370713d46bba7fe80a450d64abe",
+      "statement": "LoopDaemon.tick() polls pending goals every GOAL_QUEUE_POLL_MS (default 5000 ms), loads goals in created/decomposed status ordered by risk_class descending then created_at ascending, and starts up to GOAL_MAX_CONCURRENT (default 4) goals concurrently, with the active-goal set persisted to system_state across restarts.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L151-L165",
+          "version": "repo-lines-v1:sha256:f8f0507599e2bb544a5f2aa2b9c08b0d4a6e0111f26fa046815df52a48be7f3b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlYjllYjBhYTBkNWU4NWVhMmZiMjdmOTRjYzU3ODIzMTVmYzUxMzZjMWVhZWFiOGQ1OGYyZGU2NzQ3M2RkZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjYTRlMTNhNWY0NThkODhlYWM2MWNjOTIwMjJlYmEyNDY4YjNjMDgxZWUwZDY2Njg4NDM5NTFmY2E1ODA0NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYjQ3OWRmOGJjYTUzZmQwZjgyYWE4YjY2N2M5MDE2Y2E2ODUzYjE2NTQ2NjljMWQ2ZDY3YWYxOGZlNmExYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxN2M2OWFjNzc0Y2NjMTNjNjA5MGZmMDUzOTY2NmE4YjQzYTkxYTg3YTQ4YWJiOTE0ZWU1OGExNTU5MjZmYTAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L345-L365",
+          "version": "repo-lines-v1:sha256:3beef49e8d725838fdd11d7e810739c051a0f5b677775356965fad95f06e9f87:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlN2FhMTNkZjRlNWFhZTQ2Zjk1NWFhZjViMTUxMDEwYmNhODAzY2FhN2I0NTI1NDA3ZDUwNGIzNThhYjJiZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmNDgwYzQ4YjEwNWMxMDM2ZTYxNjg0YTZkMTJiZTYxMTBlY2JjYjc4YzkxODZlYTZjZDBlNzRjOTFkNjg5ZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkZTZiOTFiYzMxZDM3ODE3MGZmMjFmZGExMDUwMmI1NDUzOTY0Mjc5MWJjMDAwZmZiZTUwMTJmZmQ0YjgwNGUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L749-L775",
+          "version": "repo-lines-v1:sha256:7140cfe037c9dd5b838d76d687f9a1965546496778e42bcb5f4b2b684f4f2aa1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0ODYzZWVmYmYwMDE2OTc5NDQ2MDgyMjE4MDFiYzQ0MGQ4OWQyZDM5ZWYzYmUwN2I4YmUxNDZjMjQ4MWI5NmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmMDdhZDg2NDJhZjRiMGQ3MTk0ZmIxNWFkNmE3NmQ5M2RjNjllODA5MzExMGQwZGUwNjg3MWUxOTE5YjBkMzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_68cc983b7319422bb4e920c098a73cae",
+      "statement": "Objective-mode dispatch is gated by objective-loop-gate.ts: it requires SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED=true (default off), goal metadata.source === 'self-improvement', risk_class 'low', and the per-tick cap (SELF_IMPROVEMENT_OBJECTIVE_LOOP_MAX_PER_TICK, default 1, ceiling 3); a qualifying goal that only loses the cap is deferred to the next tick rather than falling through to the doc-drift no-op.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L208-L238",
+          "version": "repo-lines-v1:sha256:8e68be7c9d6b974d94db321576de7cd29eb36e11ca1e7db6143a0c44be61dc5b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlNTBiYmU0YWViMTdhYTRhNWQ5ZTlmM2E2YmUzMDZkMTIxOWM4ODZlZTcyYjAxY2MwNDZiOWExNjM3ZmFhNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMxYmE4Y2QyYTBlZDA0NTYxMmI1MzM2ZjE5YjQ3YWZjNjhlMGI0ZWFkNDA2MWMzNDFiNjQ1ZmI2ZDE0YWQyMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0MmIxYjdjMGIxN2FiODlkYzRjMjBiZjZiZjI4ZTg0NmY1NGMzNzMwOGMyYWEwNjkyNTJmYzhiOGY4ZGZhNTQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/objective-loop-gate.ts#L20-L47",
+          "version": "repo-lines-v1:sha256:10e0ba4a38cb2877370530c2f54ff48b518dce7475963f336fdb2965222735ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjNDQ0NzBkYWMyOTZkYzE2OGIxZmIxYTk4ZDUyYzcyM2FhN2UxNzc1YTE0YjVhNDRkMDA5NDEyZDcxNjBkZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1ZTgyOTVhYTU4Y2M4NGYzZmQ4NjJjMTBmYWQwYzlhNGVhOTZkM2Q4MjgwNmE3MzQwOGUzMDAwMmI3MjMzYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a54a50db913549f09dac8072688f6271",
+      "statement": "executeGoal decomposes a created goal via ResourceScheduler.canSchedule + GoalDecomposer.decomposeGoalToDAG, then starts the loop via startObjectiveLoop (with repository_path from LOOP_DAEMON_REPOSITORY_PATH) for objective mode or startDocDriftAndSmallFixLoop otherwise, and creates one prepared maker lease via continueLoopRun with max_assignments 1 / max_maker_workers 1; LOOP_DAEMON_MAKER_RUNTIME is the operator's explicit maker-runtime choice for objective mode.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L381-L448",
+          "version": "repo-lines-v1:sha256:5d5c99cabd1fa0d981e91d6e50200661a7acc90f5b1a935262d9ac48ca01232a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiMDk3ODI2MGZkMDg0MTA2MWIyNzFiNmRlY2MyZDkyYjRjYjJhNGY2MDM4YjY5ODA5NDk4YzdlZmQwYmVhZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzEzNTkwNjY1NjMyM2QxYzVlYTQxNjU0ZWU2NmFmYjU4NWFjZGNmYWVhY2ExMjFkNWUzMGJmMTkzZWVkZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4MTVlZWI2NTNhOThjMjY1NjkxM2E1MTkyYmM0MjcxNmNlYTY2YzA3MzZhY2FlMzFiZGYwMTFmNGQ3NDllMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2YjgxNmMwMTdkY2IyNTNlODk0ZDExOWMxYjQ2NTc1M2E1NDYyMjg2NzA5Zjg2ZjU4MDA5ZTQwNTM1ZDAyN2MifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L415-L429",
+          "version": "repo-lines-v1:sha256:f95cd960c941f213a602e65d94973ed320cf8f1b12386926b369e55be25834e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3ODQzNDgwZTM3ZDI3MjMwYzg4NjY1YTlkMGFkNWNlYjE0M2YyOGQzZmFlOGNkOWE0ZjY3NzhkNTFkMjIyZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3NWJkYzExZjYzNjQxNGJmYzJlMjJkOGExNTBmNjgwNTBjNjI2ZGVlNTdiMTYyZWY2MjczZDYzYTI0NjkyY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4ODY0ZWFjODVlODE5NzRmYjM4ZjBkMjgxOWI3ZTdiMjM0ODVjNTE0MmE0ZmFiMmVmMjMzMDA4NDU0OTU5MzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_875546dee4724ddebcc4299840b2b9f1",
+      "statement": "Under LOOP_BANDIT_ENABLED with no explicit LOOP_DAEMON_MAKER_RUNTIME, the daemon rewrites the maker lease runtime via chooseSpecies — Thompson sampling over skill_outcomes keyed loop-maker:<loopName>:<runtime>, first LOOP_BANDIT_SPECIES entry incumbent, challengers below PROMOTE_AFTER (20) outcomes capped to LOOP_BANDIT_MAX_SHARE (default 10 %) — recording bandit_selected or bandit_skipped events.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L458-L474",
+          "version": "repo-lines-v1:sha256:7389422b640072b5680180f0899bb6b33495f4af0399ed7c69b8cc9ce7f92675:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMDA0MzJkOGFhMjYxMTVlNjI4OGQ2MDgwOTgxMTc3YjRmYTNmMTkxNGVmYWY4MDZmMDk1YzViZTM1MzcyNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNWI3OWVhMGRhZmJiZDUxNmE3ODU5MjJiNGJjODIxNDQ4NTRmNDc1MWI3MDcxODc3YmJiYjFiYjE2YzMzZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3ZTcyZDA0MmNiYjhiYTczZDNiNzcwMDFmNjM1ZmM2M2FkY2MyNmI2ZGQ5NGI5YjUyODhiNWEzYWEyMTc5MjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-bandit.ts#L14-L42",
+          "version": "repo-lines-v1:sha256:ce990afc639336b7fff98c412fd1b734618c2d7b402a7cefe0ae88bc9dadd16e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMWJjZWJkNWI3Yjg0MTkyOWU2NjQ4Njk4NzgzODQ5OGFlYzMxYzA0MTk1YTMxZDhlYzIwZGJmMWVlMzA0NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlNTE0YWQ2ZTZlZmI1OWU4MjMzYWEzMzU0MmVmZTgyMTU1M2FkYjEyOWE2YjZhNmEyMjUzNGIxODg4MzhhZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9927e2742ba94b6982c16a7e3ffc6ba1",
+      "statement": "Under LOOP_EVOLVE_ENABLED for test-gap/mutation-gap goals (or metadata.evolve === true), the daemon runs up to two sibling makers from LOOP_EVOLVE_SPECIES via retryLoopRun(sibling), then selectEvolveWinner ranks all contenders in code — hard gates (exit 0, checks pass, diff in budget), then mutation score, then diff lines, then tokens — keeping the winner as the only non-superseded maker, cancelling losers' reviewer leases, and recording each loss as a skill_outcomes row (N7 lineage); with no eligible maker the run fails like a single-maker run.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/evolve-fitness-service.ts#L20-L41",
+          "version": "repo-lines-v1:sha256:77af9752189d536b1b3ae954dc0ac15162ae7b11d6ca672097fc7ede8cffe26f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzM2NjMzM1YTJhMjRiZWM2Yjk1NWI2YTdlNWVkMTA0OWY0NzQzZGZjYWQ5NmJjMWZlYWM5NjcwNDM5ZTY0ZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyOGQ5ZmM0NmY4ODEwMGM0YjI1OTc3NTM1ZTQ1N2QyN2UyZDA1OGE4MTE1ODE2NmU4NzY4M2RhM2JjOTJhZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/evolve-selection.ts#L15-L102",
+          "version": "repo-lines-v1:sha256:1db5f933c2b5c9619d3b139b4d158ea8b020d24020aa68e74a0d121b48e85745:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZGIwMTZhMzFkODE4MWE2N2VhYTM2MTU0Mjc0ZjU4Y2M5ZjkyZGNkZTRjZTE0YmE2ZjlmYTZlNTZlYmVhOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhM2IxNWVjNjcwNjg0NzllZTQ4NjllM2NiOTZhMmEyNjZmZjI1NTA0ZDI5YmFhYzI4MjBmOWY0ZDNjM2QzMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L516-L543",
+          "version": "repo-lines-v1:sha256:308405fdc401cc2681a0cb91bd3f4cc6c78111248f1ef7c57997afa22476b554:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkMmMxODQ2YTRmYjAyMjMyZGM0MjI5NGUzN2IxNWI5NDQ5YjNhMTRjNWQxODQ3MjRkYjUzYTNmMjlkNDFlMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMWQyNzc2YTcwODBhN2VkNGU2MDAwYjg0NGFlZDkxMTQ0MTdjODA3NDY4M2I4MWRmMDBlNDk5OWJiMGJhNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3MGQzNWUwN2M3MWM3ZWMyMTk2M2IwNGJkYWNjODNlMjEyZTk2NGE4YzhkOGRhYzYyMWRhNGY0ZTc2Yjg0MDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_54566d8aaed249e382a8a17326460f51",
+      "statement": "Maker execution timeouts/diff caps are lane-dependent: the mutation lane (detected via mutationCheckEnv's MUTATE_FILE/MUTATE_TEST) gets 600 s and 400 diff lines, other lanes LOOP_MAKER_TIMEOUT_MS (default 300 s, cap 600 s) and 200 lines; deterministic checks are scoped by LOOP_DAEMON_CHECK_SCRIPTS with LOOP_DAEMON_CHECK_TIMEOUT_MS (default 120 s, cap 600 s), and a blocked result retries the maker once via retryLoopRun.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L18-L34",
+          "version": "repo-lines-v1:sha256:005caec9f600dd7af1aacd2f67308027e0599d4558eeb4de2c392a261f7c7704:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMjVjYjU2MzdiM2M2OWJlMTNjZjgyMzEzMDc0Mjk1NWVlNGY3MDg5M2FhMGQ4NDVkZDE5MjZiMTNlYWRiMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3ZjY3MzdiZTA2ZWViYjlmYzU4NmM1ZjI1YjE5MGFlZjczOWM2MTg4YThhZThmMmJjY2RhOTZkN2E3N2E4ZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyYzJlYjExNGIyZGY3YTEzYzVjZTViZjI1YTkzMDIyNDkwYzFjYzhiMWY4Y2UxMmUzMjM0NTc1MjAzYWVmOGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L477-L514",
+          "version": "repo-lines-v1:sha256:afff929a57b43f78f1435276d6c286275588775427258dd805ff212910e7877e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3ZGI5OGRhNTEzYTA4ZjYwMDllMzkwMmEwYzkzMjhhODBmOTZkOWU4OWMxMTQyMTk5ZTFiOGIwYzA2YTYwNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyMjgxMDJlOTg4OGZkOWYzODk5YjQ0YzcyNzdjOWUxODRlYWZjMjJmZDkzZjc2MjczYmRlNzQzYWNmYjIxODUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyMzcwNDZhMGY4NTlhNzdjMDE0Y2JkNzRkMzExNWVmMTliNmRlMjVhZDUxZGU0MGRhZWMwMmM2NjM2NWYzZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYzZWY1ZDhkMmU1M2JiYzMwMDA2NmZkMmE3OGNkNjVkMjNhYTcwNGJlNWE3MDYzNzRhZjJkNTgwMjUxMTE1NzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L121-L128",
+          "version": "repo-lines-v1:sha256:f0f9531d0e18fa525c95d925d7209559c863f93b7e9fa084e1fc45d8c8863c0e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDM5ZWYxMTk0MzE3YTAzOGVjYTcxOTVhOWIyNTRhYzE0MjhhYjljNDA0ODU4MzM5ZTE0N2RlYmFiNzQzMzZkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ3NzExMDFiYjA2NmZhMjUwNjFlOTY2ODE1NTg1NDhjNGU5YWVlNGVkOTE0MDMwM2E0NDI1N2I3NjMzNzhiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODg4OGE4M2I5ZTZjZDBlNTA5ODA1NWJlYzk3MDM4ZThhZmM4NmE5ZDU0ZjU0NDkzZmIwZGUwMGNkM2JkYThkMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a50cc7351afd4867bbecf6d9dd86713d",
+      "statement": "A worker approval wait is parked, not failed: LOOP_WORKER_APPROVAL_REQUIRED causes blockForApproval to set the goal blocked with metadata.awaiting_approval and record a goal_awaiting_approval event; resumeApprovalBlockedGoals keeps waiting while pending, resumes on the same run (decomposed + resume_run_id) once approved and its task terminal, and fails the goal with a `approval <status>` reason plus a failed loop_completed event on denied/expired.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L266-L293",
+          "version": "repo-lines-v1:sha256:da6a16156046a9661026016d08bccda112d0305c371f5c8891da7164f9ecdb0b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyOWNjZDFkODA1ZWFiYjFmN2EyZTJlYWZmYzgyMjE3MDdiNTQxNmYzZmFlN2Q0MjVhZjJlYjU2N2U5OGYyMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2OGQwNDMyZDVkMTMwNzM4NGNhYWJjODBiNTI5Zjc0OTdiZTlkOGE4N2ZjNzlmZWU0ZTcyZDIzMzM4ZjFiMzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRiODZmZDAzZWQ5OTVkZTIxNDI2NzU2ZjEwODQyNTcxODZmYmQxM2Q5MTA0OWQyMGYzYzcyZmFmYTZjZTEwZWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L311-L335",
+          "version": "repo-lines-v1:sha256:874971b972c82ad5a1712b6e57e2f864698bf267524ccf4a96d7988c9a23ed64:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5M2ZlODlhMDhlNTZkNTYxYzc0ODRjZGMxZDQ0ZmUxOWI3NWZhZWU2MDc5NjlhZGQ2ZjFlZmY0ODJlOTY2NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2Nzg2MGI1MDAzYjZkMDZiNjI2MzhhZWE4MjBmMjRiMjk1YzIwMGE0YTdlMTQ0Nzc2M2JhZTk0NThlYTFjODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmZjBmZWE0NzVmMmMyOTVkNmFmMmRkYTVkMTRkYTVmOGJmMGYzOTBjMjEwNGZiZDc3NjBhNjU3Y2M5MzRkYzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_46d37fb7ff824497b12a1453a409959a",
+      "statement": "The J5 auto-approve: recordAutoApproveShadow (AUTONOMY_SHADOW_ENABLED) records one `auto_approve_shadow` judgment per approval under a conservative rule (test-only, not high-risk/security, >= 3 verified outcomes and no regression in class, model rule-v1); when the rule says yes and testGapAutoApproveScope returns a single new test file under packages/server/src/__tests__ (LOOP_AUTO_APPROVE_TEST_GAP; M2 mutation-gap lane additionally requires LOOP_AUTO_APPROVE_MUTATION_GAP and >= 1 verified lane run), the daemon pins auto_approved_scope on the lease and decides the approval via decideWorkerApproval with decidedBy 'autonomy:test-gap-rule-v1', while the auto_approved_scope verification gate fails the run if the maker changed anything but that file.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/autonomy-shadow-service.ts#L13-L63",
+          "version": "repo-lines-v1:sha256:43b44e18f39fea10dae787942179e6b01088445e3454ed21eea98f35da0c6b2b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMWYwOWFlNTJjMmQwMTEyNWJjNzRjMGNiMzYxZDgzNDA5MmViOTVjYTZhYjlkNGM3ODA4ZjBlZTE1ZmFhNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmODhmOTk5MzAyODFjMDcxMDA4YTVlMDRlNDI5YmFjNGNhYWMzZDJlYmZmNzZjOTUzYjAyNmJlNjYyMTc5ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L281-L289",
+          "version": "repo-lines-v1:sha256:569cc591a12801cb40d7e09d8bc72536812fbeb85656f28c9a04cb07a2a88ba3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWUxZmVhYzNhZjNkMmIyMTZiZTY2YjliMjJhYmUxY2FiZmU2YTE1MzRlNzg1ZWY1OGNkYTY0NTBiMmU0M2VjMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWI1MTg0NDg5NzBjMjkyZWY2NTUyYTU5Y2ZhZTdjNjI2YjlhOTM5MTRmZTgyMzBhMDFhZDE3MjhiNDE4Mzc5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFlYTk1NTkyZmZlMTNjODBhZTNlOTI2MzQ3NjkyNDY5YjFmM2VlZmMzODE4YTY0OWQ5NWQ0OTdhZTk2MTAzYyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L119-L124",
+          "version": "repo-lines-v1:sha256:4a1b00f74514c1ac42e18f11ac677a0b46eeb6b982a792e2600d7294ed6f61a5:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk1YjhjNWJmODYzNzQzNjcxZGVmM2Y2MzBlYjIzMmQ1OWE3YTYzNGEwNzBmYzQzNmVlYzM3YTg2NzRlNmMzMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk3OGUyNTAzYjhjZjM3YTA2ZjdkNmYwYTNhNmI2ZmUzNTY5MWZiY2FiNTBiODc3NWNhYjZmYWJjNzFjNTkyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWZmZTAyM2M5Y2VlNWNkMmVmYjYyODRkYjllZTcyNGY3YWExMDRhNjY4NDllN2RjNmVjNGFmNTNiZWUzZjE0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDQ3NmJjODY2YzY0NDBkZjdjODZjYTZjNTMyOTRmNWI0ZTEwNGRmZTlmMDY5MWY0ZmVhODIwOTQ0NmYzMDYxNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_814eb913a8d445018e8368aea149c1a8",
+      "statement": "N6: an evolve sibling maker that hits APPROVAL_REQUIRED in an auto-approved lane is auto-approved with the same one-file scope as the run's first auto-approved maker via autoApproveSibling (same 'autonomy:test-gap-rule-v1' rule decision), then re-executed.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L296-L308",
+          "version": "repo-lines-v1:sha256:38cc4030647d3a6c087d0b814cc135d27cd6183b6813ca7bc5c2f6c13687f9fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmYzdmYmI5ZTg3NjExZWFiM2M4MDk3MjlkOGVkM2ExYzMyOTk1MGI5M2JiNThiMjhlZWEzZDc0MWZkMTVkZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjYmVjMzI0NTY0NDY3YmM0YmJlZWQ4MzYzODAyMTQ3MmE5MzU3NDNjNjUwNTU0ZjczYzkyN2E2YTUyNjY1ZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkNjk2MmFiNjcyNTgxYjgzMDRkNDUyMjIzOWNjZGE1YjEzMjc3YTAyZTM0NDNjYWYwNDY5NzNiNzJmZGRlNTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L527-L534",
+          "version": "repo-lines-v1:sha256:a40dc7103afa1b9ccfee9abfebc681d740056cc5f9424fdc12fd3594ce0d9cf8:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEyNTM3YmQzOTJkMDE3OTMxZGU5ZDUyNGFiNGQxZDViNzhhNzVhZTY4YzBkOWU5NGQ1ODY0MDZmOGM1ODYwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTUyMmM0MmNkMTljNmQwM2Q4MDhjNDUyNzIwNTUyODI1YjdlYTFjNWI0OTFiMjE4NTExY2FjNzQxNWNmOWQ5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmIzNmM2ZTk0YTI3YjY0MGM4NTc1NzkzMTAwY2EyZmY3ODk5Y2E5NzAzYmRkNmY0MzdjNWI1NDlhZmFmMTljNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDVjZTgzNjBmN2VlNWQ0MWUxMGQ5MWIyNzllYjMwOTUyMzdjNTBkNDg4OTJjMzZmODI2YjJjYTRkMGIyNTEzOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3f46f709b71643b5997846a6c9ab0395",
+      "statement": "Automated review is flag-gated and self-review by design: checker leases are created runtime 'manual' (code review is human); with LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED the daemon dispatches the checker using the same runtime as the maker attempt that ran, and LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED separately gates the security checker — reviewer timeout LOOP_REVIEWER_TIMEOUT_MS default 300 s, cap 900 s; a reviewer still running defers verification, and dispatch errors are recorded as checker_dispatch_failed.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L46-L50",
+          "version": "repo-lines-v1:sha256:3b2114cc7fcff447b12a335e8dfb815edf9c4a66dc6dbb9e2cef645bffc78076:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2QwYjRiZGVlNWE0Nzc0YmIxZThhMjU1MTVjODM5ODdjMTI4OGM4MTY5Nzk1OTlmZWQ4NDQ5ZWY5YjBhN2MyZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDUxNzk5NzM5MWVlMzc2YTQwMzAxMjg5NTQyZGNjYTYxNDFhYmVmNGNlOWYwN2VlMDA4NzQ3ODA0NzAxNTkwMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzhjZDhlMGIwYjYwNGM1MTUzYTI2ZjllMWIxZDdkNDZhODgwOWYyNDExNGNhNmE5MjMxMmIyMDRkNzliN2VlYyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L545-L599",
+          "version": "repo-lines-v1:sha256:0c4f07ce4fd277a5f91ae81c2d4df9f2e3f50f70f3fd0d85370f6697f656824e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3YThiOWU0NTdjMjVmZTJlY2E1ZDI0NWRmNmUxZjdkZWUyNzZiZDM5YWM3MmZkMTY4NmU5ZjQ1OGQ2YTQ3YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmOTI4ZDkyMTNjOTEzNGRmNTc1ZjhjZmIwYjkyZjY1ZThmMTU4MGQ4NDNjNzdmM2QxMWQ5ODk4N2JlODQ2NmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzM3ODdhNmIxOTA0MWU4OTdlNGY2MWFiM2M3MWQ5NjFiMzAyYTZhMWRiODE1OWMyNDI4NDdiZDY2NzBiZDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7cd6e712615141e89f377d98200ea2c1",
+      "statement": "After verification (verifyLoopRun gates incl. checker_verdict, tests_lint_typecheck, auto_approved_scope, security_checker_verdict for high risk), every run feeds the learning layer: one loop_completed bus event, SelfImprovementService.recordOutcome (verified when all gates pass, else runOutcomeOnFailure — infra_failed on maker timeout/exit-zero/runtime_contract, regressed otherwise; verified overrides a prior regressed), one skill_outcomes row per run keyed loop-maker:<loopName>:<runtime>, CommonsProposalReviewService.recordGoalOutcome, and on success LoopDraftPrService.openForRun (LOOP_AUTO_DRAFT_PR_ENABLED) opening a draft PR.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L36-L44",
+          "version": "repo-lines-v1:sha256:6036f2b6cca2d8a5053b9fc13be34e772b6fc64dacf2cbac60840aaebc84d932:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGU3YWQ5ZThiZmJiZjdmZDUwZDM5YzhhYzc0ZTcyMTA0MDc5YTJmMmMxZGNmMWVhOGZmYTQ3YTU4N2E5NGIyNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTNiZTFmZTA2NjEyYmI5YzY5N2Y5MmU3OGNkYmYyNDNiNjZjMWRlNWQwMmQ4NWZhYTU3NGUxZGI4MzI0MDY4MCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L601-L679",
+          "version": "repo-lines-v1:sha256:4045eb7114ba8559962d3ee7117174c9d7aab9cd20fcbb6c6a6e555359fbe830:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllMWYzNjJkMGIxZmUyZDM3Y2M0NmNjMGEyNWNjYmRhOWZlNzY3NTI4Y2RmMDk2MTNlOTA4MDRlYzIyYTUyY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NWJjNWMxNTJiNGZlOGQyYTFhNzQ5MGE0YmE1YWJmOGRiMDRmZDA0ZGY4YmU3ZDQ0ZWZlOTE0MzA4ZDUzMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwNWI4NWJkOTZjMGE5NWZhZDQ4ZDM3MzEyNDdlYmE4Mjg4YTMzMmJlMTczZDNhZjUxZTkyYTE4NGRjY2U1YjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L15-L66",
+          "version": "repo-lines-v1:sha256:8f29c67af5a70db7b9925cb93ba71f6f37b30cf8952518f7d3ed6871e1c89652:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0N2M1MTkzYzk1Y2Q3MDNmZGNlYTBjMTgxMWRlMDZkNmFlYzhkODc5NzA2NGZmMjc4MjhhYjAzNjVjYzQ0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzMmI3NTQ5ZjU4OTZhNjJjM2M5NGQ1MmUzOWIwN2U5ZGFiNjRjMTFjNzc2MTMwZTI5NWRmOGQ4MTk3MzgzYTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/self-improvement-service.ts#L414-L425",
+          "version": "repo-lines-v1:sha256:4b6212319cb31eebeab587aa7f5733429d14230bec048f9db33226efee02b9e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0Njg5ZjU0NTFkNjRkZjRkNjhhNTU5NDc5NDIxNWNmMzc4YmJiN2FjNGVlNmVjNWNiNWVjMmZhMDllMzZhNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2MmJlNzQ1NmQ1NTVmZmNiMDI0ZmFkMTc0NTExZmYzOTg4MjQ4NmYzNmFlMDQyMWI4YzFhZmFmMzczNjA5ZjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5239dfa634074807b629f528c8f64074",
+      "statement": "Goal sources feeding the queue: TestGapSourceService discovers untested live services (discoverTestGaps), untested exported functions (discoverExportGaps, J3) and mutation-surviving tested services (discoverMutationGaps, M2) — each a grounded proposal capped per day/in flight; the dream state replays failed loop runs, classifies failure causes once (shadow), and consolidates recurring platform causes into memory candidates and grounded fix proposals; security scan findings route through the specialist-panel reviewed pipeline instead of creating goals directly.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/autonomous-goal-generator.ts#L83-L103",
+          "version": "repo-lines-v1:sha256:a89575c0acfb2053078b0aaed31e573e10afb773c0c9535172229215e1fced62:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZGU3ZDI1NzBkYmIxYjFiN2FjNmYxYjk3ZTNjYjYzYWE2Yzk2MTJhNDQyODNiYjNjZjJjYzk3OGYxZjA0NjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlMzJmNmE0NjkyYTI4MmM1YzI5ZjM0MGM4OGQ1YWRhZGJiMTVkOWE2MWJkZGI2NmIzOGI5MmU5MTE5ZjEzZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4ZjI3ZDZhNjEyNThkNDJmYjc0ZGZmNzU5M2I3MTdiYWE3ZGNhOGEwNjRjZTkwMmVlZTY3MTJjZTZjNDFkNjkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/dream-state-service.ts#L131-L202",
+          "version": "repo-lines-v1:sha256:865baced73a2f04cfaf203d8ba7bc485140374cddf4bccc8018a832eaf0a5c4d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmYmE2ODliMGFhN2JjMmE2YTNlYmU5Y2YzYzY1ZDQ0MzQzZjYxMjdiODE1YjMzZjY1M2UyZjkwMjk1NDYyMmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L44-L209",
+          "version": "repo-lines-v1:sha256:b6c0a027879f34f5eb92221c55bed3ae0210bfdc76b92d7c0689694d702afb0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTY2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyYWNiYTA1MGVlMDUyNjRiOWYwYmZjYjY0YzY4ZGUwMzQ3MjlhZmVmY2UwMGJjYzMxZDcwYTY5MDFlMmUzODRhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjYzAxYzIxOGI2M2EwODg0ZWFkMjJjY2UwNTMwNTYwNjEwNDVkNDkyM2M0NDU1NTMwODYxNTAyZThhMjM4M2Q4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_2665fd8520b6408db695cf1fdffe806b",
+      "statement": "A proposal becomes a daemon-visible goal when a specialist panel reaches 'goal' consensus and agentApproveIfReady (or human approveImprovement) authorizes it; AutonomousGoalGenerator.generateImprovement then inserts a goals row linked by improvement_id with metadata.source 'self-improvement' and risk class derived from proposal type (security high, else low), and ImprovementFunnelService.compute() aggregates the whole proposal→verified chain including judgment agreement, panel calibration and cost per verified change.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/autonomous-goal-generator.ts#L34-L69",
+          "version": "repo-lines-v1:sha256:593e86718b8f20c87bdbb816a1303c005b32e1eb50d5b8e62d4ecea37476315a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZDg5ZTNhYmZhMzRiNWI0MDAwNjliNzg1M2VkYmY2MzZhOWIwZjQwMTQ0ZjM3ZmViOGE4MDdhNTAxODA5MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0NzM3Y2Q3NjI1YjYwNjE5YmZlYTcwMDVmOGQyYjI1ZjBiODE0ODcwNGY0MWY2Y2UzYmRjMDQ0Y2Y2MTFmNjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2NmJlMDkyYmQ2ZTM2Mzc2YmRmM2U2MDE5MDhiMDEzNTg0OTY3Y2Q3MzQ4NGVmODJjYjc1MzI2MzY3NmZmZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/improvement-funnel-service.ts#L4-L44",
+          "version": "repo-lines-v1:sha256:1e6780dc0408b3cbd0c18304346c666bf444e8b82c08863b6f1c410765e41a19:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3MjEzMWFjYjdlNzk5YjU0ZWMwM2EwODUyOTllZDU5YWE1OGNjMmQ0ODA2YTkwZTQwZDhlMDQ3ODVjZjIyMzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZTkyODZkZjQ4YThlOTY5ZGIwNDMwNTk1ZWQ5YTE5MWYzYWMwNzdjNzkyMjE4MTJkY2E0MjIyMThlZmNkNzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwOGMxMWM2MjZmZDNiMjkzOGUxOWViMzBiYWRjNjRhMDY1MjFjMzJlZmY5MDVjMDhjYWNjNTlmNWNiODI2OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0ZDYzZGY4M2YwMGIxMGE3NGRlYzM0MjMyNzQ0MWVkZDBmMTI2MDkzMTdhOGViNWUwZDBlYTIxNWZjZjA5YzYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/self-improvement-auto-review-scheduler.ts#L153-L168",
+          "version": "repo-lines-v1:sha256:d9a6b85420ad42d7319eea1c6953960e7467e46f1d9bd9abaf589b8c4a02fc6e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNGMwM2JmOWRmN2U1YjE2MGUzODNmODNmZmM1ZGZkZWI4ZGY0Nzg2ZDA3ZmVmOTZiMGFmNjEwMTZkM2QwNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxMzQxZDBjNTg4MmU5MWE2NmM2MGNiODYwMjBiMjQ3ZjBhZmMzMzZjZGY3NmMwYWUxOGJjZDIwYWM4ZmUxZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlNTBiNWIyODBiYzA3YmMzM2I5ZjQzMzNlZDhhNGI4N2QzZTM3Y2MxZGJlYmFhZDg4Zjg3ZjM2ZmRkZTExMDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_931fcb3d15a84043afe8853e7b516688",
+      "statement": "scripts/auto-deploy.sh (systemd oneshot djimitflo-auto-deploy.service under flock, timer every 10 min) deploys main only when all probes hold: no AUTO_DEPLOY_DISABLED kill switch, main SHA differs from the DJIMITFLO_COMMIT_SHA in compose.yml, every CI check run on that commit completed with success/skipped/neutral and at least one exists, the commit is at least AUTO_DEPLOY_SETTLE_MIN (default 20) minutes old, and no loop worker is running (worker_leases running plus tasks loop-worker-% running); every probe is overridable via evaluated AD_<NAME> env vars as exercised by auto-deploy.test.ts.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auto-deploy.test.ts#L19-L39",
+          "version": "repo-lines-v1:sha256:49c0d2556ddb9e9ffd46548f2bd5e979cdd5f5f2df1cc6ab2857b489c9d7b955:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MTdhNWY2YjlkMzU5YWNhZDkxZDhhNzViMWY3ZjE3MmNmOTk5N2VhOGIzOWMxZTllZGNlMTVmMWZmNjVlYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3OWMwYWYyY2QxNTI2MGQ4ZjNjMDAxMGY1ZjUxODg4ODk1Mzk3MTVkOWJmZmNjYTQzYjhlN2Y4MjdhZGIwMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/auto-deploy.sh#L1-L54",
+          "version": "repo-lines-v1:sha256:cd382a4cd8c021c7a00022d92d2afff855db2bd0297c141a4371548c05ce09b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNGNiOGU4OWRkNTk1ZGZiNDY3Y2QzNmMzYzM4ZWYwZTk2YjA5YjFmYTVlNDAyYmQ2Nzk2N2E5ZmRkOTZhYWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/systemd/djimitflo-auto-deploy.service",
+          "version": "repo-file-v1:sha256:9c6a81c7d3b86717f0e1671678a51f79349964dca3e64cd311a0ba545e59b3f8"
+        },
+        {
+          "resource": "repo://scripts/systemd/djimitflo-auto-deploy.timer",
+          "version": "repo-file-v1:sha256:bef6fedf1f0796d405801223558dfca945f6fc3ee14ca107378c8df2a98aa1a5"
+        }
+      ]
+    },
+    {
+      "id": "claim_3a24bb1e847e43bcbccc582902711498",
+      "statement": "The deploy runs deploy-vps.sh of the commit being deployed (fetched from raw.githubusercontent at that SHA) with --apply --local: prune old builds and require >= 6 GB free disk, clone runtime-source-<short> at the SHA, docker build djimitflo:main-<short>, chown 1001 the checkout (objective-mode worktrees), back up and rewrite compose.yml (image, DJIMITFLO_COMMIT_SHA, runtime-source mount), force-recreate the container, poll health for 60 s and on unhealthy restore the compose backup and recreate the previous container (rollback, exit 1).",
+      "evidence": [
+        {
+          "resource": "repo://scripts/auto-deploy.sh#L27-L33",
+          "version": "repo-lines-v1:sha256:9b0aef2957c17d207475d8c3ae76e34eea3473243e4e250bef97edebf4256cbc:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTY1NjliZGQ1NDI1M2Y1ZTQyMjYwMWFmZWY5NjU5ODEwZTI5M2NhYjc5MTZmYTc3ZTM4NzQwNGMwZTgzMzBiYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTA2MWQwODMxZjIyMWUzMzA4NzdiOTM5Yjc1NjhkNjU2ZjhkNjc2ZGQ3NjE2NWE4NGE2ZmQyYWVkZTcxOWM2ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWNjYzI4MzY0MDQ5Y2MxN2M1YzQ2ZWJlYzAxZTgxMTNkOGEyY2U1NTY3MjkxZGFkMGI1NGFlOTI2MzA3M2VmNiJ9"
+        },
+        {
+          "resource": "repo://scripts/deploy-vps.sh#L42-L104",
+          "version": "repo-lines-v1:sha256:4a94e4db732777e051714950c0ecd60a5c2b9d356c67c3929bb4be8b7e2416de:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMjhhMmE4ZWQxMjJjZjhhMjUwZTBkMzhmNGVmODNlNDVjZWRhOWEwNTBiOTAyZWRmMjczZTBmZDJhYTYxNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiYjg2YWU5NTJlMDg0YWJlOTNhMWQ1NTc0NjQ0Zjc0ZDZlODk1ZTRmMzhhMzE5M2MxYjFjN2VkM2UyM2RiOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4Yzc1OWE4MjBhYzI0M2M1NGRhOWU5MTAxOTdiNjA0YmUyNmU0Y2Q4NzVkMTJmZjJlNTM1N2NiODY4YTA1NWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-25T13:29:02.244Z"
+  }
+}

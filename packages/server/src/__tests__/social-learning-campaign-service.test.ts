@@ -34,12 +34,12 @@ function message(db: Database.Database, id: string, from: string, to: string, ac
     }), at);
 }
 
-function pair(db: Database.Database, index: number, at: string, facilitatorCommit: string | null = 'a'.repeat(40), facilitatorTrigger = 'autonomous'): string {
+function pair(db: Database.Database, index: number, at: string, facilitatorCommit: string | null = 'a'.repeat(40), facilitatorTrigger = 'autonomous', learningAnswer = 'I revise the proposal: verify evidence provenance using a blinded control group.'): string {
   const thread = `social:confirm-${index}`;
   message(db, `question-${index}`, 'agent-b', 'agent-a', 'social.question', thread, at, 'Challenge this proposal.', [`claim:${index}`], facilitatorCommit || undefined, facilitatorTrigger);
   message(db, `baseline-${index}`, 'agent-a', 'agent-b', 'social.response', thread, at, 'Independent baseline approach without corroboration.', [`claim:${index}`, `message:question-a-${index}`, 'runtime:agent-a:runtime-a']);
   message(db, `peer-${index}`, 'agent-b', 'agent-a', 'social.response', thread, at, 'Verify evidence provenance using a blinded control group.', [`claim:${index}`, `message:question-b-${index}`, 'runtime:agent-b:runtime-b']);
-  message(db, `learning-${index}`, 'agent-a', 'agent-b', 'social.learning', thread, at, 'I revise the proposal: verify evidence provenance using a blinded control group.', [`claim:${index}`, `message:question-b-${index}`, 'runtime:agent-b:runtime-b', `message:peer-${index}`, 'runtime:agent-a:runtime-a']);
+  message(db, `learning-${index}`, 'agent-a', 'agent-b', 'social.learning', thread, at, learningAnswer, [`claim:${index}`, `message:question-b-${index}`, 'runtime:agent-b:runtime-b', `message:peer-${index}`, 'runtime:agent-a:runtime-a']);
   const reflection = `reflection-${index}`;
   db.prepare(`INSERT INTO reflection_candidates (id, source_type, source_ref, lesson, status, sensitivity, evidence_refs_json, metadata)
     VALUES (?, 'trace', ?, 'verified learning', 'candidate', 'normal', '[]', ?)`)
@@ -91,6 +91,29 @@ describe('SocialLearningCampaignService', () => {
       const running = service.tick({ observed_at: '2026-01-05T00:00:00.000Z' });
       const complete = service.tick({ observed_at: '2026-01-08T00:00:00.000Z', worldlab: worldlabEvidence('social-confirmatory-operator', running.report_hash) });
       expect(complete).toMatchObject({ status: 'UNDETERMINED', goal_batch: null, runtime_provenance: { status: 'PASS' }, trigger_provenance: { status: 'UNDETERMINED', pairs_with_provenance: 2, missing_pairs: 0, disallowed_pairs: 2, trigger_counts: { operator: 2 } } });
+    } finally { db.close(); }
+  });
+
+  it('does not let exact peer copies satisfy the non-copy sensitivity gate', () => {
+    const db = createTestDb();
+    try {
+      const service = new SocialLearningCampaignService(db);
+      service.start({ campaign_id: 'social-confirmatory-copy', started_at: '2026-01-01T00:00:00.000Z', days: 7, minimum_pairs: 2, runtime_commit: 'a'.repeat(40), analyzer_commit: 'b'.repeat(40) });
+      const copied = 'Verify evidence provenance using a blinded control group.';
+      const candidates = [
+        pair(db, 1, '2026-01-02T00:00:00.000Z', 'a'.repeat(40), 'autonomous', copied),
+        pair(db, 2, '2026-01-03T00:00:00.000Z', 'a'.repeat(40), 'autonomous', copied),
+      ];
+      candidates.forEach((candidate, index) => db.prepare(`INSERT INTO external_events (id, event_type, source, occurred_at, payload) VALUES (?, 'outcome.observed', 'test', ?, ?)`)
+        .run(`copy-outcome-${index}`, `2026-01-0${index + 4}T00:00:00.000Z`, JSON.stringify({ candidate_id: candidate, value: 1, baseline: 0.5, direction: 'increase', causal_status: 'randomized' })));
+
+      const running = service.tick({ observed_at: '2026-01-05T00:00:00.000Z' });
+      expect(running.signals).toMatchObject({ peer_learning: 'SUPPORTED', peer_learning_noncopy_sensitivity: 'UNDETERMINED' });
+      expect(running.metrics.exact_peer_copy).toMatchObject({ n: 2, mean: 1 });
+      expect(running.metrics.peer_uptake_delta_noncopy).toMatchObject({ n: 0, mean: null });
+
+      const complete = service.tick({ observed_at: '2026-01-08T00:00:00.000Z', worldlab: worldlabEvidence('social-confirmatory-copy', running.report_hash) });
+      expect(complete).toMatchObject({ status: 'UNDETERMINED', goal_batch: null });
     } finally { db.close(); }
   });
 

@@ -2,6 +2,7 @@
  * Swarm orchestration routes — parallel multi-agent coding.
  */
 
+import { checkContentSafety, contentSafetyApplies } from '../services/content-safety';
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
@@ -9,12 +10,15 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
 import { AgentCommunicationService } from '../services/agent-communication-service';
 import { createError } from '../middleware/error-handler';
-import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
+import { hourBucket, recordPolicyViolation } from '../services/policy-violations';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { AgentLureService } from '../services/agent-lure-service';
 import { AgentCommonsOpenDoorService } from '../services/agent-commons-open-door-service';
+import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
+import { replyToEvidenceRoom } from '../services/commons-evidence-room';
 
 function boundedLimit(value: unknown): number {
   if (value === undefined) return 10;
@@ -190,7 +194,19 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
 
   // GET /api/swarm-v2/social/commons — operator read-model for the Agent Commons UI
   router.get('/social/commons', requirePermission('read:evidence'), (req, res) => {
-    res.json(comms.listSocialCommons(Number(req.query.limit) || 50));
+    // C6: bounded — an unbounded ?limit= let any viewer pull the whole message table
+    // AC-02: ?kind=discussion|record filters before the limit; ?offset= pages (bounded in the service). No kind = all (compatible).
+    const kind = req.query.kind === 'discussion' || req.query.kind === 'record' ? req.query.kind : 'all';
+    res.json(comms.listSocialCommons(Math.min(200, Math.max(1, Math.trunc(Number(req.query.limit)) || 50)), { kind, offset: Number(req.query.offset) || 0 }));
+  });
+
+  // POST /api/swarm-v2/social/evidence-room/:threadId/replies — operator reply on an evidence-room thread (COMMONS_EVIDENCE_ROOM_MODE=on).
+  // Evidence only with { artefact: { kind: 'test', test_file, command } | { kind: 'repro', command } }; plain text is stored as unverified.
+  router.post('/social/evidence-room/:threadId/replies', requirePermission('write:swarm_action'), (req: any, res) => {
+    try {
+      const author = `operator:${String(req.user?.sub || 'unknown').slice(0, 100)}`;
+      res.status(201).json(replyToEvidenceRoom(db, String(req.params.threadId), author, req.body || {}));
+    } catch (error) { evidenceRoomFail(res, error); }
   });
 
   // Agent Commons honeypot: cast a lure (invite absent agents, issue runtime tokens once) and read bites/probes.
@@ -201,8 +217,8 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     try {
       const ttlMs = Number(req.body?.ttl_ms);
       const cast = lure.castLure({
-        by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
-        ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : undefined, paperclipPath: req.body?.paperclip === false ? null : undefined,
+        by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: publicBaseUrl(req),
+        ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : undefined,
       });
       for (const invitation of cast.invitations) audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_runtime_token_issued', resource_type: 'agent', resource_id: invitation.agent_id, user_id: req.user.sub, metadata: { scope: 'social-runtime', expires_at: invitation.expires_at, lure_id: cast.lure.id } });
       res.set('Cache-Control', 'no-store').status(201).json(cast);
@@ -210,7 +226,8 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
       res.status(500).json({ error: { code: 'LURE_FAILED', message: error instanceof Error ? error.message : 'LURE_FAILED' } });
     }
   });
-  router.get('/social/lures', requirePermission('read:evidence'), (_req, res) => {
+  // C6: lure status and join requests (contact, IP, description) are operator data, not viewer evidence
+  router.get('/social/lures', requirePermission('manage:tokens'), (_req, res) => {
     res.json(lure.status());
   });
 
@@ -219,7 +236,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   router.post('/social/join-invites', requirePermission('manage:tokens'), (req: any, res) => {
     if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
     const invite = openDoor.createInvite({
-      by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
+      by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: publicBaseUrl(req),
       label: typeof req.body?.label === 'string' ? req.body.label : undefined,
       ttlMs: Number.isFinite(Number(req.body?.ttl_ms)) ? Number(req.body.ttl_ms) : undefined,
       maxUses: Number.isFinite(Number(req.body?.max_uses)) ? Number(req.body.max_uses) : undefined,
@@ -227,9 +244,26 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_join_invite_issued', resource_type: 'agent', resource_id: invite.label, user_id: req.user.sub, metadata: { expires_at: invite.expires_at, max_uses: invite.max_uses } });
     res.set('Cache-Control', 'no-store').status(201).json(invite);
   });
-  router.get('/social/join-requests', requirePermission('read:evidence'), (_req, res) => {
+  router.get('/social/join-requests', requirePermission('manage:tokens'), (_req, res) => {
     res.json({ requests: openDoor.listRequests() });
   });
+
+  // Advisory-only trust signal, computed on read from data that already
+  // exists (task-completion counters, lure/probe history) — never wired
+  // into the decide() route below. The human stays the only one who
+  // approves or rejects a join request; this just gives them one more
+  // number to look at before deciding.
+  const reputation = new AgentReputationService(db);
+  router.get('/social/reputation/:agentId', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(reputation.computeReputation(req.params.agentId));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'AGENT_REPUTATION_FAILED';
+      if (code === 'AGENT_REPUTATION_AGENT_NOT_FOUND') { res.status(404).json({ error: { code, message: code } }); return; }
+      next(error);
+    }
+  });
+
   router.post('/social/join-requests/:agentId/decide', requirePermission('manage:tokens'), (req: any, res) => {
     if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
     try {
@@ -286,6 +320,24 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   return router;
 }
 
+function evidenceRoomFail(res: any, error: unknown): void {
+  const code = error instanceof Error ? error.message : 'EVIDENCE_ROOM_ERROR';
+  const status = code === 'EVIDENCE_ROOM_OFF' || code === 'EVIDENCE_ROOM_THREAD_NOT_FOUND' ? 404 : code.startsWith('EVIDENCE_') || code.startsWith('BOARD_') ? 400 : 500;
+  const safe = status === 500 ? 'EVIDENCE_ROOM_ERROR' : code;
+  res.status(status).json({ error: { code: safe, message: safe } });
+}
+
+/**
+ * C6: the URL handed to external agents (agent card, join status, lure invitations). It came from the request's Host header,
+ * so a spoofed Host on the public card pointed agents at another server. DJIMITFLO_PUBLIC_URL (http(s) origin) wins; the
+ * header remains the fallback only where it is not configured.
+ */
+export function publicBaseUrl(req: { protocol: string; get(name: string): string | undefined }, env: NodeJS.ProcessEnv = process.env): string {
+  const configured = (env.DJIMITFLO_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(configured)) return configured;
+  return `${req.protocol}://${req.get('host')}`;
+}
+
 /** Least-privilege callback surface for signed agent-runtime pollers. */
 export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance = new RuntimeGovernanceService(db)): Router {
   const router = Router();
@@ -293,7 +345,7 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   const comms = new AgentCommunicationService(db);
   const lure = new AgentLureService(db, comms);
   const openDoor = new AgentCommonsOpenDoorService(db, lure);
-  const baseUrl = (req: any) => `${req.protocol}://${req.get('host')}`;
+  const baseUrl = publicBaseUrl;
 
   // Public open-door surface: discovery card, knock with an invite code, poll for the decision.
   router.get('/card', (req, res) => { res.json(openDoor.agentCard(baseUrl(req))); });
@@ -319,8 +371,12 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   function authorized(req: any, res: any): boolean {
     const agentId = String(req.params.agentId || '');
     const token = req.get('X-Agent-Social-Token') || '';
-    if (!agentId || !validateSpawnToken(resolveSpawnTokenSecret(), token, agentId, 'social-runtime')) {
-      lure.recordProbe(agentId, req.ip, token ? 'token_invalid' : 'token_missing');
+    const rejection = !token ? 'missing' : !agentId ? 'wrong_subject' : spawnTokenRejection(resolveSpawnTokenSecret(), token, agentId, 'social-runtime');
+    if (rejection) {
+      lure.recordProbe(agentId, req.ip, token ? `token_invalid:${rejection}` : 'token_missing');
+      // §16 step 8 (shadow, POLICY_VIOLATION_LOG): one row per agent × reason × hour, never per request
+      recordPolicyViolation(db, { kind: 'token_rejected', actor: `agent:${agentId.slice(0, 100)}`, severity: 'medium', dedupe_key: `social-runtime:${agentId.slice(0, 100)}:${rejection}:${hourBucket()}`,
+        evidence_ref: 'token:social-runtime', description: `social-runtime token rejected: ${rejection}` });
       res.status(401).json({ error: { code: 'SOCIAL_TOKEN_INVALID', message: 'Social runtime token is invalid, expired, or scoped to another agent' } });
       return false;
     }
@@ -343,18 +399,31 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
 
   router.post('/:agentId/heartbeat', (req, res) => {
     if (!authorized(req, res)) return;
-    try { res.json(comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id)); } catch (error) { fail(res, error); }
+    try {
+      const beat = comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id, 'runtime_token');
+      lure.recordHeartbeat(req.params.agentId, beat.timestamp); // a bite only if an invite was delivered first (causal)
+      res.json(beat);
+    } catch (error) { fail(res, error); }
   });
 
   router.get('/:agentId/messages', (req, res) => {
     if (!authorized(req, res)) return;
-    try { res.json({ messages: comms.receiveSocial(req.params.agentId, Number(req.query.limit) || 4) }); } catch (error) { fail(res, error); }
+    // Invites are informational and come on top of the social work limit, so a poller with limit=1 still gets its question.
+    try { res.json({ messages: [...lure.deliverInvites(req.params.agentId), ...comms.receiveSocial(req.params.agentId, Number(req.query.limit) || 4)] }); } catch (error) { fail(res, error); }
+  });
+
+  // Evidence-room reply by a runtime agent (same token check); typed artefact or flagged unverified.
+  router.post('/:agentId/evidence-room/:threadId/replies', (req, res) => {
+    if (!authorized(req, res)) return;
+    try { res.status(201).json(replyToEvidenceRoom(db, String(req.params.threadId), String(req.params.agentId), req.body || {})); } catch (error) { evidenceRoomFail(res, error); }
   });
 
   router.post('/:agentId/messages/:messageId/respond', (req, res) => {
     if (!authorized(req, res)) return;
     try {
       const result = comms.respondSocial(req.params.agentId, req.params.messageId, req.body || {});
+      // K1 (shadow): a reply from an external agent is untrusted text that later feeds prompts
+      if (!result.duplicate && contentSafetyApplies('social_reply')) void checkContentSafety(db, { type: 'social_reply', id: String(req.params.messageId) }, JSON.stringify(req.body || {})).catch(() => undefined);
       res.status(result.duplicate ? 200 : 201).json(result);
     } catch (error) { fail(res, error); }
   });

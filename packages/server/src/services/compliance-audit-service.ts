@@ -9,7 +9,9 @@
  */
 
 import { createHash, randomUUID } from 'crypto';
+import { realRunIdSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
+import { GovernanceGateService } from './governance-gate-service';
 
 interface AuditEntry {
   id: string;
@@ -305,8 +307,30 @@ export class ComplianceAuditService {
     let totalAgents = 0;
     let certifiedAgents = 0;
     try {
-      totalAgents = (this.db.prepare('SELECT COUNT(*) as c FROM agents').get() as any)?.c || 0;
-      certifiedAgents = (this.db.prepare("SELECT COUNT(DISTINCT agent_id) as c FROM openmythos_eval_runs WHERE status = 'completed' AND overall_score >= 4.0 AND finished_at BETWEEN ? AND ?").get(start, end) as any)?.c || 0;
+      // Bug fix: this used to do a blind COUNT(DISTINCT agent_id) from
+      // openmythos_eval_runs against a hardcoded '>= 4.0' (a 0-5-scale
+      // assumption — same bug class as GovernanceGateService's old floor
+      // clamp) and divide by the total agent count, without ever checking
+      // whether those eval agent_ids had anything to do with this fleet's
+      // registered agents. In production they never did: eval agent_ids are
+      // ad-hoc experiment names (other projects' evals), while registered
+      // agents are only reachable via the same nightly:<model> proxy lookup
+      // GovernanceGateService already uses. Reuse that same lookup — and the
+      // same, already-armed GOVERNANCE_GATE_FLOOR — instead of a second,
+      // disconnected threshold.
+      const agents = this.db.prepare('SELECT id, model FROM agents').all() as Array<{ id: string; model: string | null }>;
+      totalAgents = agents.length;
+      const floor = new GovernanceGateService(this.db).floor();
+      const bestScore = this.db.prepare(`
+        SELECT MAX(overall_score) as score FROM openmythos_eval_runs
+        WHERE status = 'completed' AND finished_at BETWEEN ? AND ?
+          AND (agent_id = ? OR agent_id = ?)
+      `);
+      for (const agent of agents) {
+        const baseModel = agent.model?.split('/').pop()?.trim() || null;
+        const row = bestScore.get(start, end, agent.id, baseModel ? `nightly:${baseModel}` : agent.id) as { score: number | null };
+        if ((row?.score ?? -Infinity) >= floor) certifiedAgents += 1;
+      }
     } catch {
       // Tables may not exist yet
     }
@@ -326,8 +350,8 @@ export class ComplianceAuditService {
     let totalDeployments = 0;
     let approvedDeployments = 0;
     try {
-      totalDeployments = (this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ?").get(start, end) as any)?.c || 0;
-      approvedDeployments = (this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ? AND status != 'created'").get(start, end) as any)?.c || 0;
+      totalDeployments = (this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ? AND ${realRunIdSql('loop_run_id')}`).get(start, end) as any)?.c || 0;
+      approvedDeployments = (this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE created_at BETWEEN ? AND ? AND status != 'created' AND ${realRunIdSql('loop_run_id')}`).get(start, end) as any)?.c || 0;
     } catch {
       // Tables may not exist yet
     }
@@ -362,8 +386,16 @@ export class ComplianceAuditService {
   }
 
   private isRuntimeGovernanceActive(): boolean {
+    // Bug fix: this checked for a table named 'governance_policies', which
+    // has never existed in this schema (the real table is
+    // 'approval_policies') — so this always reported 'inactive' regardless
+    // of the actual state. Runtime governance enforcement is really: the
+    // governance gate is armed (GovernanceGateService, GOVERNANCE_GATE_ENABLED)
+    // and there's at least one approval policy for PolicyDecisionService to
+    // evaluate against.
     try {
-      const row = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='governance_policies'").get() as any;
+      if (!new GovernanceGateService(this.db).enabled()) return false;
+      const row = this.db.prepare('SELECT 1 FROM approval_policies LIMIT 1').get();
       return !!row;
     } catch {
       return false;

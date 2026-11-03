@@ -205,3 +205,13 @@ it('audits a paused nested child denial without creating a worktree, lease or bu
   expect(db.prepare('SELECT status,reject_reason,child_lease_id,token_budget_grant,wall_budget_ms FROM sub_agent_spawns WHERE id = ?').get(result.spawn_id))
     .toEqual({ status: 'gated_out', reject_reason: 'operator_paused', child_lease_id: null, token_budget_grant: null, wall_budget_ms: null });
 });
+
+it('a maker that throws after being marked running does not stay running (prod 2026-09-26: blocked deploys and the gym for 3 h)', async () => {
+  const prepared = loops.continueLoopRun('routing-run', { runtime: 'mock' });
+  const maker = prepared.leases.find(lease => lease.role === 'maker')!;
+  fs.rmSync(loops.resolveWorkAssignmentPath(maker)); // fails after the lease went 'running'
+  await expect(loops.executeMaker('routing-run', { lease_id: maker.id })).rejects.toThrow();
+  const lease = db.prepare("SELECT status, json_extract(metadata, '$.failure_reason') AS reason FROM worker_leases WHERE id = ?").get(maker.id) as { status: string; reason: string };
+  expect(lease.status).toBe('failed');
+  expect(lease.reason).toMatch(/^maker_execution_error: /);
+});

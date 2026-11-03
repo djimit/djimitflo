@@ -222,10 +222,17 @@ export class LoopDiscoveryService {
 
   private discoverOkfSynchronization(repositoryPath: string, maxFindings: number): LoopFinding[] {
     const findings: LoopFinding[] = [];
-    const knowledgeDir = path.join(repositoryPath, 'packages', 'knowledge');
+    // The canonical OKF root is <repo>/knowledge; packages/knowledge is the legacy location (kept as a fallback).
+    const root = path.resolve(repositoryPath);
+    const canonicalDir = path.resolve(root, 'knowledge');
+    const legacyDir = path.resolve(root, 'packages', 'knowledge');
+    // Both candidates are constant children of the repository root; refuse anything that resolves outside it.
+    const inside = (dir: string) => dir.startsWith(root + path.sep);
+    const knowledgeDir = inside(canonicalDir) && fs.existsSync(canonicalDir) ? canonicalDir : legacyDir;
+    const label = path.relative(repositoryPath, knowledgeDir);
     if (!fs.existsSync(knowledgeDir)) {
       findings.push(this.createFinding('okf_root_missing', 'warning', repositoryPath, knowledgeDir,
-        'packages/knowledge is missing.', 'OKF root missing', 'Create the OKF knowledge root or configure OKF_BASE.'));
+        'knowledge (OKF root) is missing.', 'OKF root missing', 'Create the OKF knowledge root or configure OKF_BASE.'));
       return findings.slice(0, maxFindings);
     }
     for (const dirname of ['skills', 'agents', 'tasks', 'memory']) {
@@ -233,14 +240,14 @@ export class LoopDiscoveryService {
       const dir = path.join(knowledgeDir, dirname);
       if (!fs.existsSync(dir)) {
         findings.push(this.createFinding('okf_directory_missing', 'warning', repositoryPath, dir,
-          `OKF directory packages/knowledge/${dirname} is missing.`, `${dirname} directory missing`,
-          `Create packages/knowledge/${dirname} or document why this OKF facet is external.`));
+          `OKF directory ${label}/${dirname} is missing.`, `${dirname} directory missing`,
+          `Create ${label}/${dirname} or document why this OKF facet is external.`));
       }
     }
     const skillsIndex = path.join(knowledgeDir, 'skills', 'index.md');
     if (fs.existsSync(path.join(knowledgeDir, 'skills')) && !fs.existsSync(skillsIndex) && findings.length < maxFindings) {
       findings.push(this.createFinding('okf_index_missing', 'warning', repositoryPath, skillsIndex,
-        'packages/knowledge/skills/index.md is missing.', 'skills index missing',
+        `${label}/skills/index.md is missing.`, 'skills index missing',
         'Generate a skill index so dashboard and agents can inspect available loop skills.'));
     }
     return findings;

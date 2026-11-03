@@ -1,7 +1,10 @@
+import { rateLimit } from 'express-rate-limit';
 import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { EvidenceService } from '../services/evidence-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import { swarmEventBus } from '../services/swarm-event-bus';
+import { openSseStream } from '../utils/sse';
 
 function parseWindow(value: unknown, fallback: number, maximum: number): number | null {
   if (value === undefined) return fallback;
@@ -11,6 +14,7 @@ function parseWindow(value: unknown, fallback: number, maximum: number): number 
 
 export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const evidenceService = new EvidenceService(db);
   const requireAuth = auth.requireAuth;
   const requireAdmin = auth.requirePermission('manage:config');
@@ -125,39 +129,11 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
   // G14: SSE stream for live observability — emits real-time swarm events.
   // Events: aimd_state, trust_change, capability_transition, lease_lifecycle,
   // budget_burn, convergence, recovery.
+  // OBS-001: bounded per-client backpressure (utils/sse.ts); drops are counted on the bus and reported to the client.
   router.get('/stream', requireAuth, (req: Request, res: Response) => {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-    res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`);
-
-    // Subscribe to the swarm event bus.
-    const { swarmEventBus } = require('../services/swarm-event-bus');
-    const unsubscribe = swarmEventBus.subscribe((event: any) => {
-      try {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-      } catch {
-        // Client disconnected — cleanup will handle it.
-      }
-    });
-
-    // Send periodic keepalive.
-    const keepalive = setInterval(() => {
-      try {
-        res.write(': keepalive\n\n');
-      } catch {
-        clearInterval(keepalive);
-      }
-    }, 15_000);
-
-    // Cleanup on disconnect.
-    req.on('close', () => {
-      unsubscribe();
-      clearInterval(keepalive);
-    });
+    const stream = openSseStream(req, res, { onDrop: (n) => swarmEventBus.recordDropped(n) });
+    stream.send({ type: 'connected', timestamp: new Date().toISOString() });
+    stream.onClose(swarmEventBus.subscribe((event) => { stream.send(event); }));
   });
 
   return router;

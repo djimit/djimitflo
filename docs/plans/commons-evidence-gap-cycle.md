@@ -24,7 +24,7 @@ The first cycle follows the four real CLI/DeerFlow exchanges completed on produc
 3. Exclude diagnostics and inactive evidence from the inventory signal; keep exact duplicate statements from inflating it. Label the result a count heuristic with coverage unknown.
 4. Make repeated scans idempotent for unchanged diagnostics and preserve existing review decisions.
 5. Have a separate agent review the change and its social-topic/goal consumers, run focused and integration checks, and open a PR with measured before/after evidence.
-6. Inspect existing Paperclip routines for recurring CLI participation. Reuse admitted runtime paths, native run budgets and pause controls. Keep operator credentials on the control host and scoped runtime tokens out of model processes.
+6. Inspect the scheduled Commons participation (`scripts/commons-scheduled-poller.py`, `commons-opencode-recurring.md`). Reuse admitted runtime paths, native run budgets and pause controls. Keep operator credentials on the control host and scoped runtime tokens out of model processes.
 
 ## Boundaries
 

@@ -9,9 +9,15 @@
  * thread, reflection candidates and proposed improvements that retain review gates.
  */
 
+import { measured } from './model-selector';
 import type { Database } from 'better-sqlite3';
+import { judgmentMode, runJudgment, runJudgments } from './judgment-service';
+import { commonsContribution } from './judgments/commons-contribution';
+import { commonsIdea } from './judgments/commons-idea';
 import { AgentCommunicationService, type AgentMessage, type SocialRuntimeReply } from './agent-communication-service';
 import { RuntimeGovernanceService } from './runtime-governance-service';
+import { arenaGate, arenaGateEnabled, parseForecastText, pendingResidentQuestion, recordResidentForecast } from './committee-swarm';
+import { budgetPause } from './inference-budget';
 import {
   chat as providerChat, isRuntimeConfigured, parseResidentRuntimes, parseRuntimeSpec, providerEnvFromEnv, PROVIDER_KINDS,
   type ProviderEnv, type ProviderKind, type RuntimeSpec,
@@ -36,10 +42,17 @@ export interface AutopilotConfig {
   /** Language the agents are asked to converse in; 'auto' leaves it to the model. */
   language?: AutopilotLanguage;
   providers?: ProviderEnv;
+  /** SOCIAL_AUTOPILOT_FORECAST_ONLY (operator scale-back 2026-10-07): heartbeat and committee forecasts only — no chat replies,
+   *  no rounds, no thread answers (chat was most of ~940k output tokens per 1.7 days). */
+  forecastOnly?: boolean;
 }
 
 export interface AutopilotTick {
   heartbeats: number;
+  /** Q2: messages acknowledged without inference because their thread went stale (jev contribution gate). */
+  gated?: number;
+  /** AR-W5: committee questions answered by residents this tick */
+  forecasts?: number;
   replies: number;
   attempts: number;
   failures: number;
@@ -54,9 +67,21 @@ export const RESIDENTS = [
   { id: 'commons-muse', name: 'Muse (UX)', description: 'Agent Commons resident: user experience, creative design and narrative perspective.', capabilities: ['ux', 'creative-design', 'narrative'] },
   { id: 'commons-archivist', name: 'Archivist (knowledge)', description: 'Agent Commons resident: knowledge, provenance and graph-memory perspective.', capabilities: ['knowledge', 'provenance', 'graph-memory'] },
   { id: 'commons-oracle', name: 'Oracle (forecast)', description: 'Agent Commons resident: forecasting, risk and calibration perspective.', capabilities: ['forecasting', 'risk', 'calibration'] },
+  // F6 (2026-09-25): the external agents never came back (0/11 bites); perspectives the Commons lacked run here instead.
+  // Grounding topics are mostly code, and no resident had an engineering or testing perspective.
+  { id: 'commons-engineer', name: 'Engineer (implementation)', description: 'Agent Commons resident: TypeScript implementation, testing and API design perspective.', capabilities: ['engineering', 'testing', 'typescript'] },
+  { id: 'commons-skeptic', name: 'Skeptic (falsification)', description: 'Agent Commons resident: falsification, counter-examples and failure-mode perspective.', capabilities: ['falsification', 'red-team', 'failure-modes'] },
+  { id: 'commons-methodologist', name: 'Methodologist (evidence)', description: 'Agent Commons resident: research method, evidence grading and experiment design perspective.', capabilities: ['methodology', 'evidence-grading', 'experiment-design'] },
 ] as const;
 
 const REQUIRED_FIELDS = ['answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition'] as const;
+
+/** Failover runtime for residents: SOCIAL_AUTOPILOT_FALLBACK_RUNTIME (a provider kind) + SOCIAL_AUTOPILOT_FALLBACK_MODEL. */
+export function autopilotFallbackSpec(env: NodeJS.ProcessEnv = process.env): RuntimeSpec | null {
+  const runtime = (env.SOCIAL_AUTOPILOT_FALLBACK_RUNTIME || '').trim().toLowerCase();
+  const model = (env.SOCIAL_AUTOPILOT_FALLBACK_MODEL || '').trim();
+  return (PROVIDER_KINDS as string[]).includes(runtime) && model ? { runtime: runtime as ProviderKind, model } : null;
+}
 
 export function autopilotConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AutopilotConfig {
   const runtimeText = (env.SOCIAL_AUTOPILOT_RUNTIME || 'off').trim().toLowerCase();
@@ -78,6 +103,7 @@ export function autopilotConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Au
     residents: parseResidentRuntimes(env.SOCIAL_AUTOPILOT_RESIDENTS, fallback),
     language: languageText === 'nl' || languageText === 'en' ? languageText : 'auto',
     providers,
+    forecastOnly: (env.SOCIAL_AUTOPILOT_FORECAST_ONLY || '').trim().toLowerCase() === 'true',
   };
 }
 
@@ -97,6 +123,8 @@ export function extractReply(text: string): SocialRuntimeReply {
     creative_alternative: String(value.creative_alternative), stop_condition: String(value.stop_condition),
     ...Object.fromEntries(['interest', 'ecosystem_component', 'proposed_improvement'].filter(key => typeof value[key] === 'string').map(key => [key, value[key]])),
     evidence_refs: Array.isArray(value.evidence_refs) ? value.evidence_refs.filter((item): item is string => typeof item === 'string') : [],
+    // AC-06: passed through untouched; respondSocial ignores it unless the thread is a Commons investigation (COMMONS_INVESTIGATION_MODE)
+    ...(value.artefact && typeof value.artefact === 'object' && !Array.isArray(value.artefact) ? { artefact: value.artefact } : {}),
   };
 }
 
@@ -115,6 +143,12 @@ function tryParse(text: string): Record<string, unknown> | null {
   }
 }
 
+/** True when a reply's answer is the peer's answer again (case and whitespace ignored). */
+export function isEcho(answer: unknown, peerAnswer: unknown): boolean {
+  const norm = (v: unknown) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return norm(answer).length > 0 && norm(answer) === norm(peerAnswer);
+}
+
 export class AgentSocialAutopilotService {
   private readonly comms: AgentCommunicationService;
   private readonly governance: RuntimeGovernanceService;
@@ -126,6 +160,13 @@ export class AgentSocialAutopilotService {
   private readonly warnedUnconfigured = new Set<string>();
   private readonly config: AutopilotConfig & Required<Pick<AutopilotConfig, 'residents' | 'language' | 'providers'>>;
 
+  /** UX-18: every resident model call is a ledger row (consumer resident:<agent>); content and prompts are never stored. */
+  private residentCall<T extends { content: string; usage?: Record<string, unknown> }>(agentId: string, taskKind: string, spec: { runtime: string; model: string }, call: () => Promise<T>): Promise<T> {
+    const n = (u: Record<string, unknown> | undefined, ...keys: string[]): number | null => { for (const k of keys) { const v = u?.[k]; if (typeof v === 'number') return v; } return null; };
+    return measured({ consumer: `resident:${agentId}`, model: spec.model, provider: spec.runtime, taskKind, purpose: `resident:${agentId}:${taskKind}` }, call,
+      (r) => ({ outChars: r.content.length, tokensIn: n(r.usage, 'prompt_eval_count', 'prompt_tokens', 'input_tokens', 'promptTokenCount'), tokensOut: n(r.usage, 'eval_count', 'completion_tokens', 'output_tokens', 'candidatesTokenCount') }), this.db);
+  }
+
   constructor(private readonly db: Database, config: AutopilotConfig, deps: { comms?: AgentCommunicationService; governance?: RuntimeGovernanceService; chat?: ChatFn } = {}) {
     this.config = {
       ...config,
@@ -135,7 +176,16 @@ export class AgentSocialAutopilotService {
     };
     this.comms = deps.comms || new AgentCommunicationService(db);
     this.governance = deps.governance || new RuntimeGovernanceService(db);
-    this.chat = deps.chat || ((system, prompt, signal, spec) => providerChat(spec, this.config.providers, system, prompt, signal));
+    this.chat = deps.chat || (async (system, prompt, signal, spec) => {
+      try {
+        return await providerChat(spec, this.config.providers, system, prompt, signal);
+      } catch (error) {
+        // Optional failover (SOCIAL_AUTOPILOT_FALLBACK_RUNTIME/_MODEL) when the primary host is unreachable or errors out.
+        const fallback = autopilotFallbackSpec();
+        if (!fallback || (fallback.runtime === spec.runtime && fallback.model === spec.model) || !isRuntimeConfigured(fallback, this.config.providers)) throw error;
+        return providerChat(fallback, this.config.providers, system, prompt, signal);
+      }
+    });
   }
 
   /** Which runtime speaks for an agent: the per-agent override, else the autopilot default. */
@@ -183,6 +233,8 @@ export class AgentSocialAutopilotService {
         : new Set(this.config.agents.split(',').map((value) => value.trim()).filter(Boolean));
     return rows
       .filter((row) => !row.retired_at && (!wanted || wanted.has(String(row.id))))
+      // AR-W5: survival of the fittest — a resident that makes no measurable calls, or forecasts worse than the base rate, stops
+      .filter((row) => !arenaGateEnabled() || arenaGate(this.db, String(row.id), new Date(), { forecastOnly: this.config.forecastOnly === true }).allowed)
       .map((row) => ({ id: String(row.id), name: String(row.name || row.id), capabilities: this.stringArray(row.capabilities ?? row.capabilities_json) }));
   }
 
@@ -190,6 +242,7 @@ export class AgentSocialAutopilotService {
   async tick(): Promise<AutopilotTick> {
     const result: AutopilotTick = { heartbeats: 0, replies: 0, attempts: 0, failures: 0, round_started: false, skipped: null };
     if (this.config.runtime === 'off' || this.stopped || this.busy) return { ...result, skipped: this.busy ? 'busy' : this.stopped ? 'stopped' : 'off' };
+    if (budgetPause(this.db, 'residents')) return { ...result, skipped: 'inference_budget' }; // INFERENCE_BUDGET_THROTTLE=on
     this.busy = true;
     const controller = new AbortController();
     this.activeTick = controller;
@@ -206,8 +259,28 @@ export class AgentSocialAutopilotService {
       });
       for (const agent of agents) {
         const spec = this.runtimeFor(agent.id);
-        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model); result.heartbeats += 1; } catch { result.failures += 1; }
+        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model, 'in_process_resident'); result.heartbeats += 1; } catch { result.failures += 1; }
       }
+      // AR-W5: an open committee question comes before chat — at most 2 residents per tick answer one (bounded cloud cost)
+      let forecastsThisTick = 0;
+      for (const agent of agents) {
+        if (forecastsThisTick >= 2 || controller.signal.aborted) break;
+        const q = pendingResidentQuestion(this.db, agent.id);
+        if (!q) continue;
+        forecastsThisTick += 1;
+        try {
+          const spec = this.runtimeFor(agent.id);
+          const prompt = ['Question: what is the probability that this proposal ends VERIFIED (a maker changes the code, all checks and reviewers pass)?',
+            'Be calibrated: most proposals do not end verified; the lane record below shows the recent rate.',
+            `Context (JSON): ${JSON.stringify(q.question).slice(0, 8000)}`,
+            'Reply with JSON only: {"p": <number between 0 and 1>, "rationale": "<one sentence>"}'].join('\n');
+          const { content } = await this.residentCall(agent.id, 'forecast', spec, () => this.chat(this.systemPrompt(agent), prompt, controller.signal, spec));
+          const f = parseForecastText(content);
+          if (f) recordResidentForecast(this.db, q, agent.id, f, `${spec.runtime}/${spec.model}`);
+          result.forecasts = (result.forecasts ?? 0) + (f ? 1 : 0);
+        } catch { result.failures += 1; }
+      }
+      if (this.config.forecastOnly) { result.skipped = controller.signal.aborted ? 'stopped' : 'forecast_only'; return result; }
       // Claim immediately before inference so slow earlier replies cannot expire later leases.
       const maxAttempts = Math.min(16, Math.max(1, Math.floor(this.config.maxRepliesPerTick)));
       for (const agent of agents) {
@@ -216,10 +289,17 @@ export class AgentSocialAutopilotService {
         let message: AgentMessage | undefined;
         try { [message] = this.comms.receiveSocial(agent.id, 1); } catch { result.failures += 1; continue; }
         if (!message) continue;
+        // Q2 (operator 2026-09-28, cut Ollama Cloud use): jev already judges every reply's contribution; once the last two
+        // judged replies in a thread were restatement/off-topic ('no'), the thread is done — acknowledge without inference.
+        if (threadGated(this.db, message)) {
+          try { this.comms.acknowledge(message.id, agent.id, message.deliveryLeaseToken); } catch { /* lease expired: redelivered and gated again */ }
+          result.gated = (result.gated ?? 0) + 1;
+          continue;
+        }
         result.attempts += 1;
         try {
           const spec = this.runtimeFor(agent.id);
-          const { content, run_id, usage } = await this.chat(this.systemPrompt(agent), this.userPrompt(agent.id, message), controller.signal, spec);
+          const { content, run_id, usage } = await this.residentCall(agent.id, 'reply', spec, () => this.chat(this.systemPrompt(agent), this.userPrompt(agent.id, message), controller.signal, spec));
           if (controller.signal.aborted) break;
           // An operator can pause/quarantine an agent while inference is running.
           if (!this.eligibleAgents().some(current => current.id === agent.id) || !this.governance.isAllowed(agent.id)) {
@@ -227,8 +307,13 @@ export class AgentSocialAutopilotService {
             continue;
           }
           const reply = extractReply(content);
-          this.comms.respondSocial(agent.id, message.id, { ...reply, runtime: spec.runtime, model_id: spec.model, runtime_run_id: run_id, usage, delivery_lease_token: message.deliveryLeaseToken });
+          // Prod 2026-09-23: residents' "learning" replies often copied the peer answer word for word. Not sent: a copy is
+          // not an evaluation (the thread simply ends without a learning).
+          if (isEcho(reply.answer, (message.payload?.params as Record<string, unknown> | undefined)?.answer)) { result.failures += 1; continue; }
+          const sent = this.comms.respondSocial(agent.id, message.id, { ...reply, runtime: spec.runtime, model_id: spec.model, runtime_run_id: run_id, usage, delivery_lease_token: message.deliveryLeaseToken });
           result.replies += 1;
+          const idea = typeof reply.proposed_improvement === 'string' ? reply.proposed_improvement.trim() : '';
+          if (!sent.duplicate) void this.judgeContribution(sent.message.id, message, idea).catch(() => null);
         } catch {
           if (controller.signal.aborted) break;
           result.failures += 1;
@@ -247,6 +332,24 @@ export class AgentSocialAutopilotService {
       this.busy = false;
       this.activeTick = null;
     }
+  }
+
+  /** Shadow guardrail: what does this reply add to its thread (and is its idea a Djimitflo change)? One jev call (R1). */
+  private async judgeContribution(replyId: string, original: AgentMessage, idea = ''): Promise<void> {
+    const contributionOn = judgmentMode(commonsContribution.id) !== 'off';
+    const ideaOn = Boolean(idea) && judgmentMode(commonsIdea.id) !== 'off';
+    if (!contributionOn && !ideaOn) return;
+    if (!contributionOn) { await runJudgment(this.db, commonsIdea, { type: 'agent_message', id: replyId }, { idea: idea.slice(0, 1_500) }); return; }
+    const threadId = String(original.payload?.thread_id || '');
+    const rows = this.db.prepare(`SELECT id, json_extract(payload_json, '$.params.answer') AS answer FROM agent_messages
+      WHERE json_extract(payload_json, '$.thread_id') = ? AND json_extract(payload_json, '$.action') IN ('social.response', 'social.learning')
+      ORDER BY timestamp ASC, rowid ASC`).all(threadId) as Array<{ id: string; answer: string | null }>;
+    const reply = rows.find((r) => r.id === replyId);
+    if (!reply?.answer) return;
+    const earlier = rows.filter((r) => r.id !== replyId && r.answer).slice(-6).map((r) => String(r.answer).slice(0, 400));
+    const topic = String((original.payload?.params as Record<string, unknown> | undefined)?.topic || '').slice(0, 500);
+    const state = { topic, earlier, message: String(reply.answer).slice(0, 1_500), ...(ideaOn ? { idea: idea.slice(0, 1_500) } : {}) };
+    await runJudgments(this.db, ideaOn ? [commonsContribution, commonsIdea] : [commonsContribution], { type: 'agent_message', id: replyId }, state);
   }
 
   private inFlight(agentIds: string[]): boolean {
@@ -280,4 +383,21 @@ export class AgentSocialAutopilotService {
       return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
     } catch { return []; }
   }
+}
+
+/**
+ * Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'.
+ * AUTHZ-F3: only while the commons_contribution judgment itself is on — the rows of a judgment that was switched off are
+ * stale and must not gate anything (prod: off since 09-30 while the gate kept reading pre-09-30 verdicts).
+ */
+export function threadGated(db: Database, message: AgentMessage, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true' || judgmentMode(commonsContribution.id, env) === 'off') return false;
+  const threadId = String(message.payload?.thread_id || '');
+  if (!threadId) return false;
+  try {
+    const last = db.prepare(`SELECT j.decision FROM judgments j JOIN agent_messages m ON m.id = j.subject_id
+      WHERE j.judgment = 'commons_contribution' AND json_extract(m.payload_json, '$.thread_id') = ?
+      ORDER BY j.created_at DESC LIMIT 2`).all(threadId) as Array<{ decision: string }>;
+    return last.length === 2 && last.every((r) => r.decision === 'no');
+  } catch { return false; }
 }

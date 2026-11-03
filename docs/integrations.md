@@ -55,7 +55,6 @@ Djimitflo integrates with external AI agent execution backends. This document su
 - Djimitflo draws conceptual inspiration from Ruflo's orchestration patterns
 - Key concepts mapped (task orchestration, approval, hooks, repository scanning)
 - Key differences documented (Claude Code dependency, swarm vs. policy-gated, vector vs. SQL memory)
-- See [docs/ruflo-compatibility.md](./ruflo-compatibility.md) for mapping table
 
 ## Evidence Paths
 

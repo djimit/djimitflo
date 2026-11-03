@@ -113,13 +113,8 @@ describe('full aggregator inventory', () => {
       expect((await request(app).get('/api/health')).status).toBe(200);
       const user = service.createUser('route-inventory@example.test', 'disposable-route-fixture-only', UserRole.ADMIN);
       const token = service.generateToken(user);
-      const workstation = await request(app).get('/api/workstation/urls').set('Authorization', `Bearer ${token}`);
-      expect([200, 503]).toContain(workstation.status);
-      if (workstation.status === 200) {
-        expect(workstation.body).toEqual(expect.objectContaining({ host: expect.any(String), platform: expect.any(String), ports: expect.any(Array) }));
-      } else {
-        expect(workstation.body.error).toBeDefined();
-      }
+      // the container-local port scan (/workstation/urls) was replaced by the service map (/health/services)
+      expect((await request(app).get('/api/workstation/urls').set('Authorization', `Bearer ${token}`)).status).toBe(404);
       const response = await request(app).get('/api/openapi.json').set('Authorization', `Bearer ${token}`);
       expect(response.status).toBe(200);
       expect(Object.values(response.body.paths).reduce((total: number, path: unknown) => total + Object.keys(path as object).length, 0)).toBe(routes.length);
@@ -165,7 +160,7 @@ describe('full aggregator inventory', () => {
     expect(paths).toContain('/api/apex/llm/route');
     expect(paths).toContain('/api/version');
     expect(paths).toContain('/api/openapi.json');
-    expect(paths).toContain('/api/workstation/urls');
+    expect(paths).toContain('/api/health/services');
     expect(paths).toContain('/api/swarms/scheduler/tick');
     expect(payload.paths['/api/tasks/{id}'].get.security).toEqual([{ bearerAuth: [] }]);
 

@@ -27,6 +27,21 @@ docker compose up -d
 curl http://localhost:3001/health
 ```
 
+## Production (Djimit VPS)
+
+The steps above self-host a single instance. The Djimit production instance is deployed differently:
+
+- **Automatic.** `scripts/auto-deploy.sh` runs on the VPS from a systemd timer (`scripts/systemd/`) and deploys `main`
+  only when every CI check on that commit passed, `main` has been quiet for `AUTO_DEPLOY_SETTLE_MIN` minutes (a merge
+  train becomes one deploy), and no loop worker is running. Kill switch: create `AUTO_DEPLOY_DISABLED` in the deploy root.
+- **Manual.** `bash scripts/deploy-vps.sh <sha> --apply` builds that commit, records provenance (`/health` reports
+  `commit` and `commit_matches_build`), waits for health and rolls back on failure. Never deploy while a maker runs.
+- **Configuration.** Flags live in the deploy root's `runtime.env` (always back it up before editing); a value set under
+  `environment:` in `compose.yml` overrides `runtime.env`. Current flags and their meaning are in the
+  [self-improvement loop runbook](runbooks/self-improvement-loop-operations.md).
+- **Each deploy mounts a fresh clone** as the runtime repository; loop worktrees created before a deploy are re-registered
+  on use.
+
 ## Environment Variables
 
 ### Required

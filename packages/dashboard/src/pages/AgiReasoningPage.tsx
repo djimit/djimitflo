@@ -5,6 +5,7 @@
 import { useState, useCallback } from 'react';
 import { Play, Brain, Target, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
 import { api } from '../lib/api';
+import { PageHeader, primaryButton, panel } from '../components/PageHeader';
 
 interface ReasoningResult {
   observations: { observations: string[]; anomalies: string[]; opportunities: string[] };
@@ -30,73 +31,65 @@ export function AgiReasoningPage() {
   }, []);
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-        <Brain size={28} color="#8b5cf6" />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>AGI Goal Reasoning</h1>
-        <button
-          onClick={runReasoning}
-          disabled={loading}
-          style={{
-            marginLeft: 'auto',
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '8px 16px', background: '#8b5cf6', color: 'white',
-            border: 'none', borderRadius: '6px', cursor: 'pointer',
-          }}
-        >
-          {loading ? <Loader size={14} className="spin" /> : <Play size={14} />}
-          {loading ? 'Reasoning...' : 'Run Reasoning'}
-        </button>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
+      <PageHeader
+        title="AGI Goal Reasoning"
+        icon={<Brain className="h-7 w-7 text-accent" />}
+        description="Observes the current system state, derives goal hypotheses and orders them into execution stages. Nothing is executed; it only proposes."
+        actions={
+          <button onClick={runReasoning} disabled={loading} className={primaryButton}>
+            {loading ? <Loader className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            {loading ? 'Reasoning...' : 'Run Reasoning'}
+          </button>
+        }
+      />
 
       {error && (
-        <div style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#dc2626', marginBottom: '16px' }}>
-          <AlertTriangle size={16} /> {error}
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-status-error/30 bg-status-error/10 p-3 text-status-error">
+          <AlertTriangle className="h-4 w-4" /> {error}
         </div>
+      )}
+
+      {!result && !loading && !error && (
+        <div className={`${panel} py-12 text-center text-foreground-secondary`}>Press "Run Reasoning" to analyse the current state.</div>
       )}
 
       {result && (
         <>
-          {/* Observations */}
-          <section style={{ marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>Observations</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-              <Card title="System State" items={result.observations.observations} icon="info" />
-              <Card title="Anomalies" items={result.observations.anomalies} icon="warning" />
-              <Card title="Opportunities" items={result.observations.opportunities} icon="success" />
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-foreground">Observations</h2>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Card title="System State" items={result.observations.observations} tone="text-accent" />
+              <Card title="Anomalies" items={result.observations.anomalies} tone="text-status-paused" />
+              <Card title="Opportunities" items={result.observations.opportunities} tone="text-status-completed" />
             </div>
           </section>
 
-          {/* Hypotheses */}
-          <section style={{ marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>Goal Hypotheses</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-foreground">Goal Hypotheses</h2>
+            <div className="space-y-2">
               {result.hypotheses.map((h) => (
-                <div key={h.id} style={{ padding: '12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Target size={14} color="#6366f1" />
-                    <span style={{ fontWeight: 500 }}>{h.statement}</span>
-                    <span style={{ marginLeft: 'auto', padding: '2px 8px', background: h.confidence > 0.7 ? '#dcfce7' : '#fef3c7', borderRadius: '4px', fontSize: '12px' }}>
-                      {(h.confidence * 100).toFixed(0)}%
-                    </span>
-                  </div>
+                <div key={h.id} className={`${panel} flex items-center gap-2`}>
+                  <Target className="h-4 w-4 text-accent" />
+                  <span className="font-medium text-foreground">{h.statement}</span>
+                  <span className={`ml-auto rounded px-2 py-0.5 text-xs ${h.confidence > 0.7 ? 'bg-status-completed/10 text-status-completed' : 'bg-status-paused/10 text-status-paused'}`}>
+                    {(h.confidence * 100).toFixed(0)}%
+                  </span>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* Strategies */}
           <section>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>Execution Strategies</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h2 className="mb-3 text-lg font-semibold text-foreground">Execution Strategies</h2>
+            <div className="space-y-3">
               {result.strategies.map((stage, i) => (
-                <div key={i} style={{ padding: '12px', background: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Stage {i + 1}</div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div key={i} className="rounded-lg border border-status-completed/20 bg-status-completed/5 p-3">
+                  <div className="mb-1 text-xs text-foreground-tertiary">Stage {i + 1}</div>
+                  <div className="flex flex-wrap gap-2">
                     {stage.map((step) => (
-                      <span key={step.id} style={{ padding: '4px 12px', background: 'white', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px' }}>
-                        <CheckCircle size={12} style={{ marginRight: '4px' }} />
-                        {step.action}
+                      <span key={step.id} className="inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1 text-sm text-foreground">
+                        <CheckCircle className="h-3 w-3" /> {step.action}
                       </span>
                     ))}
                   </div>
@@ -110,15 +103,14 @@ export function AgiReasoningPage() {
   );
 }
 
-function Card({ title, items, icon }: { title: string; items: string[]; icon: string }) {
-  const colors = { info: '#3b82f6', warning: '#f59e0b', success: '#10b981' };
+function Card({ title, items, tone }: { title: string; items: string[]; tone: string }) {
   return (
-    <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-      <div style={{ fontSize: '13px', fontWeight: 600, color: colors[icon as keyof typeof colors], marginBottom: '8px' }}>{title}</div>
+    <div className={panel}>
+      <div className={`mb-2 text-sm font-semibold ${tone}`}>{title}</div>
       {items.length === 0 ? (
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>None detected</div>
+        <div className="text-xs text-foreground-muted">None detected</div>
       ) : (
-        <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px' }}>
+        <ul className="list-disc pl-4 text-xs text-foreground-secondary">
           {items.slice(0, 5).map((item, i) => <li key={i}>{item.slice(0, 80)}</li>)}
         </ul>
       )}

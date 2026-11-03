@@ -25,7 +25,8 @@ import {
   type WorkerPoolDecision,
   type WorkerPoolPlanResult,
 } from '../lib/api';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWsSubscribe } from '../components/WebSocketProvider';
+import { useDialog } from '../components/ConfirmDialog';
 import { WebSocketEventType } from '@djimitflo/shared';
 
 type RuntimeChoice = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -87,16 +88,19 @@ export function FleetCockpitPage() {
   const [plan, setPlan] = useState<WorkerPoolPlanResult | null>(null);
   const [contracts, setContracts] = useState<Record<string, RuntimeContract>>({});
   const [schedulerResult, setSchedulerResult] = useState<SchedulerTickResult | null>(null);
-  const [runtime, setRuntime] = useState<RuntimeChoice>('mock');
-  const [checkerRuntime, setCheckerRuntime] = useState<CheckerRuntimeChoice>('mock');
+  // Real work by default: 'mock' starts workers that do nothing (W1, 2026-09-30); it stays available as a labelled demo.
+  const [runtime, setRuntime] = useState<RuntimeChoice>('opencode');
+  const [checkerRuntime, setCheckerRuntime] = useState<CheckerRuntimeChoice>('opencode');
   const [maxWorkers, setMaxWorkers] = useState(2);
-  const [repositoryPath, setRepositoryPath] = useState('/Users/dlandman/djimitflo');
+  // Empty = the server's configured repository (a MacBook path used to be hard-coded here).
+  const [repositoryPath, setRepositoryPath] = useState('');
   const [workItemIds, setWorkItemIds] = useState('');
   const [ignoreCapacity, setIgnoreCapacity] = useState(false);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { subscribe } = useWebSocket(true);
+  const subscribe = useWsSubscribe();
+  const dialog = useDialog();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -135,6 +139,17 @@ export function FleetCockpitPage() {
     }
   }
 
+  async function drainPool() {
+    const capacity = ignoreCapacity ? ', ignoring capacity limits' : '';
+    if (!(await dialog.confirm('Drain the worker pool?', `Starts up to ${maxWorkers} eligible worker${maxWorkers === 1 ? '' : 's'} on ${runtime}${capacity}.`, 'Drain'))) return;
+    await runAction('drain', () => api.drainWorkerPool({ runtime, checker_runtime: checkerRuntime, max_workers: maxWorkers, ignore_capacity: ignoreCapacity }));
+  }
+
+  async function stopLease(leaseId: string) {
+    if (!(await dialog.confirm(`Stop worker lease ${leaseId}?`, 'The lease is cancelled and its worker runtime is asked to stop; unfinished work is lost. This cannot be undone.', 'Stop lease'))) return;
+    await runAction(`stop-${leaseId}`, () => api.stopWorkerLease(leaseId));
+  }
+
   async function runScheduler(name: string, input: { plan_triaged?: boolean; prepare_planned?: boolean }) {
     await runAction(name, async () => {
       const ids = workItemIds
@@ -158,10 +173,8 @@ export function FleetCockpitPage() {
   }, [refresh]);
 
   useEffect(() => {
-    const unsubLoop = subscribe('LOOP_RUN_UPDATED' as any, () => void refresh());
     const unsubProof = subscribe(WebSocketEventType.PROOF_RUN_UPDATED, () => void refresh());
     return () => {
-      unsubLoop();
       unsubProof();
     };
   }, [refresh, subscribe]);
@@ -193,6 +206,7 @@ export function FleetCockpitPage() {
 
   return (
     <div className="space-y-6 p-8">
+      {dialog.element}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Fleet Cockpit</h1>
@@ -211,7 +225,7 @@ export function FleetCockpitPage() {
             <option value="claude">claude</option>
             <option value="gemini">gemini</option>
             <option value="editor">editor</option>
-            <option value="mock">mock</option>
+            <option value="mock">mock (demo, no real work)</option>
             <option value="manual">manual</option>
           </select>
           <select
@@ -220,7 +234,7 @@ export function FleetCockpitPage() {
             className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
             title="Checker runtime"
           >
-            <option value="mock">checker mock</option>
+            <option value="mock">checker mock (demo)</option>
             <option value="codex">checker codex</option>
             <option value="opencode">checker opencode</option>
             <option value="claude">checker claude</option>
@@ -257,7 +271,7 @@ export function FleetCockpitPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
           <AlertTriangle className="h-4 w-4" />
           {error}
         </div>
@@ -288,7 +302,7 @@ export function FleetCockpitPage() {
                 Start next
               </button>
               <button
-                onClick={() => void runAction('drain', () => api.drainWorkerPool({ runtime, checker_runtime: checkerRuntime, max_workers: maxWorkers, ignore_capacity: ignoreCapacity }))}
+                onClick={() => void drainPool()}
                 disabled={action !== null || !eligible.length}
                 className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground hover:border-accent/40 disabled:opacity-50"
               >
@@ -387,7 +401,7 @@ export function FleetCockpitPage() {
               value={repositoryPath}
               onChange={(event) => setRepositoryPath(event.target.value)}
               className="w-72 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-              placeholder="repository path"
+              placeholder="repository path (empty = server default)"
             />
             <input
               type="text"
@@ -500,7 +514,7 @@ export function FleetCockpitPage() {
                       <span>{decision.next_action}</span>
                       {decision.status === 'running' && (
                         <button
-                          onClick={() => void runAction(`stop-${decision.lease_id}`, () => api.stopWorkerLease(decision.lease_id))}
+                          onClick={() => void stopLease(decision.lease_id)}
                           disabled={action !== null}
                           className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:border-status-error/40 disabled:opacity-50"
                           title="Stop worker lease"

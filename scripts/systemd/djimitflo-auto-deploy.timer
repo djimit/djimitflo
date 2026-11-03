@@ -1,0 +1,9 @@
+[Unit]
+Description=Check every 10 minutes whether main can be deployed
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

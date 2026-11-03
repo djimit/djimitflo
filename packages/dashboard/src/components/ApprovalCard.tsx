@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import type { ApprovalRequest } from '@djimitflo/shared';
 import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
+import { APPROVALS_CHANGED, minutesUntil } from '../hooks/usePendingApprovals';
+import { ACTION_PERMISSIONS, needsText, permissionError, useCan } from '../lib/permissions';
+import { useDialog } from './ConfirmDialog';
 
 interface ApprovalCardProps {
   approval: ApprovalRequest;
@@ -12,7 +15,9 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
   const [approval, setApproval] = useState(incomingApproval);
   const status = approval.status;
   const [processing, setProcessing] = useState(false);
+  const dialog = useDialog();
   const [error, setError] = useState<string | null>(null);
+  const canDecide = useCan(ACTION_PERMISSIONS.approveRequest);
   useEffect(() => setApproval(incomingApproval), [incomingApproval]);
 
   const handleApprove = async () => {
@@ -22,16 +27,23 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       const updated = await api.approveRequestExplicit(approval.id);
       setApproval(updated);
       onUpdated?.(updated);
+      window.dispatchEvent(new Event(APPROVALS_CHANGED));
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to approve request');
+      setError(permissionError(error, ACTION_PERMISSIONS.approveRequest, 'Failed to approve request'));
     } finally {
       setProcessing(false);
     }
   };
 
   const handleDeny = async () => {
-    const reason = prompt('Reason for denial:');
-    if (reason === null) return;
+    // UX-25: a reason picker plus optional details instead of window.prompt
+    const answer = await dialog.ask({ title: 'Deny this request', fields: [
+      { name: 'reason', label: 'Reason', options: ['Out of scope', 'Not enough evidence', 'Too risky', 'Duplicate', 'Other'], required: true },
+      { name: 'detail', label: 'Details', multiline: true },
+    ], confirmLabel: 'Deny request' });
+    if (answer === null) return;
+    // 'Other' means the details are the reason; without details there is no reason
+    const reason = answer.reason === 'Other' ? answer.detail : answer.detail ? `${answer.reason}: ${answer.detail}` : answer.reason;
     if (!reason.trim()) { setError('A denial reason is required.'); return; }
 
     setProcessing(true);
@@ -40,8 +52,9 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       const updated = await api.denyRequestExplicit(approval.id, reason.trim());
       setApproval(updated);
       onUpdated?.(updated);
+      window.dispatchEvent(new Event(APPROVALS_CHANGED));
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to deny request');
+      setError(permissionError(error, ACTION_PERMISSIONS.approveRequest, 'Failed to deny request'));
     } finally {
       setProcessing(false);
     }
@@ -58,6 +71,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
         ? 'bg-status-completed/5 border-status-completed/20'
         : 'bg-status-error/5 border-status-error/20'
     }`}>
+      {dialog.element}
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -77,7 +91,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
           </div>
         </div>
         {status === 'pending' && approval.expires_at && (
-          <div className="flex items-center gap-1 text-xs text-foreground-muted">
+          <div className={`flex items-center gap-1 text-xs ${(minutesUntil(approval.expires_at) ?? 99) <= 15 ? 'font-semibold text-status-error' : 'text-foreground-muted'}`}>
             <Clock className="w-3 h-3" />
             <span>Expires {formatExpiry(approval.expires_at)}</span>
           </div>
@@ -88,6 +102,17 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       <p className="text-sm text-foreground-secondary mb-3">
         {approval.request_message}
       </p>
+
+      {/* What will actually run (autonomous worker executions) */}
+      {approval.context && (
+        <dl aria-label="Execution context" className="mb-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded border border-border bg-background p-3 text-xs">
+          {approval.context.proposal_title && (<><dt className="text-foreground-tertiary">Proposal</dt><dd className="text-foreground">{approval.context.proposal_title}</dd></>)}
+          {approval.context.goal_objective && (<><dt className="text-foreground-tertiary">Goal</dt><dd className="text-foreground">{approval.context.goal_objective}</dd></>)}
+          {(approval.context.lease_role || approval.context.runtime) && (<><dt className="text-foreground-tertiary">Worker</dt><dd className="text-foreground">{[approval.context.lease_role, approval.context.runtime].filter(Boolean).join(' · ')}</dd></>)}
+          {approval.context.working_directory && (<><dt className="text-foreground-tertiary">Directory</dt><dd className="break-all font-mono text-foreground">{approval.context.working_directory}</dd></>)}
+          {approval.context.prompt_preview && (<><dt className="text-foreground-tertiary">Instruction</dt><dd className="whitespace-pre-wrap text-foreground-secondary">{approval.context.prompt_preview}</dd></>)}
+        </dl>
+      )}
 
       {/* Request Data */}
       {Object.keys(approval.request_data).length > 0 && (
@@ -103,7 +128,10 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
 
       {/* Action Buttons (only for pending) */}
       {error && <p role="alert" className="mb-3 text-sm text-status-error">{error}</p>}
-      {status === 'pending' && (
+      {status === 'pending' && !canDecide && (
+        <p className="pt-3 border-t border-border text-xs text-foreground-tertiary">{needsText(ACTION_PERMISSIONS.approveRequest)} to approve or deny.</p>
+      )}
+      {status === 'pending' && canDecide && (
         <div className="flex gap-2 pt-3 border-t border-border">
           <button
             onClick={handleApprove}

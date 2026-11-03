@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
-import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
+import { api, type CohortWindow, type LearningCohort, type LearningCurve, type MissionExecutions, type RegisteredReadout, type SwarmCapabilityHealth, type SwarmCurrentExecution, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
+import { LoadErrorNotice } from '../components/LoadErrorNotice';
+import { useDialog } from '../components/ConfirmDialog';
+import { SkillEvolutionSection, StatusBadge, type SkillAction } from './swarm-mission/SkillEvolutionSection';
 
-const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
+const FLYWHEEL_BATCH_PATH = 'openspec/changes/archive/2026-06-26-prove-learning-flywheel-operator-loop/goals.batch.json';
 
 export function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
@@ -62,6 +65,7 @@ export function productionPilotPanelModel(pilot: SwarmMissionControl['production
 export function SwarmMissionControlPage() {
   const [mission, setMission] = useState<SwarmMissionControl | null>(null);
   const [capabilities, setCapabilities] = useState<SwarmCapabilityRecord[]>([]);
+  const [capabilityCounts, setCapabilityCounts] = useState<SwarmCapabilityHealth | null>(null);
   const [claims, setClaims] = useState<ClaimLedgerRecord[]>([]);
   const [capacity, setCapacity] = useState<CapacityPlanV2Result | null>(null);
   const [knowledge, setKnowledge] = useState<KnowledgeRuntimeHealth | null>(null);
@@ -71,27 +75,25 @@ export function SwarmMissionControlPage() {
   const [learningClosure, setLearningClosure] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const dialog = useDialog();
   const [error, setError] = useState<string | null>(null);
-  const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('mock');
+  const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('opencode'); // a proof run on 'mock' proves nothing (W1)
   const [expandedCapability, setExpandedCapability] = useState<string | null>(null);
-  const [learningCurve, setLearningCurve] = useState<any>(null);
-  const [skillEvalModel, setSkillEvalModel] = useState('');
-  const [skillEvalCaseIds, setSkillEvalCaseIds] = useState('');
-  const [skillInventory, setSkillInventory] = useState<Array<{ id: string; version: string; content_hash: string; source_tasks: string[] }>>([]);
-  const [skillSourceId, setSkillSourceId] = useState('');
-  const [skillSourceTask, setSkillSourceTask] = useState('');
-  const [skillPatchFind, setSkillPatchFind] = useState('');
-  const [skillPatchReplace, setSkillPatchReplace] = useState('');
+  const [learningCurve, setLearningCurve] = useState<LearningCurve | null>(null);
+  const [missionExecutions, setMissionExecutions] = useState<MissionExecutions | null>(null);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   // D12: Knowledge bus events
   const [knowledgeEvents, setKnowledgeEvents] = useState<any[]>([]);
   useEffect(() => {
-    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(Array.isArray(res.events) ? res.events : [])).catch(() => {});
+    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(Array.isArray(res.events) ? res.events : [])).catch((err) => setLoadErrors((prev) => [...prev, `knowledge events: ${err instanceof Error ? err.message : String(err)}`]));
   }, []);
 
   // D11: Learning curve
   useEffect(() => {
-    api.request('/swarms/learning-curve').then((res: any) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch(() => {});
+    api.request<LearningCurve>('/swarms/learning-curve').then((res) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `learning curve: ${err instanceof Error ? err.message : String(err)}`]));
+    // SW-02: mission planning status next to its linked goal/loop execution (read-only)
+    api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((res) => setMissionExecutions(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `mission executions: ${err instanceof Error ? err.message : String(err)}`]));
   }, []);
   const [expandedClaim, setExpandedClaim] = useState<string | null>(null);
 
@@ -103,24 +105,27 @@ export function SwarmMissionControlPage() {
     setLoading(true);
     setError(null);
     try {
-      const [missionResult, capabilitiesResult, claimsResult, knowledgeResult, skillInventoryResult] = await Promise.allSettled([
+      const [missionResult, capabilitiesResult, claimsResult, knowledgeResult] = await Promise.allSettled([
         api.getSwarmMissionControl(),
         api.getSwarmCapabilities(50),
         api.getSwarmClaims(50),
         api.getKnowledgeRuntime(),
-        api.getSkillEvolutionInventory(),
       ]);
       if (missionResult.status === 'fulfilled') {
         setMission(missionResult.value);
         setCapacity(missionResult.value.capacity);
       }
-      if (capabilitiesResult.status === 'fulfilled') setCapabilities(asArray<SwarmCapabilityRecord>(capabilitiesResult.value.capabilities));
+      if (capabilitiesResult.status === 'fulfilled') {
+        const value = capabilitiesResult.value;
+        setCapabilities(asArray<SwarmCapabilityRecord>(value.capabilities));
+        const loaded = asArray(value.capabilities).length;
+        setCapabilityCounts({ total: loaded, loaded, load_limit: value.limit, registry_total: value.registry_total, registry_by_status: value.registry_by_status, validated: 0, routable: 0, blocked: 0 });
+      }
       if (claimsResult.status === 'fulfilled') setClaims(asArray<ClaimLedgerRecord>(claimsResult.value.claims));
       if (knowledgeResult.status === 'fulfilled') setKnowledge(knowledgeResult.value);
-      if (skillInventoryResult.status === 'fulfilled') setSkillInventory(asArray<{ id: string; version: string; content_hash: string; source_tasks: string[] }>(skillInventoryResult.value.skills));
-      const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult, skillInventoryResult]
+      const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult]
         .filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
-      if (failures.length === 5) throw failures[0].reason;
+      if (failures.length === 4) throw failures[0].reason;
       if (failures.length > 0) setError(`${failures.length} data source${failures.length === 1 ? '' : 's'} unavailable`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
@@ -128,6 +133,19 @@ export function SwarmMissionControlPage() {
       setLoading(false);
     }
   }
+
+  const runSkillAction: SkillAction = async (id, failure, action) => {
+    setActionId(id);
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : failure);
+    } finally {
+      setActionId(null);
+    }
+  };
 
   async function runCapacityPlan() {
     setActionId('capacity-plan');
@@ -206,7 +224,9 @@ export function SwarmMissionControlPage() {
   }
 
   async function closeLearningLoop() {
-    const loopRunId = window.prompt('Loop run id to close');
+    // UX-25b: the shared dialog instead of window.prompt (labelled, focus-trapped, Escape cancels)
+    const values = await dialog.ask({ title: 'Close learning loop', fields: [{ name: 'loopRunId', label: 'Loop run id', required: true }], confirmLabel: 'Close loop' });
+    const loopRunId = values?.loopRunId;
     if (!loopRunId) return;
     setActionId('learning-close');
     setError(null);
@@ -221,6 +241,8 @@ export function SwarmMissionControlPage() {
   }
 
   async function rollbackProofRun(id: string) {
+    if (!(await dialog.confirm(`Roll back proof run ${id}?`,
+      'Deletes every record this proof run created (goals, work items, loop runs, worker leases, claims and evidence). This cannot be undone.', 'Roll back'))) return;
     setActionId(`rollback-${id}`);
     setError(null);
     try {
@@ -233,80 +255,8 @@ export function SwarmMissionControlPage() {
     }
   }
 
-  async function rollbackSkillCandidate(id: string) {
-    setActionId(`skill-rollback-${id}`);
-    setError(null);
-    try {
-      await api.rollbackSkillEvolutionCandidate(id);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Skill rollback failed');
-    } finally {
-      setActionId(null);
-    }
-  }
-
-  async function compareSkillCandidate(id: string) {
-    const caseIds = skillEvalCaseIds.split(',').map((value) => value.trim()).filter(Boolean);
-    setActionId(`skill-compare-${id}`);
-    setError(null);
-    try {
-      await api.compareSkillEvolutionCandidate(id, skillEvalModel, caseIds);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Skill comparison failed');
-    } finally {
-      setActionId(null);
-    }
-  }
-
-  async function loadSkillEvalCases() {
-    setActionId('skill-case-list');
-    setError(null);
-    try {
-      const result = await api.getOpenMythosCaseMetadata();
-      setSkillEvalCaseIds(result.cases.map((item) => item.id).join(', '));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'OpenMythos case manifest unavailable');
-    } finally {
-      setActionId(null);
-    }
-  }
-
-  async function promoteSkillCandidate(skill: any) {
-    if (!skill.promotion_input) return;
-    setActionId(`skill-promote-${skill.capability_id}`);
-    setError(null);
-    try {
-      await api.promoteSwarmCapability(skill.capability_id, skill.promotion_input);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Skill promotion was blocked');
-    } finally {
-      setActionId(null);
-    }
-  }
-
-  async function createSkillCandidate() {
-    const skill = skillInventory.find((item) => item.id === skillSourceId);
-    if (!skill || !skillSourceTask || !skillPatchFind.trim() || !skillPatchReplace.trim()) return;
-    setActionId('skill-candidate-create');
-    setError(null);
-    try {
-      await api.createSkillEvolutionCandidate({ skill_id: skill.id, baseline_hash: skill.content_hash,
-        source_task_id: skillSourceTask, find: skillPatchFind, replace: skillPatchReplace });
-      setSkillPatchFind(''); setSkillPatchReplace('');
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Skill candidate creation failed');
-    } finally {
-      setActionId(null);
-    }
-  }
-
   const blockedCapabilities = useMemo(() => capabilities.filter((capability) => !capability.live_route_allowed), [capabilities]);
   const importantClaims = useMemo(() => claims.filter((claim) => ['contradicted', 'review_required', 'proposed'].includes(claim.status)).slice(0, 8), [claims]);
-  const learningRuns = asArray<any>(learningCurve?.runs);
   const knowledgeEventList = asArray<any>(knowledgeEvents);
   const fairShareOrder = asArray<string>(capacity?.fair_share_order);
   const auditManifestPreview = asArray<any>(capacity?.audit_manifest_preview);
@@ -315,6 +265,8 @@ export function SwarmMissionControlPage() {
 
   return (
     <div className="p-8 space-y-6">
+      {dialog.element}
+      <LoadErrorNotice failed={loadErrors} />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Swarm Mission Control</h1>
@@ -351,7 +303,7 @@ export function SwarmMissionControlPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {error}
         </div>
@@ -406,7 +358,8 @@ export function SwarmMissionControlPage() {
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <HealthStrip label="Capability Health" values={[
-            `total ${mission?.capability_health.total ?? 0}`,
+            `registry ${mission?.capability_health.registry_total ?? 'unknown'}`,
+            `loaded ${mission?.capability_health.loaded ?? mission?.capability_health.total ?? 0}`,
             `validated ${mission?.capability_health.validated ?? 0}`,
             `routable ${mission?.capability_health.routable ?? 0}`,
             `blocked ${mission?.capability_health.blocked ?? 0}`,
@@ -423,115 +376,12 @@ export function SwarmMissionControlPage() {
             `blocked/evidence ${mission?.specialist_panels.blocked_or_needs_evidence ?? 0}`,
           ]} />
         </div>
+        <CurrentExecutions executions={asArray<SwarmCurrentExecution>(mission?.swarm_truth.current_executions)} />
       </section>
 
-      <section className="rounded-lg border border-border bg-background-secondary p-5">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Skill Evolution Readiness</h2>
-          <p className="mt-1 text-sm text-foreground-secondary">Paired candidate checks are bound to exact skill hashes and pinned OpenMythos cases. Admission and the existing training gate still run during promotion.</p>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_2fr]">
-          <label className="text-xs text-foreground-secondary">Declared model
-            <input value={skillEvalModel} onChange={(event) => setSkillEvalModel(event.target.value)} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm" placeholder="configured OpenMythos model" />
-          </label>
-          <label className="text-xs text-foreground-secondary">Pinned OpenMythos case IDs, comma separated
-            <input value={skillEvalCaseIds} onChange={(event) => setSkillEvalCaseIds(event.target.value)} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm" placeholder="case-001, case-002" />
-          </label>
-        </div>
-        <button onClick={() => void loadSkillEvalCases()} disabled={actionId !== null} className="mt-2 rounded border border-border px-2 py-1 text-xs text-foreground-secondary disabled:opacity-50">
-          Load IDs from the configured case manifest
-        </button>
-        <div className="mt-3 grid gap-2 lg:grid-cols-2">
-          <label className="text-xs text-foreground-secondary">Skill with a successful delivered outcome
-            <select value={skillSourceId} onChange={(event) => { setSkillSourceId(event.target.value); setSkillSourceTask(''); }} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm">
-              <option value="">Select a skill</option>
-              {skillInventory.filter((skill) => skill.source_tasks.length > 0).map((skill) => <option key={skill.id} value={skill.id}>{skill.id} · v{skill.version}</option>)}
-            </select>
-          </label>
-          <label className="text-xs text-foreground-secondary">Source task
-            <select value={skillSourceTask} onChange={(event) => setSkillSourceTask(event.target.value)} className="mt-1 block w-full rounded border border-border bg-background px-2 py-1 text-sm">
-              <option value="">Select a successful task</option>
-              {skillInventory.find((skill) => skill.id === skillSourceId)?.source_tasks.map((taskId) => <option key={taskId} value={taskId}>{taskId}</option>)}
-            </select>
-          </label>
-          <label className="text-xs text-foreground-secondary">Exact instruction text to replace
-            <textarea value={skillPatchFind} onChange={(event) => setSkillPatchFind(event.target.value)} maxLength={2000} className="mt-1 block min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-sm" />
-          </label>
-          <label className="text-xs text-foreground-secondary">Replacement instruction text
-            <textarea value={skillPatchReplace} onChange={(event) => setSkillPatchReplace(event.target.value)} maxLength={2000} className="mt-1 block min-h-16 w-full rounded border border-border bg-background px-2 py-1 text-sm" />
-          </label>
-          <button onClick={() => void createSkillCandidate()} disabled={actionId !== null || !skillSourceTask || !skillPatchFind.trim() || !skillPatchReplace.trim()}
-            className="w-fit rounded border border-border px-3 py-2 text-sm text-foreground disabled:opacity-50">Create bounded candidate</button>
-        </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase text-foreground-tertiary">
-              <tr>
-                <th className="py-2 pr-4">Skill</th>
-                <th className="py-2 pr-4">Assigned</th>
-                <th className="py-2 pr-4">Candidate runs</th>
-                <th className="py-2 pr-4">Baselines</th>
-                <th className="py-2 pr-4">OpenMythos</th>
-                <th className="py-2 pr-4">Paired comparison</th>
-                <th className="py-2 pr-4">Evidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {skillEvolution.map((skill) => (
-                <tr key={skill.capability_id} className="border-t border-border">
-                  <td className="py-2 pr-4">
-                    <div className="font-medium text-foreground">{skill.skill_id || skill.capability_id}</div>
-                    <div className="font-mono text-xs text-foreground-tertiary">v{skill.skill_version || '?'} · {skill.candidate_hash.slice(0, 12) || 'unattributed'}</div>
-                  </td>
-                  <td className="py-2 pr-4 text-foreground-secondary">{skill.assigned_agents}</td>
-                  <td className="py-2 pr-4 text-foreground-secondary">{skill.candidate_runs}</td>
-                  <td className="py-2 pr-4 text-foreground-secondary">{skill.baseline_hashes.length}</td>
-                  <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{skill.openmythos_run_id || 'missing'}</td>
-                  <td className="py-2 pr-4 text-foreground-secondary">
-                    {skill.candidate_comparison ? <>
-                      <StatusBadge status={skill.candidate_comparison.verdict.toLowerCase()} />
-                      <div className="mt-1 text-xs">{skill.candidate_comparison.baseline_score ?? '?'} → {skill.candidate_comparison.candidate_score ?? '?'} · {skill.candidate_comparison.reason}</div>
-                      <div className="text-xs">Run duration: {skill.candidate_comparison.manifest?.baseline_run_ms ?? 'unknown'} ms → {skill.candidate_comparison.manifest?.candidate_run_ms ?? 'unknown'} ms · cost: unknown</div>
-                      {skill.candidate_comparison.candidate_eval_id && <div className="font-mono text-xs">{skill.candidate_comparison.candidate_eval_id}</div>}
-                      <details className="mt-1 text-xs">
-                        <summary className="cursor-pointer">Per-case evidence ({skill.candidate_comparison.cases.length})</summary>
-                        <ul className="mt-1 max-h-40 overflow-auto">
-                          {skill.candidate_comparison.cases.map((item) => <li key={item.case_id} className="font-mono">
-                            {item.case_id}: {item.baseline_score} → {item.candidate_score ?? '?'} · oracle {String(item.baseline_oracle_pass ?? '?')} → {String(item.candidate_oracle_pass ?? '?')} {item.oracle_regression ? '· REGRESSION' : ''}
-                          </li>)}
-                        </ul>
-                      </details>
-                    </> : 'not evaluated'}
-                    {skill.artifact_lifecycle === 'active' && skill.candidate_id && <button
-                      onClick={() => void rollbackSkillCandidate(skill.candidate_id!)}
-                      disabled={actionId !== null}
-                      className="mt-1 rounded border border-status-warning/40 px-2 py-1 text-xs text-status-warning disabled:opacity-50">
-                      Roll back for new runs
-                    </button>}
-                    {skill.status === 'candidate' && skill.candidate_id && <button
-                      onClick={() => void compareSkillCandidate(skill.candidate_id!)}
-                      disabled={actionId !== null || !skillEvalModel.trim() || !skillEvalCaseIds.trim()}
-                      className="mt-1 rounded border border-border px-2 py-1 text-xs text-foreground-secondary disabled:opacity-50">
-                      Run paired comparison
-                    </button>}
-                    {skill.status === 'candidate' && skill.evidence_ready && skill.promotion_input && <button
-                      onClick={() => void promoteSkillCandidate(skill)}
-                      disabled={actionId !== null}
-                      className="mt-1 rounded border border-status-success/40 px-2 py-1 text-xs text-status-success disabled:opacity-50">
-                      Submit to existing promotion gate
-                    </button>}
-                  </td>
-                  <td className="py-2 pr-4">
-                    <StatusBadge status={skill.evidence_ready ? 'ready' : 'blocked'} />
-                    {!skill.evidence_ready && <div className="mt-1 max-w-xl text-xs text-status-warning">{skill.blocked_reasons.join(', ')}</div>}
-                  </td>
-                </tr>
-              ))}
-              {!skillEvolution.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={7}>No governed skill capabilities registered.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {missionExecutions && <MissionExecutionPanel data={missionExecutions} />}
+
+      <SkillEvolutionSection skills={skillEvolution} actionId={actionId} run={runSkillAction} />
 
       <section className="rounded-lg border border-border bg-background-secondary p-5">
         <div>
@@ -602,6 +452,7 @@ export function SwarmMissionControlPage() {
             <ShieldCheck className="h-5 w-5 text-accent" />
             <h2 className="text-lg font-semibold text-foreground">Capability Registry</h2>
           </div>
+          {capabilityCounts && <CapabilityCountsLine health={capabilityCounts} shown={Math.min(8, (blockedCapabilities.length ? blockedCapabilities : capabilities).length)} />}
           <div className="mt-4 space-y-3">
             {(blockedCapabilities.length ? blockedCapabilities : capabilities).slice(0, 8).map((capability) => (
               <div key={capability.id} className="rounded border border-border bg-background p-3">
@@ -699,40 +550,8 @@ export function SwarmMissionControlPage() {
         </div>
       </section>
 
-      {learningRuns.length > 0 && (
-        <section className="rounded-lg border border-border bg-background-secondary p-5">
-          <h2 className="text-lg font-semibold text-foreground">Learning Curve ({learningRuns.length} runs)</h2>
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <SmallStat label="Success Rate" value={`${((learningCurve?.first_vs_last?.first_success_rate || 0) * 100).toFixed(0)}% -> ${((learningCurve?.first_vs_last?.last_success_rate || 0) * 100).toFixed(0)}%`} />
-            <SmallStat label="Cost" value={`$${(learningCurve?.first_vs_last?.first_cost || 0).toFixed(4)} -> $${(learningCurve?.first_vs_last?.last_cost || 0).toFixed(4)}`} />
-            <SmallStat label="Retries" value={learningCurve?.trend?.retries_decreasing ? 'decreasing' : 'not decreasing'} />
-          </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-foreground-tertiary">
-                <tr>
-                  <th className="py-2 pr-4">Run</th>
-                  <th className="py-2 pr-4">Date</th>
-                  <th className="py-2 pr-4">Success</th>
-                  <th className="py-2 pr-4">Retries</th>
-                  <th className="py-2 pr-4">$ Spent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {learningRuns.slice(-10).map((run: any) => (
-                  <tr key={run.run_id} className="border-t border-border">
-                    <td className="py-2 pr-4 font-mono text-xs">{String(run.run_id || '').slice(0, 8)}</td>
-                    <td className="py-2 pr-4 text-xs text-foreground-tertiary">{run.created_at ? new Date(run.created_at).toLocaleDateString() : '-'}</td>
-                    <td className="py-2 pr-4">{run.success ? 'yes' : 'no'}</td>
-                    <td className="py-2 pr-4">{run.retries ?? 0}</td>
-                    <td className="py-2 pr-4">${Number(run.dollars || 0).toFixed(4)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      {learningCurve && <LearningCurvePanel curve={learningCurve} />}
+      <EvidenceStrip readouts={asArray<RegisteredReadout>(learningCurve?.registered_readouts)} />
 
       {knowledgeEventList.length > 0 && (
         <section className="rounded-lg border border-border bg-background-secondary p-5">
@@ -1070,9 +889,9 @@ function ProofRunPanel({
             onChange={(event) => onRuntimeChange(event.target.value as 'mock' | 'codex' | 'opencode')}
             className="rounded-lg border border-border bg-background px-2 py-2 text-sm text-foreground"
           >
-            <option value="mock">mock</option>
-            <option value="codex">codex</option>
             <option value="opencode">opencode</option>
+            <option value="codex">codex</option>
+            <option value="mock">mock (demo, no real work)</option>
           </select>
           <button
             onClick={onRun}
@@ -1250,16 +1069,6 @@ function HealthStrip({ label, values }: { label: string; values: string[] }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const normalized = status.toLowerCase();
-  const tone = ['routable', 'available', 'start', 'truth-gated', 'supported', 'validated'].includes(normalized)
-    ? 'border-status-success/30 bg-status-success/10 text-status-success'
-    : ['blocked', 'contradicted', 'review_required', 'skip', 'draft', 'candidate'].includes(normalized)
-      ? 'border-status-warning/30 bg-status-warning/10 text-status-warning'
-      : 'border-border bg-background-elevated text-foreground-secondary';
-  return <span className={`rounded border px-2 py-1 text-xs font-medium ${tone}`}>{status}</span>;
-}
-
 function ExpandToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <button
@@ -1289,5 +1098,172 @@ function FieldList({ label, values }: { label: string; values: string[] }) {
         {list.map((value) => <span key={value} className="rounded border border-border px-1.5 py-0.5 text-foreground-secondary">{value}</span>)}
       </div>
     </div>
+  );
+}
+
+const pct = (rate: number | null) => (rate === null ? null : `${Math.round(rate * 100)} %`);
+function windowCell(w: CohortWindow) {
+  return w.n ? `${w.completed}/${w.n} (${pct(w.rate)}) · n = ${w.n}` : `— · n = 0`;
+}
+function tokenCell(t: CohortWindow['tokens']) {
+  return t.value === null ? 'unknown' : `${t.value.toLocaleString()} (${t.known}/${t.events} records)`;
+}
+
+/**
+ * SW-01: completion rates per exact cohort (one loop) over two equal windows, with their denominators; the binary run
+ * status stays a per-run column. Unknown usage/cost is 'unknown', never $0.
+ */
+export function LearningCurvePanel({ curve }: { curve: LearningCurve }) {
+  const cohorts = asArray<LearningCohort>(curve.cohorts);
+  const runs = asArray<LearningCurve['runs'][number]>(curve.runs);
+  const days = curve.window?.days ?? 7;
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5">
+      <h2 className="text-lg font-semibold text-foreground">Run completion by loop</h2>
+      <p className="mt-1 text-sm text-foreground-secondary">
+        Completed ÷ terminal runs per loop, previous {days} d vs last {days} d (by creation). Loops are never pooled; a window comparison needs ≥ {curve.min_n_per_window ?? 10} terminal runs in each. Run completion is not verified task success. Tokens are the recorded usage of those runs; cost is unknown without a dated price.
+      </p>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-foreground-tertiary">
+            <tr>
+              <th className="py-2 pr-4">Loop</th>
+              <th className="py-2 pr-4">Class</th>
+              <th className="py-2 pr-4">Previous {days} d</th>
+              <th className="py-2 pr-4">Last {days} d</th>
+              <th className="py-2 pr-4">Comparison</th>
+              <th className="py-2 pr-4">Tokens (last {days} d)</th>
+              <th className="py-2 pr-4">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cohorts.map((c) => (
+              <tr key={c.loop_name} data-testid={`cohort-${c.loop_name}`} className="border-t border-border">
+                <td className="py-2 pr-4 font-mono text-xs">{c.loop_name}</td>
+                <td className="py-2 pr-4">{c.run_class}</td>
+                <td className="py-2 pr-4">{windowCell(c.windows.prior)}</td>
+                <td className="py-2 pr-4">{windowCell(c.windows.recent)}{c.windows.recent.censored ? ` · ${c.windows.recent.censored} in flight` : ''}</td>
+                <td className="py-2 pr-4" title={c.comparison.reason ?? undefined}>{c.comparison.status === 'compared' && c.comparison.delta !== null ? `${c.comparison.delta >= 0 ? '+' : ''}${Math.round(c.comparison.delta * 100)} pp` : 'insufficient'}</td>
+                <td className="py-2 pr-4">{tokenCell(c.windows.recent.tokens)}</td>
+                <td className="py-2 pr-4" title={c.windows.recent.usd.reason ?? undefined}>{c.windows.recent.usd.value === null ? 'unknown' : `$${c.windows.recent.usd.value.toFixed(4)} (inferred)`}</td>
+              </tr>
+            ))}
+            {!cohorts.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={7}>No runs in the last {2 * days} days.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {runs.length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <div className="text-xs uppercase text-foreground-tertiary">Latest runs (binary status per run)</div>
+          <table className="mt-1 w-full text-left text-sm">
+            <thead className="text-xs uppercase text-foreground-tertiary">
+              <tr>
+                <th className="py-2 pr-4">Run</th>
+                <th className="py-2 pr-4">Loop</th>
+                <th className="py-2 pr-4">Date</th>
+                <th className="py-2 pr-4">Run status</th>
+                <th className="py-2 pr-4">Retries</th>
+                <th className="py-2 pr-4">Tokens</th>
+                <th className="py-2 pr-4">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.slice(-10).map((run) => (
+                <tr key={run.run_id} className="border-t border-border">
+                  <td className="py-2 pr-4 font-mono text-xs"><Link to={`/goals-loops?run=${encodeURIComponent(run.run_id)}`} className="underline">{String(run.run_id || '').slice(0, 8)}</Link></td>
+                  <td className="py-2 pr-4 font-mono text-xs">{run.loop_name ?? '-'}</td>
+                  <td className="py-2 pr-4 text-xs text-foreground-tertiary">{run.created_at ? run.created_at.slice(0, 10) : '-'}</td>
+                  <td className="py-2 pr-4" data-testid="run-status">{run.status ?? (run.success ? 'completed' : 'not completed')}</td>
+                  <td className="py-2 pr-4">{run.retries ?? 0}</td>
+                  <td className="py-2 pr-4">{run.tokens == null ? 'unknown' : run.tokens.toLocaleString()}</td>
+                  <td className="py-2 pr-4">{run.dollars == null ? 'unknown' : `$${run.dollars.toFixed(4)} (inferred)`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** SW-02: the whole registry, the loaded slice and what the list shows — never one number for all three */
+export function CapabilityCountsLine({ health, shown }: { health: SwarmCapabilityHealth; shown: number }) {
+  const byStatus = Object.entries(health.registry_by_status ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([k, n]) => `${k} ${n}`).join(' · ');
+  const registry = health.registry_total === undefined ? 'registry unknown' : `registry ${health.registry_total}${byStatus ? ` (${byStatus})` : ''}`;
+  const loaded = health.loaded ?? health.total;
+  return <p data-testid="capability-counts" className="mt-2 text-xs text-foreground-tertiary">{`${registry} · loaded ${loaded}${health.load_limit ? ` (latest ${health.load_limit} by update)` : ''} · shown ${shown}`}</p>;
+}
+
+/** SW-02: links the runtime identity to the leases it is executing or about to execute */
+function CurrentExecutions({ executions }: { executions: SwarmCurrentExecution[] }) {
+  if (!executions.length) return null;
+  return (
+    <div className="mt-4">
+      <div className="text-sm font-semibold text-foreground">Current executions (prepared / running leases)</div>
+      <ul className="mt-2 space-y-1 text-xs text-foreground-secondary">
+        {executions.map((e) => (
+          <li key={e.lease_id}>
+            <span className="font-mono">{e.runtime}</span> · {e.role} · {e.status} · <Link to={`/goals-loops?run=${encodeURIComponent(e.loop_run_id)}`} className="underline">{e.loop_name ?? 'run'} {e.loop_run_id.slice(0, 8)}</Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * SW-02: a mission's planning status (advisory projection) next to its linked goal and loop execution. Read-only — a
+ * finished goal does not transition its mission; missing lineage is unknown.
+ */
+export function MissionExecutionPanel({ data }: { data: MissionExecutions }) {
+  const counts = (r: Record<string, number>) => Object.entries(r).map(([k, n]) => `${k} ${n}`).join(' · ') || 'none';
+  const missions = asArray<MissionExecutions['missions'][number]>(data.missions);
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5">
+      <h2 className="text-lg font-semibold text-foreground">Missions: planning vs execution</h2>
+      <p className="mt-1 text-sm text-foreground-secondary">
+        Registered {data.totals.registered} (showing {data.totals.loaded}) · planning: {counts(data.totals.by_planning_status)} · linked goal: {counts(data.totals.by_goal_status)}. Planning status is advisory and never auto-transitioned; the goal and its loop runs are the execution record.
+      </p>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-foreground-tertiary">
+            <tr>
+              <th className="py-2 pr-4">Mission</th>
+              <th className="py-2 pr-4">Planning</th>
+              <th className="py-2 pr-4">Linked goal</th>
+              <th className="py-2 pr-4">Loop execution</th>
+              <th className="py-2 pr-4">Latest run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {missions.map((m) => (
+              <tr key={m.mission_id} data-testid={`mission-${m.mission_id}`} className="border-t border-border">
+                <td className="py-2 pr-4"><Link to={`/swarm-mission-control/missions/${encodeURIComponent(m.mission_id)}`} className="font-medium text-foreground underline">{m.title}</Link><div className="font-mono text-xs text-foreground-tertiary">{m.mission_id.slice(0, 12)}</div></td>
+                <td className="py-2 pr-4"><StatusBadge status={m.planning_status} /></td>
+                <td className="py-2 pr-4">{m.lineage === 'linked' ? `goal ${m.goal_status}` : `lineage unknown (${m.lineage === 'no_goal' ? 'no goal' : 'goal missing'})`}</td>
+                <td className="py-2 pr-4">{m.execution ? `${m.execution.loop_runs} runs (${counts(m.execution.by_status)}) · ${m.execution.closed_runs === null ? 'closures unknown' : `${m.execution.closed_runs} closed`}` : '—'}</td>
+                <td className="py-2 pr-4">{m.execution?.latest_run ? <Link to={`/goals-loops?run=${encodeURIComponent(m.execution.latest_run.id)}`} className="font-mono text-xs underline">{m.execution.latest_run.id} · {m.execution.latest_run.status}</Link> : '—'}</td>
+              </tr>
+            ))}
+            {!missions.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={5}>No missions registered.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** SW-08 (minimal): where the learning/experiment and resource evidence already lives; registered readouts are named, never estimated here */
+export function EvidenceStrip({ readouts }: { readouts: RegisteredReadout[] }) {
+  return (
+    <section aria-label="Learning and resource evidence" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border bg-background-secondary px-5 py-3 text-sm text-foreground-secondary">
+      <Link to="/evolution" className="underline">Experiments &amp; readouts</Link>
+      <Link to="/usage" className="underline">Resource coverage</Link>
+      <Link to="/goals-loops" className="underline">Loop runs &amp; closures</Link>
+      {readouts.map((r) => (
+        <span key={r.id}>{r.id}: readout due {r.stop_by ? r.stop_by.slice(0, 10) : 'unregistered'} ({r.analysis}); no causal conclusion</span>
+      ))}
+    </section>
   );
 }

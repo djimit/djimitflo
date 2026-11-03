@@ -23,9 +23,9 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { captureExecutorOutput } from '../executor-output';
 
@@ -102,6 +102,32 @@ interface ParsedOutput {
 interface OpenCodeRunMetrics {
   tokenUsage: number;
   costDollars: number;
+  /** sum over steps (each step re-sends its context), i.e. what the run actually consumed so far */
+  tokenSum?: number;
+}
+
+/**
+ * A4 runaway brake (OPENCODE_MAX_RUN_TOKENS, default off). Prod 2026-09-25: one maker fighting its environment used
+ * 1.95 M tokens before the wall-clock timeout; the post-run token gate only notices afterwards. The run is stopped as soon
+ * as the summed step tokens pass the cap.
+ */
+export function maxRunTokens(env: NodeJS.ProcessEnv = process.env): number | null {
+  const n = Number(env.OPENCODE_MAX_RUN_TOKENS);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * OpenCode copies the AI SDK finish reason into `step_finish.part.reason`; the 1.18.31 binary carries the enum
+ * ["stop","length","content-filter","tool-calls","error","other"]. None of them is terminal for the run. Anything outside
+ * the enum (or missing) stays a diagnostic — never success, never a task failure.
+ */
+export type OpenCodeStepOutcome = 'continuation' | 'final' | 'abnormal' | 'error' | 'unrecognized';
+export function stepOutcome(reason: string): OpenCodeStepOutcome {
+  if (reason === 'tool-calls') return 'continuation';
+  if (reason === 'stop' || reason === 'complete') return 'final';
+  if (reason === 'error') return 'error';
+  if (reason === 'length' || reason === 'content-filter' || reason === 'other') return 'abnormal';
+  return 'unrecognized';
 }
 
 interface OpenCodeRunOutcome {
@@ -151,10 +177,10 @@ export class OpenCodeExecutor implements TaskExecutor {
     const spawnProcess = () => {
       if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
-      const env = buildExecutorEnv(options?.environment);
+      const env = buildExecutorEnv(options?.environment, this.kind);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
-      const child = spawn(this.opencodePath, args, {
+      const child = spawnRuntime(this.opencodePath, args, {
         cwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -168,10 +194,17 @@ export class OpenCodeExecutor implements TaskExecutor {
         emitter.emit('error', new Error(`OpenCode execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
+      const tokenCap = maxRunTokens();
+      let braked = false;
       child.stdout?.on('data', (data) => {
         const text = data.toString();
         metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
         emitter.emit('output', text, 'stdout');
+        if (tokenCap && !braked && (metrics.tokenSum ?? 0) > tokenCap) {
+          braked = true;
+          stopRuntimeProcess(child);
+          emitter.emit('error', new Error(`OpenCode token budget exceeded: ${metrics.tokenSum} > ${tokenCap} tokens (OPENCODE_MAX_RUN_TOKENS)`));
+        }
       });
 
       child.stderr?.on('data', (data) => {
@@ -180,7 +213,8 @@ export class OpenCodeExecutor implements TaskExecutor {
         emitter.emit('output', text, 'stderr');
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
+        session.exit = { code, signal };
         clearTimeout(timeoutHandle);
         if (metricsBuffer.trim()) {
           this.collectMetricsFromLine(metricsBuffer, metrics, outcome);
@@ -194,8 +228,8 @@ export class OpenCodeExecutor implements TaskExecutor {
       });
     };
 
-    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
     const result = this.createResultPromise(task, emitter, metrics, outcome);
+    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms, result);
 
     const session: ExecutionSession = {
       id: sessionId,
@@ -300,6 +334,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     const total = part.tokens?.total;
     if (typeof total === 'number') {
       metrics.tokenUsage = Math.max(metrics.tokenUsage, total);
+      metrics.tokenSum = (metrics.tokenSum ?? 0) + total;
     }
     if (typeof part.cost === 'number') {
       metrics.costDollars = Math.max(metrics.costDollars, part.cost);
@@ -405,18 +440,24 @@ export class OpenCodeExecutor implements TaskExecutor {
       }
 
       case 'step_finish': {
+        // A step is one model turn inside the run, never the task outcome (DF-03): `tool-calls` hands off to a tool and the
+        // run continues, so it was wrong to persist it as task.failed. The terminal event comes from the process result.
         const finishPart = part as OpenCodeStepFinish;
         const reason = typeof finishPart.reason === 'string' && finishPart.reason ? finishPart.reason : 'unknown';
-        const isSuccess = reason === 'stop' || reason === 'complete';
+        const outcome = stepOutcome(reason);
         return {
           task_id: taskId,
-          event_type: isSuccess ? ExecutionEventType.TASK_COMPLETED : ExecutionEventType.TASK_FAILED,
+          event_type: outcome === 'error' ? ExecutionEventType.ERROR : ExecutionEventType.LOG,
           message: `OpenCode step finished: ${reason}`,
-          level: isSuccess ? LogLevel.INFO : LogLevel.ERROR,
+          level: outcome === 'error' ? LogLevel.ERROR
+            : outcome === 'abnormal' || outcome === 'unrecognized' ? LogLevel.WARNING : LogLevel.INFO,
           metadata: {
             executor: 'opencode',
             sessionID: event.sessionID,
             reason,
+            step_finish: true,
+            step_outcome: outcome,
+            terminal: false,
             tokens: finishPart.tokens,
             cost: finishPart.cost,
           },
@@ -484,6 +525,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     emitter: EventEmitter,
     spawnProcess: () => void,
     skipPerms: boolean,
+    result: Promise<ExecutionResult>,
   ): AsyncIterable<ExecutionEventCreateInput> {
     spawnProcess();
 
@@ -600,23 +642,17 @@ export class OpenCodeExecutor implements TaskExecutor {
       }
     }
 
-    if (exitCode === 0) {
-      yield {
-        task_id: task.id,
-        event_type: ExecutionEventType.TASK_COMPLETED,
-        message: 'OpenCode execution completed successfully',
-        level: LogLevel.INFO,
-        metadata: { executor: 'opencode', exit_code: exitCode },
-      };
-    } else {
-      yield {
-        task_id: task.id,
-        event_type: ExecutionEventType.TASK_FAILED,
-        message: `OpenCode execution failed with exit code ${exitCode}`,
-        level: LogLevel.ERROR,
-        metadata: { executor: 'opencode', exit_code: exitCode },
-      };
-    }
+    // The one terminal event mirrors the result the engine uses for task status (it already resolved on exit/error), so
+    // the stream cannot say completed while the result says failed (e.g. exit 0 with a failed verification).
+    const final = await result;
+    const completed = final.status === 'completed';
+    yield {
+      task_id: task.id,
+      event_type: completed ? ExecutionEventType.TASK_COMPLETED : ExecutionEventType.TASK_FAILED,
+      message: final.message || (completed ? 'OpenCode execution completed successfully' : `OpenCode execution failed with exit code ${exitCode}`),
+      level: completed ? LogLevel.INFO : LogLevel.ERROR,
+      metadata: { executor: 'opencode', exit_code: exitCode, terminal: true, ...(final.failure ? { failure_code: final.failure.code } : {}) },
+    };
   }
 
   // ── Result promise ─────────────────────────────────────────────────────────

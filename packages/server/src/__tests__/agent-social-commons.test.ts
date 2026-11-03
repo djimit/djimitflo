@@ -12,8 +12,8 @@ describe('agent commons read-model', () => {
     db = createTestDb();
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"security\"]'), ('agent-b', 'Agent B', 'active', '[\"ux\"]')").run();
     comms = new AgentCommunicationService(db);
-    comms.heartbeat('agent-a', 'codex', 'model-a');
-    comms.heartbeat('agent-b', 'opencode', 'model-b');
+    comms.heartbeat('agent-a', 'codex', 'model-a', 'runtime_token');
+    comms.heartbeat('agent-b', 'opencode', 'model-b', 'runtime_token');
   });
 
   afterEach(() => db.close());
@@ -44,16 +44,19 @@ describe('agent commons read-model', () => {
     expect(learning.reflection_id).toBeTruthy();
     expect(learning.creative_alternative).toBe('Blind the evaluator.');
     expect(learning.answer).not.toContain('abcdefghijklmnop');
+    // totals come from the server, not from the loaded page (prod 2026-09-24: "Reflecties 40" was the page size)
+    expect(commons.stats).toMatchObject({ threads_7d: 1, open_7d: 0, learnings_7d: 1, proposals_verified: 0 });
   });
 
   it('turns agent interests into bounded peer challenges and proposals into governed candidates', () => {
     comms.socialize(0);
     const [question] = comms.receiveSocial('agent-b');
-    expect(question.payload.params.ecosystem_context).toContain('Paperclip');
+    expect(question.payload.params.ecosystem_context).toContain('the core (work control, approvals');
+    expect(question.payload.params.ecosystem_context).not.toContain('Paperclip');
     const reply = {
       answer: 'Let peers compare retrieval failures.', uncertainty: 'No live measurements yet.',
       falsifiable_next_step: 'Compare ten known queries against the baseline.', creative_alternative: 'Try a blinded query set.',
-      stop_condition: 'Stop if recall regresses.', runtime: 'opencode',
+      stop_condition: 'Stop if recall regresses.', runtime: 'opencode', model_id: 'model-b',
       interest: 'Could peers identify missing retrieval evidence?', ecosystem_component: 'DjimitKBWiki',
       proposed_improvement: 'Add a retrieval evidence comparison view.', delivery_lease_token: question.deliveryLeaseToken,
     };
@@ -89,7 +92,7 @@ describe('agent commons read-model', () => {
     const round = comms.socialize(0);
     const reply = { answer: 'An unverified idea', uncertainty: 'Needs evidence', falsifiable_next_step: 'Compare with baseline',
       creative_alternative: 'Blind comparison', stop_condition: 'Any regression', ecosystem_component: 'Djimitflo',
-      proposed_improvement: 'Add a peer comparison view' };
+      proposed_improvement: 'Add a peer comparison view', runtime: 'test-runtime', model_id: 'test-model' };
     for (const agent of round.participants) {
       const [question] = comms.receiveSocial(agent, 1).filter(m => m.payload.action === 'social.question');
       comms.respondSocial(agent, question.id, { ...reply, delivery_lease_token: question.deliveryLeaseToken });
@@ -118,7 +121,7 @@ describe('agent commons read-model', () => {
 
   it('seeks out peers that have not met before the same pair talks again', () => {
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-c', 'Agent C', 'active', '[]')").run();
-    comms.heartbeat('agent-c', 'ollama');
+    comms.heartbeat('agent-c', 'ollama', 'test-model', 'runtime_token');
     expect(comms.socialize(0).participants).toEqual(['agent-a', 'agent-b']);
     const second = comms.socialize(0);
     expect(second.status).toBe('started');
@@ -128,7 +131,7 @@ describe('agent commons read-model', () => {
   it('varies the topic: open gap first, then an unchallenged lesson, then rotating curiosity seeds', () => {
     const answer = (agentId: string, message: { id: string; deliveryLeaseToken?: string }) => comms.respondSocial(agentId, message.id, {
       answer: 'Lesson: cite before you claim.', uncertainty: 'u', falsifiable_next_step: 'f', creative_alternative: 'c', stop_condition: 's',
-      delivery_lease_token: message.deliveryLeaseToken,
+      runtime: 'test-runtime', model_id: 'test-model', delivery_lease_token: message.deliveryLeaseToken,
     });
     const first = comms.socialize(0);
     expect(first.topic).toBe('cross-agent learning in the Djimit ecosystem');
@@ -149,6 +152,8 @@ describe('agent commons read-model', () => {
     const fourth = comms.socialize(0);
     expect(fourth.topic).toBe('The OKF index lacks provenance for imported skills');
     expect(fourth.messages[0].payload.evidence).toEqual(['claim:gap-1', 'okf:x']);
+    // a gap is discussed once: the next round moves on instead of re-picking the newest gap (prod: 264 repeated threads)
+    expect(comms.socialize(0).topic).not.toBe('The OKF index lacks provenance for imported skills');
   });
 
   it('shows non-social agent activity in the commons read-model', () => {
@@ -185,5 +190,138 @@ describe('agent commons read-model', () => {
     } finally {
       productionDb.close();
     }
+  });
+});
+
+// AC-02: record-only evidence rooms (42 of the newest 50 threads in prod, 24-10) must not push real discussions out of the feed.
+describe('agent commons feed: discussions vs record-only rooms (AC-02)', () => {
+  let db: Database.Database;
+  let comms: AgentCommunicationService;
+  beforeEach(() => { db = createTestDb(); comms = new AgentCommunicationService(db); });
+  afterEach(() => db.close());
+
+  const post = (from: string, to: string, threadId: string, at: string) => {
+    const message = comms.send({ from, to, type: 'question', action: 'social.question', context: threadId, evidence: ['e'], threadId,
+      epistemicRole: 'question', ttl: 86_400, params: { topic: threadId, topic_ref: threadId } });
+    db.prepare('UPDATE agent_messages SET timestamp = ? WHERE id = ?').run(at, message.id);
+  };
+  const seed = () => {
+    post('agent-a', 'agent-b', 'social:real-discussion', '2026-10-01T00:00:00.000Z');
+    for (let i = 0; i < 51; i += 1) post('djimitflo:evidence-room', 'commons', `evidence-room:run-${i}`, new Date(Date.parse('2026-10-02T00:00:00.000Z') + i * 60_000).toISOString());
+  };
+
+  it('a 52-thread replay with 51 newer records still shows the real discussion in the Discussion view', () => {
+    seed();
+    const discussion = comms.listSocialCommons(50, { kind: 'discussion' });
+    expect(discussion.threads.map((t) => t.id)).toEqual(['social:real-discussion']);
+    expect(discussion.threads[0].kind).toBe('discussion');
+    expect(discussion.thread_counts).toEqual({ discussion: 1, record: 51 });
+    expect(discussion.total_threads).toBe(52);
+    expect(discussion.page).toEqual({ kind: 'discussion', limit: 50, offset: 0, total: 1, has_more: false });
+
+    const records = comms.listSocialCommons(50, { kind: 'record' });
+    expect(records.threads).toHaveLength(50);
+    expect(records.threads.every((t) => t.kind === 'record')).toBe(true);
+    expect(records.page).toMatchObject({ kind: 'record', total: 51, has_more: true });
+    // bounded paging: the 51st (oldest) room is on the next page
+    const next = comms.listSocialCommons(50, { kind: 'record', offset: 50 });
+    expect(next.threads.map((t) => t.id)).toEqual(['evidence-room:run-0']);
+    expect(next.page).toMatchObject({ offset: 50, has_more: false });
+  });
+
+  it('keeps the default (no kind) API compatible: newest threads of every kind', () => {
+    seed();
+    const all = comms.listSocialCommons(50);
+    expect(all.threads).toHaveLength(50);
+    expect(all.threads.some((t) => t.id === 'social:real-discussion')).toBe(false);
+    expect(all.page).toMatchObject({ kind: 'all', total: 52, has_more: true });
+  });
+
+  it('the route passes kind/offset through, bounded, and ignores unknown kinds', async () => {
+    const { default: express } = await import('express');
+    const { default: request } = await import('supertest');
+    const { createSwarmOrchestrationRoutes } = await import('../routes/swarm-orchestration');
+    seed();
+    const auth = { requirePermission: () => (_req: any, _res: any, next: any) => next() } as any;
+    const app = express().use(express.json()).use('/swarm', createSwarmOrchestrationRoutes(db, auth));
+    const discussion = await request(app).get('/swarm/social/commons?limit=20&kind=discussion');
+    expect(discussion.body.threads.map((t: { id: string }) => t.id)).toEqual(['social:real-discussion']);
+    const paged = await request(app).get('/swarm/social/commons?limit=20&kind=record&offset=999999999');
+    expect(paged.body.page).toMatchObject({ kind: 'record', offset: 100_000, has_more: false });
+    expect(paged.body.threads).toEqual([]);
+    const unknown = await request(app).get('/swarm/social/commons?limit=20&kind=bogus');
+    expect(unknown.body.page.kind).toBe('all');
+  });
+});
+
+// AC-01: heartbeat = the poller/API path is alive; it is not readiness to answer (prod 24-10: Hermes heartbeats, last reply 18-10).
+describe('agent commons runtime readiness (AC-01)', () => {
+  let db: Database.Database;
+  let comms: AgentCommunicationService;
+  const reply = { answer: 'Run a control.', uncertainty: 'Unknown effect size.', falsifiable_next_step: 'Run the control.',
+    creative_alternative: 'Blind the evaluator.', stop_condition: 'Identical outcomes.', runtime: 'hermes', model_id: 'model-b' };
+  const readiness = (id: string) => comms.listSocialCommons().agents.find((agent) => agent.id === id)!.readiness;
+
+  beforeEach(() => {
+    db = createTestDb();
+    db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[]'), ('agent-b', 'Agent B', 'active', '[]')").run();
+    comms = new AgentCommunicationService(db);
+    comms.heartbeat('agent-a', 'codex', 'model-a', 'runtime_token');
+    comms.heartbeat('agent-b', 'hermes', 'model-b', 'runtime_token');
+  });
+  afterEach(() => db.close());
+
+  it('heartbeat fresh but no successful reply is degraded, not ready; failures are not reported by the runtime', () => {
+    const b = readiness('agent-b');
+    expect(b.state).toBe('degraded');
+    expect(b.last_heartbeat_at).toBeTruthy();
+    expect(b.last_successful_reply_at).toBeNull();
+    expect(b.last_failed_attempt).toBeNull();
+    expect(b.runtime_failures_reported).toBe(false);
+  });
+
+  it('a claimed question whose lease lapsed without a reply is a failed attempt; resumed success makes it ready without a duplicate reply', () => {
+    comms.socialize(0);
+    const [question] = comms.receiveSocial('agent-b');
+    // the poller claimed it, the child exited non-zero, nothing was posted: the lease lapses
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 60_000, question.id);
+    const failing = readiness('agent-b');
+    expect(failing.state).toBe('degraded');
+    expect(failing.last_failed_attempt).toMatchObject({ message_id: question.id, observed: 'claim_lapsed_without_reply' });
+    expect(failing.runtime_failures_reported).toBe(false);
+
+    const [again] = comms.receiveSocial('agent-b');
+    expect(again.id).toBe(question.id);
+    comms.respondSocial('agent-b', again.id, { ...reply, delivery_lease_token: again.deliveryLeaseToken });
+    expect(comms.respondSocial('agent-b', again.id, { ...reply, delivery_lease_token: again.deliveryLeaseToken }).duplicate).toBe(true);
+    const resumed = readiness('agent-b');
+    expect(resumed.state).toBe('ready');
+    expect(resumed.last_successful_reply_at).toBeTruthy();
+    expect(resumed.last_failed_attempt).toBeNull();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM agent_messages WHERE from_agent = 'agent-b' AND json_extract(payload_json, '$.action') = 'social.response'").get()).toEqual({ n: 1 });
+  });
+
+  it('a lapse after the last successful reply degrades again; an older lapse does not', () => {
+    comms.socialize(0);
+    const [first] = comms.receiveSocial('agent-b');
+    comms.respondSocial('agent-b', first.id, { ...reply, delivery_lease_token: first.deliveryLeaseToken });
+    db.prepare("UPDATE agent_messages SET timestamp = ? WHERE from_agent = 'agent-b'").run(new Date(Date.now() - 3_600_000).toISOString());
+    comms.socialize(0);
+    const [second] = comms.receiveSocial('agent-b').filter((m) => m.id !== first.id && m.payload.action === 'social.question');
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 60_000, second.id);
+    expect(readiness('agent-b')).toMatchObject({ state: 'degraded', last_failed_attempt: { message_id: second.id } });
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 7_200_000, second.id);
+    expect(readiness('agent-b').state).toBe('ready');
+  });
+
+  it('a stale heartbeat is offline and an agent that never sent one is unknown', () => {
+    const stale = new Date(Date.now() - 3_600_000).toISOString();
+    const metadata = JSON.parse((db.prepare("SELECT metadata FROM agents WHERE id = 'agent-a'").get() as { metadata: string }).metadata);
+    metadata.social_runtime.last_heartbeat_at = stale;
+    db.prepare("UPDATE agents SET metadata = ? WHERE id = 'agent-a'").run(JSON.stringify(metadata));
+    expect(readiness('agent-a').state).toBe('offline');
+    delete metadata.social_runtime.last_heartbeat_at;
+    db.prepare("UPDATE agents SET metadata = ? WHERE id = 'agent-a'").run(JSON.stringify(metadata));
+    expect(readiness('agent-a').state).toBe('unknown');
   });
 });

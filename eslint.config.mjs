@@ -23,7 +23,6 @@ export default tseslint.config(
       'eslint.config.mjs',
       // Tooling and external sub-projects outside the @djimitflo workspaces.
       '.swarm/**',
-      '.metaharness-fork/**',
     ],
   },
   ...tseslint.configs.recommended,

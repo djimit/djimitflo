@@ -2,6 +2,9 @@
  * Agent routes — with POST /api/agents for swarm registration
  */
 
+import { rateLimit } from 'express-rate-limit';
+import { agentLiveness, type RegistryNode } from '../services/agent-liveness';
+import { connectionStates } from '../services/agent-connection-state';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
@@ -9,9 +12,11 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { AgentRegistryService } from '../services/agent-registry-service';
 import { NlAgentFactory } from '../services/nl-agent-factory';
 import { randomUUID } from 'crypto';
+import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 
 export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const agentRegistry = new AgentRegistryService();
@@ -20,14 +25,18 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
       const agents = db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all();
+      let registry = new Map<string, RegistryNode>();
+      try { registry = new Map((db.prepare('SELECT name, raw_json, synced_at FROM registry_agents').all() as RegistryNode[]).map((n) => [n.name, n])); } catch { /* no registry mirror */ }
 
       const parsed = agents.map((agent: any) => ({
         ...agent,
         capabilities: JSON.parse(agent.capabilities || '[]'),
         metadata: JSON.parse(agent.metadata || '{}'),
+        ...agentLiveness(agent, registry),
       }));
-
-      res.json({ agents: parsed });
+      // UX-14: connection state + reason per agent (additive fields)
+      const states = connectionStates(db, parsed);
+      res.json({ agents: parsed.map((a: any) => ({ ...a, connection_state: states.get(a.id)?.state ?? null, connection_reason: states.get(a.id)?.reason ?? null })) });
     } catch (error) {
       next(error);
     }
@@ -182,6 +191,24 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   });
 
   // POST /api/agents/:id/heartbeat - Update agent heartbeat, metadata, and OKF concept
+  // Public Telegram handle of an agent's bot (never a token); null clears it.
+  const telegramLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
+  router.patch('/:id/telegram', telegramLimiter, requireAuth, requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const raw = req.body?.bot_name;
+      const handle = raw === null ? null : String(raw ?? '').replace(/^@/, '');
+      if (handle !== null && !/^[A-Za-z][A-Za-z0-9_]{3,30}bot$/i.test(handle)) {
+        res.status(400).json({ error: { message: 'bot_name must be a Telegram bot handle (ends in "bot") or null', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      const changed = db.prepare('UPDATE agents SET telegram_bot_name = ?, updated_at = ? WHERE id = ?').run(handle, new Date().toISOString(), req.params.id).changes;
+      if (!changed) { res.status(404).json({ error: { message: 'Agent not found', code: 'NOT_FOUND' } }); return; }
+      res.json({ id: req.params.id, telegram_bot_name: handle });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/:id/heartbeat', requireAuth, requirePermission('write:evidence'), (req, res, next) => {
     try {
       const { id } = req.params;
@@ -189,6 +216,14 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(id) as any;
       if (!agent) {
         throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
+      }
+      // Liveness is reported by the agent itself (principal subject = agent id) or by an operator with manage:config;
+      // write:evidence alone no longer lets one principal keep another agent "alive".
+      const principal = String(req.user?.sub ?? '');
+      const reportedAs = principal && principal === id ? 'self'
+        : ROLE_PERMISSIONS[req.user?.role as UserRole]?.includes('manage:config') ? 'operator' : null;
+      if (!reportedAs) {
+        throw createError(403, 'Only the agent itself or an operator (manage:config) may report this agent\'s heartbeat', 'HEARTBEAT_NOT_SELF');
       }
 
       const now = new Date().toISOString();
@@ -199,7 +234,7 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       }
       // Evidence writers may report liveness, not approve/reactivate agents or
       // replace operator-owned configuration such as system_prompt and tools.
-      const mergedMeta = { ...currentMeta, heartbeat: { reported_status: status, active_tasks, metadata: metadata || {} } };
+      const mergedMeta = { ...currentMeta, heartbeat: { reported_status: status, active_tasks, metadata: metadata || {}, reported_by: principal, reported_as: reportedAs, reported_at: now } };
 
       db.prepare(
         `UPDATE agents SET metadata = ?, last_heartbeat_at = ?, updated_at = ? WHERE id = ?`

@@ -1,17 +1,19 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { WebSocketProvider } from './components/WebSocketProvider';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
-import { DashboardPage } from './pages/DashboardPage';
-import { TasksPage } from './pages/TasksPage';
-import { AgentsPage } from './pages/AgentsPage';
-import { LoginPage } from './pages/LoginPage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
 
+// UX-28: every page is a lazy chunk; a stale chunk after a deploy is handled by lib/chunk-reload (main.tsx + GlobalErrorBoundary).
+const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })));
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
+const TasksPage = lazy(() => import('./pages/TasksPage').then((module) => ({ default: module.TasksPage })));
+const AgentsPage = lazy(() => import('./pages/AgentsPage').then((module) => ({ default: module.AgentsPage })));
 const AgentCatalogPage = lazy(() => import('./pages/AgentCatalogPage').then((module) => ({ default: module.AgentCatalogPage })));
 const AgiReasoningPage = lazy(() => import('./pages/AgiReasoningPage').then((module) => ({ default: module.AgiReasoningPage })));
 const ConsensusDebatePage = lazy(() => import('./pages/ConsensusDebatePage').then((module) => ({ default: module.ConsensusDebatePage })));
@@ -21,13 +23,18 @@ const CognitiveRuntimePage = lazy(() => import('./pages/CognitiveRuntimePage').t
 const SelfDrivingDashboard = lazy(() => import('./pages/SelfDrivingDashboard').then((module) => ({ default: module.SelfDrivingDashboard })));
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })));
 const SwarmOverviewPage = lazy(() => import('./pages/SwarmOverviewPage').then((module) => ({ default: module.SwarmOverviewPage })));
-const ApprovalQueuePage = lazy(() => import('./pages/ApprovalQueuePage').then((module) => ({ default: module.ApprovalQueuePage })));
 const PolicyCenterPage = lazy(() => import('./pages/PolicyCenterPage').then((module) => ({ default: module.PolicyCenterPage })));
 const MCPPermissionsPage = lazy(() => import('./pages/MCPPermissionsPage').then((module) => ({ default: module.MCPPermissionsPage })));
 const ObservabilityPage = lazy(() => import('./pages/ObservabilityPage').then((module) => ({ default: module.ObservabilityPage })));
 const ReviewPage = lazy(() => import('./pages/ReviewPage').then((module) => ({ default: module.ReviewPage })));
-const AuditPage = lazy(() => import('./pages/AuditPage').then((module) => ({ default: module.AuditPage })));
-const AuditLogViewer = lazy(() => import('./pages/AuditLogViewer').then((module) => ({ default: module.AuditLogViewer })));
+const AuditHubPage = lazy(() => import('./pages/AuditHubPage').then((module) => ({ default: module.AuditHubPage })));
+const EvolutionPage = lazy(() => import('./pages/EvolutionPage').then((module) => ({ default: module.EvolutionPage })));
+const KnowledgePage = lazy(() => import('./pages/KnowledgePage').then((module) => ({ default: module.KnowledgePage })));
+const OperatorCockpitPage = lazy(() => import('./pages/OperatorCockpitPage').then((module) => ({ default: module.OperatorCockpitPage })));
+const DecisionsInboxPage = lazy(() => import('./pages/DecisionsInboxPage').then((module) => ({ default: module.DecisionsInboxPage })));
+const ConfigurationPage = lazy(() => import('./pages/ConfigurationPage').then((module) => ({ default: module.ConfigurationPage })));
+const FleetHostsPage = lazy(() => import('./pages/FleetHostsPage').then((module) => ({ default: module.FleetHostsPage })));
+const ImprovementFunnelPage = lazy(() => import('./pages/ImprovementFunnelPage').then((module) => ({ default: module.ImprovementFunnelPage })));
 const AuthorityTracePage = lazy(() => import('./pages/AuthorityTracePage').then((module) => ({ default: module.AuthorityTracePage })));
 const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage').then((module) => ({ default: module.RepositoriesPage })));
 const RepositoryDetailPage = lazy(() => import('./pages/RepositoryDetailPage').then((module) => ({ default: module.RepositoryDetailPage })));
@@ -39,14 +46,13 @@ const AgentCommonsPage = lazy(() => import('./pages/AgentCommonsPage').then((mod
 const FrontierExpertsPage = lazy(() => import('./pages/FrontierExpertsPage').then((module) => ({ default: module.FrontierExpertsPage })));
 const InteractionBoardPage = lazy(() => import('./pages/InteractionBoardPage').then((module) => ({ default: module.InteractionBoardPage })));
 const ProofRunDetailPage = lazy(() => import('./pages/ProofRunDetailPage').then((module) => ({ default: module.ProofRunDetailPage })));
+const MissionDetailPage = lazy(() => import('./pages/MissionDetailPage').then((module) => ({ default: module.MissionDetailPage })));
 const UsagePage = lazy(() => import('./pages/UsagePage').then((module) => ({ default: module.UsagePage })));
-const WorkstationUrlsPage = lazy(() => import('./pages/WorkstationUrlsPage').then((module) => ({ default: module.WorkstationUrlsPage })));
 const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({ default: module.EconomyPage })));
 const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
 const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
-const GovernanceScorecardPage = lazy(() => import('./pages/GovernanceScorecardPage').then((module) => ({ default: module.GovernanceScorecardPage })));
+const GovernanceHubPage = lazy(() => import('./pages/GovernanceHubPage').then((module) => ({ default: module.GovernanceHubPage })));
 const ExplainerFleetPage = lazy(() => import('./pages/explore/ExplainerFleetPage').then((module) => ({ default: module.ExplainerFleetPage })));
-const CompliancePage = lazy(() => import('./pages/CompliancePage').then((module) => ({ default: module.CompliancePage })));
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
@@ -92,22 +98,28 @@ export function App() {
             </WebSocketProvider>
           </ProtectedRoute>
         }>
-          <Route index element={<DashboardPage />} />
+          <Route index element={<OperatorCockpitPage />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="agents/:agentId" element={<AgentsPage />} />
           <Route path="catalog" element={<AgentCatalogPage />} />
           <Route path="swarm" element={<SwarmOverviewPage />} />
-          <Route path="approvals" element={<ApprovalQueuePage />} />
+          <Route path="approvals" element={<Navigate to="/decisions#approvals" replace />} />
           <Route path="policies" element={<PolicyCenterPage />} />
-          <Route path="governance" element={<GovernanceScorecardPage />} />
-          <Route path="compliance" element={<CompliancePage />} />
+          <Route path="governance" element={<GovernanceHubPage />} />
+          <Route path="compliance" element={<Navigate to="/governance?tab=assurance" replace />} />
           <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
           <Route path="observability" element={<ObservabilityPage />} />
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />
-          <Route path="audit" element={<AuditPage />} />
-          <Route path="audit/logs" element={<AuditLogViewer />} />
+          <Route path="audit" element={<AuditHubPage />} />
+          <Route path="audit/logs" element={<Navigate to="/audit?tab=logs" replace />} />
+          <Route path="cockpit" element={<Navigate to="/" replace />} />
+          <Route path="decisions" element={<DecisionsInboxPage />} />
+          <Route path="configuration" element={<ConfigurationPage />} />
+          <Route path="fleet" element={<FleetHostsPage />} />
+          <Route path="improvement-funnel" element={<ImprovementFunnelPage />} />
           <Route path="authority" element={<AuthorityTracePage />} />
           <Route path="usage" element={<UsagePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
@@ -118,10 +130,12 @@ export function App() {
           <Route path="swarm-mission-control" element={<SwarmMissionControlPage />} />
           <Route path="interaction-board" element={<InteractionBoardPage />} />
           <Route path="agent-commons" element={<AgentCommonsPage />} />
+          <Route path="evolution" element={<EvolutionPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="frontier-experts" element={<FrontierExpertsPage />} />
           <Route path="frontier-experts/:expertId" element={<FrontierExpertsPage />} />
           <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
-          <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
+          <Route path="swarm-mission-control/missions/:missionId" element={<MissionDetailPage />} />
           <Route path="economy" element={<EconomyPage />} />
           <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
           <Route path="federation" element={<FederationPage />} />
@@ -132,6 +146,7 @@ export function App() {
           <Route path="cognitive" element={<CognitiveRuntimePage />} />
           <Route path="self-driving" element={<SelfDrivingDashboard />} />
           <Route path="explainers" element={<ExplainerFleetPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
       </Suspense>

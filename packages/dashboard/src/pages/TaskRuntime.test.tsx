@@ -1,12 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { TasksPage } from './TasksPage';
 import { TaskDetailPage } from './TaskDetailPage';
 import { AgentsPage } from './AgentsPage';
 import { Layout } from '../components/Layout';
 import { useStore } from '../lib/store';
 import type { Agent } from '@djimitflo/shared';
+import { useAuthStore } from '../lib/auth-store';
+
+// UX-4: actions are gated by role; these cases exercise them as an admin
+beforeEach(() => { useAuthStore.setState({ user: { id: 'admin-fixture', email: 'admin@example.test', role: 'admin' } as never }); });
 
 const { subscribe } = vi.hoisted(() => ({ subscribe: vi.fn(() => () => {}) }));
 vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: () => ({ subscribe, isConnected: true }) }));
@@ -118,10 +122,29 @@ it('shows the selected existing agent through the Swarm detail-link route', () =
   expect(screen.getByRole('link', { name: 'All agents' }).getAttribute('href')).toBe('/agents');
 });
 
-it('makes previously unlinked research and evidence pages reachable from navigation', () => {
+it('keeps every page reachable from the grouped navigation, once each', () => {
   render(<MemoryRouter><Layout /></MemoryRouter>);
-  fireEvent.click(screen.getByText('Research & evidence'));
-  for (const path of ['/authority', '/audit/logs', '/pipeline-builder', '/agi-reasoning', '/consensus-debates', '/predictive-analytics', '/self-healing', '/explainers']) {
-    expect(document.querySelector(`a[href="${path}"]`)).toBeTruthy();
+  const hrefs = [...document.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
+  for (const path of ['/authority', '/audit', '/governance', '/pipeline-builder', '/agi-reasoning', '/consensus-debates', '/predictive-analytics', '/self-healing', '/explainers', '/improvement-funnel', '/decisions']) {
+    expect(hrefs).toContain(path);
   }
+  expect(new Set(hrefs).size).toBe(hrefs.length); // no duplicate menu targets
+  expect(hrefs).not.toContain('/audit/logs'); // merged into /audit (tab)
+  expect(hrefs).not.toContain('/compliance'); // merged into /governance (tab)
+  expect(hrefs).not.toContain('/approvals'); // merged into /decisions (W2: one inbox)
+});
+
+it('W4: at most 20 top-level menu items; experimental pages sit in a collapsed Lab', () => {
+  render(<MemoryRouter initialEntries={['/tasks']}><Layout /></MemoryRouter>);
+  const lab = document.querySelector('nav details');
+  expect(lab).toBeTruthy();
+  expect(lab!.hasAttribute('open')).toBe(false);
+  const topLevel = [...document.querySelectorAll('nav a')].filter((a) => !a.closest('details'));
+  expect(topLevel.length).toBeLessThanOrEqual(20);
+  expect([...lab!.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toContain('/self-driving');
+});
+
+it('W4: the Lab opens when the current page lives in it', () => {
+  render(<MemoryRouter initialEntries={['/self-driving']}><Layout /></MemoryRouter>);
+  expect(document.querySelector('nav details')!.hasAttribute('open')).toBe(true);
 });

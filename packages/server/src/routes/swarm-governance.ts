@@ -7,6 +7,8 @@
  */
 
 import { Router } from 'express';
+import { AuditEventType, RiskLevel, ROLE_PERMISSIONS, WebSocketEventType, type UserRole } from '@djimitflo/shared';
+import { AuditService } from '../services/audit-service';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -70,6 +72,7 @@ function mapMemoryCandidateError(error: unknown): unknown {
   if (message === 'MEMORY_PROMOTION_REVIEW_REQUIRED') return createError(409, 'review is required before memory promotion', 'MEMORY_PROMOTION_REVIEW_REQUIRED');
   if (message === 'MEMORY_PROMOTION_REJECTED_CANDIDATE') return createError(409, 'rejected memory candidate cannot be promoted', 'MEMORY_PROMOTION_REJECTED_CANDIDATE');
   if (message === 'MEMORY_PROMOTION_SINK_FAILED') return createError(502, 'memory promotion sink failed', 'MEMORY_PROMOTION_SINK_FAILED');
+  if (message === 'MEMORY_REJECT_ALREADY_PROMOTED') return createError(409, 'a promoted memory cannot be rejected here', 'MEMORY_REJECT_ALREADY_PROMOTED');
   return error;
 }
 
@@ -79,10 +82,11 @@ function mapCsSkillSwarmHarnessError(error: unknown): unknown {
   return error;
 }
 
-function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
+/** UX-1: the enum value ('proof_run.updated') — the literal 'PROOF_RUN_UPDATED' never matched a dashboard subscription. */
+export function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
   if (!wsService) return;
   wsService.broadcastToAuthenticated({
-    type: 'PROOF_RUN_UPDATED' as any,
+    type: WebSocketEventType.PROOF_RUN_UPDATED,
     payload: { id: summary.id, status: summary.status, passed: summary.passed, rollback_safe: summary.rollback_safe, runtime: summary.runtime },
     timestamp: new Date().toISOString(),
   } as any);
@@ -95,12 +99,22 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   const assurance = new AgentAssuranceService(db);
   const proofRuns = new ProofRunService(db);
   const memoryCandidates = new MemoryCandidateService(db);
+  const audit = new AuditService(db);
   const knowledgeRuntime = new KnowledgeRuntimeService(db);
   const csSkillSwarmHarness = new CsSkillSwarmHarnessService(db);
 
   // Proof runs
   router.post('/proof-runs', requirePermission('write:governance'), async (req, res, next) => {
-    try { const summary = await proofRuns.create(req.body || {}); emitProofRunUpdated(wsService, summary); res.status(201).json(summary); } catch (error) { next(mapProofRunError(error)); }
+    try {
+      // AUTHZ-F1: the proof run completes its loop run with this ref (completeLoopRun's human gate). Like POST /loops/runs/:id/complete
+      // it is the authenticated caller holding approve:task (operator:<id>), never a body string.
+      const body = (req.body || {}) as { runtime?: string; skip_permissions?: boolean; human_approval_ref?: unknown };
+      const actor = req.user?.sub || req.user?.email;
+      const mayApprove = Boolean(actor && ROLE_PERMISSIONS[req.user?.role as UserRole]?.includes('approve:task'));
+      const requested = typeof body.human_approval_ref === 'string' && body.human_approval_ref.trim() !== '';
+      const summary = await proofRuns.create({ ...body, human_approval_ref: mayApprove && requested ? `operator:${actor}` : undefined });
+      emitProofRunUpdated(wsService, summary); res.status(201).json(summary);
+    } catch (error) { next(mapProofRunError(error)); }
   });
 
   router.get('/proof-runs/latest', requirePermission('read:evidence'), (_req, res, next) => {
@@ -179,14 +193,31 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
     try { res.status(201).json(memoryCandidates.create(req.body || {})); } catch (error) { next(mapMemoryCandidateError(error)); }
   });
 
+  router.post('/memory/candidates/:id/reject', requirePermission('approve:task'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const out = memoryCandidates.reject(req.params.id, actor, String(req.body?.reason ?? ''));
+      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_rejected', resource_type: 'memory_candidate', resource_id: req.params.id,
+        user_id: actor, risk_level: RiskLevel.MEDIUM, metadata: { reason: String(req.body?.reason ?? '').slice(0, 300) } });
+      res.json(out);
+    } catch (error) { next(mapMemoryCandidateError(error)); }
+  });
+
   router.post('/memory/candidates/:id/promote', requirePermission('approve:task'), (req, res, next) => {
     try {
       const approvedBy = req.user?.sub || req.user?.email;
-      res.json(memoryCandidates.promote(req.params.id, {
+      const out = memoryCandidates.promote(req.params.id, {
         sinks: req.body?.sinks,
         human_approved: req.body?.human_approved === true && Boolean(approvedBy),
         approved_by: req.body?.human_approved === true ? approvedBy : undefined,
-      }));
+        actor: approvedBy,
+        // P0-9: the human gate is satisfied only by the authenticated user id, never by a body or machine string
+        approver_user_id: req.body?.human_approved === true ? req.user?.sub : undefined,
+      });
+      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_promoted', resource_type: 'memory_candidate', resource_id: req.params.id,
+        user_id: approvedBy, risk_level: RiskLevel.MEDIUM, metadata: { human_approved: req.body?.human_approved === true, sinks: req.body?.sinks ?? null } });
+      res.json(out);
     } catch (error) { next(mapMemoryCandidateError(error)); }
   });
 

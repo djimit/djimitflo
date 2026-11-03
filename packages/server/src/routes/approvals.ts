@@ -1,7 +1,9 @@
+import { rateLimit } from 'express-rate-limit';
+import { approvalContext } from '../services/approval-context';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
-import { ApprovalRequestType, AuthTokenPayload, RiskLevel } from '@djimitflo/shared';
+import { ApprovalRequestType, AuditEventType, AuthTokenPayload, RiskLevel } from '@djimitflo/shared';
 import { z } from 'zod';
 import { AuthorizationService } from '../services/authorization-service';
 import { ApprovalService } from '../services/approval-service';
@@ -10,16 +12,19 @@ import type { WebSocketService } from '../services/websocket-service';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import type { AuthMiddleware } from '../middleware/auth';
 
-function parseApproval(approval: any) {
+function parseApproval(approval: any, db?: Database) {
   return {
     ...approval,
     request_data: JSON.parse(approval.request_data || '{}'),
     metadata: JSON.parse(approval.metadata || '{}'),
+    ...(db ? { context: approvalContext(db, approval.task_id) } : {}),
   };
 }
 
 export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
+  const auditService = new AuditService(db);
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   function getUser(req: any): AuthTokenPayload {
@@ -71,9 +76,11 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       res.status(400).json({ error: { message: error.message, code: 'INVALID_APPROVAL_DECISION' } });
       return true;
     }
+    // TG-3: a second decision (e.g. a Telegram tap after a lane rule auto-approved) is a 409, not a 500
     const code = error.message.includes('SELF_APPROVAL_FORBIDDEN')
       ? 'SELF_APPROVAL_FORBIDDEN'
-      : error.message.includes('APPROVAL_EXPIRED') ? 'APPROVAL_EXPIRED' : null;
+      : error.message.includes('APPROVAL_EXPIRED') ? 'APPROVAL_EXPIRED'
+        : error.message === 'Approval already processed' ? 'APPROVAL_ALREADY_PROCESSED' : null;
     if (!code) return false;
     res.status(code === 'APPROVAL_EXPIRED' ? 410 : 409).json({ error: { message: error.message, code } });
     return true;
@@ -107,7 +114,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         }
         query += ' ORDER BY created_at DESC';
         const approvals = db.prepare(query).all(...params);
-        res.json({ approvals: (approvals as any[]).map(parseApproval) });
+        res.json({ approvals: (approvals as any[]).map((approval) => parseApproval(approval, db)) });
       } else {
         let query = 'SELECT a.* FROM approvals a INNER JOIN tasks ON a.task_id = tasks.id';
         const params: any[] = [];
@@ -124,7 +131,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         query += ' ORDER BY a.created_at DESC';
 
         const approvals = db.prepare(query).all(...params);
-        res.json({ approvals: (approvals as any[]).map(parseApproval) });
+        res.json({ approvals: (approvals as any[]).map((approval) => parseApproval(approval, db)) });
       }
     } catch (error) {
       next(error);
@@ -143,7 +150,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         return;
       }
 
-      res.json(parseApproval(approval));
+      res.json(parseApproval(approval, db));
     } catch (error) {
       next(error);
     }
@@ -268,6 +275,9 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         throw createError(409, 'Approval already processed', 'APPROVAL_ALREADY_PROCESSED');
       }
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as any;
+      // F4: a cancel is a decision too — attribute it in the hash-chained trail
+      auditService.record({ event_type: AuditEventType.APPROVAL_EXPIRED, action: 'approval_cancelled', resource_type: 'approval', resource_id: id,
+        task_id: updated.task_id, risk_level: updated.risk_level, user_id: user?.sub || undefined, metadata: { cancelled_by: user?.sub ?? null } });
       res.json(parseApproval(updated));
     } catch (error) {
       next(error);

@@ -5,22 +5,32 @@ import { api } from '../lib/api';
 import type { RuntimeGovernanceAgentStatus } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 import { Link, useParams } from 'react-router-dom';
+import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
+import { ScorecardsSection } from './ScorecardsSection';
 
 export function AgentsPage() {
   const { agentId } = useParams();
   const agents = useStore((state) => state.agents);
   const tasks = useStore((state) => state.tasks);
   const visibleAgents = agentId ? agents.filter(agent => agent.id === agentId) : agents;
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  // UX-007: 'loading' and 'failed' are not an empty inventory; only a completed read (or a filled store) may say "none"
+  const [inventory, setInventory] = useState<'loading' | 'loaded' | 'failed'>(agents.length ? 'loaded' : 'loading');
 
   // D4: REST fallback — load agents via API when WebSocket store is empty.
   useEffect(() => {
     if (agents.length === 0) {
-      api.getAgents().then((res) => useStore.setState({ agents: res.agents })).catch(() => {});
+      const failed: string[] = [];
+      api.getAgents().then((res) => { useStore.setState({ agents: res.agents }); setInventory('loaded'); })
+        .catch((err) => { softFail(failed, 'agents', undefined)(err); setInventory('failed'); })
+        .finally(() => setLoadErrors(failed));
     }
   }, []);
+  const state = agents.length ? 'loaded' : inventory;
 
   return (
     <div className="p-8 space-y-6">
+      <LoadErrorNotice failed={loadErrors} />
       {/* Header */}
       <div>
         {agentId && <Link to="/agents" className="text-accent">All agents</Link>}
@@ -33,8 +43,10 @@ export function AgentsPage() {
       {/* Agent Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {visibleAgents.length === 0 ? (
-          <div className="col-span-2 bg-background-secondary border border-border rounded-lg p-12 text-center">
-            <p className="text-foreground-muted">{agentId ? 'Agent not found' : 'No agents configured'}</p>
+          <div className="col-span-2 bg-background-secondary border border-border rounded-lg p-12 text-center" aria-live="polite">
+            <p className="text-foreground-muted">{state === 'loading' ? 'Loading agents…'
+              : state === 'failed' ? 'Agent inventory unavailable — the agent list could not be read, so it is unknown whether any are configured.'
+              : agentId ? 'Agent not found' : 'No agents configured'}</p>
           </div>
         ) : (
           visibleAgents.map((agent) => {
@@ -48,8 +60,13 @@ export function AgentsPage() {
                 showGovernance={Boolean(agentId)}
                 name={agent.name}
                 description={agent.description}
-                status={agent.status}
+                status={agent.status === 'active' && agent.liveness && agent.liveness !== 'live' ? agent.liveness : agent.status}
+                lastSeenAt={agent.last_seen_at ?? null}
+                connectionState={agent.connection_state ?? null}
+                connectionReason={agent.connection_reason ?? null}
+                telegramBot={agent.telegram_bot_name ?? null}
                 currentTask={currentTask?.title || null}
+                currentTaskId={currentTask?.id ?? null}
                 totalTasks={agent.total_tasks}
                 completedTasks={agent.completed_tasks}
                 failedTasks={agent.failed_tasks}
@@ -61,6 +78,9 @@ export function AgentsPage() {
           })
         )}
       </div>
+
+      {/* UX-17: runtime and fleet-agent scorecards (list view only) */}
+      {!agentId && <ScorecardsSection />}
     </div>
   );
 }
@@ -71,9 +91,14 @@ interface AgentCardProps {
   name: string;
   description: string;
   status: string;
+  lastSeenAt?: string | null;
+  connectionState?: string | null;
+  connectionReason?: string | null;
+  telegramBot?: string | null;
   retiredAt?: string | null;
   retirementReason?: string | null;
   currentTask: string | null;
+  currentTaskId?: string | null;
   totalTasks: number;
   completedTasks: number;
   failedTasks: number;
@@ -87,12 +112,17 @@ function AgentCard({
   description,
   status,
   currentTask,
+  currentTaskId,
   totalTasks,
   completedTasks,
   failedTasks,
   capabilities,
   retiredAt,
   retirementReason,
+  lastSeenAt,
+  connectionState,
+  connectionReason,
+  telegramBot,
 }: AgentCardProps) {
   const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
     pending_approval: {
@@ -119,10 +149,19 @@ function AgentCard({
       color: 'bg-foreground-muted/10 text-foreground-muted border-foreground-muted/20',
       icon: <XCircle className="w-4 h-4" />,
     },
+    // plan I0: registered as active but no activity or ONLINE registry node in the last 24 h
+    stale: {
+      color: 'bg-status-paused/10 text-status-paused border-status-paused/20',
+      icon: <Clock className="w-4 h-4" />,
+    },
+    unknown: {
+      color: 'bg-foreground-muted/10 text-foreground-muted border-foreground-muted/20',
+      icon: <Clock className="w-4 h-4" />,
+    },
   };
   const appearance = statusConfig[status] ?? statusConfig.offline;
   
-  const successRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const successRate = agentSuccessRate(totalTasks, completedTasks);
   
   return (
     <div className="bg-background-secondary border border-border rounded-lg p-6 hover:border-accent/30 transition-colors">
@@ -135,25 +174,28 @@ function AgentCard({
           <div>
             <h3 className="text-lg font-semibold text-foreground">{name}</h3>
             <p className="text-sm text-foreground-secondary mt-1">{description}</p>
+            {telegramBot && <p className="text-xs text-foreground-secondary mt-1">Telegram <a className="underline" href={`https://t.me/${telegramBot.replace(/^@/, '')}`} target="_blank" rel="noreferrer">@{telegramBot.replace(/^@/, '')}</a></p>}
           </div>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${appearance.color}`}>
+        <span title={lastSeenAt ? `last seen ${lastSeenAt}` : 'never seen'} className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${appearance.color}`}>
           {appearance.icon}
           {status}
         </span>
       </div>
 
+      {connectionState && <p className="mb-4 text-sm text-foreground-secondary" data-testid="connection-state">Connection: <span className="font-medium text-foreground">{connectionState.replace('_', ' ')}</span>{connectionReason ? ` — ${connectionReason}` : ''}</p>}
       {retiredAt && <p className="mb-4 text-sm text-foreground-secondary">Retired at {retiredAt}{retirementReason ? ` — ${retirementReason}` : ''}</p>}
       
       {/* Current Task */}
       {currentTask && (
         <div className="mb-4 p-3 bg-background-elevated border border-border rounded-lg">
           <div className="text-xs text-foreground-tertiary mb-1">Current Task</div>
-          <div className="text-sm text-foreground font-medium">{currentTask}</div>
+          <div className="text-sm text-foreground font-medium">{currentTaskId ? <Link to={`/tasks/${currentTaskId}`} className="underline">{currentTask}</Link> : currentTask}</div>
         </div>
       )}
       
-      {/* Stats */}
+      {/* Stats — SW-01: the agents-table lifetime counters, not readiness (status/connection above) and not a windowed cohort */}
+      <div className="text-xs text-foreground-tertiary mb-2">Lifetime reported counters (agents table)</div>
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div>
           <div className="text-2xl font-bold text-foreground">{totalTasks}</div>
@@ -172,15 +214,17 @@ function AgentCard({
       {/* Success Rate */}
       <div className="mb-4">
         <div className="flex items-center justify-between text-sm mb-2">
-          <span className="text-foreground-secondary">Success Rate</span>
-          <span className="text-foreground font-semibold">{successRate}%</span>
+          <span className="text-foreground-secondary">Lifetime completion</span>
+          <span data-testid="agent-success-rate" className="text-foreground font-semibold">{successRate === null ? 'insufficient — no tasks' : `${successRate} % (${completedTasks}/${totalTasks})`}</span>
         </div>
-        <div className="w-full bg-background-elevated rounded-full h-2">
-          <div
-            className="bg-status-completed h-2 rounded-full transition-all"
-            style={{ width: `${successRate}%` }}
-          />
-        </div>
+        {successRate !== null && (
+          <div className="w-full bg-background-elevated rounded-full h-2">
+            <div
+              className="bg-status-completed h-2 rounded-full transition-all"
+              style={{ width: `${successRate}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {showGovernance && <RuntimeGovernancePanel agentId={agentId} />}
@@ -289,6 +333,12 @@ function RuntimeGovernancePanel({ agentId }: { agentId: string }) {
       )}
     </section>
   );
+}
+
+/** SW-01: completed ÷ total lifetime tasks; null (insufficient) without a task — a 0 % is never shown for no observation */
+export function agentSuccessRate(totalTasks: number | null | undefined, completedTasks: number | null | undefined): number | null {
+  const n = Number(totalTasks) || 0;
+  return n > 0 ? Math.round(((Number(completedTasks) || 0) / n) * 100) : null;
 }
 
 function formatCapability(cap: string): string {

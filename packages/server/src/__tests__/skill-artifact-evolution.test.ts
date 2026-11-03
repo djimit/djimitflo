@@ -45,18 +45,23 @@ it('creates an immutable instruction candidate, compares pinned cases, activates
     OPENMYTHOS_JUDGE_MODEL_DIGEST: 'j'.repeat(64), OPENMYTHOS_JUDGE_MODEL: 'fixture-oracle',
     OPENMYTHOS_USE_JUDGE_SERVICE: 'false', DJIMITFLO_BUILD_SHA: 'build-fixture' });
   const evolution = new SkillEvolutionEngine(db);
-  evolution.recordDelivery({ taskId: 'source-task', attemptId: 'source-attempt', skillId: baseline.id,
-    skillVersion: baseline.version, skillContentHash: baseline.contentHash, runtime: 'mock' });
-  evolution.recordOutcome(baseline.id, { taskId: 'source-task', attemptId: 'source-attempt', success: true,
-    tokensUsed: null, durationMs: 1, domain: 'fixture', skillVersion: baseline.version, skillContentHash: baseline.contentHash });
+  // an assigned-but-undelivered and a delivered-but-unverified success never qualify as a source outcome
+  evolution.recordOutcome(baseline.id, { taskId: 'assigned-task', success: true, tokensUsed: null, durationMs: 1, domain: 'fixture',
+    skillVersion: baseline.version, skillContentHash: baseline.contentHash, evidenceRefs: ['skill_delivery:assigned', 'verification:test_result:passed'] });
+  evolution.recordOutcome(baseline.id, { taskId: 'unverified-task', success: true, tokensUsed: null, durationMs: 1, domain: 'fixture',
+    skillVersion: baseline.version, skillContentHash: baseline.contentHash, evidenceRefs: ['skill_delivery:delivered', 'outcome_class:completed_unverified'] });
+  evolution.recordOutcome(baseline.id, { taskId: 'source-task', success: true, tokensUsed: null, durationMs: 1, domain: 'fixture',
+    skillVersion: baseline.version, skillContentHash: baseline.contentHash, evidenceRefs: ['skill_delivery:delivered', 'verification:test_result:passed'] });
   db.prepare(`INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, metadata, started_at, finished_at)
     VALUES ('verified-baseline', 'test-skill', 'completed', 30, 30, 3, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:01:00Z')`).run(JSON.stringify({
       evaluation_mode: 'skill_conditioned_prompt', skill_id: baseline.id, skill_version: baseline.version,
       skill_content_hash: baseline.contentHash, score_valid: true, certification_eligible: true,
     }));
-  expect(() => service.createCandidate({ loader, skillId: 'test-skill', baselineHash: baseline.contentHash,
-    find: 'one check', replace: 'valid edit', actor: 'operator', sourceTaskId: 'missing-task' }))
-    .toThrow('SKILL_EVOLUTION_DELIVERED_SOURCE_OUTCOME_REQUIRED');
+  for (const sourceTaskId of ['missing-task', 'assigned-task', 'unverified-task']) {
+    expect(() => service.createCandidate({ loader, skillId: 'test-skill', baselineHash: baseline.contentHash,
+      find: 'one check', replace: 'valid edit', actor: 'operator', sourceTaskId }))
+      .toThrow('SKILL_EVOLUTION_DELIVERED_SOURCE_OUTCOME_REQUIRED');
+  }
   expect(() => service.createCandidate({ loader, skillId: 'test-skill', baselineHash: 'f'.repeat(64), find: 'one check', replace: 'two checks', actor: 'operator', sourceTaskId: 'source-task' }))
     .toThrow('SKILL_EVOLUTION_BASELINE_HASH_MISMATCH');
   const candidate = service.createCandidate({ loader, skillId: 'test-skill', baselineHash: baseline.contentHash,

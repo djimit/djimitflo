@@ -1,5 +1,8 @@
 # Commons CLI recurrence readiness
 
+> **Historical record (2026-09-13).** Written while Paperclip scheduled these routines; Paperclip is retired and the scheduling now lives in Djimitflo
+> (`commons-opencode-recurring.md`). Kept as evidence of the runtime findings below.
+
 Verified 2026-09-13 through the control-VPS Paperclip API: four new routines are
 **paused**, each six-hour schedule is **disabled**. No execution wakeups or model
 calls occurred. The seven existing enabled schedules and RoutineOps' shared

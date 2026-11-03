@@ -17,7 +17,7 @@ describe('agent commons autopilot', () => {
   const service = (cooldown = 0, chat?: ChatFn, maxRepliesPerTick = 4) => new AgentSocialAutopilotService(db, {
     runtime: 'ollama', model: 'test-model', ollamaUrl: 'http://ollama.invalid', agents: 'residents',
     intervalMs: 60_000, roundCooldownMs: cooldown, maxRepliesPerTick, seedResidents: true,
-  }, { comms, chat: chat || (async (_system, prompt) => { prompts.push(prompt); return { content: `Sure! ${reply(prompt.slice(0, 20))}`, run_id: 'run-1', usage: { eval_count: 5 } }; }) });
+  }, { comms, chat: chat || (async (_system, prompt) => { prompts.push(prompt); return { content: `Sure! ${reply(`${prompt.slice(0, 20)} #${prompts.length}`)}`, run_id: 'run-1', usage: { eval_count: 5 } }; }) });
 
   beforeEach(() => {
     db = createTestDb();
@@ -47,7 +47,7 @@ describe('agent commons autopilot', () => {
     expect(autopilot.eligibleAgents().map((agent) => agent.id)).toEqual([...RESIDENTS.map((resident) => resident.id)].sort());
 
     const first = await autopilot.tick();
-    expect(first).toMatchObject({ heartbeats: 4, replies: 0, failures: 0, round_started: true });
+    expect(first).toMatchObject({ heartbeats: RESIDENTS.length, replies: 0, failures: 0, round_started: true });
 
     // Answering is order-dependent within a tick (a peer may see the question and the reply in one pass),
     // so assert the converged conversation rather than per-tick counts.
@@ -68,7 +68,7 @@ describe('agent commons autopilot', () => {
     expect(last).toMatchObject({ replies: 0, round_started: true });
     const actions = db.prepare("SELECT json_extract(payload_json, '$.action') AS action FROM agent_messages ORDER BY timestamp ASC").all() as Array<{ action: string }>;
     expect(actions.map((row) => row.action)).toEqual(['social.question', 'social.question', 'social.response', 'social.response', 'social.learning', 'social.learning', 'social.question', 'social.question']);
-    expect((db.prepare('SELECT COUNT(*) AS n FROM reflection_candidates').get() as { n: number }).n).toBe(2);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM reflection_candidates').get() as { n: number }).n).toBe(1); // E9g: one per thread
     const commons = comms.listSocialCommons();
     expect(commons.threads).toHaveLength(2);
     expect(commons.threads.some(thread => thread.topic === 'Compare peer evidence quality')).toBe(true);
@@ -87,7 +87,7 @@ describe('agent commons autopilot', () => {
   it('expires stale work and ignores unrelated agents when starting resident rounds', async () => {
     const autopilot = service(3600_000); autopilot.seedResidents();
     db.prepare("INSERT INTO agents (id,name,status) VALUES ('external-a','A','active'),('external-b','B','active')").run();
-    comms.heartbeat('external-a', 'external'); comms.heartbeat('external-b', 'external');
+    comms.heartbeat('external-a', 'external', 'test-model', 'runtime_token'); comms.heartbeat('external-b', 'external', 'test-model', 'runtime_token');
     comms.socialize(0, 'operator', ['external-a', 'external-b']);
     const stale = comms.send({ from: 'external-a', to: RESIDENTS[0].id, type: 'question', action: 'social.question', threadId: 'expired', ttl: 1 });
     db.prepare('UPDATE agent_messages SET timestamp = ? WHERE id = ?').run(new Date(Date.now() - 10_000).toISOString(), stale.id);
@@ -129,7 +129,7 @@ describe('agent commons autopilot', () => {
     quiet.seedResidents();
     expect((await quiet.tick()).round_started).toBe(true);
     const broken = new AgentSocialAutopilotService(db, {
-      runtime: 'ollama', model: 'm', ollamaUrl: 'http://ollama.invalid', agents: 'commons-scout,commons-muse,commons-archivist,commons-oracle',
+      runtime: 'ollama', model: 'm', ollamaUrl: 'http://ollama.invalid', agents: RESIDENTS.map((resident) => resident.id).join(','),
       intervalMs: 60_000, roundCooldownMs: 6 * 3600_000, maxRepliesPerTick: 4, seedResidents: false,
     }, { comms, chat: async () => { throw new Error('model down'); } });
     const tick = await broken.tick();

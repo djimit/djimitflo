@@ -1,18 +1,20 @@
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql } from './synthetic-runs';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { swarmEventBus } from './swarm-event-bus';
 
 /**
  * G32: MetaEvolutionService — periodic self-evaluation of the swarm's performance.
  *
- * Evaluates: planner accuracy, rule accuracy, capability usage.
+ * Evaluates: maker lease completion rate, rule accuracy, capability usage.
  * Prunes: dormant capabilities (0 runs in 30 days), demotes bad rules (≥3 contradictions).
  * Emits a `meta_evolution` event on the SSE stream with the evaluation report.
  */
 
 interface EvaluationReport {
   timestamp: string;
-  planner_accuracy: number;
+  /** completed maker leases / all maker leases — completion, not correctness (was mislabelled planner_accuracy; fitness audit 11-10) */
+  maker_lease_completion_rate: number;
   rule_count: number;
   contradicted_rules: number;
   total_capabilities: number;
@@ -49,10 +51,10 @@ export class MetaEvolutionService {
   evaluate(): EvaluationReport {
     const now = new Date().toISOString();
 
-    // 1. Planner accuracy: % of maker leases that completed successfully.
-    const totalMakers = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE role = \'maker\'').get() as { c: number };
-    const completedMakers = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE role = \'maker\' AND status = \'completed\'').get() as { c: number };
-    const plannerAccuracy = totalMakers.c > 0 ? completedMakers.c / totalMakers.c : 0;
+    // 1. Maker lease completion rate: % of maker leases that completed (a completed lease can still produce a wrong change).
+    const totalMakers = this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND ${realRunIdSql('loop_run_id')}`).get() as { c: number };
+    const completedMakers = this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'completed' AND ${realRunIdSql('loop_run_id')}`).get() as { c: number };
+    const makerLeaseCompletionRate = totalMakers.c > 0 ? completedMakers.c / totalMakers.c : 0;
 
     // 2. Rule accuracy: count contradicted rules.
     const totalRules = this.db.prepare('SELECT COUNT(*) as c FROM swarm_claims WHERE claim_type = \'memory\'').get() as { c: number };
@@ -104,10 +106,15 @@ export class MetaEvolutionService {
     const recurringGaps = this.db.prepare(`
       SELECT subject_ref, COUNT(*) as freq FROM swarm_claims
       WHERE claim_type = 'capability' AND created_at > datetime('now', '-30 days')
+        AND created_from <> 'curiosity-service'
       GROUP BY subject_ref HAVING freq >= 3
     `).all() as Array<{ subject_ref: string; freq: number }>;
+    // The curiosity scanner's own diagnostic claims are excluded above (they minted 100 noise drafts in production);
+    // additionally cap open meta-evolution drafts so a signal storm cannot flood the registry again.
+    const openDrafts = (this.db.prepare("SELECT COUNT(*) AS c FROM swarm_capabilities WHERE owner = 'meta-evolution' AND status = 'draft'").get() as { c: number }).c;
+    const draftBudget = Math.max(0, Number(process.env.META_EVOLUTION_MAX_OPEN_DRAFTS) || 20) - openDrafts;
 
-    for (const gap of recurringGaps) {
+    for (const gap of recurringGaps.slice(0, draftBudget)) {
       const existing = this.db.prepare('SELECT id FROM swarm_capabilities WHERE id = ?').get(`loop-contract-${gap.subject_ref}`);
       if (existing) continue;
 
@@ -136,7 +143,7 @@ export class MetaEvolutionService {
 
     const report: EvaluationReport = {
       timestamp: now,
-      planner_accuracy: plannerAccuracy,
+      maker_lease_completion_rate: makerLeaseCompletionRate,
       rule_count: totalRules.c,
       contradicted_rules: contradicted.c,
       total_capabilities: caps.length,

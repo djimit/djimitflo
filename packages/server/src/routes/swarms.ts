@@ -15,6 +15,8 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import { realRunSql } from '../services/synthetic-runs';
+import { rateLimit } from 'express-rate-limit';
 import { mountRoutes } from '../utils/route-inventory';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -25,7 +27,8 @@ import { LoopService } from '../services/loop-service';
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
-import { FrontierExpertRegistryService, frontierExpertsEnabled, type ExpertLifecycleState } from '../services/frontier-expert-registry-service';
+import { FrontierExpertRegistryService, frontierExpertsEnabled, type ExpertKind, type ExpertLifecycleState } from '../services/frontier-expert-registry-service';
+import { frontierExpertPersonsEnabled } from '../services/expert-areas';
 import { ExpertCouncilService } from '../services/expert-council-service';
 import { ExpertResolverService } from '../services/expert-resolver-service';
 import { PacingFrontierIngestionService } from '../services/pacing-frontier-ingestion-service';
@@ -42,6 +45,10 @@ import { createWorkerRoutes } from './swarm-workers';
 import { createIntelligenceRoutes } from './swarm-intel';
 import { createGovernanceRoutes } from './swarm-governance';
 import { createKnowledgeRoutes } from './swarm-knowledge';
+import { recordAbstentionGap } from '../services/knowledge-gaps';
+import { gapDemandByCapability } from '../services/evolution-feedback';
+import { learningCurveView, usageWindow } from '../services/swarm-learning-curve';
+import { missionDetail } from '../services/mission-detail';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -65,6 +72,13 @@ function boundedLimit(value: unknown, fallback = 100): number {
     throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
   }
   return limit;
+}
+
+function boundedDays(value: unknown, fallback = 7): number {
+  if (value === undefined) return fallback;
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 1 || days > 90) throw createError(400, 'days must be an integer between 1 and 90', 'VALIDATION_ERROR');
+  return days;
 }
 
 function boundedParallel(value: unknown, fallback = 3): number {
@@ -202,6 +216,17 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
     }
   });
+  // SW-02: advisory planning status next to the linked goal/loop execution and outcome — a read-only join, never a transition
+  router.get('/intelligence/missions/execution', requirePermission('read:evidence'), route((req, res) => {
+    res.json(missionsSvc().missionExecutions(boundedLimit(req.query.limit, 50)));
+  }));
+  // mission detail page: the same join for one mission plus its runs, leases, tasks, decisions, tokens and provenance (read-only)
+  const missionDetailLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }); // per-route limiter CodeQL can see; /api also caps 300/min
+  router.get('/intelligence/missions/:id/execution', missionDetailLimiter, requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(missionDetail(db, req.params.id)); } catch (error) {
+      try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
+    }
+  });
   router.get('/intelligence/missions/:id', requirePermission('read:evidence'), (req, res, next) => {
     try { res.json(missionsSvc().getMission(req.params.id)); } catch (error) {
       try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
@@ -241,12 +266,22 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/experts', requirePermission('read:evidence'), route((req, res) => {
     const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
     if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw createError(400, 'limit must be a positive integer', 'VALIDATION_ERROR');
-    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, limit }) });
+    const kind = req.query.kind as string | undefined;
+    // FE-AREAS: people are never listed unless FRONTIER_EXPERT_PERSONS_ENABLED=true; fields of interest (areas) replace them
+    const persons = frontierExpertPersonsEnabled();
+    const kinds = persons ? ['person', 'paper', 'repository', 'area'] : ['paper', 'repository', 'area'];
+    if (kind !== undefined && !kinds.includes(kind)) throw createError(400, `kind must be ${kinds.join(', ')}`, 'VALIDATION_ERROR');
+    // The funnel counts the whole registry (the list is capped), per kind and lifecycle state.
+    const funnel = db.prepare(`SELECT COALESCE(kind, 'person') AS kind, lifecycle_state AS state, COUNT(*) AS count FROM expert_identities ${persons ? '' : "WHERE COALESCE(kind, 'person') != 'person'"} GROUP BY 1, 2`).all();
+    const experts = registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, kind: kind as ExpertKind | undefined, excludePersons: !persons, limit });
+    // K5 (EVOLUTION_FEEDBACK_MODE=on): read-only count of open knowledge gaps matching an area's capabilities
+    const demand = gapDemandByCapability(db);
+    res.json({ experts: demand ? experts.map((e) => { const n = e.kind === 'area' ? e.capabilities.reduce((a, c) => a + (demand.get(c) ?? 0), 0) : 0; return n ? { ...e, gap_demand: n } : e; }) : experts, funnel });
   }));
   router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
     const reg = registry();
     const expert = reg.get(req.params.id);
-    if (!expert) throw createError(404, 'Expert not found', 'EXPERT_NOT_FOUND');
+    if (!expert || (!frontierExpertPersonsEnabled() && (expert.kind ?? 'person') === 'person')) throw createError(404, 'Expert not found', 'EXPERT_NOT_FOUND');
     const asOf = typeof req.query.as_of === 'string' ? req.query.as_of : null;
     res.json({
       expert, provenance: reg.provenance(expert.id), affiliations: reg.affiliationsAsOf(expert.id, asOf ?? new Date().toISOString()), versions: reg.versions(expert.id),
@@ -259,7 +294,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/expert/resolve', requirePermission('read:evidence'), route((req, res) => {
     const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
     if (!question) throw createError(400, 'question is required', 'VALIDATION_ERROR');
-    res.json(new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined }));
+    const resolution = new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined });
+    recordAbstentionGap(db, resolution); // K2: KNOWLEDGE_GAP_MODE=shadow, never throws
+    res.json(resolution);
   }));
   router.post('/expert/experts/:id/transition', requirePermission('write:swarm_action'), route((req, res) => {
     const actor = operatorActor(req);
@@ -319,10 +356,11 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/rsi/proposals', requirePermission('read:evidence'), route((req, res) => { res.json(new ServiceRefactoringAnalyzer(db).getProposals(req.query.status as string | undefined)); }));
   router.get('/rsi/specializations', requirePermission('read:evidence'), route((_req, res) => { res.json(new EmergentSpecializationService(db).getSpecializations()); }));
   router.get('/rsi/safety', requirePermission('read:evidence'), route((_req, res) => { res.json(new RsiSafetyGuard(db).getStatus()); }));
-  router.post('/rsi/safety/toggle', requirePermission('write:swarm_action'), route((req, res) => {
+  // a safety gate: admins only (manage:config), and the audit row names who switched it
+  router.post('/rsi/safety/toggle', requirePermission('manage:config'), route((req, res) => {
     if (typeof req.body?.enabled !== 'boolean') throw createError(400, 'enabled must be a boolean', 'VALIDATION_ERROR');
     const guard = new RsiSafetyGuard(db);
-    guard.setEnabled(req.body.enabled);
+    guard.setEnabled(req.body.enabled, String(req.user?.sub || req.user?.email || 'unknown'));
     res.json(guard.getStatus());
   }));
 
@@ -330,75 +368,113 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/learning/cycle', requirePermission('write:swarm_action'), route(async (_req, res) => { res.json(await new ContinuousLearningLoop(db, { intervalMs: 999999999 }).runCycle()); }));
   router.get('/learning/history', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getHistory(20)); }));
   router.get('/learning/last', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getLastCycle()); }));
-  router.get('/learning-curve', requirePermission('read:evidence'), route((_req, res) => {
-    const loops = new LoopService(db);
-    const runs = loops.listLoopRuns().slice().reverse().map((run) => {
-      const metric = loops.computeEfficiencyMetric(run.id);
-      return {
-        run_id: run.id,
-        created_at: run.created_at,
-        success: run.status === 'completed',
-        retries: Number(run.metadata.retry_count) || 0,
-        dollars: metric.dollarsSpent,
-      };
-    });
-    const first = runs[0];
-    const last = runs[runs.length - 1];
-    res.json({
-      runs,
-      first_vs_last: {
-        first_success_rate: first ? Number(first.success) : 0,
-        last_success_rate: last ? Number(last.success) : 0,
-        first_cost: first?.dollars || 0,
-        last_cost: last?.dollars || 0,
-      },
-      trend: { retries_decreasing: runs.length > 1 && last.retries < first.retries },
-    });
+  // SW-01: per-cohort completion rates over equal windows with their denominators; unknown usage/cost stays null (read-only)
+  router.get('/learning-curve', requirePermission('read:evidence'), route((req, res) => {
+    res.json(learningCurveView(db, Date.now(), boundedDays(req.query.days)));
+  }));
+  // SW-01: recorded token usage for a stated window with its coverage (cost-ledger usage events), for /swarm
+  router.get('/usage-window', requirePermission('read:evidence'), route((req, res) => {
+    res.json(usageWindow(db, Date.now(), boundedDays(req.query.days)));
   }));
 
+  // CODE-007: a capability cost model is a runtime tariff × tokens (or a declared figure), never a dated model price, so its
+  // dollars are null with the reason; the figure stays as a labelled estimate (the allocation baseline).
+  const estimate = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  const computeCapabilityEconomy = () => intelligence.listCapabilities(500)
+    .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
+    .map((capability) => {
+      const competence = intelligence.measureCompetence(capability.id);
+      return {
+        capability_id: capability.id,
+        capability_kind: capability.kind,
+        status: capability.status,
+        n_runs: competence.n_runs,
+        n_completed: competence.n_completed,
+        success_rate: competence.success_rate,
+        p50_tokens: competence.p50_cost,
+        p95_tokens: competence.p95_cost,
+        p50_dollars: null,
+        p95_dollars: null,
+        verified_artifacts_per_dollar: null,
+        dollars_reason: 'no_dated_model_price' as const,
+        p50_dollars_estimate: estimate(capability.cost_model.p50_dollars),
+        p95_dollars_estimate: estimate(capability.cost_model.p95_dollars),
+        estimate_basis: 'runtime_tariff_or_declared' as const,
+      };
+    });
+
   router.get('/economy', requirePermission('read:evidence'), route((_req, res) => {
-    const capabilities = intelligence.listCapabilities(500)
-      .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
-      .map((capability) => {
-        const competence = intelligence.measureCompetence(capability.id);
-        const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
-        const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
-        return {
-          capability_id: capability.id,
-          capability_kind: capability.kind,
-          status: capability.status,
-          n_runs: competence.n_runs,
-          n_completed: competence.n_completed,
-          success_rate: competence.success_rate,
-          p50_tokens: competence.p50_cost,
-          p95_tokens: competence.p95_cost,
-          p50_dollars: p50Dollars,
-          p95_dollars: p95Dollars,
-          verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
-            ? competence.n_completed / p50Dollars
-            : null,
-        };
-      });
+    const capabilities = computeCapabilityEconomy();
     const loops = new LoopService(db);
-    const recentRuns = loops.listLoopRuns().slice(0, 10).map((run) => {
+    const real = new Set((db.prepare(`SELECT id FROM loop_runs WHERE ${realRunSql()}`).all() as Array<{ id: string }>).map((r) => r.id));
+    const recentRuns = loops.listLoopRuns().filter((run) => real.has(run.id)).slice(0, 10).map((run) => {
       const metric = loops.computeEfficiencyMetric(run.id);
       return {
         run_id: run.id,
         loop_name: run.loop_name,
         status: run.status,
+        // verified = the run passed certification; unknown dollars/efficiency are null, never 0
         verified_artifacts: metric.verifiedArtifacts,
+        completed_unverified: metric.completedUnverified,
+        run_verified: metric.runVerified,
+        // CODE-007: dollars only from a dated model price (lease token_accounting + price_version), else null + reason
         dollars_spent: metric.dollarsSpent,
+        dollars_lower_bound: metric.dollarsLowerBound,
+        dollars_reason: metric.dollarsReason,
+        usage_coverage: metric.usageCoverage,
+        price_coverage: metric.priceCoverage,
+        price_basis: metric.priceBasis,
         efficiency: metric.efficiency,
+        efficiency_reason: metric.efficiencyReason,
+        // the old runtime-tariff figure, kept as a labelled estimate for comparison; never dollars_spent
+        runtime_tariff_estimate: metric.runtimeTariffEstimate,
       };
     });
+    const knownDollars = recentRuns.filter((run) => run.dollars_spent !== null);
     res.json({
       capabilities,
       recent_runs: recentRuns,
       summary: {
         total_capabilities: capabilities.length,
         total_verified_artifacts: recentRuns.reduce((sum, run) => sum + run.verified_artifacts, 0),
-        total_dollars_spent: recentRuns.reduce((sum, run) => sum + run.dollars_spent, 0),
+        total_completed_unverified: recentRuns.reduce((sum, run) => sum + run.completed_unverified, 0),
+        // sum over runs whose dollars are known; null when none are; a lower bound when any run is unknown or partial
+        total_dollars_spent: knownDollars.length > 0 ? knownDollars.reduce((sum, run) => sum + (run.dollars_spent ?? 0), 0) : null,
+        total_dollars_lower_bound: knownDollars.length > 0 && recentRuns.some((run) => run.dollars_spent === null || run.dollars_lower_bound),
+        runs_with_unknown_dollars: recentRuns.length - knownDollars.length,
       },
+    });
+  }));
+
+  // LoopBudgetService.allocateDollarBudget() already existed (used internally
+  // while a loop run is choosing which findings to fund) but was never
+  // surfaced anywhere for an operator to ask "given $X right now, which
+  // validated capabilities are worth funding?" — reuses the same capability
+  // cost/competence data already computed for GET /economy above.
+  router.get('/economy/allocate', requirePermission('read:evidence'), route((req, res) => {
+    const budget = Number(req.query.budget);
+    if (!Number.isFinite(budget) || budget < 0) {
+      throw createError(400, 'budget query param must be a non-negative number', 'ECONOMY_ALLOCATE_BUDGET_INVALID');
+    }
+    // allocation plans on the labelled estimate (no dated capability price exists); the response says so
+    const capabilities = computeCapabilityEconomy().filter((capability) => (capability.p50_dollars_estimate ?? 0) > 0);
+    const loops = new LoopService(db);
+    const result = loops.allocateDollarBudget(
+      capabilities.map((capability) => ({
+        finding_id: capability.capability_id,
+        capability_id: capability.capability_id,
+        p50_dollars: capability.p50_dollars_estimate as number,
+        competence: capability.success_rate,
+      })),
+      budget
+    );
+    const byId = new Map(capabilities.map((capability) => [capability.capability_id, capability]));
+    res.json({
+      budget,
+      cost_basis: 'estimate' as const,
+      budget_insufficient: result.budgetInsufficient,
+      allocated: result.allocated.map((id) => byId.get(id)),
+      deferred: result.deferred.map((id) => byId.get(id)),
     });
   }));
 

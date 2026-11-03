@@ -23,8 +23,15 @@ let lastCommentBody: string | undefined;
 function mockGh(prStat: { additions: number; deletions: number; changedFiles: number; files: string[] }, options: { commentFails?: boolean } = {}) {
   lastCommentBody = undefined;
   vi.mocked(execFileSync).mockImplementation(((command: string, args: string[] = []) => {
-    if (args[0] === 'pr' && args[1] === 'view') {
-      return JSON.stringify({ title: 'Test PR', url: 'https://github.com/owner/repo/pull/7', ...prStat, files: prStat.files.map((path) => ({ path })) });
+    if (args[0] === 'pr' && args[1] === 'view' && args.includes('headRefOid')) return JSON.stringify({ headRefOid: HEAD_SHA });
+    if (args[0] === 'api' && args[1] === `repos/owner/repo/compare/main...${HEAD_SHA}`) {
+      // the diff stats are read by the exact head SHA (CODE-005); spread over files so the totals match prStat
+      const files = prStat.files.map((filename, i) => ({
+        filename,
+        additions: i === 0 ? prStat.additions : 0,
+        deletions: i === 0 ? prStat.deletions : 0,
+      }));
+      return JSON.stringify({ merge_base: 'c'.repeat(40), files });
     }
     if (args[0] === 'pr' && args[1] === 'comment') {
       if (options.commentFails) throw new Error('gh: authentication required');
@@ -32,7 +39,7 @@ function mockGh(prStat: { additions: number; deletions: number; changedFiles: nu
       if (bodyFileIndex !== -1) lastCommentBody = readFileSync(args[bodyFileIndex + 1], 'utf8');
       return '';
     }
-    if (args[0] === 'api') {
+    if (args[0] === 'api' && args[1] === `repos/owner/repo/statuses/${HEAD_SHA}`) {
       return JSON.stringify({ id: 123456 });
     }
     throw new Error(`unexpected gh invocation: ${command} ${args.join(' ')}`);
@@ -105,6 +112,45 @@ describe('GitHub pull_request review webhook', () => {
 
     const commentArgs = vi.mocked(execFileSync).mock.calls.find(([, args]) => Array.isArray(args) && args[0] === 'pr' && args[1] === 'comment');
     expect(commentArgs).toBeTruthy();
+    // the bookkeeping run is settled once the verdict is posted, not left 'blocked'
+    expect(db.prepare("SELECT status, json_extract(metadata, '$.settled_by') AS by FROM loop_runs WHERE id = ?").get(reviewRow.loop_run_id))
+      .toEqual({ status: 'completed', by: 'github-pr-review' });
+    db.close();
+  });
+
+  it('U3: the review run is marked synthetic at write time (reason pr_review), so loop KPIs leave it out', async () => {
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+    const response = await post(prBody(), 'delivery-pr-u3');
+    expect(response.status).toBe(202);
+    const { loop_run_id } = await response.json() as { loop_run_id: string };
+    expect(db.prepare("SELECT json_extract(metadata, '$.synthetic') AS synthetic, json_extract(metadata, '$.synthetic_reason') AS reason FROM loop_runs WHERE id = ?").get(loop_run_id))
+      .toEqual({ synthetic: 1, reason: 'pr_review' });
+    db.close();
+  });
+
+  it('P0-5: the heuristic verdict is recorded as an automated heuristic reviewer, never as a human/manual review', async () => {
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+    await post(prBody(), 'delivery-pr-p05');
+    const checker = db.prepare("SELECT metadata FROM worker_leases WHERE role = 'checker'").get() as { metadata: string };
+    const meta = JSON.parse(checker.metadata);
+    expect(meta.reviewer_type).toBe('heuristic');
+    expect(meta.manual_review_attestation).toMatchObject({ reviewer: 'roborev-webhook', reviewer_type: 'heuristic' });
+    db.close();
+  });
+
+  it('settling a review also completes the goals of already-settled review runs (prod 2026-09-27: 42 stayed running)', async () => {
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO goals (id, objective, status, created_at, updated_at) VALUES ('g-old', 'old review', 'running', '2026-09-26', '2026-09-26')").run();
+    db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, goal_id, metadata) VALUES ('r-old', 'repo-maintenance-loop', 'closed', 'completed', 'g-old', '{\"settled_by\":\"github-pr-review\"}')").run();
+    db.prepare("INSERT INTO goals (id, objective, status, created_at, updated_at) VALUES ('g-real', 'real work', 'running', '2026-09-26', '2026-09-26')").run();
+    db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, goal_id, metadata) VALUES ('r-real', 'doc-drift-and-small-fix-loop', 'closed', 'completed', 'g-real', '{}')").run();
+    expect((await post(prBody(), 'delivery-pr-goal')).status).toBe(202);
+    expect(db.prepare("SELECT id, status FROM goals WHERE id IN ('g-old', 'g-real') ORDER BY id").all())
+      .toEqual([{ id: 'g-old', status: 'completed' }, { id: 'g-real', status: 'running' }]);
     db.close();
   });
 

@@ -1,10 +1,11 @@
 /**
- * Read-only governance and evidence MCP tools.
+ * Governance and evidence MCP tools. Read-only except the three `apply: true` catalog writers (live data + manage:config).
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { databaseProvenance, requireLiveMode, type DbHandle } from '../db.js';
+import { requireMcpPermission } from '../auth-context.js';
 
 type OpenApiToolRow = {
   id: string;
@@ -78,12 +79,13 @@ function metadata(row: Record<string, unknown>) {
 }
 
 function withEffectiveMcpStatus(row: Record<string, unknown>, now = Date.now()) {
+  const catalog = row.id === 'djimitflo-runtime';
   const ttlMs = Math.max(1_000, Number(process.env.MCP_STATUS_TTL_MS || 300_000));
   const verifiedAt = row.last_ping_at ? Date.parse(String(row.last_ping_at)) : Number.NaN;
-  const stale = row.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
+  const stale = !catalog && row.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
   return {
     ...row,
-    effective_status: stale ? 'stale' : row.status,
+    effective_status: catalog ? 'catalog' : stale ? 'stale' : row.status,
     status_stale: stale,
     last_verified_at: row.last_ping_at || null,
   };
@@ -158,6 +160,7 @@ function getRegisteredToolRows(server: McpServer) {
 }
 
 function classifyTool(name: string) {
+  if (name === 'djimitflo_scan_repository') return { permission: 'requires_approval', risk_level: 'medium' };
   if (/approve|spawn|handoff/i.test(name)) {
     return { permission: 'requires_approval', risk_level: 'high' };
   }
@@ -211,7 +214,9 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
       });
       const catalogOnlyIds = new Set(catalogOnlyServers.map((row) => row.id));
       const probeableServers = servers.filter((row) => row.url);
-      const serversWithErrors = probeableServers.filter((row) => row.error_message);
+      const serversWithErrors = probeableServers.filter((row) => row.error_message
+        && metadata(row).known_unreachable !== true
+        && !/OUTBOUND_DENY_HOSTS|Blocked by policy|never calls the workstation/i.test(String(row.error_message)));
       const serversWithoutPing = probeableServers.filter((row) => !row.last_ping_at);
       const serversWithoutProbeUrl = servers.filter((row) => row.id !== 'djimitflo-runtime' && !row.url && !catalogOnlyIds.has(row.id));
       const serversWithOpenApiWithoutTools = servers
@@ -312,6 +317,8 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
         });
       }
       requireLiveMode(dbHandle);
+      // Writes the catalog the /mcp-permissions page shows; the HTTP twins (POST /mcp/servers, PATCH /mcp/permissions) need manage:config.
+      requireMcpPermission('manage:config');
 
       const write = dbHandle.db.transaction(() => {
         dbHandle.db.prepare(`
@@ -467,6 +474,8 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
         });
       }
       requireLiveMode(dbHandle);
+      // Writes the catalog the /mcp-permissions page shows; the HTTP twins (POST /mcp/servers, PATCH /mcp/permissions) need manage:config.
+      requireMcpPermission('manage:config');
 
       const write = dbHandle.db.transaction(() => {
         const upsertTool = dbHandle.db.prepare(`
@@ -562,6 +571,8 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
         });
       }
       requireLiveMode(dbHandle);
+      // Writes the catalog the /mcp-permissions page shows; the HTTP twins (POST /mcp/servers, PATCH /mcp/permissions) need manage:config.
+      requireMcpPermission('manage:config');
 
       const results = [];
       for (const target of targets) {

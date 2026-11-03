@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import type { SwarmIntelligenceService } from './swarm-intelligence-service';
+import { SelfImprovementService } from './self-improvement-service';
 
 export interface Gap {
   domain: string;
@@ -94,6 +95,21 @@ export class CuriosityService {
       } catch { /* skip duplicates */ }
     }
 
+    // Feed real, detected gaps into the reviewed self-improvement pipeline.
+    // Found 2026-09-21: generateFromGaps() has existed, tested, unused since
+    // before this session — this method's own output only ever reached
+    // swarm_claims, never a place that could turn a gap into reviewed work.
+    // Wired once here (not at each of scanForGaps()'s two call sites — boot
+    // and the periodic interval in start()) so both get it for free.
+    // Best-effort: a proposal-generation failure must never block gap
+    // detection/publishing above. Fingerprint dedup in createProposal()
+    // already prevents a still-open gap re-detected on the next cycle from
+    // creating a duplicate proposal.
+    try {
+      // Coverage gaps come from a count heuristic (coverage UNKNOWN): not an actionable finding, keep them as claims only.
+      new SelfImprovementService(this.db).generateFromGaps(gaps.filter(gap => gap.type !== 'coverage'));
+    } catch { /* best-effort */ }
+
     return { gapsFound: gaps.length, published, gaps };
   }
 
@@ -173,7 +189,7 @@ export class CuriosityService {
             domain: cap.id,
             type: 'competence',
             severity: 1 - competence.success_rate,
-            description: `Low success rate (${(competence.success_rate * 100).toFixed(0)}%) for capability '${cap.id}'`,
+            description: `Low lease completion rate (${(competence.success_rate * 100).toFixed(0)}%) for capability '${cap.id}'`,
           });
         }
       }

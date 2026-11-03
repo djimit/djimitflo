@@ -224,4 +224,19 @@ describe("RepoExplainerScheduler", () => {
     expect(scheduler.claimNextJob("worker-1")).not.toBeNull();
     expect(scheduler.claimNextJob("worker-2")).toBeNull();
   });
+
+  describe("repository with several bundles on one task", () => {
+    it("yields one candidate per repository and schedules without a dedupe_key collision", async () => {
+      const db = createTestDb();
+      const repoId = insertRepo(db, { full_name: "djimit/multi", last_commit_sha: "abc", last_commit_at: "2099-01-01T00:00:00.000Z" });
+      const { taskId } = insertCompletedBundle(db, repoId, "old", "2020-01-01T00:00:00.000Z");
+      db.prepare("INSERT INTO explainer_bundles (id, task_id, bundle_path, metadata, created_at, updated_at) VALUES ('b2', ?, '/tmp/b2', ?, '2020-02-01T00:00:00.000Z', '2020-02-01T00:00:00.000Z')")
+        .run(taskId, JSON.stringify({ source_commit: "newer" }));
+      const scheduler = new RepoExplainerScheduler(db);
+      const candidates = scheduler.findRefreshCandidates();
+      expect(candidates.filter((c) => c.discovered_repository_id === repoId)).toHaveLength(1);
+      expect(candidates[0].last_bundle_commit_sha).toBe("newer");
+      await expect(scheduler.run()).resolves.toBeDefined();
+    });
+  });
 });

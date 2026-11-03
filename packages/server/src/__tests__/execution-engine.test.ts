@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+// admission is judged at a fixed instant, not the wall clock (helpers/admission-now.ts; ledger expiries 2026-11-27 / 2026-12-31)
+vi.mock('../execution/runtime-admission', () => import('./helpers/admission-now').then((m) => m.admissionAtFixedNow()));
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { generateKeyPairSync } from 'crypto';
+import { createHash, generateKeyPairSync } from 'crypto';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine, resolveExecutorSkipPermissions } from '../execution/execution-engine';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
@@ -12,6 +14,7 @@ import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer'
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -237,7 +240,12 @@ describe('ExecutionEngine', () => {
     expect(() => approvalService.decideApproval('approval-expired', true, 'maker-1')).toThrow('APPROVAL_EXPIRED');
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('approval-expired') as any).status).toBe('expired');
     expect(approvalService.getLatestPendingForTask(task.id)).toBeNull();
-    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type = 'approval.expired'").get() as any).count).toBe(1);
+    // 2, not 1: expiry now also cancels the still-awaiting_approval task in
+    // the same transaction, recording a second event_type='approval.expired'
+    // audit row scoped to the task (action='task_cancelled_after_approval_expiry')
+    // alongside the original one scoped to the approval.
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type = 'approval.expired'").get() as any).count).toBe(2);
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('cancelled');
     expect(broadcastTaskEventById).toHaveBeenCalledWith(task.id, expect.objectContaining({ type: 'approval.expired' }));
   });
 
@@ -526,6 +534,22 @@ describe('ExecutionEngine', () => {
     expect(runtimeConcurrencySemaphore.activeCount).toBe(0);
   });
 
+  it('P0-7: an engine fallback records the runtime that actually started on the lease (effective_runtime), requested stays', async () => {
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('fb-lease', 'fb-run', 'maker', 'mock', 'running', ?)")
+      .run(JSON.stringify({ execution_task_id: 'fb-task', model: 'ollama/requested-model' }));
+    db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,metadata) VALUES ('fb-task','Fallback task','echo hello','pending','medium','low','local',?)")
+      .run(JSON.stringify({ lease_id: 'fb-lease', model: 'ollama/requested-model' }));
+    const mock = new MockExecutor();
+    engine.registerExecutor({ kind: 'mock', canExecute: () => true, start: async () => { throw new Error('Provider temporarily unavailable before process start'); } });
+    engine.registerExecutor({ kind: 'claude', canExecute: () => true, start: (t, o) => mock.start(t, o) });
+    const execution = await engine.executeTask('fb-task', 'mock');
+    await execution.completion;
+    const lease = db.prepare("SELECT runtime, metadata FROM worker_leases WHERE id = 'fb-lease'").get() as { runtime: string; metadata: string };
+    expect(lease.runtime).toBe('mock'); // the requested runtime column is not rewritten
+    expect(JSON.parse(lease.metadata)).toMatchObject({ requested_runtime: 'mock', effective_runtime: 'claude', effective_model: null });
+  });
+
   it('queues execution when the shared runtime concurrency cap is full', async () => {
     const previousLimit = process.env.RUNTIME_MAX_CONCURRENCY;
     process.env.RUNTIME_MAX_CONCURRENCY = '1';
@@ -600,9 +624,11 @@ describe('ExecutionEngine', () => {
     }
   });
 
-  it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
-    const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
-    try {
+  describe('skill outcome semantics', () => {
+    let skillsDir: string;
+
+    beforeEach(() => {
+      skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
       const skillDir = path.join(skillsDir, 'running-tests');
       fs.mkdirSync(skillDir);
       fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
@@ -617,51 +643,192 @@ describe('ExecutionEngine', () => {
         'disallowed_tools: [ProductionWrite]',
         '',
       ].join('\n'));
+      db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
+      db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
+    });
 
-      let deliveredDescription = '';
+    afterEach(() => { fs.rmSync(skillsDir, { recursive: true, force: true }); });
+
+    /** Runs one skill-attributed task on a mock executor; `duringRun` sees the task id before the process result resolves. */
+    async function runSkillTask(opts: {
+      metadata?: Record<string, unknown>;
+      result?: Record<string, unknown>;
+      duringRun?: (taskId: string) => void;
+      description?: string;
+    } = {}) {
       const attributedEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
+      let received: { title: string; description: string } | null = null;
       attributedEngine.registerExecutor({
         kind: 'mock',
         canExecute: () => true,
         start: async (task: Task) => {
-          deliveredDescription = task.description;
-          return ({
-          id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
-          events: (async function* () {})(),
-          result: Promise.resolve({ status: 'completed', message: 'ok', stdout: 'worker output', stderr: '', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
-          cancel: async () => {},
-          });
+          received = { title: task.title, description: task.description };
+          opts.duringRun?.(task.id);
+          return {
+            id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
+            events: (async function* () {})(),
+            result: Promise.resolve(opts.result ?? { status: 'completed', message: 'ok', stdout: 'worker output', stderr: '', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
+            cancel: async () => {},
+          };
         },
       } as any);
-      db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
-      db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
       db.prepare(`
         INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
-        VALUES ('task-skill', 'Run tests', 'Run the bounded test', 'pending', 'medium', 'low', 'local', 'agent-skill', ?)
-      `).run(JSON.stringify({ skillId: '.opencode.skills.running-tests' }));
+        VALUES ('task-skill', 'Run tests', ?, 'pending', 'medium', 'low', 'local', 'agent-skill', ?)
+      `).run(opts.description ?? 'Run the bounded test', JSON.stringify({ skillId: '.opencode.skills.running-tests', ...opts.metadata }));
 
       const execution = await attributedEngine.executeTask('task-skill', 'mock');
-      await expect(execution.completion).resolves.toMatchObject({ status: 'completed', stdout: 'worker output' });
+      await execution.completion;
       await new Promise((resolve) => setTimeout(resolve, 0));
-
       const row = db.prepare(`
-        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used
+        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used, model, evidence_refs_json
         FROM skill_outcomes WHERE task_id = 'task-skill'
       `).get() as any;
+      return { ...row, refs: JSON.parse(row.evidence_refs_json) as string[], engine: attributedEngine, received: received! };
+    }
+
+    const SKILL_TEXT = 'Plan the scoped test, execute it, verify output, and stop.';
+    const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+    const deliveryReceipt = () => {
+      const row = db.prepare(`SELECT details FROM execution_evidence WHERE task_id = 'task-skill'
+        AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt'`).get() as { details: string } | undefined;
+      return row ? JSON.parse(row.details) as Record<string, unknown> : null;
+    };
+
+    const testResult = (taskId: string, severity: 'info' | 'warning' | 'error') => db.prepare(`
+      INSERT INTO execution_evidence (id, task_id, evidence_type, severity, title, summary, source, captured_at)
+      VALUES (?, ?, 'test_result', ?, 'vitest', 'deterministic check', 'system', ?)
+    `).run(`ev-${severity}-${Math.random().toString(36).slice(2)}`, taskId, severity, new Date().toISOString());
+
+    it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
+      const row = await runSkillTask();
       expect(row).toMatchObject({
         skill_id: '.opencode.skills.running-tests', skill_version: '0.1.0', task_id: 'task-skill',
-        agent_id: 'agent-skill', success: 1, tokens_used: 100,
+        agent_id: 'agent-skill', tokens_used: 100,
       });
       expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
-      expect(deliveredDescription).toContain('<skill-instructions id=".opencode.skills.running-tests" version="0.1.0"');
-      expect(deliveredDescription).toContain('Plan the scoped test, execute it, verify output, and stop.');
-      expect(db.prepare('SELECT skill_id, skill_version, skill_content_hash, runtime FROM skill_delivery_receipts WHERE task_id = ?').get('task-skill'))
-        .toMatchObject({ skill_id: row.skill_id, skill_version: row.skill_version, skill_content_hash: row.skill_content_hash, runtime: 'mock' });
-      expect(db.prepare('SELECT attempt_id FROM skill_outcomes WHERE task_id = ?').get('task-skill'))
-        .toEqual(db.prepare('SELECT attempt_id FROM skill_delivery_receipts WHERE task_id = ?').get('task-skill'));
-    } finally {
-      fs.rmSync(skillsDir, { recursive: true, force: true });
-    }
+    });
+
+    it('records a completed process without a verification result as completed_unverified, not as success', async () => {
+      const row = await runSkillTask();
+      expect(row.success).toBe(0);
+      expect(row.refs).toContain('outcome_class:completed_unverified');
+      // skill fitness leaves it out: neither a success nor a failure of the skill
+      const fitness = new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests');
+      expect(fitness.reliability).toBeNull();
+    });
+
+    // fitness reads only delivered attribution (INT-004 follow-up), so the verification -> fitness tests deliver the skill
+    const DELIVERED = `Run the bounded test.\n\n${SKILL_TEXT}`;
+
+    it('records success only when the task has a passed independent verification', async () => {
+      const row = await runSkillTask({ duringRun: (id) => testResult(id, 'info'), description: DELIVERED });
+      expect(row.success).toBe(1);
+      expect(row.refs).toContain('verification:test_result:passed');
+      expect(row.refs.some((r: string) => r.startsWith('outcome_class:'))).toBe(false);
+      expect(new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests').reliability).toBe(1);
+    });
+
+    it('records a completed process whose verification failed as a failure', async () => {
+      const row = await runSkillTask({ duringRun: (id) => { testResult(id, 'info'); testResult(id, 'error'); }, description: DELIVERED });
+      expect(row.success).toBe(0);
+      expect(row.refs).toEqual(expect.arrayContaining(['verification:test_result:failed', 'outcome_class:regressed']));
+      expect(new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests').reliability).toBe(0);
+    });
+
+    it('stores the runtime and the model separately', async () => {
+      const withModel = await runSkillTask({ metadata: { model: 'qwen3.5:cloud' } });
+      expect(withModel.model).toBe('qwen3.5:cloud');
+      expect(withModel.refs).toContain('runtime:mock');
+
+      db.prepare("DELETE FROM skill_outcomes WHERE task_id = 'task-skill'").run();
+      db.prepare("DELETE FROM tasks WHERE id = 'task-skill'").run();
+      const withoutModel = await runSkillTask();
+      expect(withoutModel.model).toBeNull(); // never the runtime name
+      expect(withoutModel.refs).toContain('runtime:mock');
+    });
+
+    it('stores unknown token usage as null, and fitness readers handle it', async () => {
+      const row = await runSkillTask({
+        duringRun: (id) => testResult(id, 'info'),
+        result: { status: 'completed', message: 'ok', stdout: '', stderr: '', metrics: { executionTimeMs: 1 } },
+        description: DELIVERED,
+      });
+      expect(row.tokens_used).toBeNull();
+      const traits = new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests');
+      expect(traits).toMatchObject({ reliability: 1, efficiency: null });
+    });
+
+    // INT-004: an assigned skill is not a delivered skill. Prod runs with skill loading DISABLED_BY_POLICY and no executor
+    // puts skill text into the runtime prompt, so prod outcomes stay 'assigned' (unverified attribution).
+    it('keeps an assigned-but-not-delivered skill as unverified attribution', async () => {
+      const row = await runSkillTask();
+      expect(deliveryReceipt()).toMatchObject({ skill_id: '.opencode.skills.running-tests', delivery_state: 'assigned', delivery_path: null, delivered_sha256: null });
+      expect(row.refs).toEqual(expect.arrayContaining(['skill_delivery:assigned', 'skill_attribution:unverified']));
+      expect(row.refs.some((r: string) => r === 'skill_delivery:delivered' || r.startsWith('skill_delivery_sha256:'))).toBe(false);
+    });
+
+    it('counts a skill as delivered only with a receipt of the exact text in the assignment', async () => {
+      const description = `Run the bounded test.\n\n${SKILL_TEXT}`;
+      const row = await runSkillTask({ description });
+      expect(deliveryReceipt()).toMatchObject({ delivery_state: 'delivered', delivery_path: 'task.description', delivered_sha256: sha256(SKILL_TEXT) });
+      expect(row.refs).toEqual(expect.arrayContaining([
+        'skill_delivery:delivered', 'skill_delivery_path:task.description', `skill_delivery_sha256:${sha256(SKILL_TEXT)}`,
+      ]));
+      expect(row.refs).not.toContain('skill_attribution:unverified');
+    });
+
+    it('records an outcome with no delivery receipt as unknown delivery', async () => {
+      const row = await runSkillTask({ duringRun: () => {
+        db.prepare("DELETE FROM execution_evidence WHERE task_id = 'task-skill' AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt'").run();
+      } });
+      expect(row.refs).toEqual(expect.arrayContaining(['skill_delivery:unknown', 'skill_attribution:unverified']));
+    });
+
+    it('leaves unverified skill attribution out of skill fitness; the outcome stays stored', async () => {
+      const engine = () => new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests');
+      for (const duringRun of [(id: string) => testResult(id, 'info'), (id: string) => testResult(id, 'error')]) {
+        db.prepare("DELETE FROM skill_outcomes WHERE task_id = 'task-skill'").run();
+        db.prepare("DELETE FROM tasks WHERE id = 'task-skill'").run();
+        const row = await runSkillTask({ duringRun }); // assigned, not delivered
+        expect(row.refs).toContain('skill_attribution:unverified');
+        expect(engine()).toMatchObject({ reliability: null, efficiency: null }); // no observation of the skill, neither 1 nor 0
+      }
+      expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE skill_id = '.opencode.skills.running-tests'").get()).toEqual({ n: 1 });
+      // unknown delivery (no receipt) is unverified too; a delivered outcome next to it is the only one measured
+      db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, duration_ms, domain, evidence_refs_json)
+        VALUES ('unknown-delivery', '.opencode.skills.running-tests', 1, 1, 'coding', '["skill_delivery:unknown"]')`).run();
+      db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, duration_ms, domain, evidence_refs_json)
+        VALUES ('delivered', '.opencode.skills.running-tests', 0, 1, 'coding', '["skill_delivery:delivered"]')`).run();
+      expect(engine().reliability).toBe(0);
+    });
+
+    it('needs positive delivery evidence: an untagged (legacy) skill outcome is not counted; maker species are unchanged', () => {
+      const insert = db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, duration_ms, domain, evidence_refs_json) VALUES (?, ?, 1, 1, 'coding', '[]')`);
+      insert.run('legacy-skill-row', '.opencode.skills.running-tests');
+      insert.run('maker-row', 'loop-maker:doc-drift-and-small-fix-loop:codex');
+      const engine = new SkillEvolutionEngine(db);
+      expect(engine.measuredTraits('.opencode.skills.running-tests').reliability).toBeNull(); // stored, not an observation
+      // maker species never carry a skill delivery receipt: their fitness reads every row as before
+      expect(engine.measuredTraits('loop-maker:doc-drift-and-small-fix-loop:codex').reliability).toBe(1);
+    });
+
+    it('does not change the assignment text the runtime receives (ACE-001/STE-001/PL-001 prompts stay identical)', async () => {
+      for (const description of ['Run the bounded test', `Run the bounded test.\n\n${SKILL_TEXT}`]) {
+        db.prepare("DELETE FROM skill_outcomes WHERE task_id = 'task-skill'").run();
+        db.prepare("DELETE FROM tasks WHERE id = 'task-skill'").run();
+        const row = await runSkillTask({ description });
+        expect(row.received).toEqual({ title: 'Run tests', description });
+        // the receipt binds to the exact assignment the runtime got, byte for byte
+        expect(deliveryReceipt()?.assignment_sha256).toBe(sha256(description));
+      }
+    });
+
+    it('stores a failed process as a failure with unknown tokens null', async () => {
+      const row = await runSkillTask({ result: { status: 'failed', message: 'boom', metrics: { executionTimeMs: 1 } } });
+      expect(row).toMatchObject({ success: 0, tokens_used: null });
+      expect(row.refs).not.toContain('outcome_class:completed_unverified');
+    });
   });
 
   it('throws when task not found', async () => {

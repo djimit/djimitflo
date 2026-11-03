@@ -12,5 +12,7 @@ export default defineConfig({
       'packages/server/src/__tests__/runtime-governance-release-http.test.ts',
     ],
     testTimeout: 30_000,
+    // CI load: three deploys blocked by 'Hook timed out in 10000ms' in the Stryker dry run (28-09, 01-10)
+    hookTimeout: 30_000,
   },
 });

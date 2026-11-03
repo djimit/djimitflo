@@ -1,0 +1,400 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3ad4537d4aa8cb77a1d260469d3369419fd18be80d8064a03ba8e5ad63061c90",
+  "claims": [
+    {
+      "id": "claim_66722a4b508a48cc89b2f4e787373624",
+      "statement": "Authorization is modeled by the UserRole enum with exactly seven roles (admin, platform_admin, approver, maker, checker, auditor, viewer) mapped to fixed permission lists in the ROLE_PERMISSIONS table in packages/shared/src/types/auth.ts; that single shared table is consulted for HTTP permission enforcement (requirePermission, AuthService.hasPermission), per-resource checks (AuthorizationService), and dashboard UI gating (auth-store).",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/lib/auth-store.ts#L1-L8",
+          "version": "repo-lines-v1:sha256:0e871810a1bb02afa24180496433b9e499c412d735d0a2f62d718970321f3527:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBkNmNkNWVmNDZjNzI0YTY2NzI4MTAzMTBhNzc4MzkwZTlmODdkODlhODNhN2NlYWVhNmI3MzU1ZTMyMGI5YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFhNGVjMTA3MmI0YzUyMjdmNjI5OGE2MDljZGM2YWZjODAzZDAyNzU5MWRjNDFkYzRkNzc3MGZiNTdiMjVlMyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L55-L72",
+          "version": "repo-lines-v1:sha256:d1c845d64def2d860a3bee89b02f8625e4766273ac780f03aacacc78494d3f4a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5ZjIyZjEyYjk5Nzc0MDdkYmM1MWY0NjM2YjkwNWM1NGY0YTZmZWRhNjBlNzgyYjFhYjQ5YzUyOTQxMmY4YzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyZGViYzczOTVkZDYxZmY5MzlkMTViM2FmOGNkNGQwYmYzZWE4Mjk1OGJhZWY4NWVhZTUxYjJlZmY4ZmE4NTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4YzZmMDRhODg4OWMxMjlhMTE1ZWVhM2FhYTBjMTE0NjhjMjk3NTRhZjViMTEzNThiNGFlZmMzNjA1MjRkYTcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L266-L269",
+          "version": "repo-lines-v1:sha256:2070697bb338434617db48d7e3829ac9c2075993c17dfab85e640a1d6913131a:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWM1MzIyNzI1ODE5MDdmY2MzZTgzOGMzNTI0YjFhY2UwZTE1NGUxNTk3ZTBmYzY3NWMyNDVlMzc1OWEzZmNkMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzY3NDMwMjhmOTcwOWNmMzEwYWU3MmRjZjA0NGU4MTczNjM5NWNkM2YxMjZhZDZmZTI3NjUyOWYxYTQzMzkyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzNlYTA4Nzk2NDdjMWQ0YWE3YWM0YjEyYThmZjVkNjY5MzBiNmY4MDQwMjhlOWU5NDdjNDZhMGE5ZThmODE4MCJ9"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/auth.ts#L5-L83",
+          "version": "repo-lines-v1:sha256:4243f7eb217bb8d91b22600e003a8f56ae185d9ded504780783c1880084bf89e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5Y2Y2MGMzYTIxNWEwNmJjMTA2MTc1MDFkZWViZTZlN2I5MzAyZDUwZjdhMjRmOWE0MGM4MThmMzBlNjE5OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmM2Q4MDVlZmQyNjA4NzAyZjMxYjdlMTk4OWUyNTJlNjZlZDk1YmZjMjFjNjViMTg3YWY3MmYwMzVjNjJkZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExMDg5NWZjNWM0ZGRjMzg1ZmViYTk2ZWY0ZTIzMmM1ZWVlZjYzMTRmMTJmNmFmNTVkNjRlMDhmNWEzOTFmNjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e81736d049514730a9b994b84465326b",
+      "statement": "The role table encodes maker-checker-approver separation of duties: the maker role can create/execute work but lacks approve:task, the approver role holds approve:task but lacks execute:task, and the checker role does neither; because admin holds both, the data layer additionally enforces separation — ApprovalService.decideApproval throws SELF_APPROVAL_FORBIDDEN when decided_by equals requested_by, and AuthorizationService.canApproveForTask denies non-privileged users from approving tasks they own — while approval decision endpoints sit behind requirePermission('approve:task').",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L155-L255",
+          "version": "repo-lines-v1:sha256:1b2db4824569242e85e6967bfc625fcbcfdf7a51fc5d30cbdf252a01e6258833:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOGRkNjFmZjgzMDhlNWJmZjBkMTkyOThhZmM5NjE4NWRiNTM3YmQ4ZTNkNTc2MGQxNTAwMGIxMzJiNzQ1NmViIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMTA2NjYwNDc2N2NjMmYxZTJhZjMwNGI4ODNiZTQwZTZiM2VlNzNhZmVkMzUxMjUzNjIzNGRkZmZkZmM5N2UzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1ZjFkMTY2MGNlZjJkYjI2OWM0ZmU0OGJmZjUwMWFmNTE4ZDE3NmYyZTlkZTI0NzdjNzIzYmIzMDY0NWExZTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZWU2OWEzM2UwYWQ1M2Q3NTc1YmJlODMwNWEwZGFiODY3MTU0YmE3MWIxYTU4Y2FkNTlkY2VkYjhlNGVmZmUwIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L153-L158",
+          "version": "repo-lines-v1:sha256:aefe605cd4640e5abd55ba9d4c82592c8cac5aa39d73fa1c1f87fe59a726e0b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I1NDlmOGNiYzc2NDdlY2IyNDYyNzNmY2EyMDFmZWVhZTYyNDIzYjNkMTZiMjFiYzZlMmZkOGIwOGQ0N2M4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTExYzc2N2NkMmY1NTM0MzRiNjNjZTQ0Y2VlMDljZmJmNGM1NWNlYmNkOWZiOWYxYTY4MWYxOTIxZWIyYjE4ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzMyMjcxZjAxOGY5MTJjOGQyYzlmYjQyOTcxZWIwOTBkZGY5Y2ZhODVhMTNlZjY3ZThiYTkzMzQ0ZDk3ZDE0OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/authorization-service.ts#L39-L44",
+          "version": "repo-lines-v1:sha256:13238f6e12c1d96b16d604032f8c3edb9bb3bee3891743a85c6b9721b1539533:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmE0OTY4NWYwZDQwNDJlZWU3YTQ1NGUzZGFlMjYxNzU0OWQ3OTU4N2RjYTYyZjkxZjNlOGI3ZjliZjYwMzJjYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjliYjJkMDVjY2RjYTJkNWJhNTFhMjE2OWI3ZGVmMmI4ZTJlYjEwMDdmYzIxYmVkOGU3NTc4M2FmZDZmODkyMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhmYmMwMDMzYzkxM2FjZWZhMDg2ZWQzYzc3Y2I0MjliMWJmNzZhYTVjMWUwYmZjN2U2NzM0YjU4M2JmODYwOCJ9"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/auth.ts#L49-L83",
+          "version": "repo-lines-v1:sha256:7f9bc4accfa999b1a22ef44335571d7becda4b8da482710f2475bc36fb5c3456:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiOTI4MTU2MGNlOGNkNGU2NjA5M2M2ZTFmOTliNmE1MzM3NzZkNzAyNDM0ZTgzYmZkYjBmOTlhZGM2MmIwMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiYTZmMmNlZWU1NjAyZjNhM2YyYzVjNmQwNDQ2YjFjMTcxMDM4YjA5MjIzOGQzYjg0YmNmNGVkNGE4MjE3ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExMDg5NWZjNWM0ZGRjMzg1ZmViYTk2ZWY0ZTIzMmM1ZWVlZjYzMTRmMTJmNmFmNTVkNjRlMDhmNWEzOTFmNjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_62a2e8659cd041c8bd1f513acfeb15c1",
+      "statement": "AuthService signs HS256 access JWTs with a default TTL of JWT_EXPIRES_IN or '15m' and derives each pair response's expires_in from the freshly signed token's exp-iat claims; JWT_SECRET is mandatory in production (missing secret with NODE_ENV=production logs FATAL and calls process.exit(1)), while development falls back to a per-process randomUUID secret that invalidates all tokens on restart; bootstrapAdmin creates the first admin from AUTH_BOOTSTRAP_ADMIN_* variables and production with an empty users table and no bootstrap credentials also exits fatally.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L75-L77",
+          "version": "repo-lines-v1:sha256:bc8215ee7dd6e9b5a9e7456f6155aeb983c9edccac3ddbf35bd760935eab671a:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGVlOGI0NGU3NTk2YTJkZTVhNzJhNWQyOWUyNzdmOWRkM2FkMTRmOTk1N2M2YjA4NTAyOGJhYzViYWVjYjBkOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWZjNTUyNTI2ODFjZjdkMzZiNTI0NDc2YzFkMzRlNWNhMGM4NTc0MmJhM2ZjNGEzNGJmYTc2M2JmY2JiMjFkZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2JlNzUwNjllOGRlOGMwMWI1ZDY1NjY5MGVhMGFmZWZmOTZiNjExYzAzMDZmNzBmMjVkOWNhZjE1NDJjZjQyOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWM0YWFmNWJkNTUxZjM1NzQ4OGM4MmY3YTdjYTU0YTMyMGNlYjdlMTIwNGM1NThiYzI1YTgxZTNkZjY3Y2IyOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L12-L14",
+          "version": "repo-lines-v1:sha256:8729ef8440d4fe193dddef3253b7a1be517fb15d358fef101080dcadf5eb8807:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmMxYThkOTM3NjFhMDcxZjc4ZjI1MTcwMDk5MDczNGVhNWE5NzA1YjRmNjc2M2UwOTE4YmJkMzdhYzJjZjI5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI2NjJkN2E1Y2Q4ODdiYjY2MDE1MDQzNDc4ZGYxMWJhNTBkZDkxZDFmMzIzMTFlNTFkZmZjMDBmNmNhOWQ2NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGQ1ZmQ2N2Q2YjM5NjEwNGQ4MDVlNThhYmQzMWY4NzFiMzNlZmFhOTY2MjgwNmI2ZDI3ZDY2YThmYjU0MDI0YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGYwYzhkMjBhMmQwZTBjYzFkZTU3NGE2MjA5NWVmNzA5MTE0OTlkNzRhN2Q5MzE2OTgzMjIxNWE2YjZhYzg4OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L170-L176",
+          "version": "repo-lines-v1:sha256:93937f86f52afceea9691d1950cc75a195959819ee80cbfb2c0d564f2cdf2db3:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmVjN2FmYjQ2N2Q1ZjQ2OTRhOGU2MmNmOGE2ODY5Njg4NmJkZWY5OGZiNDgwZGMzMWNlMzEyZWNkYzZhZTMxZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTljMzI4OGY3MGVmMzc4MTg0MzgwYjc4MjVkYjMzOWVjYzM0MTZmMGJhYmFjOTU3YWQyMDE3NzU3NmY0YTY3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDNjNzdmZDc2ZmQxZDFjZTI5ODAwZDIxZWUxNTVlNGU3ZmYwOThmNzEwNWQ0YTI1OTVjN2UxZDc5ZWFkNDgzNCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L291-L306",
+          "version": "repo-lines-v1:sha256:65591ffea502f343f61dbb6ac82afe7c44bb8d3ff7fc07ff6d8a5b19a8972cc8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3OTVlMjI3MTBmNDEzZDY2NDcyYTQxNTQ5MDkyZTBlZTYxMjk3ZDcyNzJmNThlY2RkYWZmMzczZTBjZmNiZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzM2VhYjg2ZDBkNWIyZDM3YzM2YWI3YmJjNTRlMGEwMzQ4MjUxODNiOGIzYTQ1MmJmZTY1YzU5MzdhMjA4ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MjlhOGM4YjYyNmNhMzNhZTExZDdiMjVhNGY0OWM2MzUwMjBlMjgyNmQxZDZmZGE0NzdiNmFhZWEzOWU1MmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L38-L53",
+          "version": "repo-lines-v1:sha256:d8ef80bd8f719e58e2dd1f3ebf1160c312d0ee1323e47886e0ac68d33691b91b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4ODQyNTg1MGE4N2Q0MGI2OTI3ZTM3MzM4OThiOTY5NGI3MjAwMWQ4ZmM1YTcwZDFjM2Y5MDQ2OTI2MTJmZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YjFkZDg5ODdhODc4NmVjZmEyYjFiZWQ2MDZhYWZmMjU2YmViNDJkNTIwZjVmMGIzNmE2ZTk2NGZmMzdjOTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZDE4MzIzYzBjYjhmNDBlZjg5ZjU0ODNkMWJkNTNjMTA2YmMwOTVmMjE3YmNmMjFkODhhODYwNmY3YmRhMzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3cda8f5ea2bf49a0b4ac170b6b6181a7",
+      "statement": "verifyHs256Jwt (packages/shared/src/jwt.ts) hand-rolls verification instead of using jsonwebtoken.verify: it requires the header alg to be exactly HS256, recomputes the HMAC-SHA256 signature and compares with timingSafeEqual, and structurally enforces a present sub, a role belonging to the UserRole enum, finite unexpired exp, and not-yet-valid nbf, returning null on any failure.",
+      "evidence": [
+        {
+          "resource": "repo://packages/shared/src/jwt.ts#L6-L20",
+          "version": "repo-lines-v1:sha256:f143803ed658074ec0a6de5627b826d9873df0b030aa2bbb5e12441524eb9a70:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwYjY1MGU5NTY1ZTliNzc1Njg5MDRhZjRhNGEzMDJlMDI0NzY3ZmVjODdiZGVlYWEzMTQwNjI3YmNlMzg3NjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxMjgwZmEzYjkyY2VkMDA2NWUwYzYyM2U5NzE3YzMwYjA2NDhlNDBmNThlNzdhMmFiNDk0M2ZmNDRmZWNlNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c134ec8e834f44eb8e54c8a039566159",
+      "statement": "Access tokens issued by the pair flow carry an sid claim matching a refresh_tokens session_id, and AuthService.verifyToken rejects any sid-bearing token whose session is not active in the database (isSessionActive requires an unrevoked, unexpired refresh_tokens row for that user_id+session_id), so revoking a session immediately invalidates its still-unexpired access tokens while legacy non-browser tokens without sid skip the session check.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L139-L142",
+          "version": "repo-lines-v1:sha256:c3e8e22fd057162e260739b598b716d05da4a5e0f4d3e4953203677aaa8064ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2NhMTcxNjNkODViMzQ1ZTI1NGU1ODc4NGNkOGIwMDMwYzc2ZmFkYWM2NWQyY2JmNmY2MmI4ZGQxOWJjOTZjOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODkxNWJmY2QxZmYyMDliOTMzMWRjOGYzMDc0OGNhZTM5ZDg4NzhmM2E5Njk2OTk5NjY2YTI2MGZiM2YwM2QyYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzQxZjFmNGIzZDEwYjI4ZWIxNTZmYWE1NDE0NDE2ODFhYjU5ZTBlMzM0YzJjZDAwMzJmNTI5ZWFlMzZkYmE4MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTdkODdkNjgyNGM3MGVjNWQ1NDhiZGIxN2Q0YTg3M2MzODI4NDZkNGUyMTcwZDYyMTNiYTJlNjc0ZDExMjFiYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L57-L66",
+          "version": "repo-lines-v1:sha256:8f6a70e100a98fa9f7af323acb51ca77c7f8ab747f06e1fe2b4a9449bc52acc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZjM1MzA2ODcyOWI4NjUxZDM3ZjFjNjllNWJlZWFjMmE0ZjIyMDhlYmZhNTFmNWM3MDE1M2I0NDNlNGIzMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYjZjNzk2ZDQ3OWJiOTZiNzUyZWFmZTJjODIzNGM4MmVlYzc1Y2YxNDNmOWY2ZmI1NWM5YzZmM2E3MzQ3OWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjYjYxNjgzZDg3MDBlOTM4NzMxZjMwODk4ZTg1OWZkODBmNzc1OWVlYzBlNjhiNGJhMjdhMTFhMWVjYjgwZjcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L63-L86",
+          "version": "repo-lines-v1:sha256:905afd0e14de390d3f5bbbc134780639634118023bd19fc54e157c9aa973b547:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNWI5NTMzNTllZDEwZDgzOTE2ODQ2YTIwMjFmOGVmZTVmOWM0NTU3MDQyOWU0ZDM5YmQ1ZWM1YjdiODY3ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3YzA4Yzc3OGIzMmQ5YTM4MjFkYzA0Nzk5YmRlNGQxYjExMDBiMTZlMWU3NzAzZmY5ZWIxODQwNjJjZGZiZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0NTExZDQ2Y2JmYWYzYTlhZjRiOTU1Njk2ZWM0OGE1NzBjYjExYzYxNTkyYzI3ZDdiMmUwZDg3YTQwNjM5ODIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fa164a2a6139432ea62f479e565ece1c",
+      "statement": "Refresh tokens are two concatenated UUIDs stored only as SHA-256 hashes in the refresh_tokens table (token_hash primary key, with issued_at, expires_at, rotated_from, revoked columns and user/session indexes, auto-created by the AuthService constructor) with a 30-day TTL; the raw refresh token is never persisted, which the cookie-session test asserts by scanning stored rows and response bodies for raw-token absence.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L90-L96",
+          "version": "repo-lines-v1:sha256:535bf10d15be02c9d890ba69700884d5caf8d4ac9812f9302275ed48fbf04f86:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmNhMTY1ZWEyYTMwMWE3NTE1YzI1MTI0ZWJkYWFjMzNkOWZkNDcxYjZkZTcxZTU4MzZkMTkwZjEyMWYxZjY5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDhlZTQyMjVhM2RhMDY4NTdjMTlkZWE3ODUzYTI2MzA0MWY1NzEwNzJiOWJkZTdkNjE2MWMyNjRiOTZhMmNjMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODIxNzFkZGM1ZmYzNTk2ZDI0MTk2MDFkOTE3MTg5NjAzNWEzNDc4OGEzMGMwOTM2OTdjM2U4MTBlODBkN2E2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2YyMDQ5ZDMzOTU0NWMzMjBmMWQ4ZjQzOGUxYjc0MDAzN2Y3N2FmZmUwOTE4OTA0ZGZiMGVlMzYwZGNmODIxOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L170-L194",
+          "version": "repo-lines-v1:sha256:588ecdd8de74b8318a6309a7281e19c288b213a01338bf1e593f73af37412831:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlYzdhZmI0NjdkNWY0Njk0YThlNjJjZjhhNjg2OTY4ODZiZGVmOThmYjQ4MGRjMzFjZTMxMmVjZGM2YWUzMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5YzMyODhmNzBlZjM3ODE4NDM4MGI3ODI1ZGIzMzllY2MzNDE2ZjBiYWJhYzk1N2FkMjAxNzc1NzZmNGE2N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNGFjOGFmZWI5ZTMxMzg1ODIzNzM0NzE5YjdjYmNkNDViN2U1ZDU3NzYxNWQ2NGY5MmNkYjE2M2VhNjY3MjQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L262-L264",
+          "version": "repo-lines-v1:sha256:aa2971691b4a0b3158e2fd564c02f757860b396879b1ad1af0b5867130b17e16:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDJmYTQxOGI1NTFiM2RmYmJkNjU3ZGQ4NzBhYjJhNTg0NmE2NTJmYzk2MmRlOTFmZGQ3OGJkZGEyNTFlZDgzYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzliNWE4ZTA3Yzc4ZGZiMzZjMGU4OGZhMjY4NTNmNzVkMzI2NmU4YzQxMTNmNWVlMDUyMWUwMTU3NDNjN2YxZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjA2MGY5NWYwYmRlNWQ5NDRhNDgyZjI3YWE3MTMxNTQzZjMwM2UxMjE4MzZhYWVmZWIxYWI2YzZiMjFhZDk1MCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L271-L289",
+          "version": "repo-lines-v1:sha256:c49948dd53cb6cbabaa24c3eb206244c026098e450dfce2ac9e7207300ab2478:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyZWYzYTY1YWY3MzEyYTE2OTg4YjU5NGNhNGJmY2I4NDAxN2ZmYWZjYjMxZmFlZDVhOWY0YzliMjRkYTRhOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNDljODY4Mzk3NzFmZmNkNjc3ZTVjZjQzYmM4MWFhZjZhNTMwNTlkM2FmZTVmMjE3MTE3NzgzNDZhYjQ3MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0ZmI0ZWY4MDA5NDJmMTk1ZDNmOTUzMTQ5ZDM3MDJiMWQ5NmM2N2ExNDljZDdjOWE3ZTQxNDE5YWZlNjI3NjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f691a5ef768b4f129b80be3c682489dc",
+      "statement": "rotateRefreshToken runs inside an .immediate() SQLite transaction that acquires the write lock before reading: it accepts only unrevoked, unexpired token hashes, and if a presented hash matches a revoked row (replay) it revokes ALL of that user's refresh tokens — which via sid checks also kills every session's access tokens; successful rotation revokes the old token, keeps the same session_id across the chain, and records rotated_from as the predecessor hash for durable lineage.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L90-L95",
+          "version": "repo-lines-v1:sha256:b8e8c535c48c3720f1143f63dcb64d190684f12889c580a0a958c54c6fd6f2fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmNhMTY1ZWEyYTMwMWE3NTE1YzI1MTI0ZWJkYWFjMzNkOWZkNDcxYjZkZTcxZTU4MzZkMTkwZjEyMWYxZjY5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM5NTc1ZGZkZTQ0NmU4OTU5ZjA0ODYyZGFlYzExODU3ZGQ5OGIxMzU5ZDEyYTM1ZjViZmNlMTY1OWI0OGJhYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODIxNzFkZGM1ZmYzNTk2ZDI0MTk2MDFkOTE3MTg5NjAzNWEzNDc4OGEzMGMwOTM2OTdjM2U4MTBlODBkN2E2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFlNjE3YjQzOTUwYTNhNzBlZmNiMGFkMzE3ZmM1MGRkYjc0OGIyMTIyZmNkZjg1NjQ2NzdkOTczYjFmOTM2NyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/refresh-token-rotation.test.ts#L61-L107",
+          "version": "repo-lines-v1:sha256:2671bf5867c1c563bf29db54fe3b23f8e2629bc0bec2a3bda3861355007bb77b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwYTJjNzRlNDdlNWE2NDdhNDYzYmM1NWQ2M2NiNzVhZGZlMTlkNWE1NWYyMDAzMjM0NzBkY2QxYWMyMWQ2NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0NzdmNmJlZWJmYjNiMmY5NzgyNWZmNzk5MTE1NzgzZjBmOGJlMzRkODQ0NDhlYjRkMzc3ZWExZmYxZjkyZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNTA0YWQ2OTQwZTYwN2E0ODQyMmRmNDM2YWI5Zjc2NWQ2YmY3ODdlMDJkMjg4MjA4YWNhYjU2NDc0ZGJmMGUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L196-L231",
+          "version": "repo-lines-v1:sha256:07ac6e3763478f0fafee1ca98319d83b7c4bbee80e504d4b0d8f9630ed405276:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5YzMwY2IzZmNmNjk3NDdhNzU4N2M5MWNlOTljMzlmYTVkOTgxMGI3NzY2OWExMGZiMWIxYWRjZjFkMmQyMzMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1d24c6b80b2f4066a7a1b1810027277b",
+      "statement": "requireAuth and currentPrincipal treat a valid JWT as proof of identity only: on every request the user's role and email are re-read from the users table and overwrite the signed claims, inactive accounts receive 401 AUTH_DISABLED even with well-signed tokens, and a non-default organization_id claim must equal the user's current DB membership — a membership move invalidates the token with 401 AUTH_INVALID; role demotion to viewer immediately turns manage:config routes from 200 to 403.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-principal-chain.test.ts#L59-L69",
+          "version": "repo-lines-v1:sha256:50b6681e1b81e300f69f5bc389263eb995999535e5e76be301f452a8801cef22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNzg2OTM2YTJlOGZkNzNkOGZkN2QyNGEzMjE5MGFlM2Q5M2Q5N2RlZDQzYzIyMDkwOGZkY2U4NjA1Y2ZlN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZTNkNTAxMTg4ZjIzNDdhZjA1MjE0YzcxNDU4YjE0NWE1OTkyZWE4MmQ1MzM1OWVjODcwNzg2YTFmYWIyZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwZDI1NjhjMTVjOTkwOThhZTVmY2U0ZWRhYmRmZjAyM2M1NWViYjkyOTRiMTU0ZmMyZjBiZTY2ODZiYWIzMjQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-principal-chain.test.ts#L94-L98",
+          "version": "repo-lines-v1:sha256:042c8e91db36be91d5841eb10df50606bd61d1b5b4283d2e375414b2ee15b337:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFlOWY4MDcxMDJjMDgzNTAwZjZiNjVmNzdjMjJlY2RkNzM0NWJiN2ExZjU4MTQxZWEyZWJlYTBlMzBiY2NkZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmE5NmZkNmM0YTE2NjgyOTk2NGQ4MGQxYjc3MTY2YzllZDIwMmJiMGQ2MDQyOWIwNmZkZjkzOWQ5YjA1ZDc4ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2JiNjE0NjgyNzBlMzZlNmI5MjNmYTI1NTcyODEyZmQ1MGE0ODRhZWUyZTYwYmViMDY4NTczN2U5OWRjMWJlMSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L17-L53",
+          "version": "repo-lines-v1:sha256:2b479636f5f209447bfe3eac21ce4d7c991ee1fe497c3c693614c2c733af1917:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxOTVkNzczODI1NWI5MTVhZDlhYmQ4YjVjMGZmNDYwYjE0ZTNmZjM4NWQ0YjNiNTdkMmVmMDVkOWM3YmY2ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3ZTJiNDc1MDU1OTM1N2U5OTg5ZjUwZDA2NTM3YjVjZGZhZDhiMTUxNmZiYTE1Mjc2N2FlOGY3NjczOTAyZjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_02788c28c5a040978dabd00f6668014e",
+      "statement": "The auth middleware's requireAuth, requirePermission handlers, and requireAuthOrSpawnToken are tagged with requiresAuth: true; the route inventory (mountRoutes/collectRoutes in packages/server/src/utils/route-inventory.ts) walks the Express mount table to mark every route authenticated when any handler in its chain carries the tag and renders GET /api/openapi.json with per-path bearerAuth security, so the published auth surface cannot diverge silently from the enforced one.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L137-L139",
+          "version": "repo-lines-v1:sha256:6b0efde040491abb87cede24a4bae7f54fc2253822b2c275f445e84d04d18236:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjhhNjQ0MDA0NWYxZDM5ZGFiMzVmZjg4MWIzNTFjZjAzZThjM2M4ZDllM2M1YzNlNTY4MGNmZGM4OGUzYjY2YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmI1M2Q3NjRlNWIwMDBhZDgwYzE4MjYwNmU2NThkMWE5OWQyNmE0NGFhNmQzYzk3NzM0MjhkOTI2YWZmZDg1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDBiZTllOTZlNmU2NTJkNGFiOWNhODZlMDM4MmVkN2UxMjQ4MWIwMThlYmEyZmIwOTgyMzEzYzY3OTU1NWMyZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGRiNGMyNmM5OGQ1YzlkOTM2NWU3MGExMTAwODI0YzgxMjI3MjdhNWE2MjhjYzBmMmE0NjdiMmViYzM3MjQyNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L71-L71",
+          "version": "repo-lines-v1:sha256:9ec4b6345994ad47eba2af729957e634f2a411ad72e34c2eb1cd2643afa92bc6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWVjNGI2MzQ1OTk0YWQ0N2ViYTJhZjcyOTk1N2U2MzRmMmE0MTFhZDcyZTM0YzJlYjFjZDI2NDNhZmE5MmJjNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWVjNGI2MzQ1OTk0YWQ0N2ViYTJhZjcyOTk1N2U2MzRmMmE0MTFhZDcyZTM0YzJlYjFjZDI2NDNhZmE5MmJjNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzE3NGI2YTY5Njk4NDBmZTQxZDJiNTM5MzcyOWQxZWYwNzU3MTY3MjAwOTYyZjhjOTg0NDEzZDQxNDY2ZGJiNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGNjZThhYjk5OWE5OGFmMGJhNzhhYTRlMDcxZmQwMTFjYTMzMDU4NzY5ZTMyNmRlYzg0ZmNlZmMxYTQyYmVlNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L161-L168",
+          "version": "repo-lines-v1:sha256:7e24676ba4d8160da8b3ce4fdd89f17d57c3c2a310702bb0e6995d1eb7c5c1ab:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE0Y2YwZmQ4YmRkMjRkMTg5ZjJjOGYxOGNmODk0YzQ5NGM5ZDlmNzhlZDc4YTE1YmJmMWEwYmQxNTdlMjY3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWM2NTg2OThlMmMyYjZlZTBjN2MxNDgyNTM4NDEwYTM1YjM1N2YyODM2ODRmNmQxYWQwN2Q5NGQ2YjYwZDc5YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2RmZjA4MGNmODg4N2ZjOGU5ZGZmMTE5M2U4MzE5NDUwNTcwODM3MzY1ZWUwYTg3OWJlMDUyNjI2MDdlMzU1YiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/utils/route-inventory.ts#L25-L44",
+          "version": "repo-lines-v1:sha256:47d884d421bf28b46e03d114bc60e8f2086859882f5da166f743b780844205e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ZDFlYjUwNjMzMzc4MDVmYmQ1OWFkYzA4ZTdiOTQ3ZTRhNTk3MDVjMmFkZjNlMzA0MjgxZDY3Y2MzMTM2MWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmNzA3M2E3YmIxNmE3ODE4NTJjMmE4OTFmZmI4NTcxZjkyNTQwZmEyZWM0YmM2NDVkZjRkODIzYjAyMzY2ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4MjBmNDgxZjVlZTAxMGMzYzI3ZGY1MzViZWM4NTMyMGU4OTc2NzAzOTc3NDFjYjc0YjU1YTU2YTIyZjdhMzAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/utils/route-inventory.ts#L56-L84",
+          "version": "repo-lines-v1:sha256:fffababb53e1ed8a927821c7200e2567528f486232aa6638be5235da7c484b9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0YjYxNjRjNjBiMDk2MTg4OGEzMzBjOTA0MWQ4M2M2ODNkN2U3Nzc2ZmYzZmVjZTViOWQwMDllN2Q2MzU5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwYzVmYjA1MzNmZTc3NWQxNWM0YzY1NjIyM2I0ODliYzJjZDg1NGM4OGU2YzcwOGIxYWE3NDA3NmFkYjM0NzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjNGJhNDRjNzJiNWU2MDI0ZjhmODVmZjY0YTQ5MzUxYmJhZmQ0ODIxM2U4ZTllNjM3ZWZiOGIyNzUzYzk5MzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_952389d3c0644425875ce36d032712f3",
+      "statement": "createRoutes throws AUTH_MIDDLEWARE_REQUIRED when constructed without an AuthService/AuthMiddleware, mounts /auth publicly, and mounts nearly every other API prefix behind requireAuth — with deliberate exceptions for /version, /health, the Telegram webhook, and the signed runtime-callback surface — while /swarms/spawns is mounted before the generic /swarms guard with requireAuthOrSpawnToken so nested-spawn children can authenticate with scoped X-Spawn-Token headers.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L112-L123",
+          "version": "repo-lines-v1:sha256:6bacdcaf167eb34905a9ce29a1756a8de4e3d360ec2e8c63869d5f50ee7b9ee5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YzE0YzhlNTNiNjc1YTI0ZDU4YmFjZDExYTA4ODBlNjBmZDU0NDE1NWRlMmI5YjU0OTg2YmFiNDNkZDYzOTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NDM5YTVjODdkMDM2MzE1ZjUwYWM5MjNmYzQ2NTMwMzY1MTdiM2U0MmNlYzZmNTVmYTY2MzNiMDM2NWY4YzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiZTMwYzJhNzkzZDE4YTBkMjgyYjYxZTZhMGIyYzdiNjE0ZjVkYTliYzlhMTMxMTRiYTEzMzBmNTU0ZDE0ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3Y2M1YmQxMjU2MzE5ZjM3OGI1MDcwN2NlZmQ2ZDQxMjliZmM0YmU5YWRmN2RkN2YzZDA2NDQ1NjI0ZDcwMGEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L142-L159",
+          "version": "repo-lines-v1:sha256:5795c2e62e5b6767f6c75490344dccd933b4b5c888e68fd6131de6c3d659b13a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzM2Y2NGZkZWRhMjM2M2VlMzgwYjAwNjk4ZDc1ZDg4YjE2MjM4NjM0Y2ExMTRmYzM3MzcyY2UzYTg5Mzg0MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0MDE5MGEzMDU4ZDliMWU3NmIzYzU1MzdlNzI3YjViYzM2ZGIwNTU0Yjg3MWU1MGRiYjhkYzk1Yjg2OTgyNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2NmFhYmEzYmE1OGJkNDgwZTdiNjZmMDg5ZDYyNzUwMmFlZTY5ODc2NjY5ZGM4YjYxNjBkMTJjNmM2NWFmNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiZmI2N2Q2NWZlYjY0MWU3YWViN2VhMDFlYjUxYTI2MTQ3NDcwOTI2NDEyY2UxOGY5NDVlNjM0MDE1YWRlNTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L185-L195",
+          "version": "repo-lines-v1:sha256:b86b7e0be2e0cde7f242cc0a4d55a4aacc082fe5a0bc2ec75284d19eda860ca4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMTU0NDdhYzM3NjU5NzQ1Mzk4YjY2NTYwMjk0NmEzNjQ5MTljMzAyNWY1MzYxNjAyZDI4MTViMDRlOTc2NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NWEwNTk1ZjRhZTA1MDU3OTM2NGEzNjc1ZGM2OGQzN2RlMWUyNTYwYTdlZDllZDA4NjRkMjM5NmViNTIwM2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkYzBiOWUzZTc5NDI3ODllZWU3Y2M0ZDNkMDlmNmY2NDhlMGM0Y2UzNDYwNTUwMGRjY2NkNGQwMGYxNTgzZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4YjdlZjQwYzAyOTY5ZmU1ZTc0YTYzN2Y1MDRhMmI4ZWJlNTE1Y2E0ZWJjMzE4YTNiNjIyNGE4ZWI4YmE1MTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4fc5ffa991d940ac812fb474ec61381f",
+      "statement": "requireAuthOrSpawnToken admits either a fully verified Bearer JWT (setting req.user) or an X-Spawn-Token header (req.user left unset, real scope/expiry validation deferred to NestedSpawnService); a malformed or expired Bearer returns 401 and never falls through to spawn-token treatment because a bad Bearer is treated as an attack signal, and routes needing a user permission sit behind requirePermission which 401s token-only callers so only operators create root spawns.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L89-L139",
+          "version": "repo-lines-v1:sha256:205d6cf56a7de6e9988a41aaf54e553808ce89842aee21ae0598a4f113b4c774:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTNkNzY0ZTViMDAwYWQ4MGMxODI2MDZlNjU4ZDFhOTlkMjZhNDRhYTZkM2M5NzczNDI4ZDkyNmFmZmQ4NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyZGViYzczOTVkZDYxZmY5MzlkMTViM2FmOGNkNGQwYmYzZWE4Mjk1OGJhZWY4NWVhZTUxYjJlZmY4ZmE4NTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkYjRjMjZjOThkNWM5ZDkzNjVlNzBhMTEwMDgyNGM4MTIyNzI3YTVhNjI4Y2MwZjJhNDY3YjJlYmMzNzI0MjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bdb2cf71915a4b9586470daf930c16ff",
+      "statement": "Browser sessions are distinguished by the X-Djimitflo-Session: browser header: /api/auth/login with it issues a revocable token pair and sets a djimitflo_refresh cookie that is HttpOnly, SameSite=Strict, Path=/api/auth, 30-day max age, Secure in production unless AUTH_COOKIE_SECURE overrides it; /api/auth/refresh and cookie-based logout return 403 without the header (blocking ambient-credential cross-origin use under explicit credentialed CORS), the refresh cookie must be present, well-formed, known, and unambiguous with no JSON-body fallback, and failures clear the browser cookie.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L68-L129",
+          "version": "repo-lines-v1:sha256:d7848fc9f1fcec2b7bb6e55813c465cef22ecb13e6eb877ce7766ea7fa818f44:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMjg1Y2JkNGEzMzA1ZDMxMDgyOWM2YTRkNzc1YzE2YTIwZmM4NThhYzQzNmMzMzBmYjFkYTI2ZTY1Mzc4M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNmYzMjhmM2JiZTJjZmJiMDg1MDNhYjFmMzAyZDJlMjRiMWIzNmFmMTc2NmFiMWM4NmUyODJhNmI5ZTlmM2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzZmE3NzdkZjUxMGQxN2NlMWZmOTc0YmU3MDQ5YjhmOTBhYTVkNWM5ZGJiOWU4OGJkY2ZlZjU0NDQ0NWRlOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyNjg0MjIzYmFiMGI3NDkxODNkNzRhNjU2ZjE2YTMyOTI2NmE3Njk4NDlmNDRmMWRlMWM2ZGNhZDhlMTQ2NTcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/auth.ts#L104-L141",
+          "version": "repo-lines-v1:sha256:223acc7690a21141665aec915500e7dfff69edb488d4fac85b2a32342b7c7fd5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNzNhMTMxMzVhMTYzYmM2ZjY0OTEwY2NlNjIxMzQ0NzY4YjBkZDJiNDY4ZWQyMjYxYzdhMDk5NGJmMTU3MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlMzhhZmY2ZmFjNTNiY2Q5OTc0OWVjMDhjYWYzN2JjN2YyZTU3ZTg4N2RlMmM5YjJiNmY3MjAzMWIxNTA5ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwMzhlMGZlOWNjMmU2MmNjY2ExNWJkNGYyOTFiODVlNmEwZWYzYWI0M2Y0ZGNmNWE1YTU3MWI3YjEyZTA0MDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/auth.ts#L15-L39",
+          "version": "repo-lines-v1:sha256:b2dca75dd7f3dfb051e0aaf1c1d50ecbcb9e26033f8bdac667a545adc344e682:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxZWU1YzRlZmY3ZjE3MzRiNTMyNzY2YWQwOWRmZjIxN2RkNGUyMGVmMjc5OTUxODEyYWYwMGFiMTdmNjgwZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzZTYzMDNhNTNlMDE4NjRkMGY4MmEwMjcyNTZkYzkzNjY3NjlhOWNlNDJkNjk3ZmYxMjVmNDMzZDYwZDZjN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5MGJjNmFiZGJhZTdhNjI0MTI0MzlkYWFmMjdkODg2OTVhNmYwMTk1YTE1NWM4MGRlNzUzYjBkMzEzZDc5NzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/auth.ts#L57-L81",
+          "version": "repo-lines-v1:sha256:718f1c24b4d82d8f8d4e7233d7bcebb9a8293880b86d44d230e1b2a9d7356953:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNWU0NDEwN2RiOTU1MGU5MGYzODBmNGRkYTFlNGI4ODRjZTc5ZjQwMjFhMjNjOTAyODdkYTU4NTQzNmQ2ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ODVkOGFiYTg1N2ExNTMwM2Y4ZGQyYmZiNDZlM2NmMmU3OTg3YmRlMjI2ZDIxMjVkMjI2MDNiMTA1YzAxZDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4b1327586c5a436797fc8c7750e0fbb0",
+      "statement": "Login, refresh, and dual-session logout wrap their token-table mutations and audit writes in withSessionTransaction (an .immediate() SQLite transaction) plus auditService.record calls, so a forced audit failure rolls back the entire credential change atomically — the cookie-session tests mock audit.record to throw and assert HTTP 500, no Set-Cookie, and an unchanged refresh_tokens table; login is additionally guarded by loginRateLimiter (per-IP 429 RATE_LIMITED with failures recorded and counter reset on success) and rejects malformed bodies with 400 before credential checks.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L179-L208",
+          "version": "repo-lines-v1:sha256:efada9630ce931ac6ee9936f3aeff64f733435c0ed1db82fbe833d30754a37fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZDU0OGIzOGQzZjcxYTI1M2Y5MzYyNWY3MmMyYmZiMGVhM2VjZmFjYjQ0NTE2YjIzYmRlODdhMWI3ZTdiMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmNzA5MWMzNDg2MTk3ZTM1YmYyMGE0NzQzNWE2ZDYxNjFhY2I0MDhlOTgyOWIwNmUwODc1OTQyZmVjODA4MTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyN2FkNzcwNjY1ZmQzNDJjZTZmNjA1Njc0OWMzYmZhZGFmZDNiZDVhNjczY2VkMTUxMzAxNmMxMjk2OTcxNjQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-principal-chain.test.ts#L100-L112",
+          "version": "repo-lines-v1:sha256:03d17b53fe3609ac52a47d94fe5280be31efea3fe82be41a5ed787ab0a08d669:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiNmZlYThmNGMzYWNmMWM3MDlmNDVkNTBhY2Y5YjhkYWI1MmY2OTBlNGVkMTNkNDk0Y2I3NTVhZjNiYmFmMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5MzBiNTljMjJkMWVmNjA3ZDFjODA1OTU2N2QzN2E4MDNmODkwMjI0ZDdjZTdhYTNiNTJkNjFhODFjYzAwYjkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/auth.ts#L41-L102",
+          "version": "repo-lines-v1:sha256:e006ef27dec88145e38b09763900de21fd06009c424f40fac4ecd0f4809d2dc1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZDdjMzcyNzNjYjJiNTg3ZmE3Mzk1YWViYTU2ZTNjNWIzOThkNmM3MDk3YWY1YjIzZGEyZmYxY2E0MmIzYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZjZmMmNmZDJlZGRlZTIyMDAxZjE1YTg2NWI1MGNhMGI2YWNhNmI2YjA1YmJlOTM3ODY5MzNmNDhlOGIzYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMThlYmU3MjY5YjI4NGNjYjIxNWRmZWFhZTNhODVhYTJlNzE0MzQ1MmFmMjFiMDE0MjVjZmZlZmUwOTYwYWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L88-L90",
+          "version": "repo-lines-v1:sha256:efadb71589a28e73d25dbcaa16cf2d4bce2cf37bea78054675483c24e0953482:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTMxNTllYTBlZmJlYmVjYmY2NTA3ZjIyMjk5MzMwZTBiNWQwYmMzNTBhYWQ2YzM2OTY0Y2U5MDBiMTQzZmUzNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTc2ODE4NTI0YWJlNjE2MGYwYzk2NTVlNjAxNWY3ZWZmNmQwMTMzZGRiMDczNDg3ZjE3NjlkMTE2NTQ2MTc4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmRiZDgwNGE1ZWYxNTgwNTY3NmFkMzI4MDU2N2JiZGUwYmI5ZjgwYzAyNjRiZTEwMTM3MmY4OTM3YzlhNTFkYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4651366b512a4983a140ab8ce557d8a3",
+      "statement": "The legacy non-browser login path (authenticate) returns a bare unsigned-session { token, user } JWT with no sid claim and no refresh_tokens row, and legacy logout is audited but does not revoke the token — the cookie-session tests pin that verifyToken still accepts the token afterward, so callers needing session revocability must use the browser cookie flow.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L57-L66",
+          "version": "repo-lines-v1:sha256:8f6a70e100a98fa9f7af323acb51ca77c7f8ab747f06e1fe2b4a9449bc52acc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZjM1MzA2ODcyOWI4NjUxZDM3ZjFjNjllNWJlZWFjMmE0ZjIyMDhlYmZhNTFmNWM3MDE1M2I0NDNlNGIzMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYjZjNzk2ZDQ3OWJiOTZiNzUyZWFmZTJjODIzNGM4MmVlYzc1Y2YxNDNmOWY2ZmI1NWM5YzZmM2E3MzQ3OWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjYjYxNjgzZDg3MDBlOTM4NzMxZjMwODk4ZTg1OWZkODBmNzc1OWVlYzBlNjhiNGJhMjdhMTFhMWVjYjgwZjcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/auth.ts#L83-L101",
+          "version": "repo-lines-v1:sha256:123bb5b28efd1dd0f8d9de200105eb950d2357568250b85e4960e60fba1af9da:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzMmMwN2Q5OTczZWRiMTMxYjFmMzBmZWRiYTBiZmYzZTQ0MDdjMzNhNmE2ODBkYWYwN2UwYjI5ODNjNzY2MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmMTk4ODE5NjAyYjRkNmFkNjcxMTFmMDg0YTBkZDhjOWIwM2FlNmI1NjI2MTU2ZDZiMWU5YmU5ODg5MzFhOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5NTE4YjcyOTg3ZWYwZjkwZWU0NjY3ODljZTI2N2M0YzQ5MTM1YjIxNzFlYTFlM2U0NWRmOGQzMjU3MTc2ODIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L133-L143",
+          "version": "repo-lines-v1:sha256:87a4ed754d7aa7b872f91a345b68fee11865c45cffb5b4f3f01f39791786dd4b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYjc5NGRhNjAzYzYwMjcxZTA1NzY0ZWZjYmM0MzJkNmE5NGRlNzliMzQ0ZmVlNWVlZjljMjdhZDUwNjlmMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczZDBiOTIxNzU0M2ZiYjVlYmY5YWM5ZGJkNTA2MzkzMzU3ZjJiZWI5YWVjN2U3NGU0ZTgyZjRmZDJjZjQ1MjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxOWU0ZTQ5N2I4Njc4ZDNkYTI0NzYzMGRmODdlMWQ2M2EyMDkzYjFkYmRhYmQ2MTk3M2I5NmJmODhkYTQ0MmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7a77ca2c2009460faa5a06eb4e21529e",
+      "statement": "Browser logout revokes only presented credentials inside one transaction: the session family named by the djimitflo_refresh cookie (revokeSessionFamily revokes by cookie-resolved user_id+session_id) plus, if a Bearer token is presented, that caller's own sid via revokeAuthenticatedSession — body-supplied session ids are never honored, logout is idempotent, and sibling sessions survive.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L132-L147",
+          "version": "repo-lines-v1:sha256:00aa44b179554307d6a5ba3f6baf3504a12486ea26aa0f39908ba95172802626:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZTJhZDk2NDJkZWY3MTA1OTYzNDZjOWI1YWQwM2U5ZDliZmY5ZDBjMjliYzU0MjQ3ZTJiMWZiOGY3YTU3MjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwMjBiNDY2MTgxMTcxN2FiN2NkMWE2OWFkZTY4YjQzNmY0MzkxYWRmYmM2ZjBmOGU0ZjdlNTVjZTk2ZWIzYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YjA3OTRhNzgwOWJiOTZjY2NjZmIyNGRiNzYzMWU1MTA5YzE0ZjA2NWYyZTY5ZGMyMGQzYmIzNDFlMmJhNGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L166-L177",
+          "version": "repo-lines-v1:sha256:2fd84577bed5a47fd9d052bc99adc7f41d1916f071023e5243cd0d1b3836cd74:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjNjk4OTJmMGU3MGQ1NDNkZDEwM2YxMjIyOThjMGE5OTJjMjBiOTVhOTQ2YTdlMGJhMTdmOWI4MzQ0NGJkMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkNjlhMjhmYjNlN2U5ZGZmNDdhZjBhNzRkOWQyZWM1ZTA5ZWJkMDVhZjlkNmViZjUxMDAzZmZjYmVmOWQxZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NWE1M2EwYzQzOWZiNWRjMjhhMzQyNDIwMDM2MTkyNzg5ZjI3ZGVmNTI5NzRhZjE4NjE2OTAyODM2MTFkYmEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/auth.ts#L152-L179",
+          "version": "repo-lines-v1:sha256:dfecd10958173723182f4606d96353b1342a5e7c511f0a8165bb3dc578ddfa20:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZGY5ODMxNzRmMWM5MjdkMjc5MmFlYWU3Y2E0ZTBkODc3NzdjOWU1NGY3MjU3MzU2YTBkMDNmODg3ZWJjNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OTJmODQ3YmIyMWNiMjkyZGQwOWY3ZmE2ZTdjYWM0YThjMTRkOTdkMzg5NjMzYjNkMTUyMGVhMTRiNWIxZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1ZDAwMDU0OWVjMGM0NTQ2NmZkNWQ2Y2RlZGVlZGFiMTdhODRkZTA0MjZmZTUwZWIwYTM1ZGRkMmMxMDdmNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmYWVkMGVhZmM5ZTFhOWY2ZWMyOTNiMmQ0MmY1OWJkYWYyNTg5OWRmZjEzNzdlZDJiNzA2ZDljM2Y0YzkwZmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L249-L260",
+          "version": "repo-lines-v1:sha256:62b064850a5b2abbce58fe0b490ce46a8e421736fad25ec22de260cd6ec470e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmOTZhZjVjNzgxMzI0NmEwNzExYjE4ZWQ1NDM5ZWM2MDU4NTk1ODViOTcyYTY5NDE2NDk0Y2I5OTkyOGNhNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNGMwMGE2NjNkYmUxODViNTJhZDM0Njk4Mzg0NDQ4NWIzMjM2NmI5ZTc4NmZmNGIxM2RmOTJkNzc4YjNlYTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1OTAyNTcwMzY4MDUyNjlhYWM4Yzk4YWIxMmVmNGQ4NTUxYjlkOWFjMzQ3M2IwNzc5ZDRkOWQ4NzA2MmEwMTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_627cb8b6b7004087b52f366e0e0e5dd9",
+      "statement": "The dashboard's useWebSocket hook sends the JWT as a 'bearer.<token>' WebSocket subprotocol rather than a query string so it cannot leak via access logs, browser history, or referer headers, and the server's WebSocketServer handleProtocols echoes the offered bearer.* protocol back per RFC 6455, while WebSocketService.extractToken parses the sec-websocket-protocol header for the bearer entry with only a legacy ?token= query fallback.",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/hooks/useWebSocket.ts#L50-L56",
+          "version": "repo-lines-v1:sha256:33e00b16ca3084a9d26e32f5e0bd4df17ce7436f3a068290bdcc2811b5165926:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTViYmJmZGI5NjY2OWQ5ZmE3Y2ViODczNmVlYjc0ODllNTJiM2UxZGFhYWFlNzQ5NmI1ZDNkZWQzODQyYTJiNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmEyMGJkNTllMGViNWJlZGRkMmZiNDRkNjcwYjZkNGFkZThhNGRjODk3M2EzMDc1YzljNTgwMmM0MjIwNzZmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWQyNTkzODJhN2Q2ZDA3MTFlZGVmZTM5ZTE0NjM2ZTBlZDA0OGNhY2ViZjM2ZTU0YzU0NDMyMjQyZjViNGQxNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTQ0YjY2ZDUwYTBlZDJmNDNkZDQ0MzAxMmUzZjE5M2E3NTM1MjBjMWRjMTcyNzg2MGIyMzYwYjc2MzllZjFjMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L166-L181",
+          "version": "repo-lines-v1:sha256:f674b5c30f1ad225c53e781226c604f921bcf648be5b5f1e6c8a31d5ba25dc96:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxZWFmNGFiOGEzZDZhMTlmNjM5NjQxNmVkYjg3MGNkNWYxMDYxNmI0ZjczOTcyMzExNTgzY2I5MDY2YTI3OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZmQ3NmU1N2JjYmM3YmEwOTY5OTA5NGVkZmYyODc4MWRlZDY4ZThmYWE2YWRkYTFiNDgxNmViMTdkMmI3MGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkZDc4NjA4M2U3OGVkMTI3ZWU2NzE5Yjk4Y2MyYzA1MGUzODVhZTkyYzg3YWE5NGYzNTExMGU2Zjg3MjliNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyMmYzYmI3OGViNTUyMzI1NjMyZmUzZjNlNTc2NWVkNmUxNjY1NDU4NmNlM2U4MWY4MTY1NTcwOGM1MmY3ZmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L62-L80",
+          "version": "repo-lines-v1:sha256:84d6a8e7ceafc6a0f4bdacfedd98814658c0b4de4a84612b007521f8b0697b2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYjY4NWRiYjE0NGNmZTk4ZjQ0YjBiZjFiZTdmNDJmNjU0YjFhZmU2NmUzYWU1ZDNkMzE4OTIwMjhjNTM0NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzOWQyOGUwNzczMTk3MWRjZDUzNWRlNDRjNWUwNThmZWRhOGU4ODA4OTcyNGJmMjRlNzg4MmEyOWY0YTQ2MTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_59af9058dace48ea9919b7219542d44c",
+      "statement": "WebSocketService.authenticateConnection enforces the same chain as HTTP at the handshake — missing token closes with 4001 AUTH_REQUIRED, failed verifyToken closes 4002 AUTH_INVALID, token expiry closes 4003 AUTH_EXPIRED, and the DB re-check of isActive plus organization membership closes 4002 — and it records an AuthenticatedClient carrying the DB role (not the signed one), email, token expiry, sid, and organizationId.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L82-L121",
+          "version": "repo-lines-v1:sha256:2000f2ce2a9c00ee7775b0df46c5949c147abf7115bc1e6f014ed44ff73cfab0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0Y2Y2NmMwNzhkYjNkMDY2ZDVmMDMyYzY4NzI0NmExN2NkZDllNmMxZWI3MmMxN2Y2NTE5Yjg0MTdlYjcxNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4OGMzOWRlNjQzNmVhMDBhZmRkNDFmNjFhZGZkZjdlZWE0NmMxNzA4ZDIwZDU0ZjU5ZThmYjhlNWRkMmY1MjkifQ"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/websocket.ts#L14-L28",
+          "version": "repo-lines-v1:sha256:8668e49c48a765ca0b3748a97350a314fb505d3fd1392fbab2ac240ac3902224:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwM2YzNDQ1MGVkZGRjMTQ5MThjNDBiYjZhMDYzZDk1ZGYwMmRiMWNkNjEwYmUyMTgxMmYzMWZlZjQwMjdlZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzNDVjMGE1ZjBkMzU5N2U0NDBjMjc3MDMxYTg5MzI3MGYwZGU1OTQwNzFlNzE0MTZiZWEzMGUwNmYyMDVhN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmMzAyYmViNzMyN2UzZDY1MDc0MGZkOTBkZTcyNDQ3ODYzZTZmNDFjNTUzZjBiMmVmOWZhZjRlZjU2YmNiNWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f578787016104b5d92dfaff36f1736de",
+      "statement": "Every WebSocket send and broadcast variant funnels through getAuthenticatedClient, which revalidates on each emit — closing with 4003 AUTH_EXPIRED when the token expires and 4002 AUTH_INVALID when the user is deactivated, the role/email changed, the organization moved, or the sid session is revoked — so demoted, disabled, or logged-out principals stop receiving events mid-connection; delivery is further scoped by broadcastToAdmins (UserRole.ADMIN only), broadcastToUser, broadcastTaskEvent (AuthorizationService.canReadTask), debate subscriptions, and a per-client WS_MAX_BUFFERED_AMOUNT_BYTES cap (default 1 MiB) that skips slow consumers.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-principal-chain.test.ts#L135-L201",
+          "version": "repo-lines-v1:sha256:b2b6e7ded253ae4421d19bad8007fc29798218d47f47d94117cbaca76bf74859:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzYTYzZDU1MTIxZjU4NGRiMWJiNDNmOTc4Mzg1NTU2M2M2YWRiMWE0YWQxMzg0YjVhYjgwODU5YjA3MjczYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzMGM4NmRmM2NmYjk3NjFiMDIxMzEwODc0ZjRjN2EzM2NiNGJjMDgxNTc4ZTQ5NGMwZjY2OTg2ZDNjOWMxYWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L123-L199",
+          "version": "repo-lines-v1:sha256:ebfb8e662021963164710ac31716bd0fbb58c637bf0cc30a8e1b9f1ba9a68946:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhN2JkY2FkOTQxZThkNjY0ZDY2NWM5ZDk3ZmUzMDFlMzExODg1OGY1YWYyNGE3ZjY5MWQ1YTdlZjlkZTYzMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYjQzMTUxNmRjOWNiZmQ0Zjk1M2JlMzQ3NTcxOGYzNWM5NmM5NTI5ZDA0YWY2MzRiOWNiZjBjMGE2NjRjNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjYmRhODQ4ZDg5MTMzZTk0OTNhYWIyNmIzYTNjNmEzNjIzNTkyMTM0MTc1OGI1NWI4M2IyZGE1ZDlkZjg5NjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_952a548e140448978aaa25bee78f220a",
+      "statement": "WS_CLOSE_CODES (4001 AUTH_REQUIRED, 4002 AUTH_INVALID, 4003 AUTH_EXPIRED, 4004 FORBIDDEN) drive dashboard client behavior: useWebSocket treats 4001/4002/4003 as terminal for the current credential (stopping the 3-second reconnect loop), makes exactly one guarded refreshSession attempt on 4003 AUTH_EXPIRED and reconnects with the rotated token, and a rejected refresh leaves the socket closed without looping.",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/hooks/useWebSocket.ts#L17-L21",
+          "version": "repo-lines-v1:sha256:fbac820935e6f975ee1c136021c17f3deaf08e96d293ebcbaab2a03176e241f7:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTIwNDFiOTVkODFkNTc0YjdlMmMyMzhmZjE2ZDZlZWFlZTQ0M2FlMjU3YjBlNWYxMzc2OWEyOWUyZmQ4ZmQ4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTVlMjZjZDkyMzY2ZjYwZDhlZDkyZDAyMzlmMDdmZWY3NGNhYzE0YWE2OWFkZGY5YzJjYzBkMTFlYjAwYTQ2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWMwMWZhODY1YjI2NzJkZjFmNjU1YzNkMjcyZTM2NTcxNjRjZmRiNmY1OTFiYjdmZWI0ZGE5ODIwOWFiYjZjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjMxZGE4Mzk0YjY2MDdjMDBmNDk0ZmQ4NzM1MmQ1NDYyMDRjNzIwOTNkZmQ1ZGI5MzcyNDE2NGE4ZDlkOWE4NCJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/src/hooks/useWebSocket.ts#L88-L110",
+          "version": "repo-lines-v1:sha256:1d14802475c169dff340223c30cb0991fb3779eaaafc8cceecefff524ced7451:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiYzkzNDE1ZmJmYWQ1NjY2OWNkNGE5YmUzYmM1M2RlMTFiYzAzYzkxNGQ1MDMxOTk3ZWFkYmFjZTlhNTk0NDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMzNkYzczMWU3ZDA3YjFmMGMwNWNmZWJkN2UxOTIyMDIzZTYwNzdiYzBhZTdiYTMwMTQ4ZjUwODMzYTI1YTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjY2JlMjgwMjJlYjFlMzM1ZTg5Y2QyMzYxZmVhNGRlN2RlMGYzMjAyY2QzYjNjMTc2OTJkNTlhY2IwNjgwYzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiYmExMDI3YzM2MDllMjYyYjVkOTgxYTNhNGY2ZTg3YmRiNzBjMjM5M2I3ODY4Y2Q3ZjFjMDRiNDUzYmQyNmIifQ"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/websocket.ts#L14-L19",
+          "version": "repo-lines-v1:sha256:411ffb33ba542c9b0ceea676984e81a0242fa3ed17a32116a393946bf66c50e8:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTAzZjM0NDUwZWRkZGMxNDkxOGM0MGJiNmEwNjNkOTVkZjAyZGIxY2Q2MTBiZTIxODEyZjMxZmVmNDAyN2VkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc0ZWU4YThkMWFhODQ1MzkxYmM2NzllYjcwY2U3ZjQ2YTNjZDZmYjJkMTZmY2NhNjdmYTE3OGY0ZjhjMWUwZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjM0NWMwYTVmMGQzNTk3ZTQ0MGMyNzcwMzFhODkzMjcwZjBkZTU5NDA3MWU3MTQxNmJlYTMwZTA2ZjIwNWE3ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzA2NDBlM2Q1ODhiZjAwOGNkMWIxYzNhMTg0NTU4OTM5MTE4M2IwN2I0YmQ3MTFhNTg1NDNkNDUyNWMzMTgyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a8c6768286ee4dc797a52495e3696092",
+      "statement": "The dashboard auth-store serializes refresh through refreshSession — single-flight per tab plus a Web Locks mutex (djimitflo-browser-session) across tabs, sameSessionScope (matching sub+sid+organization_id claims) to detect cross-tab scope changes, and the current organization_id re-sent on refresh — so multi-tab clients never race rotations or silently switch tenancy.",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/lib/auth-store.ts#L35-L115",
+          "version": "repo-lines-v1:sha256:8ffe1812cf8132b911e492df90f74a877a31f7eff81e33e1fee262da0f83dabd:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmZjg0YzNjM2JlOGQ0OGIzZTA0OGFkZmQ0Y2MzOGQwNGU1YzM4NmE2MzE1NDIxYzA4MDE1ZGJiNTIzZmEyZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNWQ2ZTQxNzQxNTMwYzRhY2QwZTAyYTBkNjJjMWYyOTM3MjU4OTAzNWViODhmYjU4N2IzM2E5ZTE4MzE0YjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2Yzg0NjYyNjcwZWE4NDc1YTE0OGJmMjJmY2VlMmQ0MGIyODJlZjIzMjJlODlkZDc1ZDIxZmY0ODdmYzA1YzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_24af2a43029249368b4ba2b5cccc48e5",
+      "statement": "Organization context is selectable but strictly validated: POST /api/organizations/switch and /api/auth/refresh mint a replacement JWT for the requested organization while keeping the same sid (so session revocation survives a switch), the requested org must be 'default' or equal the user's current DB membership (else 401/403), and an invalid organization rejection does not consume the still-valid refresh cookie.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L210-L220",
+          "version": "repo-lines-v1:sha256:28de947b1e51c095c41237865876972feece714e4266afe2a1af6e3751f29f9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0MzY1OTkwNmRjMDQ5MWNiYTI5YTIzY2Y5OGFmNTE3ZDVhMDM2YjYwMDQxOWU3MDVkOTVlOTg5OWIwYzIxZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxMGRiMzY5MmY3YmJkYjVkNmIyZWEyNDMxYjdjOWY3YWFhZWU4M2E0Yzc5Mjg3MGJiZjY3ZmFiYjYyNjlkMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzMWVlZWY2YmZmZWFhZjYwYTMxYjYxZjIyNTI4Y2E0NzRmZWRiYzA4OTU3ZjhiZjU0OWE3MzY5ZTkxOGYwNjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/auth-principal-chain.test.ts#L71-L98",
+          "version": "repo-lines-v1:sha256:9a402a7a4ebfe67532f638da7ecf093fcc2b1408a7b3dbd8a14f2a56429085e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxMmI1YmZkNWNhMDJjNzYwZjhmMmU0YmEyOGY3YTNiNDU0ZjUzMWZjM2Q2MGRkNWQ2ZjgyZDgwNDJmNTY3NjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlZWNhOWEzOGU4MzIyZGQ2OGJmMzI4NWUzNTAzYzFkNjQ4YWRmZDczNTY0MzRhZWFhYTcwMjY1MGE5OTg5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYjYxNDY4MjcwZTM2ZTZiOTIzZmEyNTU3MjgxMmZkNTBhNDg0YWVlMmU2MGJlYjA2ODU3MzdlOTlkYzFiZTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/organizations.ts#L25-L64",
+          "version": "repo-lines-v1:sha256:ac47ce2df8a16730c265187dacda9b19420b1db18a7d933eaa15add924a36adc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMjUxZjYyYWEzN2YwZmI1NGQxNzY0YzNiZTk3NjY5YzU4MjdkYjMwM2Q2NzBmMDM3MGRlN2QyMWI3MmIxMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MDAzOTU1ODIxYjEwMTJiMTIxNjVhNDhmMzBmZTgzYTdiOTdhMzBlNGMzMDU2YjlhZGY5YTBjYWNjOTY2NGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwZWNlNzdkNjU0OTRmMTUxZDg1ZjQwNzgxMWY0N2JiMDYzN2U3NGY1MDk1YzVhMjFjNWJkMDJjZTg3NGMwMzAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L222-L229",
+          "version": "repo-lines-v1:sha256:841b37198342591c17e4353c92722cc693ca473c057bbd31090b29a679309006:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmM3ZWU4MmQ3YzZhYTBkNTk0OTkwOTVmM2NhYmJlZDJkNTIxMTQzYWU3NWIxYzQyNmJiM2MyYzNlOTg3MjdhNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGEwMTI0NDBmZTc2ODk5N2M3N2IzN2M4NjI4ODQ3NzUzN2QxZTJiY2UyMGViMmQzNTczOWE2ZGQ1MjY5MmYxMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTFhNzY4OWU1MWQwNDhlMDk2ZGZhYjY4NWIwMDc4YjY5YjdkMjRmOWJkMDYzMGMzZTFkOGU1MDFjZjcyYTg2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2MzYjgxODUxYmZiYWVmNDBkYzhmM2MzNTBlYmU3YzlkMWU4Y2FlMDFlZTUzYWEzZTNlOTQ3ZTIwNDNkYTZkOCJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

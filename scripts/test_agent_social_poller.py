@@ -60,6 +60,19 @@ class SocialRuntimeTests(unittest.TestCase):
                 output, _, _ = poller.run_cli(runtime, 'quoted peer data')
                 self.assertEqual(poller.extract_object(output), REPLY)
 
+    def test_hermes_uses_a_session_source_hermes_accepts(self):
+        # Hermes >= 2026.10 rejects unknown --source tags with invalid_params before sending; 'tool' is its tag for integrations
+        seen = []
+        def execute(command, prompt, cwd, env):
+            seen.append(command)
+            return 'pong\nsession_id: s1\n'
+        with patch.dict(os.environ, {}, clear=True), patch.object(poller, 'bounded_process', side_effect=execute):
+            poller.run_hermes('quoted peer data')
+        self.assertEqual(seen[0][seen[0].index('--source') + 1], 'tool')
+        with patch.dict(os.environ, {'HERMES_SOURCE': 'djimitflo'}, clear=True), patch.object(poller, 'bounded_process', side_effect=execute):
+            poller.run_hermes('quoted peer data')
+        self.assertEqual(seen[1][seen[1].index('--source') + 1], 'djimitflo')
+
     def test_opencode_custom_provider_is_explicit_isolated_and_secret_scoped(self):
         config_path = None
         def execute(command, prompt, cwd, env):
@@ -141,6 +154,12 @@ class SocialRuntimeTests(unittest.TestCase):
         self.assertEqual(body['usage'], {'tokens': 4})
         self.assertNotIn('approved', body)
         self.assertNotIn('agent_id', body)
+
+    def test_model_id_is_required_before_heartbeat(self):
+        with patch.dict(os.environ, {'DJIMITFLO_AGENT_ID': 'actual-agent', 'SOCIAL_RUNTIME': 'claude'}, clear=True), patch.object(poller, 'api') as api:
+            with self.assertRaisesRegex(RuntimeError, 'SOCIAL_MODEL_ID'):
+                poller.main()
+            api.assert_not_called()
 
     def test_gemini_api_key_does_not_copy_oauth_credentials(self):
         def execute(command, prompt, cwd, env):

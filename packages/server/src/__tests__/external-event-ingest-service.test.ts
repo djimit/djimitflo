@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations, runPreSchemaMigrations } from '../database/migrate';
 import { ExternalEventIngestService } from '../services/external-event-ingest-service';
+import { FrontierExpertRegistryService } from '../services/frontier-expert-registry-service';
 
 describe('ExternalEventIngestService', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -30,6 +31,36 @@ describe('ExternalEventIngestService', () => {
     expect(db.prepare('SELECT id, correlation_id, causation_id, aggregate_id, aggregate_version FROM external_events').all()).toEqual([
       { id: 'paperclip:issue-1:1', correlation_id: 'issue-1', causation_id: null, aggregate_id: 'issue-1', aggregate_version: 1 },
     ]);
+    db.close();
+  });
+
+  it('G1: turns a fleet discovery into an expert unit only when source units are enabled', async () => {
+    const db = createDb();
+    new FrontierExpertRegistryService(db).seedTaxonomy();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: [
+      { _id: 'd-1', event_id: 'discovery:arxiv:2609.12345', event_type: 'discovery.paper', source: 'hermes-macmini', ref: 'arxiv:2609.12345', title: 'Scalable oversight for coding agents', dedupe_key: 'discovery:arxiv:2609.12345' },
+    ] }), { status: 200 })));
+    vi.stubEnv('FRONTIER_EXPERT_SOURCE_UNITS_ENABLED', 'true');
+    try {
+      expect(await new ExternalEventIngestService(db, 'http://event-bus').pollOnce()).toBe(1);
+    } finally { vi.unstubAllEnvs(); }
+    expect(db.prepare("SELECT kind, lifecycle_state AS state FROM expert_identities WHERE kind = 'paper'").all()).toEqual([{ kind: 'paper', state: 'CAPABILITY_INFERRED' }]);
+    db.close();
+  });
+
+  it('JEV-BURST: the fleet-source gate (knowledge overview, ~0.7 s on prod) runs once per source per batch, not once per discovery', async () => {
+    const db = createDb();
+    new FrontierExpertRegistryService(db).seedTaxonomy();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: Array.from({ length: 8 }, (_, i) => (
+      { _id: `d-${i}`, event_id: `discovery:arxiv:2610.6000${i}`, event_type: 'discovery.paper', source: 'djimitflo-scout', agent: 'djimitflo-scout', ref: `arxiv:2610.6000${i}`, title: `Mutation-guided test generation for coding agents ${i}` })) }), { status: 200 })));
+    vi.stubEnv('FRONTIER_EXPERT_SOURCE_UNITS_ENABLED', 'true'); vi.stubEnv('ARENA_GATE_ENABLED', 'true');
+    const prepare = db.prepare.bind(db); let overviews = 0;
+    vi.spyOn(db, 'prepare').mockImplementation(((sql: string) => { if (sql.includes('AS n7')) overviews += 1; return prepare(sql); }) as typeof db.prepare);
+    try {
+      expect(await new ExternalEventIngestService(db, 'http://event-bus').pollOnce()).toBe(8);
+    } finally { vi.unstubAllEnvs(); }
+    expect(overviews).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get() as { n: number }).n).toBe(8);
     db.close();
   });
 
@@ -154,5 +185,19 @@ describe('ExternalEventIngestService', () => {
       { id: 'outcome:object-id-fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
     ]);
     db.close();
+  });
+  it('CONTENT_SAFETY_SCOPE=decision: a fleet discovery event gets no content_safety call and no judgment row', async () => {
+    const db = createDb();
+    vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k'); vi.stubEnv('CONTENT_SAFETY_SCOPE', 'decision');
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
+      { _id: 'd-9', event_id: 'discovery:arxiv:2610.00001', event_type: 'discovery.paper', source: 'hermes-macmini', title: 'A paper', dedupe_key: 'discovery:arxiv:2610.00001' },
+    ] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events').pollOnce();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(fetchMock.mock.calls.every(([url]) => String(url).startsWith('http://event-bus'))).toBe(true);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM judgments WHERE judgment = 'content_safety'").get()).toEqual({ n: 0 });
+    } finally { vi.unstubAllEnvs(); db.close(); }
   });
 });

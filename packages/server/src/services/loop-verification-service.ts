@@ -9,14 +9,41 @@
 
 import fs from 'fs';
 import { swarmEventBus } from './swarm-event-bus';
+import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopService,
 } from './loop-service';
+import { runCertified } from './loop-types';
+import { autoMergeMode } from './loop-auto-merge-state';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
   LoopGate,
+  GateStatus,
 } from './loop-types';
+
+/** E2: combine per-lease observations — any durable failure fails; otherwise any missing evidence is unknown. */
+const combine = (statuses: GateStatus[]): GateStatus =>
+  statuses.includes('fail') ? 'fail' : statuses.includes('unknown') ? 'unknown' : 'pass';
+
+/** Change-loop artifact gates (worktree, assignment, diff, checks, security review, auto-approval scope). */
+/**
+ * P0-4 decision 1 (no retroactive flips): manual attestations recorded before this instant predate the identity rule and
+ * carry no reviewer_user_id. They keep their old evaluation (a non-empty reviewer + reason) and are labelled
+ * legacy_unverified_identity in the gate evidence; anything recorded from this instant on needs the full identity.
+ */
+export const MANUAL_ATTESTATION_IDENTITY_SINCE = '2026-10-21T00:00:00Z';
+const LEGACY_IDENTITY_LABEL = 'legacy_unverified_identity';
+const instant = (value: unknown): number => {
+  if (typeof value !== 'string' || !value) return NaN;
+  const iso = value.includes('T') ? value : value.replace(' ', 'T');
+  return Date.parse(/Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
+};
+
+const CHANGE_LOOP_ARTIFACT_GATES = new Set(['worktree_isolation', 'assignment_file_present', 'diff_threshold_all_makers',
+  'tests_lint_typecheck', 'security_checker_verdict', 'auto_approved_scope', 'objective_scope']);
+/** A gym run is graded by its own oracle (gym_result): none of the change-loop maker/checker gates apply. */
+const GYM_INAPPLICABLE_GATES = new Set([...CHANGE_LOOP_ARTIFACT_GATES, 'maker_completion', 'maker_checker_separation', 'checker_verdict']);
 
 export interface VerificationResult {
   run: LoopRunRecord;
@@ -56,9 +83,15 @@ export class LoopVerificationService {
         return typeof makerLeaseId !== 'string' || !supersededMakerIds.has(makerLeaseId);
       });
     const completedMakerLeases = activeMakerLeases.filter((lease) => lease.status === 'completed');
-    const highRisk = this.loopService.isHighRiskRun(run);
+    // §3d P0 #1: effective risk = max(finding/proposal text, the files every completed maker actually changed)
+    const highRisk = this.loopService.isHighRiskRun(run)
+      || completedMakerLeases.some((lease) => Boolean(this.loopService.leaseChangedFilesRisk(lease)));
+    // grandfathered by evidence presence: a run none of whose completed makers carries risk_inputs gets no objective_scope gate
+    const legacyEvaluation = completedMakerLeases.length > 0 && !completedMakerLeases.some((lease) => lease.metadata?.risk_inputs)
+      ? { objective_scope: 'skipped (legacy, no risk_inputs)' } : null;
+    const notApplicable = this.inapplicableGates(run, activeMakerLeases);
 
-    const gates: LoopGate[] = [
+    const computedGates: LoopGate[] = [
       {
         name: 'run_not_cancelled',
         status: run.status === 'cancelled' ? 'fail' : 'pass',
@@ -76,27 +109,27 @@ export class LoopVerificationService {
       },
       {
         name: 'worktree_isolation',
-        status: activeMakerLeases.every((lease) => lease.worktree_path && fs.existsSync(lease.worktree_path)) ? 'pass' : 'fail',
-        evidence: 'Every maker lease must have an existing isolated worktree.',
+        status: combine(activeMakerLeases.map((lease) => this.worktreeObservation(lease))),
+        evidence: 'Every maker lease must have an existing isolated worktree (a completed maker whose recorded worktree is gone is insufficient evidence, not a failure).',
       },
       {
         name: 'assignment_file_present',
-        status: activeMakerLeases.every((lease) => fs.existsSync(this.loopService.resolveWorkAssignmentPath(lease))) ? 'pass' : 'fail',
+        status: combine(activeMakerLeases.map((lease) => this.assignmentObservation(lease))),
         evidence: 'Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md.',
       },
       {
         name: 'diff_threshold_all_makers',
-        status: completedMakerLeases.every((lease) => this.leaseDiffWithinThreshold(lease)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
+        status: combine(completedMakerLeases.map((lease) => this.leaseDiffWithinThreshold(lease))),
         evidence: completedMakerLeases.length === 0
           ? 'No completed maker leases yet.'
-          : 'All completed maker leases must stay under their configured diff threshold.',
+          : 'All completed maker leases must stay under their configured diff threshold (a maker without a recorded diff_lines is insufficient evidence).',
       },
       {
         name: 'checker_verdict',
-        status: completedMakerLeases.every((lease) => this.hasAcceptedCheckerVerdict(lease.id, checkerLeases)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
+        status: completedMakerLeases.length === 0 ? 'skipped' : combine(completedMakerLeases.map((lease) => this.reviewObservation(lease.id, checkerLeases))),
         evidence: completedMakerLeases.length === 0
           ? 'No completed maker leases yet.'
-          : 'Every completed maker lease requires an accepted checker verdict.',
+          : `Every completed maker lease requires an accepted checker verdict.${this.legacyIdentityNote(completedMakerLeases, checkerLeases)}`,
       },
       {
         name: 'tests_lint_typecheck',
@@ -111,26 +144,45 @@ export class LoopVerificationService {
           ? 'skipped'
           : completedMakerLeases.length === 0
             ? 'skipped'
-            : completedMakerLeases.every((lease) => this.hasAcceptedSecurityCheckerVerdict(lease.id, securityCheckerLeases)) ? 'pass' : 'fail',
+            : combine(completedMakerLeases.map((lease) => this.reviewObservation(lease.id, securityCheckerLeases))),
         evidence: !highRisk
           ? 'Run is not high-risk.'
-          : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.`,
+          : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.${this.legacyIdentityNote(completedMakerLeases, securityCheckerLeases)}`,
       },
       {
-        name: 'no_automatic_merge',
-        status: 'pass',
-        evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.',
+        // J5: an auto-approved maker may only have written the one test file its approval covered.
+        name: 'auto_approved_scope',
+        status: completedMakerLeases.every((lease) => !lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) ? 'pass' : 'fail',
+        evidence: 'An auto-approved maker lease may change only its approved test file (human-approved makers pass).',
       },
+      // §3d P0 #4: the objective assignment says "Change only this file"; without this only auto-approved makers were held to it.
+      // Absent (not 'skipped') on a legacy run: a skipped gate fails the daemon's every-gate-pass rule and certification.
+      ...(legacyEvaluation ? [] : [{
+        name: 'objective_scope',
+        status: combine(completedMakerLeases.map((lease) => this.objectiveScopeObservation(run, lease))),
+        evidence: 'An objective-mode maker (not auto-approved) may change only its finding file; a missing changed-files record is insufficient evidence; a maker lease without risk_inputs (legacy) is not evaluated.',
+      } satisfies LoopGate]),
+      // U4a: under LOOP_AUTO_MERGE_TEST_ONLY=act earned auto-merge may merge this run's PR — the gate cannot attest otherwise
+      autoMergeMode() === 'act'
+        ? { name: 'no_automatic_merge', status: 'skipped', evidence: 'Not applicable: auto-merge may act (LOOP_AUTO_MERGE_TEST_ONLY=act); the loop itself did not merge, push, or deploy.' }
+        : { name: 'no_automatic_merge', status: 'pass', evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.' },
     ];
+    const gates: LoopGate[] = computedGates.map((gate) => notApplicable.gates.has(gate.name)
+      ? { name: gate.name, status: 'skipped', evidence: `Not applicable: ${notApplicable.reason}.` }
+      : gate);
 
     const waitingForMakers = activeMakerLeases.some((lease) => lease.status === 'prepared' || lease.status === 'running')
       && activeMakerLeases.every((lease) => lease.status !== 'failed' && lease.status !== 'cancelled');
     const blockingGate = gates.some((gate) => gate.status === 'fail'
       && !(gate.name === 'maker_completion' && waitingForMakers));
+    const unknownGates = gates.filter((gate) => gate.status === 'unknown');
     const status = run.status === 'cancelled' || run.status === 'completed'
       ? run.status
-      : blockingGate
+      : blockingGate || unknownGates.length > 0
       ? 'blocked'
+      // a run that is not a change loop (gym, PR review) has no merge readiness to assert: its owner settles it
+      : notApplicable.gates.size > 0
+        ? run.status
       : activeMakerLeases.length > 0 && completedMakerLeases.length === activeMakerLeases.length
         ? 'ready_for_human_merge'
         : 'verifying';
@@ -139,12 +191,20 @@ export class LoopVerificationService {
     const failedGates = gates.filter((gate) => gate.status === 'fail');
     const blockMetadata: Record<string, unknown> = { ...run.metadata };
 
-    if (status === 'blocked') {
+    delete blockMetadata.unknown_gates;
+    if (status === 'blocked' && failedGates.length > 0) {
       blockMetadata.block_reason = 'gate_failed';
       blockMetadata.failed_gates = failedGates.map((g) => `${g.name}: ${g.evidence}`);
       blockMetadata.recommendations = ['Review failed gates and address issues before re-verifying'];
       blockMetadata.blocked_at = new Date().toISOString();
-    } else if (blockMetadata.block_reason === 'gate_failed') {
+    } else if (status === 'blocked' && unknownGates.length > 0) {
+      // E2: missing evidence is reported as insufficient evidence, never as a failed invariant (no failed_gates entry)
+      blockMetadata.block_reason = 'insufficient_evidence';
+      delete blockMetadata.failed_gates;
+      blockMetadata.unknown_gates = unknownGates.map((g) => `${g.name}: ${g.evidence}`);
+      blockMetadata.recommendations = ['Evidence for these gates is missing or unavailable; re-run or re-collect it before re-verifying'];
+      blockMetadata.blocked_at = new Date().toISOString();
+    } else if (blockMetadata.block_reason === 'gate_failed' || blockMetadata.block_reason === 'insufficient_evidence') {
       delete blockMetadata.block_reason;
       delete blockMetadata.failed_gates;
       delete blockMetadata.recommendations;
@@ -152,15 +212,31 @@ export class LoopVerificationService {
     }
 
     const db = (this.loopService as any).db;
+    // §16 step 8 (shadow, POLICY_VIOLATION_LOG): the scope gate already failed these; record each breach once, decide nothing
+    for (const lease of completedMakerLeases) {
+      if (notApplicable.gates.has('auto_approved_scope') || !lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) continue;
+      const files = Array.isArray(lease.metadata.changed_files) ? lease.metadata.changed_files.map(String) : [];
+      recordPolicyViolation(db, { kind: 'scope_gate', actor: `maker:${lease.runtime}`, severity: 'high', dedupe_key: lease.id, run_id: run.id, lease_id: lease.id,
+        evidence_ref: `loop_run:${run.id}/lease:${lease.id}`,
+        description: `auto-approved maker changed files outside ${String(lease.metadata.auto_approved_scope)}: ${files.filter((f: string) => f !== lease.metadata.auto_approved_scope).join(', ') || '(none listed)'}` });
+    }
+    for (const lease of completedMakerLeases) {
+      if (notApplicable.gates.has('objective_scope') || this.objectiveScopeObservation(run, lease) !== 'fail') continue;
+      const scope = this.objectiveScopeFile(run, lease)!;
+      const files = (lease.metadata.changed_files as unknown[]).map(String);
+      recordPolicyViolation(db, { kind: 'scope_gate', actor: `maker:${lease.runtime}`, severity: 'high', dedupe_key: `${lease.id}:objective_scope`, run_id: run.id, lease_id: lease.id,
+        evidence_ref: `loop_run:${run.id}/lease:${lease.id}/gate:objective_scope`,
+        description: `objective-mode maker changed files outside ${scope}: ${files.filter((f) => f !== scope).join(', ')}` });
+    }
     db.prepare(`
       UPDATE loop_runs
       SET status = ?, gates_json = ?, updated_at = ?, metadata = ?
       WHERE id = ?
     `).run(status, JSON.stringify(gates), new Date().toISOString(), JSON.stringify(blockMetadata), run.id);
 
-    this.loopService.recordLoopEvent(run.id, 'loop_verified', failedGates.length > 0 ? 'warning' : 'info',
-      `Verification status: ${status}; ${failedGates.length} gate(s) incomplete or failed.`,
-      { gates, block_metadata: blockMetadata });
+    this.loopService.recordLoopEvent(run.id, 'loop_verified', failedGates.length + unknownGates.length > 0 ? 'warning' : 'info',
+      `Verification status: ${status}; ${failedGates.length} gate(s) incomplete or failed${unknownGates.length ? `; ${unknownGates.length} gate(s) with insufficient evidence` : ''}.`,
+      { gates, block_metadata: blockMetadata, ...(legacyEvaluation ? { legacy_evaluation: legacyEvaluation } : {}) });
 
     return { run: this.loopService.getLoopRun(run.id), gates, leases };
   }
@@ -170,9 +246,7 @@ export class LoopVerificationService {
    */
   certifyLoopRun(id: string): CertificationResult {
     const result = this.verifyLoopRun(id);
-    const allPass = (result.run.status === 'ready_for_human_merge' || result.run.status === 'completed') && result.gates.every((g) =>
-      g.status === 'pass' || (g.name === 'security_checker_verdict' && g.status === 'skipped')
-    );
+    const allPass = runCertified({ status: result.run.status, gates: result.gates });
     swarmEventBus.emit('convergence', {
       run_id: id,
       certified: allPass,
@@ -183,53 +257,144 @@ export class LoopVerificationService {
 
   // ─── Gate Helpers ────────────────────────────────────────────────────
 
-  private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {
-    const diffLines = Number(lease.metadata?.diff_lines ?? 0);
+  private leaseWithinScope(lease: WorkerLeaseRecord): boolean {
+    const files = lease.metadata?.changed_files;
+    return Array.isArray(files) && files.length === 1 && files[0] === lease.metadata.auto_approved_scope;
+  }
+
+  /** The one file an objective-mode maker may change (its finding's file), or null when no such scope applies. */
+  private objectiveScopeFile(run: LoopRunRecord, lease: WorkerLeaseRecord): string | null {
+    if (lease.metadata?.auto_approved_scope) return null; // held to its approved file by auto_approved_scope
+    const finding = run.findings.find((candidate) => candidate.id === lease.finding_id);
+    if (!finding?.metadata?.objective_mode || !finding.file || finding.file.startsWith('(')) return null;
+    return finding.file;
+  }
+
+  private objectiveScopeObservation(run: LoopRunRecord, lease: WorkerLeaseRecord): GateStatus {
+    const scope = this.objectiveScopeFile(run, lease);
+    if (!scope || !lease.metadata?.risk_inputs) return 'pass'; // no scope, or a legacy lease (not evaluated)
+    const files = lease.metadata?.changed_files;
+    if (!Array.isArray(files)) return 'unknown';
+    return files.every((file) => file === scope) ? 'pass' : 'fail';
+  }
+
+  /** U4b (A3): an absent diff_lines is not 0 — it is unknown (insufficient evidence); no configured threshold still fails. */
+  private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): GateStatus {
     const diffMaxLines = Number(lease.metadata?.diff_max_lines ?? 0);
-    return diffMaxLines > 0 && diffLines <= diffMaxLines;
+    if (!(diffMaxLines > 0)) return 'fail';
+    const raw = lease.metadata?.diff_lines;
+    if (raw === undefined || raw === null || raw === '' || !Number.isFinite(Number(raw))) return 'unknown';
+    return Number(raw) <= diffMaxLines ? 'pass' : 'fail';
   }
 
-  private hasAcceptedCheckerVerdict(makerLeaseId: string, checkerLeases: WorkerLeaseRecord[]): boolean {
-    return checkerLeases.some(
-      (l) => l.metadata.maker_lease_id === makerLeaseId && this.hasAcceptedReviewEvidence(l)
-    );
+  /**
+   * E2: which gates do not apply to this run. A gym run (loop_name evolution-gym or metadata.gym) is graded by its oracle; a
+   * GitHub PR review (synthetic maker lease carrying github_pr) is checker-only — the PR's commits are the patch, so the
+   * change-loop artifact gates have nothing to observe. Governed change loops get the empty set (no gate weakened).
+   */
+  private inapplicableGates(run: LoopRunRecord, activeMakerLeases: WorkerLeaseRecord[]): { gates: Set<string>; reason: string } {
+    const gym = run.metadata?.gym;
+    if (run.loop_name === 'evolution-gym' || (gym !== null && typeof gym === 'object')) {
+      return { gates: GYM_INAPPLICABLE_GATES, reason: 'gym run, graded by the gym oracle rather than change-loop gates' };
+    }
+    const prReview = activeMakerLeases.length > 0 && activeMakerLeases.every((lease) => lease.metadata?.synthetic === true
+      && lease.metadata?.github_pr !== null && typeof lease.metadata?.github_pr === 'object');
+    if (prReview) return { gates: CHANGE_LOOP_ARTIFACT_GATES, reason: 'pull-request review, the maker is the PR itself and has no change-loop artifacts' };
+    return { gates: new Set(), reason: '' };
   }
 
-  private hasAcceptedSecurityCheckerVerdict(makerLeaseId: string, securityCheckerLeases: WorkerLeaseRecord[]): boolean {
-    return securityCheckerLeases.some(
-      (l) => l.metadata.maker_lease_id === makerLeaseId && this.hasAcceptedReviewEvidence(l)
-    );
+  /** No recorded worktree is a durable failure; a completed (historical) maker whose recorded worktree is gone is unknown. */
+  private worktreeObservation(lease: WorkerLeaseRecord): GateStatus {
+    if (!lease.worktree_path) return 'fail';
+    if (fs.existsSync(lease.worktree_path)) return 'pass';
+    return lease.status === 'completed' ? 'unknown' : 'fail';
+  }
+
+  /** No assignment recorded at all is a failure; an unreadable historical assignment of a completed maker is unknown. */
+  private assignmentObservation(lease: WorkerLeaseRecord): GateStatus {
+    const assignmentPath = this.loopService.resolveWorkAssignmentPath(lease);
+    if (assignmentPath && fs.existsSync(assignmentPath)) return 'pass';
+    return assignmentPath && lease.status === 'completed' ? 'unknown' : 'fail';
+  }
+
+  private reviewObservation(makerLeaseId: string, reviewerLeases: WorkerLeaseRecord[]): GateStatus {
+    const observations = reviewerLeases.filter((l) => l.metadata.maker_lease_id === makerLeaseId).map((l) => this.reviewEvidence(l));
+    return observations.includes('pass') ? 'pass' : observations.includes('unknown') ? 'unknown' : 'fail';
   }
 
   public hasAcceptedReviewEvidence(lease: WorkerLeaseRecord): boolean {
-    if (lease.status !== 'completed' || lease.metadata.verdict !== 'accepted') return false;
+    return this.reviewEvidence(lease) === 'pass';
+  }
+
+  /**
+   * E2: 'pass' = accepted with full runtime proof; 'unknown' = every recorded observation is an accepted verdict but its
+   * recorded stdout file is no longer readable (unavailable evidence); 'fail' = anything else.
+   */
+  public reviewEvidence(lease: WorkerLeaseRecord): GateStatus {
+    if (lease.status !== 'completed' || lease.metadata.verdict !== 'accepted') return 'fail';
     // Manual review is an explicit, supported decision path, not runtime proof.
     // P1a: require attestation — a named reviewer + a recorded reason. Without it, the
     // manual bypass would silently skip all runtime evidence checks (G-audit P3.3).
     if (lease.runtime === 'manual') {
-      const att = lease.metadata.manual_review_attestation as { reviewer?: unknown; reason?: unknown } | undefined;
-      return typeof att?.reviewer === 'string' && att.reviewer.length > 0
-        && typeof att?.reason === 'string' && att.reason.length > 0;
+      // P0-4: only an authenticated human (reviewer_type 'human' + the user id the route took from req.user) attests;
+      // a free-text reviewer name or a heuristic never passes — except a legacy attestation (decision 1, see below).
+      const att = lease.metadata.manual_review_attestation as { reviewer_type?: unknown; reviewer_user_id?: unknown; reason?: unknown } | undefined;
+      if (att?.reviewer_type === 'human' && typeof att.reviewer_user_id === 'string' && att.reviewer_user_id.length > 0
+        && typeof att.reason === 'string' && att.reason.length > 0) return 'pass';
+      return this.legacyIdentityPass(lease) ? 'pass' : 'fail';
     }
     const proof = lease.metadata;
     const contract = proof.runtime_contract as { available?: unknown; status?: unknown } | undefined;
     // Historical runtime verdicts lacking these observations remain blocked; an
     // accepted string cannot erase cancellation, runtime failure or a write violation.
-    return proof.exit_status === 0 && proof.timed_out === false && proof.runtime_verdict === 'accepted'
+    const proven = proof.exit_status === 0 && proof.timed_out === false && proof.runtime_verdict === 'accepted'
       && proof.runtime_was_cancelled !== true && proof.runtime_timed_out !== true
       && proof.read_only_contract_passed === true && proof.runtime_adapter === lease.runtime
       && contract?.available === true && contract.status === 'ok'
-      && typeof proof.stdout_path === 'string' && fs.existsSync(proof.stdout_path);
+      && typeof proof.stdout_path === 'string';
+    if (!proven) return 'fail';
+    return fs.existsSync(proof.stdout_path as string) ? 'pass' : 'unknown';
+  }
+
+  /**
+   * P0-4 decision 1: an attestation without a user id recorded before MANUAL_ATTESTATION_IDENTITY_SINCE keeps its old
+   * evaluation (non-empty reviewer + reason). Both the lease's creation and the verdict's completed_at (when recorded) must
+   * predate the cutoff, so a pre-cutoff lease attested later never qualifies.
+   */
+  private legacyIdentityPass(lease: WorkerLeaseRecord): boolean {
+    const att = lease.metadata.manual_review_attestation as { reviewer?: unknown; reviewer_user_id?: unknown; reason?: unknown } | undefined;
+    if (!att || (typeof att.reviewer_user_id === 'string' && att.reviewer_user_id.length > 0)) return false;
+    const cutoff = Date.parse(MANUAL_ATTESTATION_IDENTITY_SINCE);
+    const created = instant(lease.created_at);
+    const completed = lease.metadata.completed_at === undefined ? created : instant(lease.metadata.completed_at);
+    if (!(created < cutoff) || !(completed < cutoff)) return false;
+    return typeof att.reviewer === 'string' && att.reviewer.length > 0 && typeof att.reason === 'string' && att.reason.length > 0;
+  }
+
+  private legacyIdentityNote(makers: WorkerLeaseRecord[], reviewers: WorkerLeaseRecord[]): string {
+    const ids = new Set(makers.map((m) => m.id));
+    const legacy = reviewers.filter((l) => l.runtime === 'manual' && l.status === 'completed' && l.metadata.verdict === 'accepted'
+      && ids.has(String(l.metadata.maker_lease_id)) && this.legacyIdentityPass(l)).length;
+    return legacy ? ` ${LEGACY_IDENTITY_LABEL}: ${legacy} manual attestation(s) recorded before ${MANUAL_ATTESTATION_IDENTITY_SINCE} without a user id keep their old evaluation.` : '';
   }
 
   private leaseChecksPassed(lease: WorkerLeaseRecord): boolean {
     const checks = lease.metadata?.deterministic_checks;
+    if (!Array.isArray(checks) || checks.length === 0) return false;
+    // B1 (17-10): zero executed checks cannot verify a run — at least one check really ran and passed (all-skipped used to pass)
+    if (!checks.some((check) => (check as { status?: unknown }).status === 'pass')) return false;
+    if (!checks.every((check) => {
+      const status = (check as { status?: unknown }).status;
+      return status === 'pass' || status === 'skipped';
+    })) return false;
+    // Every requested script ran exactly once and passed; appended evidence checks (FBPA, assertion strength, …) keep the
+    // rule above. A lease recorded before required_deterministic_checks existed keeps the B1 rule alone.
     const required = lease.metadata?.required_deterministic_checks;
-    if (!Array.isArray(checks) || checks.length === 0 || !Array.isArray(required) || required.length === 0) return false;
-    const names = checks.map((check) => (check as { name?: unknown }).name);
-    return names.length === required.length
-      && new Set(names).size === names.length
-      && required.every((name) => typeof name === 'string' && names.includes(name))
-      && checks.every((check) => (check as { status?: unknown }).status === 'pass');
+    if (required === undefined) return true;
+    if (!Array.isArray(required) || required.length === 0 || new Set(required).size !== required.length) return false;
+    return required.every((name) => {
+      const runs = checks.filter((check) => (check as { name?: unknown }).name === name);
+      return typeof name === 'string' && runs.length === 1 && (runs[0] as { status?: unknown }).status === 'pass';
+    });
   }
 }

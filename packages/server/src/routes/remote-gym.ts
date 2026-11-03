@@ -1,0 +1,101 @@
+import { Router } from 'express';
+import type { Database } from 'better-sqlite3';
+import type { AuthMiddleware } from '../middleware/auth';
+import { GymRunSettledError, RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenExpiresAt, spawnTokenRejection } from '../services/spawn-token';
+import { recordHostTokenOk, recordHostTokenRejection } from '../services/host-token-watch';
+import { RemoteMakerQueue } from '../services/remote-maker-queue';
+import { ingestKbPages, kbPendingSafety, releaseKbPage } from '../services/kb-corpus';
+import { claimCommittee, recordCommittee } from '../services/committee-swarm';
+
+/**
+ * Plan I1: a compute host pulls evolution-gym work. claim/result authenticate with a host-scoped token
+ * (X-Gym-Host + X-Gym-Worker-Token, HMAC scope 'gym-worker'), like the Commons social runtimes; minting a token
+ * needs an operator with manage:tokens and returns it once.
+ */
+export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Router {
+  const router = Router();
+  const gym = new RemoteGymService(db);
+  const makers = new RemoteMakerQueue(db);
+
+  function host(req: any, res: any): string | null {
+    const h = String(req.get('X-Gym-Host') || '');
+    const token = String(req.get('X-Gym-Worker-Token') || '');
+    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), token, h, REMOTE_GYM_SCOPE) : 'wrong_subject';
+    if (rejection) {
+      console.warn(`[gym-worker] token rejected host=${JSON.stringify(h.slice(0, 100))} reason=${rejection}`);
+      if (h) recordHostTokenRejection(db, h, REMOTE_GYM_SCOPE, rejection);
+      res.status(401).json({ error: { code: 'GYM_WORKER_TOKEN_INVALID', message: 'Gym worker token is invalid, expired, or scoped to another host' } });
+      return null;
+    }
+    recordHostTokenOk(db, h, REMOTE_GYM_SCOPE, spawnTokenExpiresAt(token));
+    return h;
+  }
+  const fail = (res: any, error: unknown) => {
+    const code = error instanceof Error ? error.message : 'GYM_WORKER_ERROR';
+    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'GYM_RUN_STALE_GENERATION' || code === 'MAKER_JOB_NOT_CLAIMED' || code === 'MAKER_JOB_LEASE_NOT_ACTIVE' ? 409 : 500)
+      .json({ error: { code, message: code }, ...(error instanceof GymRunSettledError && error.existing ? { gym_result: error.existing } : {}) });
+  };
+
+  router.post('/claim', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json(gym.claim(h, Array.isArray(req.body?.species) ? req.body.species : [], new Date(), { capabilities: Array.isArray(req.body?.capabilities) ? req.body.capabilities.map(String).slice(0, 10) : [] })); } catch (error) { fail(res, error); }
+  });
+
+  router.post('/runs/:runId/result', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { gym.record(String(req.params.runId), h, req.body || {}); res.json({ recorded: true }); } catch (error) { fail(res, error); }
+  });
+
+  // plan I3: maker jobs for real goals; only a patch comes back, the VPS applies it and runs every gate
+  router.post('/maker/claim', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json({ job: makers.claim(h, Array.isArray(req.body?.species) ? req.body.species.map(String) : []) }); } catch (error) { fail(res, error); }
+  });
+
+  router.post('/maker/:jobId/result', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { makers.record(String(req.params.jobId), h, req.body || {}); res.json({ recorded: true }); } catch (error) { fail(res, error); }
+  });
+
+  // AR-W: committee swarms — the workstation pulls a proposal question with the active members and returns their forecasts
+  router.post('/committee/claim', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    claimCommittee(db, h).then((job) => res.json({ job })).catch((error) => fail(res, error));
+  });
+  router.post('/committee/:jobId/result', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json({ recorded: recordCommittee(db, String(req.params.jobId), h, req.body?.answers) }); } catch (error) { fail(res, error); }
+  });
+
+  // plan L2: the workstation pushes changed DjimitKBWiki pages; stored after an embedding, unsafe quarantined, unverdicted reported 'pending'
+  router.post('/kb', async (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json(await ingestKbPages(db, h, req.body?.pages)); } catch (error) { const code = error instanceof Error ? error.message : 'KB_ERROR'; res.status(code.startsWith('KB_PAGES_INVALID') ? 400 : 500).json({ error: { code, message: code } }); }
+  });
+
+  // E2: the host's stored pages whose safety verdict is unknown, so kb-sync re-sends them (bounded; read-only)
+  router.get('/kb/pending', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json(kbPendingSafety(db, h, Number(req.query.limit) || 50)); } catch (error) { fail(res, error); }
+  });
+
+  // operator decision 31-10: release a quarantined KB page after review (an operator 'safe' verdict for its current text)
+  router.post('/kb/release', auth.requireAuth, auth.requirePermission('write:governance'), (req: any, res) => {
+    const path = String(req.body?.path || ''); const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!path || !reason) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'path and reason are required' } }); return; }
+    try { res.json(releaseKbPage(db, path, String(req.user?.email || req.user?.sub || 'operator'), reason.slice(0, 300))); } catch (error) {
+      const code = error instanceof Error ? error.message : 'KB_ERROR';
+      res.status(code === 'KB_PAGE_NOT_FOUND' ? 404 : code === 'KB_PAGE_NOT_QUARANTINED' ? 409 : 500).json({ error: { code, message: code } });
+    }
+  });
+
+  router.post('/tokens', auth.requireAuth, auth.requirePermission('manage:tokens'), (req, res) => {
+    const h = String(req.body?.host || '');
+    if (!/^[A-Za-z0-9._:-]{1,80}$/.test(h)) { res.status(400).json({ error: { code: 'GYM_HOST_INVALID', message: 'host is invalid' } }); return; }
+    const ttlDays = Math.max(1, Math.min(Number(req.body?.ttl_days) || 30, 90));
+    res.set('Cache-Control', 'no-store').status(201).json({ host: h, token: mintSpawnToken(resolveSpawnTokenSecret(), h, REMOTE_GYM_SCOPE, ttlDays * 86_400_000), expires_in_days: ttlDays });
+  });
+
+  return router;
+}

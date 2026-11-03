@@ -1,1 +1,0 @@
-.tmp-write-script.py

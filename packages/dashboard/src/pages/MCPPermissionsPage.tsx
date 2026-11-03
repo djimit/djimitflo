@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { PlugZap, Circle } from 'lucide-react';
 import type { MCPServer } from '@djimitflo/shared';
-import { api } from '../lib/api';
+import { api, type MCPRefreshScope } from '../lib/api';
+import { ACTION_PERMISSIONS as P, needsText, permissionError, useCan } from '../lib/permissions';
+
+type MCPServerView = MCPServer & {
+  effective_status?: MCPServer['status'] | 'catalog' | 'stale' | 'policy_blocked';
+  tool_count?: number;
+  approval_gate_count?: number;
+};
 
 const STATUS_DOT: Record<string, string> = {
   running: 'bg-green-500',
   stopped: 'bg-gray-500',
   error: 'bg-red-500',
   unknown: 'bg-yellow-500',
+  stale: 'bg-yellow-500',
+  policy_blocked: 'bg-blue-500',
+  catalog: 'bg-green-500',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -15,10 +25,21 @@ const STATUS_LABEL: Record<string, string> = {
   stopped: 'text-gray-400',
   error: 'text-red-400',
   unknown: 'text-yellow-400',
+  stale: 'text-yellow-400',
+  policy_blocked: 'text-blue-400',
+  catalog: 'text-green-400',
+};
+
+const STATUS_TEXT: Record<string, string> = {
+  policy_blocked: 'Policy isolated',
+  stale: 'Stale',
+  catalog: 'Catalog synced',
 };
 
 export function MCPPermissionsPage() {
-  const [servers, setServers] = useState<MCPServer[]>([]);
+  const canAdd = useCan(P.mcpCreateServer);
+  const canRefresh = useCan(P.mcpRefreshServers);
+  const [servers, setServers] = useState<MCPServerView[]>([]);
   const [permissions, setPermissions] = useState<Array<Record<string, unknown>>>([]);
   const [serverId, setServerId] = useState('');
   const [decision, setDecision] = useState('');
@@ -26,34 +47,76 @@ export function MCPPermissionsPage() {
   const [query, setQuery] = useState('');
   const [serversLoading, setServersLoading] = useState(true);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
-  const serverStats = permissions.reduce<Record<string, { tools: number; approvals: number }>>((stats, permission) => {
-    const id = String(permission.server_id || '');
-    if (!id) return stats;
-    stats[id] ||= { tools: 0, approvals: 0 };
-    stats[id].tools += 1;
-    if (permission.decision === 'requires_approval') stats[id].approvals += 1;
-    return stats;
-  }, {});
-
+  const [showAddServer, setShowAddServer] = useState(false);
+  const [newServerName, setNewServerName] = useState('');
+  const [newServerUrl, setNewServerUrl] = useState('');
+  const [newServerDescription, setNewServerDescription] = useState('');
+  const [addServerError, setAddServerError] = useState<string | null>(null);
+  const [addingServer, setAddingServer] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshScope, setRefreshScope] = useState<MCPRefreshScope | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [serversError, setServersError] = useState<string | null>(null);
+  const [permissionsError, setPermissionsError] = useState<string | null>(null);
+  // L6-08: opening the page only reads stored status; probing is the explicit Refresh status button.
   useEffect(() => {
-    api.getMCPServers()
+    loadServers();
+  }, []);
+
+  function loadServers() {
+    setServersLoading(true);
+    setServersError(null);
+    return api.getMCPServers()
       .then((serversResult) => {
         setServers(serversResult.servers);
       })
       .catch((error) => {
-        console.error('Failed to load MCP servers:', error);
+        setServersError(`Could not load MCP servers: ${error instanceof Error ? error.message : String(error)}`);
       })
       .finally(() => setServersLoading(false));
-  }, []);
+  }
+
+  function handleAddServer(event: FormEvent) {
+    event.preventDefault();
+    setAddServerError(null);
+    setAddingServer(true);
+    api.createMCPServer({ name: newServerName.trim(), description: newServerDescription.trim(), command: '', url: newServerUrl.trim() || undefined })
+      .then(() => {
+        setNewServerName('');
+        setNewServerUrl('');
+        setNewServerDescription('');
+        setShowAddServer(false);
+        return loadServers();
+      })
+      .catch((error) => {
+        setAddServerError(error instanceof Error ? error.message : 'Failed to add server');
+      })
+      .finally(() => setAddingServer(false));
+  }
+
+  function probeServers() {
+    setRefreshing(true);
+    setRefreshError(null);
+    api.refreshMCPServers()
+      .then((result) => {
+        setServers(result.servers);
+        setRefreshScope(result.refresh);
+      })
+      .catch((error) => setRefreshError(permissionError(error, P.mcpRefreshServers, 'Refresh failed')))
+      .finally(() => setRefreshing(false));
+  }
+
+  const asOf = servers.map((server) => server.last_ping_at).filter((value): value is string => Boolean(value)).sort().pop();
 
   useEffect(() => {
     setPermissionsLoading(true);
+    setPermissionsError(null);
     api.getMCPPermissions({ serverId, decision, riskLevel, q: query.trim() })
       .then((permissionsResult) => {
         setPermissions(permissionsResult.permissions);
       })
       .catch((error) => {
-        console.error('Failed to load MCP permissions:', error);
+        setPermissionsError(`Could not load MCP permissions: ${error instanceof Error ? error.message : String(error)}`);
       })
       .finally(() => setPermissionsLoading(false));
   }, [serverId, decision, riskLevel, query]);
@@ -63,23 +126,100 @@ export function MCPPermissionsPage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">MCP Permissions</h1>
         <p className="text-foreground-secondary mt-2">
-          MCP server status and effective tool decisions.
+          MCP server status and catalogued tool decisions.
+        </p>
+        {/* AUTHZ-F7: verified 2026-10-22 — no live code path calls an external MCP tool and the djimitflo MCP server checks
+            roles, not this table, so these decisions are a catalog. Do not read them as an enforced control. */}
+        <p role="note" className="mt-3 text-sm text-foreground-secondary border border-border rounded-md px-3 py-2">
+          Catalog only — not enforced. Djimitflo does not call external MCP tools, and its own MCP server checks user roles,
+          not these decisions. &quot;Allowed&quot;, &quot;Requires approval&quot; and &quot;Denied&quot; are recorded here but gate no call.
         </p>
       </div>
 
       {/* MCP Servers */}
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-foreground">
-          Servers
-          <span className="ml-2 text-sm font-normal text-foreground-secondary">
-            ({servers.length})
-          </span>
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">
+            Servers
+            <span className="ml-2 text-sm font-normal text-foreground-secondary">
+              ({servers.length})
+            </span>
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={probeServers}
+              disabled={!canRefresh || refreshing}
+              title={canRefresh ? 'Probe every registered server URL now' : needsText(P.mcpRefreshServers)}
+              className="text-sm px-3 py-1.5 rounded-md border border-border text-foreground-secondary hover:text-foreground hover:border-accent disabled:opacity-50"
+            >
+              Refresh status
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddServer((value) => !value)}
+              disabled={!canAdd}
+              title={canAdd ? undefined : needsText(P.mcpCreateServer)}
+              className="text-sm px-3 py-1.5 rounded-md border border-border text-foreground-secondary hover:text-foreground hover:border-accent"
+            >
+              {showAddServer ? 'Cancel' : 'Add server'}
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs text-foreground-tertiary">
+          Stored status, as of {asOf ? `the latest recorded check (${new Date(asOf).toLocaleString()})` : 'no recorded check'}. Opening this page does not probe.
+        </p>
+        {refreshScope && (
+          <p className="text-xs text-foreground-secondary">
+            Probed {refreshScope.probed.length} server{refreshScope.probed.length === 1 ? '' : 's'}, skipped {refreshScope.skipped.length}
+            {refreshScope.skipped.length > 0 && ` (${refreshScope.skipped.map((entry) => `${entry.id}: ${entry.reason.replace('_', ' ')}`).join(', ')})`}
+            {' '}at {new Date(refreshScope.refreshed_at).toLocaleTimeString()}.
+          </p>
+        )}
+        {refreshError && <p className="text-xs text-red-400">{refreshError}</p>}
+
+        {showAddServer && (
+          <form onSubmit={handleAddServer} className="bg-background-secondary border border-border rounded-lg p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                required
+                value={newServerName}
+                onChange={(event) => setNewServerName(event.target.value)}
+                placeholder="Name (e.g. my-tool-server)"
+                className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-foreground-tertiary"
+              />
+              <input
+                value={newServerUrl}
+                onChange={(event) => setNewServerUrl(event.target.value)}
+                placeholder="URL (optional)"
+                className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-foreground-tertiary"
+              />
+            </div>
+            <input
+              required
+              value={newServerDescription}
+              onChange={(event) => setNewServerDescription(event.target.value)}
+              placeholder="Description"
+              className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-foreground-tertiary"
+            />
+            {addServerError && <p className="text-xs text-red-400">{addServerError}</p>}
+            <button
+              type="submit"
+              disabled={addingServer}
+              className="text-sm px-3 py-1.5 rounded-md bg-accent text-white disabled:opacity-50"
+            >
+              {addingServer ? 'Adding…' : 'Add server'}
+            </button>
+          </form>
+        )}
 
         {serversLoading ? (
           <div className="bg-background-secondary border border-border rounded-lg p-6 text-foreground-secondary text-sm">
             Loading…
           </div>
+        ) : serversError ? (
+          <p role="alert" className="text-sm text-status-error">{serversError}</p>
         ) : servers.length === 0 ? (
           <div className="bg-background-secondary border border-border rounded-lg p-8 text-center text-foreground-secondary text-sm">
             No MCP servers registered.
@@ -87,8 +227,9 @@ export function MCPPermissionsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {servers.map((server) => {
-              const dot = STATUS_DOT[server.status] ?? 'bg-gray-500';
-              const label = STATUS_LABEL[server.status] ?? 'text-gray-400';
+              const status = server.effective_status || server.status;
+              const dot = STATUS_DOT[status] ?? 'bg-gray-500';
+              const label = STATUS_LABEL[status] ?? 'text-gray-400';
               return (
                 <div
                   key={server.id}
@@ -104,7 +245,7 @@ export function MCPPermissionsPage() {
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className={`w-2 h-2 rounded-full ${dot}`} />
                       <span className={`text-xs font-medium capitalize ${label}`}>
-                        {server.status}
+                        {STATUS_TEXT[status] || status}
                       </span>
                     </div>
                   </div>
@@ -116,18 +257,21 @@ export function MCPPermissionsPage() {
                   {server.url && (
                     <div className="text-xs text-foreground-tertiary truncate">{server.url}</div>
                   )}
-                  {server.last_ping_at && (
+                  {server.last_ping_at && status !== 'policy_blocked' && (
                     <div className="text-xs text-foreground-tertiary mt-1">
-                      Last ping: {new Date(server.last_ping_at).toLocaleTimeString()}
+                      {status === 'catalog' ? 'Catalog synced' : 'Last probe'}: {new Date(server.last_ping_at).toLocaleTimeString()}
                     </div>
                   )}
                   <div className="text-xs text-foreground-tertiary mt-2">
-                    Visible tools: {serverStats[server.id]?.tools || 0}
+                    Registered tools: {server.tool_count || 0}
                     <span className="mx-1">·</span>
-                    Approval gates: {serverStats[server.id]?.approvals || 0}
+                    Marked requires approval (not enforced): {server.approval_gate_count || 0}
                   </div>
+                  {server.metadata?.catalog_only === true && (
+                    <div className="text-xs text-foreground-tertiary mt-1">Service dependency — no direct MCP tools</div>
+                  )}
                   {server.error_message && (
-                    <div className="mt-2 text-xs text-red-400 truncate">{server.error_message}</div>
+                    <div className={`mt-2 text-xs truncate ${status === 'policy_blocked' ? 'text-blue-400' : 'text-red-400'}`}>{server.error_message}</div>
                   )}
                 </div>
               );
@@ -188,6 +332,8 @@ export function MCPPermissionsPage() {
           <div className="bg-background-secondary border border-border rounded-lg p-6 text-foreground-secondary text-sm">
             Loading…
           </div>
+        ) : permissionsError ? (
+          <p role="alert" className="text-sm text-status-error">{permissionsError}</p>
         ) : permissions.length === 0 ? (
           <div className="bg-background-secondary border border-border rounded-lg p-8 text-center">
             <Circle className="w-8 h-8 text-foreground-tertiary mx-auto mb-2" />

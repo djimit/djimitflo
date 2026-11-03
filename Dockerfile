@@ -5,8 +5,15 @@
 # Run:   docker run -p 3001:3001 -v djimitflo-data:/data djimitflo:latest
 # =============================================================================
 
+# The base image of both stages. scripts/deploy-vps.sh passes the digest it resolved this tag to (node@sha256:…), so the
+# build uses exactly the base its receipt records; a plain `docker build` (CI) uses the tag.
+ARG NODE_IMAGE=node:22-bookworm-slim
+
 # Stage 1: Build all workspaces from source
-FROM node:22-bookworm-slim AS builder
+FROM ${NODE_IMAGE} AS builder
+# apt downloads from the Debian mirror stalled forever three times (2026-09-25/26, apt http method at 0% CPU):
+# bound every request, retry, and use IPv4 (the host reaches deb.debian.org in 25 ms; inside the build apt hung)
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/80-djimitflo-retries
 
 WORKDIR /build
 
@@ -32,8 +39,9 @@ COPY packages/mcp-server/tsconfig.json packages/mcp-server/
 COPY packages/ransomware-module/package.json packages/ransomware-module/
 COPY packages/ransomware-module/tsconfig.json packages/ransomware-module/
 
-# Install ALL dependencies (including dev) for building
-RUN npm install
+# Install ALL dependencies (including dev) for building — strictly from package-lock.json, so the lockfile hash in the
+# build receipt (scripts/deploy-vps.sh) describes what was built; a lock out of sync with package.json fails the build
+RUN npm ci
 
 # Copy source code
 COPY packages/shared/src packages/shared/src
@@ -50,33 +58,45 @@ COPY packages/ransomware-module/src packages/ransomware-module/src
 RUN npm run build
 
 # Stage 2: Production runtime
-FROM node:22-bookworm-slim AS runner
+FROM ${NODE_IMAGE} AS runner
+# apt downloads from the Debian mirror stalled forever three times (2026-09-25/26, apt http method at 0% CPU):
+# bound every request, retry, and use IPv4 (the host reaches deb.debian.org in 25 ms; inside the build apt hung)
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/80-djimitflo-retries
 
 WORKDIR /app
 
-ARG VCS_REF=unknown
-ARG BUILD_TIME=unknown
-ARG BUILD_SOURCE=unknown
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl && \
+    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl procps libatomic1 && \
     rm -rf /var/lib/apt/lists/*
 
 # gh CLI: djimitflo's own PR review service shells out to it for PR
 # comments and Check Runs (see GithubPrReviewService). Static .deb, no
 # third-party apt repo needed; pinned like the other global installs below.
-ARG GH_CLI_VERSION=2.100.0
+ARG GH_CLI_VERSION=2.102.1
 RUN ARCH="$(dpkg --print-architecture)" && \
-    curl -fsSL -o /tmp/gh.deb "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${ARCH}.deb" && \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/gh.deb "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${ARCH}.deb" && \
     dpkg -i /tmp/gh.deb && \
     rm -f /tmp/gh.deb && \
     gh --version
 
+# Atomic Agent (plan C5): gym-only maker species via AtomicExecutor. Release tarball pinned by version + sha256.
+ARG ATOMIC_AGENT_VERSION=0.6.5
+ARG ATOMIC_AGENT_SHA256_X64=313ac01e1d40f3a6b39780c55af176bab231d2f03dea1d9b7e7bc93188a99f87
+ARG ATOMIC_AGENT_SHA256_ARM64=be231b650c0293cfa4427aef32285403a72809ce882b09345b22400067409f18
+RUN ARCH="$(dpkg --print-architecture)" && \
+    case "$ARCH" in amd64) A=x64; SUM="$ATOMIC_AGENT_SHA256_X64";; arm64) A=arm64; SUM="$ATOMIC_AGENT_SHA256_ARM64";; *) echo "unsupported arch $ARCH"; exit 1;; esac && \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/atomic.tgz "https://github.com/AtomicBot-ai/atomic-agent/releases/download/v${ATOMIC_AGENT_VERSION}/atomic-agent-linux-${A}.tar.gz" && \
+    echo "${SUM}  /tmp/atomic.tgz" | sha256sum -c - && \
+    mkdir -p /opt/atomic-agent && tar -xzf /tmp/atomic.tgz -C /opt/atomic-agent --strip-components=1 && rm -f /tmp/atomic.tgz && \
+    ln -s /opt/atomic-agent/atomic-agent /usr/local/bin/atomic-agent && \
+    atomic-agent --version
+
 # Keep the production worker surface equal to the runtimes accepted by
 # /swarms/runtime-readiness. Versions are pinned for reproducible probes.
-RUN npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 && \
-    git --version && codex --version && opencode --version
+RUN npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 @anthropic-ai/claude-code@2.1.282 && \
+    git --version && codex --version && opencode --version && claude --version
 
 # Create non-root user
 RUN groupadd -g 1001 djimitflo && \
@@ -96,14 +116,14 @@ COPY packages/mcp-server/package.json packages/mcp-server/
 # Install production dependencies only
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
-    npm install --omit=dev && \
+    npm ci --omit=dev && \
     node -e "new (require('better-sqlite3'))(':memory:').close()" && \
     apt-get purge -y --auto-remove make g++ && \
     rm -rf /var/lib/apt/lists/*
 
 RUN npm install --global npm@12.0.2 && \
     npm install --global --prefix /tmp/npm-patches \
-      brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 undici@7.29.0 && \
+      brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@7.30.1 && \
     cp -a /tmp/npm-patches/lib/node_modules/. /usr/local/lib/node_modules/npm/node_modules/ && \
     rm -rf /tmp/npm-patches
 
@@ -118,6 +138,17 @@ COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 COPY specs specs
 # ExplainerCriticService reads packages/server/corpus/explainer.corpus.jsonl relative to dist; without it every explainer task fails with ENOENT.
 COPY packages/server/corpus packages/server/corpus
+# NE_GENERATOR_CHECK_MODE reads the negative-evidence registry relative to dist (packages/server/dist/services → /app/docs)
+COPY docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml
+# /usage plan limits (operator-filled) read relative to dist (packages/server/dist/services → /app/docs)
+COPY docs/usage-plan-limits.json docs/usage-plan-limits.json
+# Finding-fix lane oracle (Djimitflo-held; the daemon runs this copy, never the maker worktree's)
+COPY scripts/finding-fix-gate.mjs scripts/finding-fix-gate.mjs
+# ESLint toolchain for that gate (operator-approved 20-10): same versions as the root lockfile's dev deps (every package
+# pinned to the root lock, 0 new versions), ~45 MB, scripts disabled; the gate finds it via FINDING_FIX_ESLINT_FROM.
+COPY tools/finding-fix-eslint/package.json tools/finding-fix-eslint/package-lock.json /opt/finding-fix-eslint/
+RUN cd /opt/finding-fix-eslint && npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+ENV FINDING_FIX_ESLINT_FROM=/opt/finding-fix-eslint
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
@@ -134,12 +165,23 @@ ENV PORT=3001
 ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
 ENV BACKUP_DIR=/data/backups
+# Declared here, not at the top of the stage: a build arg that changes every build (commit, time) invalidates the cache of
+# every later RUN, so apt/gh/atomic/global CLIs were reinstalled on each deploy and builds hit the 20 min timeout (28-09).
+ARG VCS_REF=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_SOURCE=unknown
+ARG LOCKFILE_SHA256=unknown
+ARG NODE_IMAGE
 ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 # Baked-at-build provenance so /health can distinguish the running revision from
 # the built artifact instead of trusting a runtime env that may be stale.
 ENV DJIMITFLO_BUILD_COMMIT=$VCS_REF
 ENV DJIMITFLO_BUILD_TIME=$BUILD_TIME
 ENV DJIMITFLO_BUILD_SOURCE=$BUILD_SOURCE
+# sha256 of the package-lock.json the image was built from; deploy-vps.sh checks it against the build receipt
+ENV DJIMITFLO_BUILD_LOCK_SHA256=$LOCKFILE_SHA256
+# the base image reference the build used (a digest when built by deploy-vps.sh)
+ENV DJIMITFLO_BUILD_BASE_IMAGE=$NODE_IMAGE
 
 EXPOSE 3001
 

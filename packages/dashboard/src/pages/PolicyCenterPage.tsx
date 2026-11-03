@@ -1,24 +1,30 @@
 import { useEffect, useState } from 'react';
 import type { ExecutionPolicy } from '@djimitflo/shared';
 import { api } from '../lib/api';
+import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 export function PolicyCenterPage() {
+  const canEdit = useCan(P.policyUpdate);
   const [policies, setPolicies] = useState<ExecutionPolicy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
   useEffect(() => {
     api.getPolicies().then((result) => {
       setPolicies(result.policies);
-      setLoading(false);
-    }).catch((error) => {
-      console.error('Failed to load policies:', error);
-      setLoading(false);
-    });
+    }).catch((err) => setError(`Could not load policies: ${message(err)}`))
+      .finally(() => setLoading(false));
   }, []);
 
   const togglePolicy = async (policy: ExecutionPolicy) => {
-    const updated = await api.updatePolicy(policy.id, { enabled: !policy.enabled });
-    setPolicies((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    setError(null);
+    try {
+      const updated = await api.updatePolicy(policy.id, { enabled: !policy.enabled });
+      setPolicies((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setError(`Could not update policy ${policy.name}: ${message(err)}`);
+    }
   };
 
   return (
@@ -27,6 +33,8 @@ export function PolicyCenterPage() {
         <h1 className="text-3xl font-bold text-foreground">Policy Center</h1>
         <p className="text-foreground-secondary mt-2">Control which actions are allowed, blocked, or require approval.</p>
       </div>
+
+      {error && <p role="alert" className="text-sm text-status-error">{error}</p>}
 
       {loading ? (
         <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading policies...</div>
@@ -46,6 +54,8 @@ export function PolicyCenterPage() {
                 </div>
                 <button
                   onClick={() => void togglePolicy(policy)}
+                  disabled={!canEdit}
+                  title={canEdit ? undefined : needsText(P.policyUpdate)}
                   className={`px-4 py-2 rounded-lg border ${policy.enabled ? 'bg-status-running/10 text-status-running border-status-running/20' : 'bg-status-error/10 text-status-error border-status-error/20'}`}
                 >
                   {policy.enabled ? 'Enabled' : 'Disabled'}

@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+// Fixture CLIs here report fake versions (fake-codex 1.0.0 …), not the admitted artifacts; admission itself is
+// covered by runtime-admission.test.ts. Shadow mode still records every admission decision.
+process.env.RUNTIME_ADMISSION_MODE = 'shadow';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -53,9 +56,9 @@ it.each(['high', 'critical'])('keeps explicit %s run risk without findings in bo
   db.prepare("UPDATE loop_runs SET findings_json='[]',metadata=? WHERE id='review-run'").run(JSON.stringify({ risk_class: risk }));
   const run = loops.getLoopRun('review-run');
   expect(loops.isHighRiskRun(run)).toBe(true);
-  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
+  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } }, { id: 'test-operator' });
   expect(gate('security_checker_verdict')?.status).toBe('fail');
-  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
+  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } }, { id: 'test-operator' });
   expect(gate('security_checker_verdict')?.status).toBe('pass');
 });
 
@@ -93,11 +96,11 @@ it('never silently dispatches a manual reviewer as mock', async () => {
 });
 
 it('preserves manual verdict submission and risk provenance across repeated verification', () => {
-  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
+  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } }, { id: 'test-operator' });
   expect(gate('security_checker_verdict')?.status).toBe('fail');
   expect(gate('security_checker_verdict')?.status).toBe('fail');
   expect(loops.getLoopRun('review-run').metadata).toMatchObject({ risk_class: 'high', provenance: { fixture: 'retained' } });
-  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
+  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } }, { id: 'test-operator' });
   expect(gate('security_checker_verdict')?.status).toBe('pass');
   expect(loops.getLoopRun('review-run').metadata).toMatchObject({ risk_class: 'high', provenance: { fixture: 'retained' } });
   expect(loops.getLoopRun('review-run').metadata).not.toHaveProperty('block_reason');
@@ -141,20 +144,23 @@ it.each(['checker', 'security_checker'] as const)('fails closed when a previousl
     { exit_status: 1 }, { timed_out: true }, { runtime_timed_out: true }, { runtime_was_cancelled: true },
     { runtime_verdict: 'rejected' }, { verdict: 'rejected' }, { read_only_contract_passed: false },
     { runtime_contract: { available: false, status: 'unavailable' } },
-    { runtime_contract: { available: true, status: 'drifted' } }, { runtime_adapter: 'codex' },
-    { stdout_path: path.join(root, 'missing-evidence') },
+    { runtime_contract: { available: true, status: 'drifted' } }, { runtime_adapter: 'codex' }, { stdout_path: null },
   ]) {
     db.prepare('UPDATE worker_leases SET status = ?, metadata = ? WHERE id = ?')
       .run('completed', JSON.stringify({ ...valid, ...invalid }), role);
     expect(gate(`${role}_verdict`)?.status).toBe('fail');
   }
+  // E2: a recorded stdout file that is no longer readable is unavailable evidence — still blocking, but unknown, not fail
+  db.prepare('UPDATE worker_leases SET status = ?, metadata = ? WHERE id = ?')
+    .run('completed', JSON.stringify({ ...valid, stdout_path: path.join(root, 'missing-evidence') }), role);
+  expect(gate(`${role}_verdict`)?.status).toBe('unknown');
 });
 
 it('does not relabel a rejected runtime verdict as runtime acceptance through manual submission', async () => {
   vi.spyOn(loops, 'buildMockCheckerCommand').mockReturnValue({ command: process.execPath, args: ['-e',
     'console.log(JSON.stringify({verdict:"rejected"}));'] });
   await loops.executeChecker('review-run', { lease_id: 'security_checker', runtime: 'mock' });
-  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
+  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } }, { id: 'test-operator' });
   expect(gate('security_checker_verdict')?.status).toBe('fail');
 });
 

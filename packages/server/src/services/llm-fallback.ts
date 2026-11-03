@@ -1,0 +1,123 @@
+/**
+ * Model calls with failover. Until now every call site had one hard-wired host: when the workstation that runs Ollama
+ * (100.77.58.72) went offline, the specialist panel, refinement and the Commons residents all stopped (3 outages on
+ * 2026-09-21). Endpoints come from the environment; with nothing configured besides the primary, behaviour is unchanged.
+ *
+ *   primary        OLLAMA_URL                       (caller supplies it)
+ *   2nd Ollama     OLLAMA_FALLBACK_URL              (+ OLLAMA_FALLBACK_MODEL if the model name differs)
+ *   OpenAI-compat  LLM_FALLBACK_OPENAI_URL          (+ LLM_FALLBACK_OPENAI_KEY, LLM_FALLBACK_MODEL)
+ *   2nd compat     LLM_FALLBACK2_OPENAI_URL         (same suffixes) — a non-Ollama provider (plan K3: NVIDIA kimi-k3), so an
+ *                                                   Ollama-wide outage or model retirement no longer stops every tier
+ *
+ * A host that fails at the connection level is marked down for a minute: healthy endpoints are tried first, down ones
+ * last (never skipped, so a total outage still surfaces the primary's own error message).
+ */
+
+import { getLlmLedger, measured } from './model-selector';
+import { limitMarker, limitWatching, noteOllamaOutput } from './inference-failover';
+
+export interface LlmEndpoint { id: string; kind: 'ollama' | 'openai'; baseUrl: string; apiKey?: string; model?: string }
+
+/** Token usage as the provider reported it; null = the provider did not say (never 0 by default). */
+export interface LlmUsage { tokensIn: number | null; tokensOut: number | null; provider: string; model: string }
+export interface GenerateOptions {
+  prompt: string; model: string; temperature?: number; maxTokens?: number; timeoutMs: number;
+  /** B29: what the call is for (the caller's identity, e.g. 'self_improvement:refinement') and the experiment arm it runs
+   *  in, recorded on the ledger row of every attempt. A call without one is recorded as 'untagged:generateText'. */
+  purpose?: string; experimentId?: string | null;
+  /** B29: the caller records its own ledger row (e.g. the panel's selector row) and takes the tokens from here, so they
+   *  are counted once — the transport row then carries no tokens */
+  onUsage?: (usage: LlmUsage) => void;
+}
+
+const BREAKER_MS = 60_000;
+const downUntil = new Map<string, number>();
+
+export function resetLlmBreaker(): void { downUntil.clear(); }
+export function isLlmEndpointDown(id: string, now = Date.now()): boolean { return (downUntil.get(id) ?? 0) > now; }
+
+export function llmEndpoints(primaryOllamaUrl: string, env: NodeJS.ProcessEnv = process.env): LlmEndpoint[] {
+  const endpoints: LlmEndpoint[] = [{ id: `ollama:${primaryOllamaUrl}`, kind: 'ollama', baseUrl: primaryOllamaUrl }];
+  const second = env.OLLAMA_FALLBACK_URL?.trim();
+  if (second && second !== primaryOllamaUrl) endpoints.push({ id: `ollama:${second}`, kind: 'ollama', baseUrl: second, model: env.OLLAMA_FALLBACK_MODEL?.trim() || undefined });
+  for (const n of ['', '2']) {
+    const compat = env[`LLM_FALLBACK${n}_OPENAI_URL`]?.trim();
+    if (compat) endpoints.push({ id: `openai:${compat}`, kind: 'openai', baseUrl: compat.replace(/\/$/, ''), apiKey: env[`LLM_FALLBACK${n}_OPENAI_KEY`]?.trim() || undefined, model: env[`LLM_FALLBACK${n}_MODEL`]?.trim() || undefined });
+  }
+  return endpoints;
+}
+
+/** Connection-level failure (host down, timeout, 5xx): says nothing about the request, so the host is avoided for a while. */
+export function isConnectivityFailure(message: string): boolean {
+  return /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up|HTTP 5\d\d/i.test(message);
+}
+
+const count = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+interface EndpointReply { text: string; tokensIn: number | null; tokensOut: number | null }
+async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fetchFn: typeof fetch): Promise<EndpointReply> {
+  const model = endpoint.model || options.model;
+  const signal = AbortSignal.timeout(options.timeoutMs);
+  if (endpoint.kind === 'ollama') {
+    const response = await fetchFn(`${endpoint.baseUrl}/api/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+      // think:false — reasoning models otherwise burn num_predict on a hidden trace and return no JSON.
+      body: JSON.stringify({ model, prompt: options.prompt, stream: false, format: 'json', think: false, options: { temperature: options.temperature ?? 0.2, num_predict: options.maxTokens ?? 1024 } }),
+    });
+    if (!response.ok) {
+      // OLLAMA_AUTO_FAILOVER / PANEL_FALLBACK_RUNTIME: the body says whether this is the Ollama Cloud usage limit (off: unread, unchanged)
+      const limit = limitWatching() ? noteOllamaOutput(getLlmLedger(), await response.text().catch(() => ''), `llm:${options.purpose ?? 'untagged'}`) : null;
+      throw new Error(`Ollama request failed: ${response.status}${limit ? ` ${limitMarker(limit)}` : ''}`);
+    }
+    // Ollama reports prompt_eval_count / eval_count; absent = unknown (null), never 0
+    const data = (await response.json()) as { response?: string; prompt_eval_count?: unknown; eval_count?: unknown };
+    return { text: data.response || '', tokensIn: count(data.prompt_eval_count), tokensOut: count(data.eval_count) };
+  }
+  const response = await fetchFn(`${endpoint.baseUrl}/chat/completions`, {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', ...(endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {}) },
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: options.prompt }], response_format: { type: 'json_object' }, temperature: options.temperature ?? 0.2, max_tokens: options.maxTokens ?? 1024 }),
+  });
+  if (!response.ok) throw new Error(`OpenAI-compatible request failed: HTTP ${response.status}`);
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } };
+  return { text: data.choices?.[0]?.message?.content || '', tokensIn: count(data.usage?.prompt_tokens), tokensOut: count(data.usage?.completion_tokens) };
+}
+
+/**
+ * Ledger purpose of a transport row. A caller that records its own row (onUsage, e.g. the panel's selector row) keeps the
+ * 'transport:<purpose>' convention so the call is not counted twice by purpose; otherwise the transport row IS the call
+ * and carries the caller's purpose. No purpose = 'untagged:generateText', never NULL or the anonymous 'fallback:generate'.
+ */
+export function transportPurpose(options: Pick<GenerateOptions, 'purpose' | 'onUsage'>): string {
+  if (!options.purpose) return 'untagged:generateText';
+  return options.onUsage ? `transport:${options.purpose}` : options.purpose;
+}
+
+export async function generateText(
+  options: GenerateOptions,
+  deps: { endpoints: LlmEndpoint[]; fetchFn?: typeof fetch; now?: () => number },
+): Promise<string> {
+  const now = deps.now ?? Date.now;
+  const fetchFn = deps.fetchFn ?? fetch;
+  const ordered = [...deps.endpoints].sort((a, b) => Number(isLlmEndpointDown(a.id, now())) - Number(isLlmEndpointDown(b.id, now())));
+  const errors: string[] = [];
+  for (const endpoint of ordered) {
+    try {
+      // UX-18: every attempt is a ledger row (consumer 'fallback', provider = endpoint id); the call itself is unchanged
+      const model = endpoint.model || options.model;
+      const reply = await measured({ consumer: 'fallback', model, provider: endpoint.id, taskKind: 'generate',
+        purpose: transportPurpose(options), experimentId: options.experimentId ?? null },
+        () => callEndpoint(endpoint, options, fetchFn),
+        (r) => (options.onUsage ? { outChars: r.text.length } : { outChars: r.text.length, tokensIn: r.tokensIn, tokensOut: r.tokensOut }));
+      downUntil.delete(endpoint.id);
+      try { options.onUsage?.({ tokensIn: reply.tokensIn, tokensOut: reply.tokensOut, provider: endpoint.id, model }); } catch { /* usage never breaks the call */ }
+      return reply.text;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(endpoint === deps.endpoints[0] ? message : `${endpoint.id}: ${message}`);
+      if (isConnectivityFailure(message)) downUntil.set(endpoint.id, now() + BREAKER_MS);
+    }
+  }
+  // Report the primary's own error first so callers' error classification keeps working.
+  const primaryIndex = errors.findIndex((_, i) => ordered[i] === deps.endpoints[0]);
+  throw new Error(errors[primaryIndex >= 0 ? primaryIndex : 0] + (errors.length > 1 ? ` (fallbacks also failed: ${errors.filter((_, i) => i !== primaryIndex).join('; ')})` : ''));
+}

@@ -2,65 +2,9 @@
 
 > See root `.github/copilot-instructions.md` for global conventions.
 
-Codex-native agent orchestration control plane. Monorepo with server and dashboard workspaces.
-
-## Commands
-
-```bash
-cd djimitflo
-npm install
-
-# Development
-npm run dev              # server + dashboard concurrently
-npm run dev:server       # server workspace only
-npm run dev:dashboard    # dashboard workspace only
-
-# Build and test
-npm run build            # all workspaces
-npm run build:server     # server workspace only
-npm run build:dashboard  # dashboard workspace only
-npm run test             # all workspaces (vitest)
-npm run lint             # all workspaces
-npm run type-check       # all workspaces
-
-# Clean
-npm run clean            # rm -rf packages/*/dist packages/*/node_modules node_modules
-```
-
-## Architecture
-
-Monorepo (`npm workspaces`). Uses `ws` for WebSocket communication. Server and dashboard are separate workspaces.
-
-```
-packages/server/
-├── package.json          # @djimitflo/server workspace
-└── src/                  # Server source
-
-packages/dashboard/
-├── package.json          # @djimitflo/dashboard workspace
-└── src/                  # Dashboard source (React + Vite)
-
-packages/shared/
-├── package.json          # @djimitflo/shared workspace
-└── src/                  # Shared utilities
-```
-
-## Key Details
-
-- **TypeScript strict mode** throughout.
-- **ESM modules** — `"type": "module"` in package.json.
-- **Vite** for dashboard bundling.
-- **Vitest** for testing.
-- **Workspace dependencies** managed via npm workspaces (requires npm >= 9).
-
-## Ponytail Simplicity Layer
-
-Ponytail is subordinate implementation guidance here: security, runtime, OpenSpec, auth, test, and project instructions override Ponytail. Security/runtime/project instructions override Ponytail.
-
-- Prefer the smallest server/dashboard change that preserves the control-plane contract.
-- Do not add orchestration layers, agent abstractions, route config, or scheduler state before an existing caller or test proves the need.
-- Keep runtime checks, auth boundaries, audit evidence, and Vitest coverage even when simplifying code.
-- Mark intentional shortcuts with `ponytail:` only when the ceiling and upgrade trigger are explicit.
+Project rules live in [`AGENTS.md`](../AGENTS.md) (commands, protected paths, definition of done, review rules) and the
+files it links: [`SOUL.md`](../SOUL.md) (doctrine and the Ponytail engineering style), [`USER.md`](../USER.md),
+[`TOOLS.md`](../TOOLS.md), [`HEARTBEAT.md`](../HEARTBEAT.md). This file only adds Copilot-specific setup.
 
 ## Browser Testing
 

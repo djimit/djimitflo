@@ -5,9 +5,16 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Dependabot merges push with GITHUB_TOKEN, which starts no push workflows; dependabot-auto-merge.yml dispatches this.
+  workflow_dispatch: {}
 
 permissions:
   contents: read
+
+# Every job checks out the PR head commit itself, not GitHub's synthetic merge commit, so the required checks that branch
+# protection reads on that head tested exactly that head (strict up-to-date protection makes it contain main). Required
+# jobs have no job-level `if:` — a skipped required check counts as passed on GitHub. scripts/ci-workflows.test.mjs
+# enforces both (forensic 2026-10-26 rank 9).
 
 jobs:
   build-and-test:
@@ -19,9 +26,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
@@ -42,10 +51,38 @@ jobs:
         run: npm run test -- --reporter=verbose
 
       - name: Test Commons runtime poller
-        run: python3 -m unittest discover -s scripts -p 'test_agent_social_poller.py'
+        run: python3 -m unittest discover -s scripts -p 'test_*poller.py'
+
+      - name: Test fleet host agent
+        run: python3 -m unittest discover -s scripts -p 'test_djimit_host_agent.py'
 
       - name: Security audit
         run: npm run audit:ci
+
+  fleet-auth-infra:
+    # S3: the event bus / agent registry sources in infra/ (installed on the VPS by docs/runbooks/fleet-bus-auth.md)
+    runs-on: ubuntu-latest
+    services:
+      redis:  # STATE-NEW-02: the bus dedupe Lua script runs against a real Redis (same major as infra/event-bus compose)
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    env:
+      REDIS_TEST_URL: redis://localhost:6379/15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Test event bus and agent registry auth
+        run: |
+          cmp infra/event-bus/fleet_auth.py infra/agent-registry/fleet_auth.py
+          for svc in event-bus agent-registry; do
+            python3 -m venv "$RUNNER_TEMP/venv-$svc"
+            "$RUNNER_TEMP/venv-$svc/bin/pip" install -q -r "infra/$svc/requirements.txt"
+            (cd "infra/$svc" && "$RUNNER_TEMP/venv-$svc/bin/python" -m unittest discover -s tests -v)
+          done
 
   security-scan:
     runs-on: ubuntu-latest
@@ -53,6 +90,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -63,13 +102,13 @@ jobs:
           exit-code: '1'
 
       - name: Build container image
-        run: docker build --tag djimitflo-ci:${{ github.sha }} .
+        run: docker build --tag djimitflo-ci:${{ github.event.pull_request.head.sha || github.sha }} .
 
       - name: Scan container image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'image'
-          image-ref: 'djimitflo-ci:${{ github.sha }}'
+          image-ref: 'djimitflo-ci:${{ github.event.pull_request.head.sha || github.sha }}'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           exit-code: '1'
@@ -80,9 +119,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: 'npm'
@@ -102,9 +143,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: cyclonedx-json

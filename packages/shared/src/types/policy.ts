@@ -145,6 +145,19 @@ export interface ApprovalRequest extends Timestamps {
   denied_at: string | null;
   denial_reason: string | null;
   metadata: Record<string, unknown>;
+  /** Worker-execution details (goal, proposal, runtime, directory) when the task belongs to an autonomous loop run. */
+  context?: ApprovalContext | null;
+}
+
+export interface ApprovalContext {
+  kind: 'loop_worker';
+  goal_objective: string | null;
+  proposal_title: string | null;
+  loop_run_id: string;
+  lease_role: string | null;
+  runtime: string | null;
+  working_directory: string | null;
+  prompt_preview: string | null;
 }
 
 export interface RiskAssessment {

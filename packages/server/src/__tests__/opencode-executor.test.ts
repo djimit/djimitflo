@@ -207,7 +207,14 @@ describe('OpenCodeExecutor', () => {
       const buffer = (executor as any).collectMetricsFromText(`${first}\n${second}\n`, metrics);
 
       expect(buffer).toBe('');
-      expect(metrics).toEqual({ tokenUsage: 250, costDollars: 0.03 });
+      expect(metrics).toEqual({ tokenUsage: 250, costDollars: 0.03, tokenSum: 350 });
+    });
+
+    it('A4: the runaway brake is off by default and reads OPENCODE_MAX_RUN_TOKENS', async () => {
+      const { maxRunTokens } = await import('../execution/executors/opencode-executor');
+      expect(maxRunTokens({})).toBeNull();
+      expect(maxRunTokens({ OPENCODE_MAX_RUN_TOKENS: '1000000' })).toBe(1_000_000);
+      expect(maxRunTokens({ OPENCODE_MAX_RUN_TOKENS: 'x' })).toBeNull();
     });
 
     it('returns null for blank lines', () => {
@@ -380,24 +387,30 @@ describe('OpenCodeExecutor', () => {
   });
 
   describe('mapJsonEventToExecutionEvent — step_finish', () => {
-    it('maps step_finish with reason "stop" to TASK_COMPLETED', () => {
+    it('maps step_finish with reason "stop" to a non-terminal final-step log (the outcome comes from the process)', () => {
       const event = { type: 'step_finish', sessionID: 'ses_123', timestamp: 1234, part: { type: 'step-finish', reason: 'stop', tokens: { total: 100, input: 80, output: 20 }, id: 'prt_4', messageID: 'msg_1', sessionID: 'ses_123' } };
       const result = (executor as any).mapJsonEventToExecutionEvent('task-1', event);
       expect(result).not.toBeNull();
-      expect(result.event_type).toBe('task.completed');
+      expect(result.event_type).toBe('log');
+      expect(result.metadata).toMatchObject({ step_outcome: 'final', terminal: false });
       expect(result.metadata.tokens).toEqual({ total: 100, input: 80, output: 20 });
     });
 
-    it('maps step_finish with reason "error" to TASK_FAILED', () => {
+    it('maps step_finish with reason "error" to a non-terminal ERROR diagnostic', () => {
       const event = { type: 'step_finish', sessionID: 'ses_123', timestamp: 1234, part: { type: 'step-finish', reason: 'error', id: 'prt_4', messageID: 'msg_1', sessionID: 'ses_123' } };
       const result = (executor as any).mapJsonEventToExecutionEvent('task-1', event);
       expect(result).not.toBeNull();
-      expect(result.event_type).toBe('task.failed');
+      expect(result).toMatchObject({ event_type: 'error', level: 'error', metadata: { step_outcome: 'error', terminal: false } });
+    });
+
+    it('maps step_finish with reason "tool-calls" to INFO progress, not a failure (DF-03)', () => {
+      const result = (executor as any).mapJsonEventToExecutionEvent('task-1', { type: 'step_finish', part: { type: 'step-finish', reason: 'tool-calls' } });
+      expect(result).toMatchObject({ event_type: 'log', level: 'info', metadata: { step_outcome: 'continuation', terminal: false } });
     });
 
     it('maps a flattened step_finish event without crashing', () => {
       const result = (executor as any).mapJsonEventToExecutionEvent('task-1', { type: 'step_finish', reason: 'stop' });
-      expect(result).toMatchObject({ event_type: 'task.completed', message: 'OpenCode step finished: stop' });
+      expect(result).toMatchObject({ event_type: 'log', message: 'OpenCode step finished: stop' });
     });
 
     it('records malformed tool events instead of throwing', () => {
@@ -405,9 +418,9 @@ describe('OpenCodeExecutor', () => {
       expect(result).toMatchObject({ event_type: 'log', level: 'warning', metadata: { malformed: true } });
     });
 
-    it('maps a step_finish event with no reason as a failed unknown outcome', () => {
+    it('maps a step_finish event with no reason as an unrecognized diagnostic, not success', () => {
       const result = (executor as any).mapJsonEventToExecutionEvent('task-1', { type: 'step_finish', part: { type: 'step-finish' } });
-      expect(result).toMatchObject({ event_type: 'task.failed', message: 'OpenCode step finished: unknown' });
+      expect(result).toMatchObject({ event_type: 'log', level: 'warning', message: 'OpenCode step finished: unknown', metadata: { step_outcome: 'unrecognized' } });
     });
   });
 

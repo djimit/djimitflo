@@ -91,4 +91,58 @@ describe('G21: Goal decomposition into capability DAGs', () => {
     const decomposeEvent = events.find((e) => e.data?.decomposition === 'dag_created');
     expect(decomposeEvent).toBeDefined();
   });
+
+  describe('GOAL_DECOMPOSER_AUTO_MISSIONS', () => {
+    const prevFlag = process.env.GOAL_DECOMPOSER_AUTO_MISSIONS;
+    afterEach(() => {
+      if (prevFlag === undefined) delete process.env.GOAL_DECOMPOSER_AUTO_MISSIONS;
+      else process.env.GOAL_DECOMPOSER_AUTO_MISSIONS = prevFlag;
+    });
+
+    it('does not create a mission when the flag is unset (default off)', () => {
+      delete process.env.GOAL_DECOMPOSER_AUTO_MISSIONS;
+      const goal = loops.createGoal({
+        objective: 'Implement a feature and test it',
+        acceptance_criteria: [{ metric: 'test_passes', target: 'all' }],
+        risk_class: 'low',
+      });
+      decomposer.decomposeGoalToDAG(goal.id);
+      expect(intelligence.listMissions().length).toBe(0);
+    });
+
+    it('registers an observed mission with one task per DAG node when the flag is on', () => {
+      process.env.GOAL_DECOMPOSER_AUTO_MISSIONS = 'true';
+      const goal = loops.createGoal({
+        objective: 'Implement a feature and test it',
+        acceptance_criteria: [{ metric: 'test_passes', target: 'all' }],
+        risk_class: 'low',
+      });
+      const dag = decomposer.decomposeGoalToDAG(goal.id);
+
+      const missions = intelligence.listMissions();
+      expect(missions.length).toBe(1);
+      expect(missions[0].status).toBe('observed');
+      expect(missions[0].goal_id).toBe(goal.id);
+
+      const tasks = intelligence.listTasks(missions[0].id);
+      expect(tasks.length).toBe(dag.nodes.length);
+      expect(tasks.every((t) => t.status === 'observed')).toBe(true);
+    });
+
+    it('does not throw the goal decomposition on a mission-registration failure', () => {
+      process.env.GOAL_DECOMPOSER_AUTO_MISSIONS = 'true';
+      const goal = loops.createGoal({
+        objective: 'Implement a feature and test it',
+        acceptance_criteria: [{ metric: 'test_passes', target: 'all' }],
+        risk_class: 'low',
+      });
+      const originalCreateMission = intelligence.createMission.bind(intelligence);
+      intelligence.createMission = () => { throw new Error('boom'); };
+      try {
+        expect(() => decomposer.decomposeGoalToDAG(goal.id)).not.toThrow();
+      } finally {
+        intelligence.createMission = originalCreateMission;
+      }
+    });
+  });
 });

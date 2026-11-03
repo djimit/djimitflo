@@ -36,7 +36,7 @@ beforeEach(() => {
         worktreePath: role === 'maker' ? worktree : null, branchName: null, now: new Date().toISOString(),
         metadata: role === 'maker' ? { assignment_file: assignment, diff_lines: 0, diff_max_lines: 20,
           required_deterministic_checks: ['fixture'], deterministic_checks: [{ name: 'fixture', status: 'pass' }] } : { maker_lease_id: `maker-${index}` } });
-      loops.updateWorkerLeaseStatus(id, 'completed', role === 'maker' ? {} : { verdict: 'accepted', manual_review_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
+      loops.updateWorkerLeaseStatus(id, 'completed', role === 'maker' ? {} : { verdict: 'accepted', manual_review_attestation: { reviewer: 'test-operator', reviewer_type: 'human', reviewer_user_id: 'user-op', reason: 'fixture manual review' } });
     }
   }
 });
@@ -78,6 +78,18 @@ it('does not certify when a required deterministic check is missing', () => {
   const result = loops.certifyLoopRun('run');
   expect(result.certified).toBe(false);
   expect(result.gates.find(gate => gate.name === 'tests_lint_typecheck')?.status).toBe('fail');
+});
+
+it('keeps appended evidence checks under the B1 rule once every required script passed', () => {
+  for (const id of ['maker-1', 'maker-2']) loops.updateWorkerLeaseStatus(id, 'completed', {
+    required_deterministic_checks: ['fixture'],
+    deterministic_checks: [{ name: 'fixture', status: 'pass' }, { name: 'test:assertion-strength', status: 'skipped' }],
+  });
+  expect(loops.certifyLoopRun('run').gates.find(gate => gate.name === 'tests_lint_typecheck')?.status).toBe('pass');
+  loops.updateWorkerLeaseStatus('maker-1', 'completed', {
+    deterministic_checks: [{ name: 'fixture', status: 'pass' }, { name: 'fixture', status: 'pass' }],
+  });
+  expect(loops.certifyLoopRun('run').gates.find(gate => gate.name === 'tests_lint_typecheck')?.status).toBe('fail');
 });
 
 it('requires at least one non-superseded maker', () => {
@@ -141,4 +153,12 @@ it('returns an HTTP conflict rather than a server error for cancelled completion
     expect(await response.json()).toMatchObject({ error: { code: 'LOOP_COMPLETION_CANCELLED' } });
     expect(loops.getLoopRun('run').status).toBe('cancelled');
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+});
+
+it('J5: an auto-approved maker fails verification when it touched more than its approved test file', () => {
+  const scope = 'packages/server/src/__tests__/a.test.ts';
+  loops.patchWorkerLeaseMetadata('maker-1', { auto_approved_scope: scope, changed_files: [scope, 'packages/server/src/services/a.ts'] });
+  expect(loops.verifyLoopRun('run').gates.find((g) => g.name === 'auto_approved_scope')?.status).toBe('fail');
+  loops.patchWorkerLeaseMetadata('maker-1', { changed_files: [scope] });
+  expect(loops.verifyLoopRun('run').gates.find((g) => g.name === 'auto_approved_scope')?.status).toBe('pass');
 });

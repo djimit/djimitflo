@@ -83,6 +83,12 @@ describe('self-improvement routes', () => {
     expect((await fetch(`${baseUrl}/proposals?status=anything`)).status).toBe(400);
   });
 
+  it('accepts needs_more_evidence as a valid status filter', async () => {
+    const response = await fetch(`${baseUrl}/proposals?status=needs_more_evidence`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ proposals: [] });
+  });
+
   it('rejects malformed pagination before proposal reads', async () => {
     const response = await fetch(`${baseUrl}/proposals?limit=NaN`);
     expect(response.status).toBe(400);

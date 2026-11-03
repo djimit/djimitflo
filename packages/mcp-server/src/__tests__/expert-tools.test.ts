@@ -6,7 +6,7 @@ import { registerExpertTools } from '../tools/experts.js';
 
 const TABLES = `
   CREATE TABLE expert_capability_taxonomy (id TEXT PRIMARY KEY, label TEXT, description TEXT, parent_id TEXT, aliases_json TEXT DEFAULT '[]');
-  CREATE TABLE expert_identities (id TEXT PRIMARY KEY, canonical_name TEXT, aliases_json TEXT DEFAULT '[]', lifecycle_state TEXT, identity_confidence REAL DEFAULT 0, provenance_json TEXT DEFAULT '{}', version INTEGER DEFAULT 1, created_at TEXT DEFAULT '2026-01-01', updated_at TEXT DEFAULT '2026-01-01');
+  CREATE TABLE expert_identities (id TEXT PRIMARY KEY, canonical_name TEXT, aliases_json TEXT DEFAULT '[]', lifecycle_state TEXT, identity_confidence REAL DEFAULT 0, provenance_json TEXT DEFAULT '{}', version INTEGER DEFAULT 1, created_at TEXT DEFAULT '2026-01-01', updated_at TEXT DEFAULT '2026-01-01', kind TEXT DEFAULT 'person');
   CREATE TABLE expert_evidence (id TEXT PRIMARY KEY, expert_id TEXT, kind TEXT, tier INTEGER, title TEXT, url TEXT, source_family TEXT, lifecycle TEXT DEFAULT 'active', retrieved_at TEXT DEFAULT '2026-01-01');
   CREATE TABLE expert_capabilities (id TEXT PRIMARY KEY, expert_id TEXT, capability_id TEXT, confidence REAL, evidence_refs_json TEXT, derived_by TEXT, status TEXT DEFAULT 'inferred', updated_at TEXT DEFAULT '2026-01-01');
   CREATE TABLE expert_affiliations (id TEXT PRIMARY KEY, expert_id TEXT, organization TEXT, role TEXT, valid_from TEXT, valid_to TEXT, source_ref TEXT, confidence REAL);
@@ -30,13 +30,15 @@ describe('frontier expert MCP tools (read-only, §35)', () => {
   let tools: Record<string, { handler: (input: Record<string, unknown>) => Promise<{ content: Array<{ text: string }>; isError?: boolean }> }>;
 
   beforeEach(() => {
+    // FE-AREAS: these fixtures are people (legacy); they are only visible with FRONTIER_EXPERT_PERSONS_ENABLED=true
+    process.env.FRONTIER_EXPERT_PERSONS_ENABLED = 'true';
     const db = new Database(':memory:');
     handle = { db, close: () => db.close() } as unknown as DbHandle;
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     registerExpertTools(server, handle);
     tools = (server as any)._registeredTools;
   });
-  afterEach(() => handle.close());
+  afterEach(() => { delete process.env.FRONTIER_EXPERT_PERSONS_ENABLED; handle.close(); });
 
   it('reports missing tables instead of guessing', async () => {
     const result = await tools.djimitflo_expert_search.handler({});
@@ -63,5 +65,13 @@ describe('frontier expert MCP tools (read-only, §35)', () => {
     const claims = JSON.parse((await tools.djimitflo_expert_claims.handler({ query: 'induction' })).content[0].text);
     expect(claims.claims).toHaveLength(2);
     expect(claims.unresolved_contradictions).toBe(1);
+  });
+
+  it('FE-AREAS: without FRONTIER_EXPERT_PERSONS_ENABLED no person is searched, shown or quoted', async () => {
+    delete process.env.FRONTIER_EXPERT_PERSONS_ENABLED;
+    handle.db.exec(TABLES);
+    expect(JSON.parse((await tools.djimitflo_expert_search.handler({})).content[0].text).count).toBe(0);
+    expect((await tools.djimitflo_expert_get.handler({ expertId: 'expert:a' })).isError).toBe(true);
+    expect(JSON.parse((await tools.djimitflo_expert_claims.handler({ query: 'induction' })).content[0].text).claims).toHaveLength(0);
   });
 });

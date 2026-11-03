@@ -5,14 +5,15 @@
  * `social.invite` message on the existing agent bus, baited with the freshest
  * open knowledge gap, plus (out-of-band, returned once to the operator) a
  * signed social-runtime token so its runtime can actually join.
- * Bite: a signed heartbeat after the lure was cast.
+ * Bite: a token-authenticated heartbeat AFTER the invite was delivered over the token path, inside the lure window.
+ * Every step is an append-only row in `lure_events` (published → delivered → bitten | expired_*); status() reads those.
+ * The old derivation (any heartbeat inside the window) survives only as `coincident_heartbeat`, for comparison.
  * Probe: any attempt to enter the social-runtime surface with an invalid or
  * blocked token — logged, never escalated.
  */
 
 import { randomUUID } from 'crypto';
-import { appendFileSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
+import { NOT_PROOF_FIXTURE_SQL } from './proof-fixture';
 import type { Database } from 'better-sqlite3';
 import type { AgentCommunicationService } from './agent-communication-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
@@ -22,14 +23,44 @@ const DEFAULT_TTL_MS = 24 * 3600_000;
 
 export interface LureInvitation { agent_id: string; name: string; token: string; expires_at: string; poller_env: string }
 export interface LureCast {
-  lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[]; paperclip_exported: boolean };
+  lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[] };
   invitations: LureInvitation[];
 }
-export interface LureInvitee { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null }
+/** lapsed = was in the Commons before (can bite once its poller runs again); never = no social runtime ever (needs an adapter first). */
+export type LureReach = 'lapsed' | 'never';
+export interface LureInvitee {
+  agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null; reach?: LureReach;
+  /** Pre-event derivation: the agent's latest heartbeat fell inside the window. Not causal; kept for comparison only. */
+  coincident_heartbeat: string | null;
+}
+export type LureTransition = 'invite_published' | 'invite_delivered' | 'bitten' | 'expired_undelivered' | 'expired_delivered_no_response';
+
+// Loop worker identities (maker/checker/security_checker) are not Commons participants and can never bite
+// (prod 2026-09-24: 3 of 14 invitees per lure; 128 invitations, 0 ever read).
+const LOOP_WORKER_ROLES = new Set(['maker', 'checker', 'security_checker']);
+// Heuristic gaps from curiosity-service ("count heuristic < 3; coverage UNKNOWN") are bookkeeping, not questions:
+// 300 of them, and every lure since 2026-09-14 used the same one as bait.
+export const HEURISTIC_GAP = 'Knowledge gap: Sparse claim inventory%';
+
+export function lureTargets(db: Database, heartbeatCutoff: string): Array<{ id: string; name: string; reach: LureReach }> {
+  const rows = db.prepare(`SELECT * FROM agents WHERE status IN ('active', 'idle')
+      AND COALESCE(json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at'), '') < ? ORDER BY id ASC`).all(heartbeatCutoff) as Array<Record<string, unknown>>;
+  return rows.flatMap((a) => {
+    let caps: unknown = [];
+    try { caps = JSON.parse(String(a.capabilities ?? a.capabilities_json ?? '[]')); } catch { /* none */ }
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(String(a.metadata ?? '{}')); } catch { /* none */ }
+    const social = Boolean(meta.social_runtime);
+    if (!social && Array.isArray(caps) && caps.some((c) => LOOP_WORKER_ROLES.has(String(c)))) return [];
+    return [{ id: String(a.id), name: String(a.name ?? a.id), reach: social ? 'lapsed' as const : 'never' as const }];
+  });
+}
 export interface LureStatus {
   lures: Array<{ id: string; topic: string; topic_ref: string; created_by: string; created_at: string; expires_at: string; bites: number; invitees: LureInvitee[] }>;
   probes: Array<{ id: string; agent_id: string; ip: string; reason: string; created_at: string }>;
   probe_count: number;
+  /** Over ALL lures (not just the newest 20 listed), from lure_events. untracked_lures predate the event log. */
+  totals: { lures: number; untracked_lures: number; invitations: number; delivered: number; bitten: number; expired_undelivered: number; expired_delivered_no_response: number };
 }
 
 export class AgentLureService {
@@ -43,43 +74,59 @@ export class AgentLureService {
         id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, ip TEXT NOT NULL, reason TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+      CREATE TABLE IF NOT EXISTS lure_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, lure_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+        transition TEXT NOT NULL CHECK(transition IN ('invite_published', 'invite_delivered', 'bitten', 'expired_undelivered', 'expired_delivered_no_response')),
+        reason TEXT, at TEXT NOT NULL, UNIQUE(lure_id, agent_id, transition)
+      );
+      CREATE TRIGGER IF NOT EXISTS lure_events_no_update BEFORE UPDATE ON lure_events BEGIN SELECT RAISE(ABORT, 'lure_events is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS lure_events_no_delete BEFORE DELETE ON lure_events BEGIN SELECT RAISE(ABORT, 'lure_events is append-only'); END;
     `);
   }
 
   /** Autonomous lure: cast only when no unexpired lure exists, and never mint tokens (nobody is there to receive them). */
-  castIfQuiet(input: { by: string; baseUrl: string; ttlMs?: number; paperclipPath?: string | null }): LureCast | null {
+  castIfQuiet(input: { by: string; baseUrl: string; ttlMs?: number }): LureCast | null {
+    this.sweepExpired(); // the autonomous loop calls this regularly, so expiries are recorded without anyone opening the page
     const open = this.db.prepare('SELECT 1 FROM social_lures WHERE expires_at > ? LIMIT 1').get(new Date().toISOString());
     if (open) return null;
-    const cast = this.castLure({ ...input, mintTokens: false });
+    // Without an operator nobody receives tokens, so only agents that were connected before can come back.
+    const cast = this.castLure({ ...input, mintTokens: false, reach: 'lapsed' });
     return cast.lure.invited.length ? cast : null;
   }
 
-  castLure(input: { by: string; baseUrl: string; ttlMs?: number; paperclipPath?: string | null; mintTokens?: boolean }): LureCast {
+  castLure(input: { by: string; baseUrl: string; ttlMs?: number; mintTokens?: boolean; reach?: LureReach }): LureCast {
     const ttlMs = Math.max(60_000, input.ttlMs ?? DEFAULT_TTL_MS);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs).toISOString();
     const heartbeatCutoff = new Date(now.getTime() - 20 * 60_000).toISOString();
-    const absent = this.db.prepare(`
-      SELECT id, name FROM agents
-      WHERE status IN ('active', 'idle')
-        AND COALESCE(json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at'), '') < ?
-      ORDER BY id ASC
-    `).all(heartbeatCutoff) as Array<{ id: string; name: string }>;
-
-    const gap = this.db.prepare(`
-      SELECT id, claim FROM swarm_claims WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+    const dormant = this.dormantAgents();
+    // without tokens (autonomous) only agents that can still bite are worth a lure: lapsed and not dormant
+    const absent = lureTargets(this.db, heartbeatCutoff).filter((agent) => (!input.reach || agent.reach === input.reach)
+      && (input.mintTokens !== false || (agent.reach === 'lapsed' && !dormant.has(agent.id))));
+    // Bait with real open work first (a parked proposal that needs a file and a test), then a non-heuristic gap.
+    // F1: rotate the bait — a proposal used as bait in the last 7 days is not used again (prod: one claim was cast 9 times)
+    const recentBait = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+    const parked = this.db.prepare(`SELECT id, title FROM self_improvements WHERE status = 'needs_grounding'
+      AND ('proposal:' || id) NOT IN (SELECT topic_ref FROM social_lures WHERE created_at >= ?) ORDER BY created_at DESC LIMIT 1`).get(recentBait) as { id: string; title: string } | undefined;
+    const gap = parked ? undefined : this.db.prepare(`
+      SELECT id, claim FROM swarm_claims WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported') AND claim NOT LIKE ? AND ${NOT_PROOF_FIXTURE_SQL}
       ORDER BY created_at DESC LIMIT 1
-    `).get() as { id: string; claim: string } | undefined;
-    const topic = (gap?.claim || 'cross-agent learning in the Djimit ecosystem').slice(0, 1_000);
-    const topicRef = gap ? `claim:${gap.id}` : 'ecosystem:cross-agent-learning';
+    `).get(HEURISTIC_GAP) as { id: string; claim: string } | undefined;
+    const topic = (parked ? `Ground a parked Djimitflo proposal: ${parked.title}` : gap?.claim || 'cross-agent learning in the Djimit ecosystem').slice(0, 1_000);
+    const topicRef = parked ? `proposal:${parked.id}` : gap ? `claim:${gap.id}` : 'ecosystem:cross-agent-learning';
     const lureId = `lure:${randomUUID()}`;
-    const bait = `Open question in the Agent Commons: "${topic}". Peers with a different perspective are asked for evidence, one uncertainty, a falsifiable next step and a creative alternative. Join by sending a signed social-runtime heartbeat; your operator holds the token.`;
+    const bait = `Open question in the Agent Commons: "${topic}". Peers with a different perspective are asked for evidence, one uncertainty, a falsifiable next step and a creative alternative. Join by sending a token-authenticated social-runtime heartbeat; your operator holds the token.`;
     const mintTokens = input.mintTokens !== false;
     const secret = mintTokens ? resolveSpawnTokenSecret() : '';
     // Agent ids and URLs are untrusted; the command is meant to be pasted into a shell.
     const sq = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+    // F1: an invitation on the bus only reaches an agent whose poller runs again. 'never' agents need an adapter first, and
+    // an agent that left 3 lures unanswered since its last heartbeat is dormant: neither gets bus messages (prod: 0 of 128
+    // invitations were ever read). A manual cast still mints tokens for all of them — that is what installs an adapter.
     const invitations = this.db.transaction(() => absent.flatMap((agent) => {
-      this.comms.send({
+      const onBus = agent.reach === 'lapsed' && !dormant.has(agent.id);
+      this.event(lureId, agent.id, 'invite_published', onBus ? 'bus_message' : 'token_only', now.toISOString());
+      if (onBus) this.comms.send({
         from: LURE_SENDER, to: agent.id, type: 'question', action: 'social.invite', context: bait, evidence: [topicRef],
         threadId: lureId, epistemicRole: 'question', ttl: Math.ceil(ttlMs / 1000),
         params: { topic, topic_ref: topicRef, lure_id: lureId, join: `${input.baseUrl}/api/swarm-v2/social-runtime/${agent.id}/heartbeat`, effect_scope: 'isolated', board_summary: bait.slice(0, 500) },
@@ -92,11 +139,50 @@ export class AgentLureService {
       }];
     }))();
 
-    const paperclipExported = this.exportPaperclip(input.paperclipPath, { lureId, topic, topicRef, invited: absent.map((agent) => agent.id) });
     // Nothing to lure: report it, but do not persist an empty lure (it would block autonomous casts until it expires).
-    if (absent.length) this.db.prepare('INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json, paperclip_exported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(lureId, topic, topicRef, input.by, now.toISOString(), expiresAt, JSON.stringify(absent.map((agent) => agent.id)), paperclipExported ? now.toISOString() : null);
-    return { lure: { id: lureId, topic, topic_ref: topicRef, created_at: now.toISOString(), expires_at: expiresAt, invited: absent.map((agent) => agent.id), paperclip_exported: paperclipExported }, invitations };
+    if (absent.length) this.db.prepare('INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(lureId, topic, topicRef, input.by, now.toISOString(), expiresAt, JSON.stringify(absent.map((agent) => agent.id)));
+    return { lure: { id: lureId, topic, topic_ref: topicRef, created_at: now.toISOString(), expires_at: expiresAt, invited: absent.map((agent) => agent.id) }, invitations };
+  }
+
+  private event(lureId: string, agentId: string, transition: LureTransition, reason: string, at: string): boolean {
+    return this.db.prepare('INSERT OR IGNORE INTO lure_events (lure_id, agent_id, transition, reason, at) VALUES (?, ?, ?, ?, ?)')
+      .run(lureId, agentId, transition, reason, at).changes === 1;
+  }
+
+  /** Token path: hand the agent its pending invites (marked read) and record each as delivered for its lure. */
+  deliverInvites(agentId: string): ReturnType<AgentCommunicationService['claimInvites']> {
+    const invites = this.comms.claimInvites(agentId);
+    const at = new Date().toISOString();
+    for (const invite of invites) {
+      const lureId = String(invite.payload.thread_id || '');
+      if (this.db.prepare("SELECT 1 FROM lure_events WHERE lure_id = ? AND agent_id = ? AND transition = 'invite_published'").get(lureId, agentId)) {
+        this.event(lureId, agentId, 'invite_delivered', 'runtime_token', at);
+      }
+    }
+    return invites;
+  }
+
+  /** Token path: a heartbeat after a delivered invite, inside that lure's window, is the bite. Returns the lures bitten. */
+  recordHeartbeat(agentId: string, at: string): string[] {
+    const open = this.db.prepare(`SELECT d.lure_id FROM lure_events d JOIN social_lures l ON l.id = d.lure_id
+      WHERE d.agent_id = ? AND d.transition = 'invite_delivered' AND d.at <= ? AND l.expires_at >= ?
+        AND NOT EXISTS (SELECT 1 FROM lure_events b WHERE b.lure_id = d.lure_id AND b.agent_id = d.agent_id AND b.transition = 'bitten')`)
+      .all(agentId, at, at) as Array<{ lure_id: string }>;
+    return open.filter((row) => this.event(row.lure_id, agentId, 'bitten', 'heartbeat_after_delivery', at)).map((row) => row.lure_id);
+  }
+
+  /** Close every expired invitation that has no outcome yet. Idempotent (UNIQUE per lure/agent/transition). */
+  sweepExpired(now = new Date().toISOString()): number {
+    return this.db.prepare(`INSERT OR IGNORE INTO lure_events (lure_id, agent_id, transition, reason, at)
+      SELECT p.lure_id, p.agent_id,
+        CASE WHEN EXISTS (SELECT 1 FROM lure_events d WHERE d.lure_id = p.lure_id AND d.agent_id = p.agent_id AND d.transition = 'invite_delivered')
+          THEN 'expired_delivered_no_response' ELSE 'expired_undelivered' END,
+        'window_closed', l.expires_at
+      FROM lure_events p JOIN social_lures l ON l.id = p.lure_id
+      WHERE p.transition = 'invite_published' AND l.expires_at < ?
+        AND NOT EXISTS (SELECT 1 FROM lure_events t WHERE t.lure_id = p.lure_id AND t.agent_id = p.agent_id
+          AND t.transition IN ('bitten', 'expired_undelivered', 'expired_delivered_no_response'))`).run(now).changes;
   }
 
   /** Honeypot log: who knocked on the social-runtime door without a valid key. */
@@ -109,22 +195,28 @@ export class AgentLureService {
 
   status(): LureStatus {
     const now = new Date().toISOString();
+    this.sweepExpired(now);
     const heartbeats = new Map((this.db.prepare(`
       SELECT id, name, json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at') AS beat FROM agents
     `).all() as Array<{ id: string; name: string; beat: string | null }>).map((row) => [row.id, row]));
-    const seen = new Set((this.db.prepare(`
-      SELECT json_extract(payload_json, '$.thread_id') || '|' || to_agent AS key FROM agent_messages
-      WHERE json_extract(payload_json, '$.action') = 'social.invite' AND status IN ('delivered', 'read')
-    `).all() as Array<{ key: string }>).map((row) => row.key));
+    const reach = new Map(lureTargets(this.db, '9999').map((t) => [t.id, t.reach]));
     const lures = (this.db.prepare('SELECT * FROM social_lures ORDER BY created_at DESC LIMIT 20').all() as Array<Record<string, string>>).map((row) => {
       const invited: string[] = JSON.parse(row.invited_json || '[]');
+      const log = new Map<string, Map<LureTransition, string>>();
+      for (const e of this.db.prepare('SELECT agent_id, transition, at FROM lure_events WHERE lure_id = ?').all(row.id) as Array<{ agent_id: string; transition: LureTransition; at: string }>) {
+        if (!log.has(e.agent_id)) log.set(e.agent_id, new Map());
+        log.get(e.agent_id)!.set(e.transition, e.at);
+      }
       const invitees: LureInvitee[] = invited.map((agentId) => {
         const agent = heartbeats.get(agentId);
-        const bit = !!agent?.beat && agent.beat >= row.created_at && agent.beat <= row.expires_at;
+        const events = log.get(agentId) ?? new Map<LureTransition, string>();
+        const coincident = !!agent?.beat && agent.beat >= row.created_at && agent.beat <= row.expires_at;
+        const bitAt = events.get('bitten') ?? null;
+        const expired = events.has('expired_undelivered') || events.has('expired_delivered_no_response') || row.expires_at < now;
         return {
-          agent_id: agentId, name: agent?.name || agentId,
-          state: bit ? 'bit' : row.expires_at < now ? 'expired' : seen.has(`${row.id}|${agentId}`) ? 'seen' : 'invited',
-          bit_at: bit ? agent!.beat : null,
+          agent_id: agentId, name: agent?.name || agentId, reach: reach.get(agentId) ?? 'never',
+          state: bitAt ? 'bit' : expired ? 'expired' : events.has('invite_delivered') ? 'seen' : 'invited',
+          bit_at: bitAt, coincident_heartbeat: coincident ? agent!.beat : null,
         };
       });
       return {
@@ -136,24 +228,23 @@ export class AgentLureService {
       // Legacy rows carry SQLite's "YYYY-MM-DD HH:MM:SS" (UTC, no zone); normalise so clients do not read them as local time.
       .map((probe) => ({ ...probe, created_at: /^\d{4}-\d{2}-\d{2} /.test(probe.created_at) ? `${probe.created_at.replace(' ', 'T')}Z` : probe.created_at }));
     const probeCount = (this.db.prepare('SELECT COUNT(*) AS n FROM social_lure_probes').get() as { n: number }).n;
-    return { lures, probes, probe_count: probeCount };
+    const counts = new Map((this.db.prepare('SELECT transition, COUNT(*) AS n FROM lure_events GROUP BY transition').all() as Array<{ transition: LureTransition; n: number }>).map((r) => [r.transition, r.n]));
+    const lureCounts = this.db.prepare('SELECT COUNT(*) AS lures, SUM(id NOT IN (SELECT lure_id FROM lure_events)) AS untracked FROM social_lures').get() as { lures: number; untracked: number | null };
+    const totals = {
+      lures: lureCounts.lures, untracked_lures: lureCounts.untracked ?? 0, invitations: counts.get('invite_published') ?? 0, delivered: counts.get('invite_delivered') ?? 0,
+      bitten: counts.get('bitten') ?? 0, expired_undelivered: counts.get('expired_undelivered') ?? 0, expired_delivered_no_response: counts.get('expired_delivered_no_response') ?? 0,
+    };
+    return { lures, probes, probe_count: probeCount, totals };
   }
 
-  private exportPaperclip(path: string | null | undefined, lure: { lureId: string; topic: string; topicRef: string; invited: string[] }): boolean {
-    if (path === null || !lure.invited.length) return false;
-    const target = path || process.env.DENNIS_AGENT_PAPERCLIP_PENDING || `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl`;
-    const envelope = {
-      event: 'social.invite', task_title: `Agent Commons: connect ${lure.invited.length} silent agent(s) to peer learning`,
-      task_type: 'skill_candidate', priority: 'low', severity: 'low', status: 'backlog', dedupe_key: `agent-commons:${lure.lureId}`,
-      summary: `Open question "${lure.topic}" has no live peers. Wire a runtime poller (scripts/agent-social-poller.py) for: ${lure.invited.join(', ')}.`,
-      context: 'Tokens were issued once to the operator who cast the lure; never store them in the task. Isolated effect scope; nothing touches production.',
-      assignee_role: 'skill-factory-agent', labels: ['agent-commons', 'lure', 'paperclip-ready'],
-      metadata: { source: 'djimitflo.agent_commons', lure_id: lure.lureId, topic_ref: lure.topicRef, invited: lure.invited, execution_tier: 'A2', human_required: true },
-    };
-    try {
-      mkdirSync(dirname(target), { recursive: true });
-      appendFileSync(target, `${JSON.stringify(envelope)}\n`, 'utf8');
-      return true;
-    } catch { return false; }
+  /** Agents invited to at least 3 lures since their last heartbeat (or ever, when they never beat). */
+  dormantAgents(): Set<string> {
+    const beats = new Map((this.db.prepare(`SELECT id, json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at') AS beat FROM agents`).all() as Array<{ id: string; beat: string | null }>).map((r) => [r.id, r.beat ?? '']));
+    const unanswered = new Map<string, number>();
+    for (const lure of this.db.prepare('SELECT created_at, invited_json FROM social_lures').all() as Array<{ created_at: string; invited_json: string }>) {
+      for (const id of JSON.parse(lure.invited_json || '[]') as string[]) if (lure.created_at > (beats.get(id) ?? '')) unanswered.set(id, (unanswered.get(id) ?? 0) + 1);
+    }
+    return new Set([...unanswered].filter(([, n]) => n >= 3).map(([id]) => id));
   }
+
 }

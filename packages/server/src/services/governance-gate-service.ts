@@ -8,7 +8,14 @@
  *
  * Default-off. Arm with:
  *   GOVERNANCE_GATE_ENABLED=true
- *   GOVERNANCE_GATE_FLOOR=3                     (0-5 scale, default 3)
+ *   GOVERNANCE_GATE_FLOOR=3                     (default 3)
+ *     — observed openmythos_eval_runs.overall_score ranges ~0-95 in
+ *       production, not the 0-5 scale this default was originally written
+ *       for. The default of 3 is deliberately left unchanged (it's what's
+ *       already live everywhere this is referenced) but is too low to be a
+ *       meaningful floor against that real range — set this explicitly
+ *       (e.g. 30-40, based on your own score distribution) when arming the
+ *       gate, or it will only ever catch near-zero/degenerate runs.
  *   GOVERNANCE_GATE_MODEL_MAP=claude=claude-sonnet-4,pi=qwen2.5:14b-instruct-q4_K_M
  *     — maps executor kinds to benchmarked subject models, for tasks whose
  *       agent has no eval history of its own.
@@ -50,7 +57,12 @@ export class GovernanceGateService {
 
   floor(): number {
     const floor = Number(process.env.GOVERNANCE_GATE_FLOOR ?? '3');
-    return Number.isFinite(floor) && floor >= 0 && floor <= 5 ? floor : 3;
+    // Bug fix: this used to clamp to <= 5, silently discarding any floor set
+    // for the real ~0-100 score range (see class docstring) and falling back
+    // to the default every time — making it impossible to actually configure
+    // a meaningful floor. Scores are >= 0 in practice; there's no fixed
+    // upper bound on the benchmark, so only reject non-finite/negative input.
+    return Number.isFinite(floor) && floor >= 0 ? floor : 3;
   }
 
   private modelForExecutor(executorKind: string): string | null {

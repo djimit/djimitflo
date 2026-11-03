@@ -6,14 +6,15 @@
  * 170 LOC + executeRuntimeCommand 120 LOC + semaphore management).
  */
 
-import { spawn, spawnSync } from 'child_process';
+import { remoteMakerEnabled } from './remote-maker-queue';
+import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import type { ChildProcess } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
 import { runtimeConcurrencySemaphore } from './concurrency-semaphore';
-import { runtimeProcessClosed, stopRuntimeProcess } from '../execution/executors/runtime-process';
+import { runtimeProcessClosed, signalRuntimeProcess, spawnRuntime, stopRuntimeProcess } from '../execution/executors/runtime-process';
 import { RuntimeLeaseRegistry } from './loop-recovery-service';
 
 export class RuntimeCommandService {
@@ -149,6 +150,11 @@ export class RuntimeCommandService {
     if (runtime === 'manual') {
       return this.withConformance({ runtime: 'manual', available: true, command: null, version: 'manual', status: 'ok', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: ['manual runtime requires human execution'] });
     }
+    if (runtime === 'remote') {
+      // plan I3: the maker runs on a compute host that pulls the job; there is no local binary to probe
+      const on = remoteMakerEnabled();
+      return this.withConformance({ runtime: 'remote', available: on, command: null, version: 'remote-maker', status: on ? 'ok' : 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [on ? 'REMOTE_MAKER_ENABLED' : 'remote maker disabled'], ...(on ? {} : { reason: 'REMOTE_MAKER_ENABLED is not true' }) });
+    }
     if (runtime === 'mock') {
       return this.withConformance({ runtime: 'mock', available: true, command: process.execPath, version: 'mock-runtime', status: 'ok', cwd_flag: 'argv', json_flag: 'stdout-json', supports_json_events: true, supports_usage_parsing: true, supports_timeout_kill: true, evidence: ['deterministic in-process mock runtime'] });
     }
@@ -159,6 +165,8 @@ export class RuntimeCommandService {
       gemini: { binEnv: 'GEMINI_BIN_PATH', defaultBin: 'gemini', helpArgs: ['--help'], jsonFlag: '-o', jsonFlagHelp: '-o', cwdFlag: null, headlessFlag: '-p' },
       editor: { binEnv: 'CLINE_BIN_PATH', defaultBin: 'cline', helpArgs: ['--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '-c', headlessFlag: '--json' },
       pi: { binEnv: 'PI_BIN_PATH', defaultBin: 'pi', helpArgs: ['--help'], jsonFlag: '--mode', jsonFlagHelp: '--mode', cwdFlag: null, headlessFlag: '-p' },
+      // atomic: plain text on stdout, goal on stdin (AtomicExecutor); ponytail: no structured events, the diff is the evidence
+      atomic: { binEnv: 'ATOMIC_AGENT_BIN_PATH', defaultBin: 'atomic-agent', helpArgs: ['run', '--help'], jsonFlag: '', jsonFlagHelp: '', cwdFlag: '--cwd', headlessFlag: '--no-approval' },
     };
     const probe = PROBES[runtime];
     if (!probe) {
@@ -262,7 +270,7 @@ export class RuntimeCommandService {
       let timeoutHandle: NodeJS.Timeout | undefined;
       let child: ChildProcess;
       try {
-        child = spawn(command, args, { cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+        child = spawnRuntime(command, args, { cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (error) {
         this.releaseRuntimePermit(leaseId);
         reject(error instanceof Error ? error : new Error(String(error)));
@@ -272,7 +280,7 @@ export class RuntimeCommandService {
         timeoutHandle = setTimeout(() => {
           if (!timedOutHandled) {
             timedOut = true; timedOutAt = new Date().toISOString(); timedOutHandled = true;
-            try { child.kill('SIGKILL'); } catch { /* best effort */ }
+            signalRuntimeProcess(child, 'SIGKILL');
           }
         }, timeoutMs);
       }
