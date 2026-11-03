@@ -15,6 +15,7 @@ import type { ExecutorKind } from '../execution/types';
 import type { AuthMiddleware } from '../middleware/auth';
 import type { WebSocketService } from '../services/websocket-service';
 import { createNativeTask, parseNativeTask, notifyNativeTaskCreated } from '../services/native-task-service';
+import { param } from './params';
 
 /**
  * List views need the shape of a task's metadata, not its bulk: production metadata averaged ~14 KB per
@@ -219,7 +220,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   // PATCH /api/tasks/:id - Update task
   router.patch('/:id', requirePermission('create:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const user = getUser(req);
       const task = loadTaskOr404(db, id, res);
       if (!task) return;
@@ -298,7 +299,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   // DELETE /api/tasks/:id - Delete task
   router.delete('/:id', requirePermission('delete:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const user = getUser(req);
       const task = loadTaskOr404(db, id, res);
       if (!task) return;
@@ -398,7 +399,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   // POST /api/tasks/:id/execute - Execute a task
   router.post('/:id/execute', requirePermission('execute:task'), async (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const user = getUser(req);
       const task = loadTaskOr404(db, id, res);
       if (!task) return;
@@ -451,7 +452,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   // POST /api/tasks/:id/cancel - Cancel a running task
   router.post('/:id/cancel', requirePermission('execute:task'), async (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const user = getUser(req);
       const task = loadTaskOr404(db, id, res);
       if (!task) return;

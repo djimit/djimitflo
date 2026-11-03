@@ -13,6 +13,7 @@ import { OpenMythosAttestationService } from '../services/openmythos-attestation
 import { WorldLabEvidenceService } from '../services/worldlab-evidence-service';
 import { GovernanceGuardService } from '../services/governance-guard-service';
 import { ApexReportService } from '../services/apex-report-service';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -42,7 +43,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.get('/attestations/:id', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(attestationService.get(req.params.id));
+      res.json(attestationService.get(param(req, 'id')));
     } catch (error) {
       if (error instanceof Error && error.message === 'OPENMYTHOS_ATTESTATION_NOT_FOUND') {
         next(createError(404, 'OpenMythos attestation not found', 'OPENMYTHOS_ATTESTATION_NOT_FOUND'));
@@ -85,7 +86,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.get(['/status', '/status/:agentId'], requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(evalService.getOperationalStatus(req.params.agentId));
+      res.json(evalService.getOperationalStatus(param(req, 'agentId')));
     } catch (error) {
       next(error);
     }
@@ -98,7 +99,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
       if (caseIds !== undefined && (!Array.isArray(caseIds) || caseIds.length > 500 || caseIds.some((id) => typeof id !== 'string' || !id.trim()))) {
         throw createError(400, 'case_ids must be an array of at most 500 non-empty strings', 'VALIDATION_ERROR');
       }
-      const result = await evalService.runEval(req.params.agentId, categories, model, caseIds);
+      const result = await evalService.runEval(param(req, 'agentId'), categories, model, caseIds);
       res.status(201).json(result);
     } catch (error) {
       next(error);
@@ -134,7 +135,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // GET /api/openmythos/score/:agentId — get latest scores
   router.get('/score/:agentId', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const score = evalService.getAgentScore(req.params.agentId);
+      const score = evalService.getAgentScore(param(req, 'agentId'));
       if (!score) {
         throw createError(404, 'No evaluation data for this agent', 'OPENMYTHOS_NO_DATA');
       }
@@ -147,7 +148,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // GET /api/openmythos/report/:agentId — generate governance report
   router.get('/report/:agentId', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const report = evalService.generateReport(req.params.agentId);
+      const report = evalService.generateReport(param(req, 'agentId'));
       res.json(report);
     } catch (error) {
       next(error);
@@ -158,7 +159,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   router.get('/trend/:agentId', requirePermission('read:evidence'), (req, res, next) => {
     try {
       const limit = boundedLimit(req.query.limit, 10, 100);
-      const trend = evalService.getGovernanceTrend(req.params.agentId, limit);
+      const trend = evalService.getGovernanceTrend(param(req, 'agentId'), limit);
       res.json({ agentId: req.params.agentId, trend });
     } catch (error) {
       next(error);
@@ -196,7 +197,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // POST /api/openmythos/guard/check/:skillId — run governance guard check
   router.post('/guard/check/:skillId', requirePermission('write:governance'), async (req, res, next) => {
     try {
-      const result = await guardService.runBenchmarkCheck(req.params.skillId, req.body?.metadata);
+      const result = await guardService.runBenchmarkCheck(param(req, 'skillId'), req.body?.metadata);
       res.json(result);
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('SKILL_NOT_ADMITTED:')) {
@@ -210,8 +211,8 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // GET /api/openmythos/guard/certified/:skillId — check certification status
   router.get('/guard/certified/:skillId', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const certified = guardService.isGovernanceCertified(req.params.skillId);
-      const score = guardService.getLatestScore(req.params.skillId);
+      const certified = guardService.isGovernanceCertified(param(req, 'skillId'));
+      const score = guardService.getLatestScore(param(req, 'skillId'));
       res.json({ skillId: req.params.skillId, certified, score });
     } catch (error) {
       next(error);

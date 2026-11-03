@@ -6,6 +6,7 @@ import type { AuthTokenPayload, ExportRequest } from '@djimitflo/shared';
 import { ExportService, ExportError } from '../services/export-service';
 import type { AuthMiddleware } from '../middleware/auth';
 import { once } from 'events';
+import { param } from './params';
 
 export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
@@ -51,7 +52,7 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
     try {
       const user = getUser(req);
       const options = parseExportRequest(req.body);
-      const result = exportService.exportTask(req.params.taskId, user, options);
+      const result = exportService.exportTask(param(req, 'taskId'), user, options);
       handleExportResult(res, result);
     } catch (error) {
       handleError(res, error);
@@ -63,7 +64,7 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
     try {
       const user = getUser(req);
       const options = parseExportRequest(req.body);
-      const result = exportService.exportEvidence(req.params.taskId, user, options);
+      const result = exportService.exportEvidence(param(req, 'taskId'), user, options);
       handleExportResult(res, result);
     } catch (error) {
       handleError(res, error);
@@ -87,7 +88,7 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
     try {
       const user = getUser(req);
       const options = parseExportRequest(req.body);
-      const result = exportService.exportRepository(req.params.repositoryId, user, options);
+      const result = exportService.exportRepository(param(req, 'repositoryId'), user, options);
       handleExportResult(res, result);
     } catch (error) {
       handleError(res, error);

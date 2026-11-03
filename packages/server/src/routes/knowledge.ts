@@ -5,6 +5,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { knowledgeBus } from '../services/knowledge-bus';
 import { createError } from '../middleware/error-handler';
 import { openSseStream } from '../utils/sse';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback = 50): number {
   if (value === undefined) return fallback;
@@ -63,7 +64,7 @@ export function createKnowledgeRoutes(auth: AuthMiddleware, db?: Database): Rout
   router.get('/subscribe/:capabilityId', requireAuth, (req: Request, res: Response) => {
     const stream = openSseStream(req, res);
     stream.send({ type: 'connected', capability: req.params.capabilityId });
-    const capId = req.params.capabilityId === 'all' ? '*' : req.params.capabilityId;
+    const capId = param(req, 'capabilityId') === 'all' ? '*' : param(req, 'capabilityId');
     stream.onClose(knowledgeBus.subscribe(capId, (claim) => { stream.send(claim); }));
   });
 

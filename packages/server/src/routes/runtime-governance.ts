@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { createError } from '../middleware/error-handler';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback = 50): number {
   if (value === undefined) return fallback;
@@ -44,7 +45,7 @@ export function createRuntimeGovernanceRoutes(
 
   // GET /api/runtime-governance/agents/:agentId — agent governance status
   router.get('/agents/:agentId', requirePermission('read:evidence'), (req, res) => {
-    res.json(service.getQuarantineStatus(req.params.agentId));
+    res.json(service.getQuarantineStatus(param(req, 'agentId')));
   });
 
   // POST /api/runtime-governance/agents/:agentId/register — register baseline
@@ -59,14 +60,14 @@ export function createRuntimeGovernanceRoutes(
       res.status(400).json({ error: { message: 'scores must be between 0 and 10 and certifiedAt must be a valid timestamp', code: 'VALIDATION_ERROR' } });
       return;
     }
-    service.registerBaseline(req.params.agentId, { overallScore, categoryScores, certifiedAt: normalizedCertifiedAt });
+    service.registerBaseline(param(req, 'agentId'), { overallScore, categoryScores, certifiedAt: normalizedCertifiedAt });
     res.json({ registered: true, agentId: req.params.agentId });
   });
 
   // POST /api/runtime-governance/agents/:agentId/check — check if allowed
   router.post('/agents/:agentId/check', requirePermission('read:evidence'), (req, res) => {
-    const allowed = service.isAllowed(req.params.agentId);
-    const status = service.getQuarantineStatus(req.params.agentId);
+    const allowed = service.isAllowed(param(req, 'agentId'));
+    const status = service.getQuarantineStatus(param(req, 'agentId'));
     res.json({ agentId: req.params.agentId, allowed, ...status });
   });
 
@@ -78,7 +79,7 @@ export function createRuntimeGovernanceRoutes(
       return;
     }
     try {
-      service.releaseFromQuarantine(req.params.agentId, reason.trim());
+      service.releaseFromQuarantine(param(req, 'agentId'), reason.trim());
       res.json({ released: true, agentId: req.params.agentId });
     } catch (error) {
       if (error instanceof Error && /^Agent not found:/.test(error.message)) {
@@ -92,7 +93,7 @@ export function createRuntimeGovernanceRoutes(
   // POST /api/runtime-governance/agents/:agentId/reset — reset circuit breaker
   router.post('/agents/:agentId/reset', requirePermission('write:governance'), (req, res) => {
     try {
-      service.resetCircuitBreaker(req.params.agentId);
+      service.resetCircuitBreaker(param(req, 'agentId'));
       res.json({ reset: true, agentId: req.params.agentId });
     } catch (error) {
       if (error instanceof Error && /^Agent not found:/.test(error.message)) {
