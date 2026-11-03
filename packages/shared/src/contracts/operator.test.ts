@@ -2,16 +2,18 @@ import { expect, it } from 'vitest';
 import { OPERATOR_CONTRACTS, type OperatorContract, type ContractKeys } from './operator';
 
 const EXPECTED: Record<string, string[]> = {
-  cockpit: ['at', 'build', 'scorecard', 'guardrails', 'stalls', 'gym', 'remote_workers', 'maker_usage_7d', 'judgments_7d', 'needs_you', 'schedulers', 'genomes', 'deploys'],
-  evolutionEvidence: ['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'trials', 'models', 'oracle', 'commons',
-    'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'gates'],
+  cockpit: ['at', 'snapshot_id', 'health', 'errors', 'build', 'scorecard', 'guardrails', 'stalls', 'detectors', 'gym', 'remote_workers', 'maker_usage_7d', 'judgments_7d', 'needs_you', 'schedulers', 'genomes', 'deploys', 'evolution', 'capabilities', 'subtraction', 'unit_economics'],
+  evolutionEvidence: ['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons',
+    'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'fail_before_pass_after', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'knowledge_gaps', 'jev_challenger', 'gate_rule_disagreements', 'experiments', 'learning_ledger', 'fleet_signatures', 'falsifier', 'settlement_execution', 'settlement_value', 'scheduler_capacity', 'procedure_selection', 'pl_001', 'memory_delivery', 'fleet_repair', 'advisory_exposure', 'content_drafts', 'capability_factory'],
   forecastsV2: ['forecasters', 'would_have_stopped'],
   runtimes: ['runtimes'],
   runtimeRow: ['runtime', 'admission', 'version', 'probe', 'leases_30d', 'leases_90d', 'last_success_at', 'gym', 'readiness'],
   digest: ['at', 'text', 'data'],
-  draftPrs: ['total', 'unsettled', 'rows'],
-  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived'],
-  schedulers: ['armed', 'off', 'schedulers'],
+  draftPrs: ['total', 'unsettled', 'by_settlement', 'closed_unmerged', 'rows'],
+  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge', 'settlement', 'settlement_reason', 'settlement_terminal', 'settlement_age_days'],
+  efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'coverage', 'notes', 'cost_per_verified'],
+  schedulers: ['armed', 'by_status', 'health', 'off', 'schedulers'],
+  stalls: ['stalls', 'detectors', 'health', 'capabilities'],
 };
 
 it('OPERATOR_CONTRACTS exposes every expected contract with the documented keys', () => {
@@ -56,7 +58,7 @@ it('ContractKeys resolves to the tuple element type of the matching contract', (
 
 it('runtimes and schedulers contracts expose their list-bearing keys', () => {
   expect(OPERATOR_CONTRACTS.runtimes).toEqual(['runtimes']);
-  expect(OPERATOR_CONTRACTS.schedulers).toEqual(['armed', 'off', 'schedulers']);
+  expect(OPERATOR_CONTRACTS.schedulers).toEqual(['armed', 'by_status', 'health', 'off', 'schedulers']);
 });
 
 it('runtimeRow and draftPrRow contracts describe row shapes distinct from their parent lists', () => {
