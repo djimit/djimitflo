@@ -38,7 +38,11 @@ describe('UX-5: one locale and shared formatters', () => {
 
 /** UX-5: the UI is English-only; these Dutch fragments were translated and must not come back. */
 const DUTCH = [/\bNog geen\b/, /\bgeen capabilities\b/, /\bbeslist door\b/, /\bgekopieerd\b/, /\bkopieer\b/, /\bniet gepromoot\b/,
-  /\balleen nu zichtbaar\b/, /\bCode voor\b/, /\bBeste strategie\b/, /\bbijdragen\b/, /· gestart /, /· laatst /, /\baanklop/, /\bDe emitter draait\b/, /\bAangeklopt\b/, /\bwachtend\b/, /'uitgenodigd'|'gebeten'|'verlopen'/, /\bgebeten\b/, /\bnooit verbonden\b/];
+  /\balleen nu zichtbaar\b/, /\bCode voor\b/, /\bBeste strategie\b/, /\bbijdragen\b/, /· gestart /, /· laatst /, /\baanklop/, /\bDe emitter draait\b/, /\bAangeklopt\b/, /\bwachtend\b/, /'uitgenodigd'|'gebeten'|'verlopen'/, /\bgebeten\b/, /\bnooit verbonden\b/,
+  // UX-28: Agent Commons, Authority Ledger and Interaction Board leftovers
+  /\baanwezig/, /'stil'/, /\baangemeld\b/, /\bmislukt\b/, /\bRonde\b/, /\bcooldown actief\b/, /\bovergeslagen\b/, /\bUitnodigingscode\b/, /\bBeslissing\b/i,
+  /\balle social threads\b/, /\bverberg tokens\b/, /\btoon tokens\b/, /\breputatie\b/, /\bweinig data\b/, /· bron /, />aan \{/, /\bbewijs \(/,
+  /\bTotaal events\b/, />Tijd</, />Bron</, /\bAangevraagd\b/, /\bbeslissingsketen\b/, /\bAlle beslissingen\b/, /\brelatiebeeld\b/, /\bgescheiden\b/];
 const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f);
   return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) ? [p] : [];
