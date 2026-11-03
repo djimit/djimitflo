@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import type { Server } from 'node:http';
 import Database from 'better-sqlite3';
-import { LiveCanvasService } from '../services/live-canvas-service';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -15,78 +14,6 @@ import { createTaskRoutes } from '../routes/tasks';
 import { createApprovalRoutes } from '../routes/approvals';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { errorHandler } from '../middleware/error-handler';
-
-describe('LiveCanvasService', () => {
-  let db: Database.Database;
-  let service: LiveCanvasService;
-
-  beforeEach(() => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    service = new LiveCanvasService(db);
-  });
-
-  it('creates a canvas session', () => {
-    const session = service.createSession('run-1');
-    expect(session.id).toBeDefined();
-    expect(session.runId).toBe('run-1');
-    expect(session.status).toBe('active');
-  });
-
-  it('gets session status', () => {
-    service.createSession('run-1');
-    const status = service.getSessionStatus('run-1');
-    expect(status).toBeDefined();
-    expect(status?.status).toBe('active');
-  });
-
-  it('returns null for non-existent session', () => {
-    expect(service.getSessionStatus('nonexistent')).toBeNull();
-  });
-
-  it('streams thinking messages', () => {
-    service.createSession('run-1');
-    expect(() => service.streamThinking('run-1', 'Analyzing...')).not.toThrow();
-    const status = service.getSessionStatus('run-1');
-    expect(status?.messageCount).toBe(1);
-  });
-
-  it('streams tool calls', () => {
-    service.createSession('run-1');
-    expect(() => service.streamToolCall('run-1', 'grep', { pattern: 'test' })).not.toThrow();
-    const status = service.getSessionStatus('run-1');
-    expect(status?.messageCount).toBe(1);
-  });
-
-  it('streams tool results', () => {
-    service.createSession('run-1');
-    expect(() => service.streamToolResult('run-1', 'grep', 'match found')).not.toThrow();
-  });
-
-  it('streams code diffs', () => {
-    service.createSession('run-1');
-    expect(() => service.streamCodeDiff('run-1', 'file.ts', '+ line added')).not.toThrow();
-  });
-
-  it('streams progress', () => {
-    service.createSession('run-1');
-    expect(() => service.streamProgress('run-1', 5, 10, 'Processing')).not.toThrow();
-  });
-
-  it('completes session', () => {
-    service.createSession('run-1');
-    service.completeSession('run-1', 'All done');
-    const status = service.getSessionStatus('run-1');
-    expect(status?.status).toBe('completed');
-  });
-
-  it('lists sessions', () => {
-    service.createSession('run-1');
-    service.createSession('run-2');
-    const sessions = service.listSessions();
-    expect(sessions.length).toBe(2);
-  });
-});
 
 describe('TelegramBotService', () => {
   let db: Database.Database;

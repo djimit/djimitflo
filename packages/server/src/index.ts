@@ -3,8 +3,9 @@
  * Express + TypeScript + SQLite backend for agent orchestration control plane
  */
 
+import { setLlmLedger } from './services/model-selector';
 import express from 'express';
-import { installOutboundGuard } from './utils/outbound-guard';
+import { installOutboundGuard, outboundViolation } from './utils/outbound-guard';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
@@ -13,16 +14,18 @@ import { join } from 'path';
 import { initializeDatabase } from './database';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
+import { requestContext } from './middleware/request-context';
 import { securityHeaders } from './middleware/security-headers';
 import { createAuthMiddleware } from './middleware/auth';
 import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { createExplorePublicRoutes } from './routes/explore-public';
 import { createGitHubWebhookRoutes } from './routes/github-webhooks';
+import { DjimitSecTriggerService } from './services/djimitsec-trigger-service';
 import { createMetricsHandler, metricsRateLimiter } from './routes/metrics';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
-import { MemorySyncService } from './services/memory-sync-service';
+import { MEMORY_DELIVERY_RECONCILE_MS, MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
 import { VectorMemoryService } from './services/vector-memory-service';
 import { TrajectoryStore } from './services/trajectory-store';
@@ -51,10 +54,20 @@ import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
 import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
-import { noteScheduler } from './services/scheduler-registry';
+import { noteScheduler, registerRestart, markRun } from './services/scheduler-registry';
+import { laneIntervalMs, startDependencyLane } from './services/dependency-lane';
+import { PROBE_INTERVAL_MS, startOllamaProbe } from './services/inference-failover';
+import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
+import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
+import { CONTENT_DRAFTS_INTERVAL_MS, startContentDrafts } from './services/content-drafts';
+import { buildProvenance } from './utils/build-provenance';
+import { recordTreatmentEnvBoundaries } from './services/experiment-registry';
+import { fleetDrift } from './utils/fleet-drift';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
-installOutboundGuard();
+// §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
+let outboundViolationDb: ReturnType<typeof initializeDatabase> | null = null;
+installOutboundGuard(process.env, undefined, (host) => { if (outboundViolationDb) outboundViolation(outboundViolationDb, host); });
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string; allowedUsers?: number[]; userMap?: Record<string, string> };
 
@@ -87,6 +100,9 @@ async function main() {
   // Initialize database
   console.log('📦 Initializing database...');
   const db = initializeDatabase();
+  outboundViolationDb = db;
+  // UX-18: one model-call ledger for every server-side LLM call (call sites without a db handle record here)
+  setLlmLedger(db);
 
   // Recover in-flight loops orphaned by a previous crash/restart and prune stale worktrees.
   // At startup the in-memory lease map is empty, so any DB-'running' lease/run is orphaned.
@@ -98,7 +114,7 @@ async function main() {
     const recovery = recoverySvc.recoverInterruptedRuns();
     if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {
       console.log(
-        `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
+        `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), settled ${recovery.settledRuns} deploy-restart zombie run(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
       );
     }
   } catch (error) {
@@ -108,6 +124,12 @@ async function main() {
   initExternalEventIngest(db);
   if (operatorRuntime) initOperatorServices(db);
   if (autonomousRuntime) {
+    // A18: the process that runs the experiments records a period boundary when a treatment flag changed since its last boot
+    try {
+      for (const b of recordTreatmentEnvBoundaries(db)) console.warn(`🧪 period boundary: ${b.experiment_id} ${b.env_name} ${b.previous ?? '(unset)'} → ${b.current ?? '(unset)'}`);
+    } catch (error) {
+      console.warn('⚠️  Experiment period-boundary check failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
     initAutonomousServices(db, recoverySvc);
     // Share the same LoopService instance so daemon and API share runtime leases.
     try {
@@ -132,34 +154,28 @@ async function main() {
   
   // Middleware
   app.use(securityHeaders);
+  app.use(requestContext); // X-Request-ID on every response; the dashboard shows it on failed calls (UXE-08)
   app.use(cors({
     origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://127.0.0.1:5173'],
     credentials: true,
   }));
   // Exact GitHub signature bytes must be consumed before the general JSON parser.
-  // This connector imports work items only; it never starts goals/loops/workers.
-  app.use('/github/webhook', createGitHubWebhookRoutes(db));
+  // Existing intake is retained; explicitly configured scan-only repositories use the fixed native executor.
+  const scanRuntime: { triggers?: DjimitSecTriggerService } = {};
+  app.use('/github/webhook', createGitHubWebhookRoutes(db, () => scanRuntime.triggers));
   app.use(express.json());
   app.use(requestLogger);
   
   // Health check (public)
   app.get('/health', (_req, res) => {
-    const runtimeCommit = process.env.DJIMITFLO_COMMIT_SHA || null;
-    const builtCommit = process.env.DJIMITFLO_BUILD_COMMIT && process.env.DJIMITFLO_BUILD_COMMIT !== 'unknown'
-      ? process.env.DJIMITFLO_BUILD_COMMIT
-      : null;
+    const build = buildProvenance();
     res.json({
       status: 'healthy',
-      commit: runtimeCommit,
+      commit: build.commit,
       // Same build identity as /api/health so both liveness endpoints are attributable.
-      build: {
-        commit: runtimeCommit,
-        built_commit: builtCommit,
-        build_source: process.env.DJIMITFLO_BUILD_SOURCE || null,
-        build_time: process.env.DJIMITFLO_BUILD_TIME || null,
-        instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
-        commit_matches_build: !!(runtimeCommit && builtCommit && runtimeCommit === builtCommit),
-      },
+      build,
+      // S3: fleet services (event bus, agent registry) whose deployed sources differ from main; null = not checked
+      fleet_drift: fleetDrift(),
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
@@ -196,6 +212,8 @@ async function main() {
       } catch (error) {
         console.warn('⚠️ Dennis governed queue failed:', error instanceof Error ? error.message : String(error));
       }
+      try { if (scanRuntime.triggers) void scanRuntime.triggers.tick().then(() => markRun('djimitsec_repository_scan'), error => { markRun('djimitsec_repository_scan', error); console.warn('DjimitSec trigger tick held:', error instanceof Error ? error.message : String(error)); }); }
+      catch (error) { markRun('djimitsec_repository_scan', error); console.warn('DjimitSec trigger tick held:', error instanceof Error ? error.message : String(error)); }
     };
     processDennisQueue();
     dennisQueueTimer = setInterval(processDennisQueue, 60_000);
@@ -209,14 +227,29 @@ async function main() {
   const runtimeGovernance = new RuntimeGovernanceService(db);
   runtimeGovernance.start();
   const executionEngine = new ExecutionEngine(db, wsService, undefined, runtimeGovernance);
+  scanRuntime.triggers = new DjimitSecTriggerService(db, executionEngine, wsService);
+  noteScheduler('djimitsec_repository_scan', 'DJIMITSEC_SCAN_TRIGGERS', operatorRuntime && ['shadow', 'execute'].includes(process.env.DJIMITSEC_SCAN_TRIGGERS || ''), 60_000);
   const taskRecovery = executionEngine.recoverInterruptedTasks();
   if (taskRecovery.failedMockTasks || taskRecovery.heldTasks) {
     console.log(`🔄 Reconciled ${taskRecovery.failedMockTasks} interrupted mock task(s); ${taskRecovery.heldTasks} task(s) held for operator outcome reconciliation.`);
+  }
+  // RIR (LOOP_RESUME_INTERRUPTED, default off): after both the loop settle and the engine's recovery holds, re-queue this
+  // boot's interrupted runs with a fresh maker; the daemon's next tick runs them through every gate again.
+  if (autonomousRuntime) {
+    try {
+      const resume = recoverySvc.resumeInterruptedRuns();
+      if (resume.mode !== 'off' && resume.details.length) console.log(`🔄 Resume interrupted runs (${resume.mode}): ${resume.resumed} resumed, ${resume.skipped} skipped.`);
+    } catch (error) {
+      console.warn('⚠️  Resume of interrupted runs failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
   }
   console.log('⚙️  Execution engine initialized');
 
   const memorySync = new MemorySyncService(db);
   executionEngine.setMemorySyncService(memorySync);
+  // CODE-004 (MEMORY_DELIVERY_RECEIPTS=on): bounded reconciliation of failed/unknown memory legs at boot and on a tick
+  registerRestart('memory_delivery_reconcile', () => { memorySync.stop(); memorySync.start(); });
+  noteScheduler('memory_delivery_reconcile', 'MEMORY_DELIVERY_RECEIPTS', memorySync.start(), MEMORY_DELIVERY_RECONCILE_MS);
 
   const reasoningBank = new ReasoningBankService(db);
   executionEngine.setReasoningBankService(reasoningBank);
@@ -269,39 +302,86 @@ async function main() {
   }
 
   // Compliance report scheduler — periodic reporting, in-process (default-off, see service header)
-  if (noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', new ComplianceReportScheduler(db).start())) {
+  const complianceReportSched = new ComplianceReportScheduler(db);
+  registerRestart('compliance_report', () => { complianceReportSched.stop(); complianceReportSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', complianceReportSched.start(), complianceReportSched.intervalHours() * 3_600_000)) {
     console.log('📋 Compliance report scheduler armed');
   }
 
   // Self-healing scheduler — periodic detect-and-fix (stale leases, etc.), in-process (default-off, see service header)
-  if (noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', new SelfHealingScheduler(db).start())) {
+  const selfHealingSched = new SelfHealingScheduler(db);
+  registerRestart('self_healing', () => { selfHealingSched.stop(); selfHealingSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', selfHealingSched.start(), selfHealingSched.intervalMinutes() * 60_000)) {
     console.log('🩺 Self-healing scheduler armed');
   }
 
   // Self-improvement auto-review scheduler — LLM-generated specialist reviews
   // + autonomous goal-authorization, in-process (default-off, see service header)
-  if (noteScheduler('self_improvement_auto_review', 'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', new SelfImprovementAutoReviewScheduler(db).start())) {
+  const selfImprovementAutoReviewSched = new SelfImprovementAutoReviewScheduler(db);
+  registerRestart('self_improvement_auto_review', () => { selfImprovementAutoReviewSched.stop(); selfImprovementAutoReviewSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('self_improvement_auto_review', 'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', selfImprovementAutoReviewSched.start(), selfImprovementAutoReviewSched.intervalMinutes() * 60_000)) {
     console.log('🧭 Self-improvement auto-review scheduler armed');
   }
 
   // Frontier expert scheduler — automates discovery/enrichment/peer-review only;
   // stops below the registry's hard approval/activation governance wall,
   // in-process (default-off, gated on DJIMITFLO_FRONTIER_EXPERTS_ENABLED too, see service header)
-  if (noteScheduler('frontier_experts', 'FRONTIER_EXPERTS_SCHEDULER_ENABLED', new FrontierExpertScheduler(db).start())) {
+  const frontierExpertsSched = new FrontierExpertScheduler(db);
+  registerRestart('frontier_experts', () => { frontierExpertsSched.stop(); frontierExpertsSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('frontier_experts', 'FRONTIER_EXPERTS_SCHEDULER_ENABLED', frontierExpertsSched.start(), frontierExpertsSched.intervalMinutes() * 60_000)) {
     console.log('🔭 Frontier expert scheduler armed');
   }
 
   // Specialist panel backlog scheduler — projects consensus_ready general
   // panels into real work items, in-process (default-off, see service header)
-  if (noteScheduler('specialist_panel_backlog', 'SPECIALIST_PANEL_BACKLOG_ENABLED', new SpecialistPanelBacklogScheduler(db).start())) {
+  const specialistPanelBacklogSched = new SpecialistPanelBacklogScheduler(db);
+  registerRestart('specialist_panel_backlog', () => { specialistPanelBacklogSched.stop(); specialistPanelBacklogSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('specialist_panel_backlog', 'SPECIALIST_PANEL_BACKLOG_ENABLED', specialistPanelBacklogSched.start(), specialistPanelBacklogSched.intervalMinutes() * 60_000)) {
     console.log('🗂️  Specialist panel backlog scheduler armed');
   }
 
   // Memory candidate review scheduler — real specialist-panel analysis for
   // auto-promotion + a self-improvement evolution loop on the criteria,
   // in-process (default-off, see service header)
-  if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', new MemoryCandidateReviewScheduler(db).start())) {
+  const memoryCandidateReviewSched = new MemoryCandidateReviewScheduler(db);
+  registerRestart('memory_candidate_review', () => { memoryCandidateReviewSched.stop(); memoryCandidateReviewSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', memoryCandidateReviewSched.start(), memoryCandidateReviewSched.intervalMinutes() * 60_000)) {
     console.log('🧬 Memory candidate review scheduler armed');
+  }
+
+  // Dependency lane — verified Dependabot patch/minor merges, one per tick (DEPENDENCY_LANE_MODE=shadow|act, default off)
+  let stopDependencyLane = startDependencyLane(db);
+  registerRestart('dependency_lane', () => { stopDependencyLane?.(); stopDependencyLane = startDependencyLane(db); });
+  if (noteScheduler('dependency_lane', 'DEPENDENCY_LANE_MODE', !!stopDependencyLane, laneIntervalMs())) {
+    console.log(`📦 Dependency lane armed (${process.env.DEPENDENCY_LANE_MODE})`);
+  }
+
+  // OLLAMA_AUTO_FAILOVER=on: every 30 min, while Ollama is recorded as usage-limited, one tiny probe call clears the state on success
+  let stopOllamaProbe = startOllamaProbe(db);
+  registerRestart('inference_failover_probe', () => { stopOllamaProbe?.(); stopOllamaProbe = startOllamaProbe(db); });
+  if (noteScheduler('inference_failover_probe', 'OLLAMA_AUTO_FAILOVER', !!stopOllamaProbe, PROBE_INTERVAL_MS)) {
+    console.log('🛟 Ollama auto-failover probe armed');
+  }
+
+  // Shipped-code scan — daily parse-only scan of the installed runtime packages, evidence candidates only (SHIPPED_CODE_SCAN_MODE=shadow, default off)
+  let stopShippedScan = startShippedCodeScan(db);
+  registerRestart('shipped_code_scan', () => { stopShippedScan?.(); stopShippedScan = startShippedCodeScan(db); });
+  if (noteScheduler('shipped_code_scan', 'SHIPPED_CODE_SCAN_MODE', !!stopShippedScan, SHIPPED_CODE_SCAN_INTERVAL_MS)) {
+    console.log('🔎 Shipped-code scan armed (shadow)');
+  }
+
+  // Skill distillation — daily record-only skill / anti-pattern cards from attributed runs, never injected (SKILL_DISTILLATION_MODE=shadow, default off)
+  let stopSkillDistillation = startSkillDistillation(db);
+  registerRestart('skill_distillation', () => { stopSkillDistillation?.(); stopSkillDistillation = startSkillDistillation(db); });
+  if (noteScheduler('skill_distillation', 'SKILL_DISTILLATION_MODE', !!stopSkillDistillation, SKILL_DISTILLATION_INTERVAL_MS)) {
+    console.log('🧠 Skill distillation armed (shadow)');
+  }
+
+  // Content drafts (track C) — at most one EVE-V blog signal a day → verified MDX draft; on = draft PR on djimit/djimit.nl (CONTENT_DRAFTS_MODE, default off)
+  let stopContentDrafts = startContentDrafts(db);
+  registerRestart('content_drafts', () => { stopContentDrafts?.(); stopContentDrafts = startContentDrafts(db); });
+  if (noteScheduler('content_drafts', 'CONTENT_DRAFTS_MODE', !!stopContentDrafts, CONTENT_DRAFTS_INTERVAL_MS)) {
+    console.log(`📝 Content drafts armed (${process.env.CONTENT_DRAFTS_MODE})`);
   }
 
   // API routes

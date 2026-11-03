@@ -4,7 +4,10 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { FleetCommands } from '../services/fleet-commands';
 import { LocalShadowQueue } from '../services/local-shadow-queue';
-import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenExpiresAt, spawnTokenRejection } from '../services/spawn-token';
+import { recordHostTokenOk, recordHostTokenRejection } from '../services/host-token-watch';
+import { recordPowerSample, resourceLedgerEnabled } from '../services/resource-ledger';
+import { hourBucket, recordPolicyViolation } from '../services/policy-violations';
 
 export const HOST_AGENT_SCOPE = 'host-agent';
 const limiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
@@ -22,15 +25,26 @@ export function createHostAgentRoutes(db: Database, auth: AuthMiddleware): Route
   const fleet = new FleetCommands(db);
   const host = (req: any, res: any): string | null => {
     const h = String(req.get('X-Host') || '');
-    if (!h || !validateSpawnToken(resolveSpawnTokenSecret(), String(req.get('X-Host-Token') || ''), h, HOST_AGENT_SCOPE)) {
+    const token = String(req.get('X-Host-Token') || '');
+    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), token, h, HOST_AGENT_SCOPE) : 'wrong_subject';
+    if (rejection) {
+      console.warn(`[host-agent] token rejected host=${JSON.stringify(h.slice(0, 100))} reason=${rejection}`);
+      if (h) recordHostTokenRejection(db, h, HOST_AGENT_SCOPE, rejection);
+      // §16 step 8 (shadow, POLICY_VIOLATION_LOG): one row per host × reason × hour, never per request
+      recordPolicyViolation(db, { kind: 'token_rejected', actor: `host:${h.slice(0, 100)}`, severity: 'medium', dedupe_key: `${HOST_AGENT_SCOPE}:${h.slice(0, 100)}:${rejection}:${hourBucket()}`,
+        evidence_ref: `token:${HOST_AGENT_SCOPE}`, description: `${HOST_AGENT_SCOPE} token rejected: ${rejection}` });
       res.status(401).json({ error: { code: 'HOST_TOKEN_INVALID', message: 'Host token is invalid, expired, or scoped to another host' } });
       return null;
     }
+    recordHostTokenOk(db, h, HOST_AGENT_SCOPE, spawnTokenExpiresAt(token));
     return h;
   };
   router.post('/poll', (req, res) => {
     const h = host(req, res); if (!h) return;
-    try { res.json({ commands: fleet.poll(h, typeof req.body?.info === 'object' && req.body.info ? req.body.info : {}, String(req.body?.version ?? '')) }); } catch (e) { fail(res, e); }
+    const info = typeof req.body?.info === 'object' && req.body.info ? req.body.info : {};
+    // E1: the agent's GPU power reading (absent on hosts without rocm-smi / nvidia-smi); a bad sample never fails the heartbeat
+    if (resourceLedgerEnabled()) { try { recordPowerSample(db, h, info.power); } catch { /* ledger is advisory */ } }
+    try { res.json({ commands: fleet.poll(h, info, String(req.body?.version ?? '')) }); } catch (e) { fail(res, e); }
   });
   router.post('/commands/:id/result', (req, res) => {
     const h = host(req, res); if (!h) return;

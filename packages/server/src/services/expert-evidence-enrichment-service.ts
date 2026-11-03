@@ -12,6 +12,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { FrontierExpertRegistryService, IDENTITY_CONFIDENCE_THRESHOLD } from './frontier-expert-registry-service';
+import { frontierExpertPersonsEnabled } from './expert-areas';
 import { ArxivAdapter, type ArxivPaper } from './knowledge-adapters/arxiv-adapter';
 
 export interface AuthorPaperSource { searchAuthorPapers(name: string, limit?: number): Promise<ArxivPaper[]> }
@@ -130,6 +131,7 @@ export class ExpertEvidenceEnrichmentService {
 
   /** Enrich a bounded batch of DISCOVERED experts never attempted (or attempted before `retryBefore`), oldest first (§51: bounded, incremental). */
   async enrichBatch(input: { actor: string; limit?: number; maxPapers?: number; retryBefore?: string }): Promise<EnrichmentResult[]> {
+    if (!frontierExpertPersonsEnabled()) return []; // FE-AREAS: DISCOVERED identities are people; no people unless enabled
     const rows = this.db.prepare(`SELECT id FROM expert_identities WHERE lifecycle_state = 'DISCOVERED'
       AND (json_extract(provenance_json, '$.enrichment.attempted_at') IS NULL OR json_extract(provenance_json, '$.enrichment.attempted_at') < ?)
       ORDER BY created_at ASC LIMIT ?`).all(input.retryBefore ?? '', Math.max(1, Math.min(50, input.limit ?? 10))) as Array<{ id: string }>;

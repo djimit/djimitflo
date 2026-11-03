@@ -1,0 +1,1181 @@
+{
+ "directive": "BEAM-001",
+ "generated": "2026-10-21",
+ "rule": "Only interactions observed in prod rows (exercised_in_prod=yes) or in this study's probe (probe_only). Unexercised or unknown edges from the 20-10 graph are omitted.",
+ "base": "ecosystem/capability-graph.json (20-10, 116 edges, 81 exercised)",
+ "nodes": [
+  {
+   "id": "auth.spawn_token",
+   "kind": "auth",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "commons.residents",
+   "kind": "swarm",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "decision.auto_merge",
+   "kind": "promotion",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "decision.panel_review",
+   "kind": "consensus",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "delegation.evolve_siblings",
+   "kind": "delegation",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "deploy.auto_deploy_verdict",
+   "kind": "promotion",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "eco.roborev",
+   "kind": "fleet-agent",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "effort.controller",
+   "kind": "delegation-policy",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "eve.dream_cycle",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "eve.hermes_gateway",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "eve.publish_goals",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "evidence.evolution_evidence",
+   "kind": "evidence-view",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "evidence.stall_watch",
+   "kind": "monitoring",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "evo.committee_genomes",
+   "kind": "evolution",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "exec.engine",
+   "kind": "runtime-dispatch",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "exp.ace_001",
+   "kind": "experiment-arm",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "exp.memory_holdout",
+   "kind": "experiment-arm",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "exp.registry",
+   "kind": "experiment-control",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "exp.ste_001",
+   "kind": "experiment-arm",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "fallback.ollama_outage",
+   "kind": "failover",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "fleet.agent_outcome_emitter",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "fleet.djimitflo_scout",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "fleet.eve_maintainer",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "fleet.event_bus_ingest",
+   "kind": "integration",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "fleet.hermes_eve_v",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "fleet.hermes_macmini",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "fleet.host_agent",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "fleet.kb_sync",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "frontier.expert_council",
+   "kind": "expert-registry",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "gym.hack_classifier",
+   "kind": "verification",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "gym.remote",
+   "kind": "evolution-gym",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "gym.subscription_maker",
+   "kind": "evolution-gym",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "host.agenticservices_ollama_proxy",
+   "kind": "inference-proxy",
+   "status_20_10": "NEW_21_10",
+   "level_20_10": null
+  },
+  {
+   "id": "human.operator_merge",
+   "kind": "human",
+   "status_20_10": "NEW_21_10",
+   "level_20_10": null
+  },
+  {
+   "id": "judgment.content_safety",
+   "kind": "guard",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "judgment.jev_engine",
+   "kind": "judgment",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "knowledge.kb_corpus",
+   "kind": "knowledge",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "lane.doc_drift_findings",
+   "kind": "lane",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "lane.oracle_test",
+   "kind": "lane",
+   "status_20_10": "VERIFIED",
+   "level_20_10": "L3"
+  },
+  {
+   "id": "lane.pr_review_loop",
+   "kind": "lane",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "memory.candidates_promotion",
+   "kind": "memory",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "memory.rules_injection",
+   "kind": "memory",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "model.beam_cloud",
+   "kind": "model",
+   "status_20_10": "NEW_21_10",
+   "level_20_10": null
+  },
+  {
+   "id": "model.claude_subscription",
+   "kind": "model",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "model.codex_subscription",
+   "kind": "model",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "model.gemma4_31b_cloud",
+   "kind": "model",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "model.glm_5_2",
+   "kind": "model",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L3"
+  },
+  {
+   "id": "model.jev_1_13",
+   "kind": "model",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "model.jev_1_14",
+   "kind": "model",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "model.kimi_k3_cloud",
+   "kind": "model",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "model.nemotron",
+   "kind": "model",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "panel.fallback_claude",
+   "kind": "failover",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "provider.ollama_cloud",
+   "kind": "inference-provider",
+   "status_20_10": "NEW_21_10",
+   "level_20_10": null
+  },
+  {
+   "id": "registry.agents_table",
+   "kind": "registry",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "registry.liveness_connection_state",
+   "kind": "registry",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "review.github_pr",
+   "kind": "verification-pipeline",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "routing.runtime_bandit",
+   "kind": "model-routing",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "runtime.admission",
+   "kind": "gate",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "runtime.atomic",
+   "kind": "runtime-adapter",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "runtime.claude",
+   "kind": "runtime-adapter",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "runtime.codex",
+   "kind": "runtime-adapter",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "runtime.manual",
+   "kind": "runtime-adapter",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "runtime.opencode",
+   "kind": "runtime-adapter",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L3"
+  },
+  {
+   "id": "runtime.remote_workstation",
+   "kind": "runtime-adapter",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L3"
+  },
+  {
+   "id": "settle.merge_survival",
+   "kind": "settlement",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "store.skill_outcomes",
+   "kind": "evidence-store",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "swarm.committee",
+   "kind": "consensus",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "verify.checker_family_F2",
+   "kind": "experiment-arm",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "verify.deterministic_checks",
+   "kind": "gate",
+   "status_20_10": "VERIFIED",
+   "level_20_10": "L3"
+  },
+  {
+   "id": "verify.evolve_contest",
+   "kind": "fitness",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "verify.graded_fitness",
+   "kind": "fitness",
+   "status_20_10": "IMPLEMENTED",
+   "level_20_10": "L0"
+  },
+  {
+   "id": "verify.llm_checker",
+   "kind": "checker",
+   "status_20_10": "VERIFIED",
+   "level_20_10": "L3"
+  },
+  {
+   "id": "verify.outcome_attribution",
+   "kind": "attribution",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "verify.scope_gate",
+   "kind": "gate",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "verify.security_checker",
+   "kind": "checker",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "vps.event_bus",
+   "kind": "integration",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "vps.roborev_crons",
+   "kind": "scanner",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "ws.agent_registry",
+   "kind": "registry",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "ws.atomic_agent_species",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L3"
+  },
+  {
+   "id": "ws.deerflow",
+   "kind": "fleet-agent",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "ws.gpu_r9700",
+   "kind": "compute",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "ws.kbwiki_maintenance",
+   "kind": "knowledge",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  },
+  {
+   "id": "ws.llama_router",
+   "kind": "model-routing",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L2"
+  },
+  {
+   "id": "ws.qdrant",
+   "kind": "memory",
+   "status_20_10": "ACTIVE",
+   "level_20_10": "L1"
+  }
+ ],
+ "edges": [
+  {
+   "from": "lane.oracle_test",
+   "to": "exec.engine",
+   "type": "dispatches",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "lane.doc_drift_findings",
+   "to": "exec.engine",
+   "type": "dispatches",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "routing.runtime_bandit",
+   "to": "lane.oracle_test",
+   "type": "selects_runtime",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "store.skill_outcomes",
+   "to": "routing.runtime_bandit",
+   "type": "reward",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.admission",
+   "type": "gated_by",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.opencode",
+   "type": "executes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.remote_workstation",
+   "type": "executes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.claude",
+   "type": "executes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.codex",
+   "type": "executes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.atomic",
+   "type": "executes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "runtime.remote_workstation",
+   "to": "auth.spawn_token",
+   "type": "authenticates_with",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "gym.remote",
+   "to": "auth.spawn_token",
+   "type": "authenticates_with",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "auth.spawn_token",
+   "type": "authenticates_with",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "effort.controller",
+   "to": "delegation.evolve_siblings",
+   "type": "gates (X1)",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "delegation.evolve_siblings",
+   "to": "verify.evolve_contest",
+   "type": "ranked_by",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "verify.graded_fitness",
+   "to": "verify.evolve_contest",
+   "type": "shadow_ranks",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.deterministic_checks",
+   "type": "verified_by",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.llm_checker",
+   "type": "reviewed_by",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.security_checker",
+   "type": "reviewed_by",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "verify.checker_family_F2",
+   "to": "verify.llm_checker",
+   "type": "randomises",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.scope_gate",
+   "type": "gated_by",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "verify.deterministic_checks",
+   "to": "verify.outcome_attribution",
+   "type": "feeds",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "settle.merge_survival",
+   "type": "settled_by",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "settle.merge_survival",
+   "to": "store.skill_outcomes",
+   "type": "writes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "lane.pr_review_loop",
+   "to": "runtime.manual",
+   "type": "uses",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "review.github_pr",
+   "to": "lane.pr_review_loop",
+   "type": "creates",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "decision.panel_review",
+   "to": "lane.doc_drift_findings",
+   "type": "authorizes_goal",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "judgment.jev_engine",
+   "to": "decision.panel_review",
+   "type": "prescreens (proposal_prescreen enforce)",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "knowledge.kb_corpus",
+   "to": "decision.panel_review",
+   "type": "context",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "judgment.jev_engine",
+   "to": "knowledge.kb_corpus",
+   "type": "filters (kb_passage_relevance enforce)",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "panel.fallback_claude",
+   "to": "decision.panel_review",
+   "type": "fallback_seat",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "memory.candidates_promotion",
+   "to": "memory.rules_injection",
+   "type": "supplies",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "memory.rules_injection",
+   "to": "lane.oracle_test",
+   "type": "maker_context",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exp.memory_holdout",
+   "to": "memory.rules_injection",
+   "type": "withholds",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exp.ace_001",
+   "to": "lane.oracle_test",
+   "type": "maker_context_arm",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exp.ste_001",
+   "to": "lane.oracle_test",
+   "type": "maker_context_arm",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "exp.registry",
+   "to": "evidence.stall_watch",
+   "type": "overdue_alarm",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "gym.remote",
+   "to": "store.skill_outcomes",
+   "type": "writes (worker-reported)",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "gym.hack_classifier",
+   "to": "evidence.evolution_evidence",
+   "type": "reports",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "gym.subscription_maker",
+   "to": "store.skill_outcomes",
+   "type": "writes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "swarm.committee",
+   "to": "evo.committee_genomes",
+   "type": "scores",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "knowledge.kb_corpus",
+   "to": "swarm.committee",
+   "type": "context",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "frontier.expert_council",
+   "to": "swarm.committee",
+   "type": "claims_context",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "registry.agents_table",
+   "to": "commons.residents",
+   "type": "selects_residents",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.agent_outcome_emitter",
+   "to": "fleet.event_bus_ingest",
+   "type": "publishes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.event_bus_ingest",
+   "to": "store.skill_outcomes",
+   "type": "writes fleet outcomes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.hermes_macmini",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.hermes_eve_v",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.djimitflo_scout",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.eve_maintainer",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.djimitflo_scout",
+   "to": "fleet.event_bus_ingest",
+   "type": "discovery events",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.hermes_macmini",
+   "to": "fleet.event_bus_ingest",
+   "type": "discovery events",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.event_bus_ingest",
+   "to": "frontier.expert_council",
+   "type": "discovery units",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "judgment.content_safety",
+   "to": "fleet.event_bus_ingest",
+   "type": "fire-and-forget check",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "knowledge.kb_corpus",
+   "type": "ingests",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "fleet.host_agent",
+   "to": "registry.liveness_connection_state",
+   "type": "heartbeat",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "deploy.auto_deploy_verdict",
+   "to": "evidence.stall_watch",
+   "type": "verdict check",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "ws.atomic_agent_species",
+   "to": "runtime.remote_workstation",
+   "type": "is_species_of",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "ws.llama_router",
+   "to": "ws.atomic_agent_species",
+   "type": "serves",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "ws.gpu_r9700",
+   "to": "ws.llama_router",
+   "type": "runs_on",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "ws.atomic_agent_species",
+   "to": "gym.remote",
+   "type": "gym_worker",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "ws.deerflow",
+   "to": "ws.agent_registry",
+   "type": "heartbeat",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "ws.kbwiki_maintenance",
+   "to": "fleet.kb_sync",
+   "type": "feeds",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "ws.kbwiki_maintenance",
+   "to": "ws.qdrant",
+   "type": "rebuilds",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "eve.hermes_gateway",
+   "to": "fleet.hermes_eve_v",
+   "type": "is",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "eve.dream_cycle",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "eve.publish_goals",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "vps.event_bus",
+   "to": "fleet.event_bus_ingest",
+   "type": "transport",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "vps.roborev_crons",
+   "to": "eco.roborev",
+   "type": "runs",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.glm_5_2",
+   "to": "runtime.opencode",
+   "type": "default_model",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.glm_5_2",
+   "to": "verify.llm_checker",
+   "type": "model",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.kimi_k3_cloud",
+   "to": "decision.panel_review",
+   "type": "model (to 17-10)",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.gemma4_31b_cloud",
+   "to": "decision.panel_review",
+   "type": "model (from 17-10)",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.gemma4_31b_cloud",
+   "to": "verify.checker_family_F2",
+   "type": "cross arm v2",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.jev_1_13",
+   "to": "judgment.jev_engine",
+   "type": "backend",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.jev_1_14",
+   "to": "judgment.jev_engine",
+   "type": "challenger",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.nemotron",
+   "to": "judgment.content_safety",
+   "type": "backend",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.claude_subscription",
+   "to": "gym.subscription_maker",
+   "type": "species",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.claude_subscription",
+   "to": "panel.fallback_claude",
+   "type": "model",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "model.codex_subscription",
+   "to": "gym.subscription_maker",
+   "type": "species (paused)",
+   "exercised_in_prod": "yes",
+   "source": "capability-graph.json 20-10"
+  },
+  {
+   "from": "runtime.opencode",
+   "to": "host.agenticservices_ollama_proxy",
+   "type": "inference",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 makers 74 + checkers 52 + security 49 leases (opencode.json baseURL 100.77.58.72:11434/v1)",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "host.agenticservices_ollama_proxy",
+   "to": "provider.ollama_cloud",
+   "type": "forwards :cloud models",
+   "exercised_in_prod": "yes",
+   "evidence": "proxy /api/tags lists glm-5.2:cloud, kimi-k3:cloud, qwen3.5:cloud",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "decision.panel_review",
+   "to": "provider.ollama_cloud",
+   "type": "inference",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 panel_review gemma4 42 + kimi-k3 42 calls",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "verify.llm_checker",
+   "to": "model.gemma4_31b_cloud",
+   "type": "F2 v2 cross arm",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 9 checker leases on gemma4",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "verify.llm_checker",
+   "to": "model.glm_5_2",
+   "type": "same arm",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 32 checker leases on glm-5.2",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "verify.llm_checker",
+   "to": "model.kimi_k3_cloud",
+   "type": "residual",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 11 checker leases on kimi-k3 (F2 v1 tail or other; UNKNOWN)",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "verify.security_checker",
+   "to": "model.glm_5_2",
+   "type": "inference",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 48 leases",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "runtime.opencode",
+   "to": "model.glm_5_2",
+   "type": "maker inference",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 74 maker leases, 30.3 M total tokens",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "decision.auto_merge",
+   "to": "settle.merge_survival",
+   "type": "merged PRs settle",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 25 auto-merged",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "human.operator_merge",
+   "to": "settle.merge_survival",
+   "type": "merged PRs settle",
+   "exercised_in_prod": "yes",
+   "evidence": "P7 3 human merges; 35 open loop PRs, mean age 193 h",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "fallback.ollama_outage",
+   "to": "runtime.claude",
+   "type": "failover",
+   "exercised_in_prod": "yes",
+   "evidence": "18-10 outage: 13 claude maker leases, 0 completed",
+   "source": "BEAM-001 prod snapshot 21-10"
+  },
+  {
+   "from": "model.beam_cloud",
+   "to": "provider.ollama_cloud",
+   "type": "served by (probe only)",
+   "exercised_in_prod": "probe_only",
+   "evidence": "9 synthetic calls 21-10; not wired to any consumer",
+   "source": "BEAM-001 prod snapshot 21-10"
+  }
+ ],
+ "counts": {
+  "nodes": 84,
+  "edges": 93
+ }
+}

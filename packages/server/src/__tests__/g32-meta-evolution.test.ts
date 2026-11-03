@@ -32,7 +32,8 @@ describe('G32: Meta-evolution loop', () => {
     db.prepare('INSERT INTO worker_leases (id, loop_run_id, role, runtime, status) VALUES (?, ?, ?, ?, ?)').run('l1', 'run-1', 'maker', 'codex', 'completed');
     db.prepare('INSERT INTO worker_leases (id, loop_run_id, role, runtime, status) VALUES (?, ?, ?, ?, ?)').run('l2', 'run-1', 'maker', 'codex', 'failed');
     const report = meta.evaluate();
-    expect(report.planner_accuracy).toBe(0.5);
+    expect(report.maker_lease_completion_rate).toBe(0.5);
+    expect(report).not.toHaveProperty('planner_accuracy');
   });
 
   it('prunes dormant capabilities (0 runs in 30 days)', () => {

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { ContextCompressionService } from '../services/context-compression-service';
-import { WorkflowGraphService } from '../services/workflow-graph-service';
 import { GovernanceFeedbackService } from '../services/governance-feedback-service';
 
 describe('ContextCompressionService', () => {
@@ -68,43 +67,6 @@ describe('ContextCompressionService', () => {
     const restarted = new ContextCompressionService(db);
     expect(restarted.retrieve(result.hash)).toBe('persisted context '.repeat(20));
     db.close();
-  });
-});
-
-describe('WorkflowGraphService', () => {
-  let service: WorkflowGraphService;
-
-  beforeEach(() => {
-    service = new WorkflowGraphService(new Database(':memory:'));
-  });
-
-  it('creates a standard loop workflow', () => {
-    const workflow = service.createStandardLoopWorkflow('loop-1');
-    expect(workflow.id).toBeDefined();
-    expect(workflow.nodes.length).toBeGreaterThan(0);
-    expect(workflow.edges.length).toBeGreaterThan(0);
-  });
-
-  it('creates a parallel workflow', () => {
-    const workflow = service.createParallelWorkflow('loop-1', ['task-a', 'task-b', 'task-c']);
-    expect(workflow.nodes.length).toBe(6); // start + parallel + 3 tasks + end
-  });
-
-  it('gets next executable nodes', () => {
-    const workflow = service.createStandardLoopWorkflow('loop-1');
-    const next = service.getNextNodes(workflow.id);
-    // After start completes, maker should be next
-    expect(next.length).toBeGreaterThanOrEqual(0);
-  });
-
-  it('approves a gate', () => {
-    const workflow = service.createStandardLoopWorkflow('loop-1');
-    expect(() => service.approveGate(workflow.id, 'gate', 'test-user')).not.toThrow();
-  });
-
-  it('updates node status', () => {
-    const workflow = service.createStandardLoopWorkflow('loop-1');
-    expect(() => service.updateNodeStatus(workflow.id, 'maker', 'completed')).not.toThrow();
   });
 });
 

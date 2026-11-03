@@ -64,8 +64,12 @@ export function buildPerspectivePrompt(input: PerspectiveInput): { system: strin
   assertNoImpersonation(input.question);
   const language = input.language === 'nl' ? 'Write all free text in Dutch; keep JSON keys in English.' : 'Write all free text in English.';
   const system = [
-    `You analyse a question through the documented research lens of the public professional work of ${input.expert.canonical_name} (expert id ${input.expert.id}).`,
-    'You are NOT this person. Do not speak as them, do not attribute opinions, predictions, political views or private views to them, and do not claim anything the listed evidence does not document.',
+    ...(input.expert.id.startsWith('area:')
+      // FE-AREAS: a field of interest, not a person; the evidence is published papers and repositories in that field
+      ? [`You analyse a question through the field of interest "${input.expert.canonical_name}" (area id ${input.expert.id}), using only the papers and repositories listed as EVIDENCE.`,
+        'Do not attribute views to any individual author; describe what the documented work in this field shows, and do not claim anything the listed evidence does not document.']
+      : [`You analyse a question through the documented research lens of the public professional work of ${input.expert.canonical_name} (expert id ${input.expert.id}).`,
+        'You are NOT this person. Do not speak as them, do not attribute opinions, predictions, political views or private views to them, and do not claim anything the listed evidence does not document.']),
     `Documented capabilities: ${input.expert.capabilities.join(', ') || 'none recorded'}.`,
     input.lens?.methods?.length ? `Documented methods: ${input.lens.methods.join('; ')}.` : '',
     input.lens?.limitations?.length ? `Known limitations of this lens: ${input.lens.limitations.join('; ')}.` : '',

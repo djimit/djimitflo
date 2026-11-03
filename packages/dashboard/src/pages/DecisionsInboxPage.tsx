@@ -1,48 +1,166 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { WebSocketEventType } from '@djimitflo/shared';
+import { LOOP_PR_SETTLEMENT_STATES, WebSocketEventType, type LoopPrSettlementState } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Inbox, RefreshCw } from 'lucide-react';
-import { api, type DecisionsInbox, type DraftPrs } from '../lib/api';
+import { api, type DecisionsInbox, type DependencyLane, type DraftPrs } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
-import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
+import { DiscoveryRelevanceSection } from './DiscoveryRelevanceSection';
+import { E1RetrievalLabelSection } from './E1RetrievalLabelSection';
+import { ACTION_PERMISSIONS as P, useCan } from '../lib/permissions';
+import { Button, DataTable, Section } from '../components/ui';
+
+/** E1: evolutionary settlement state (not the GitHub state, which has its own column) */
+const SETTLEMENT_LABEL: Record<LoopPrSettlementState, string> = {
+  OPEN_BLOCKED: 'open/blocked', MERGED_SURVIVAL_PENDING: 'merged, survival pending', SETTLED_SURVIVED: 'survived', SETTLED_REGRESSED: 'regressed', PIPELINE_ANOMALY: 'pipeline anomaly',
+};
+
+type DraftRow = DraftPrs['rows'][number];
+/** waits for the human: open on GitHub, or never polled (same rule as the server's needs-you count) */
+const isOpen = (r: DraftRow) => (r.settlement === 'OPEN_BLOCKED' && !r.settlement_terminal) || r.outcome === null;
+
+/**
+ * The 10 % audit sample of the earned test-only auto-merge (the control on the automation; the rule is unchanged) as ONE
+ * weekly batch: a count and links, reviewed together, instead of one row per PR in the draft-PR table.
+ */
+export function AuditBatchCard({ rows }: { rows: DraftRow[] }) {
+  const open = rows.filter(isOpen);
+  return (
+    <section id="audit-batch" aria-labelledby="audit-batch-title" className="rounded-lg border border-border p-3 mb-3">
+      <h3 id="audit-batch-title" className="font-semibold">Weekly audit batch ({open.length})</h3>
+      <p className="text-xs text-foreground-tertiary mb-1">
+        Test-only PRs the loop could have merged but leaves to you: a deterministic 10 % sample that keeps the auto-merge class honest. Review them together once a week.
+        {rows.length > open.length ? ` ${rows.length - open.length} earlier sample(s) already settled.` : ''}
+      </p>
+      {open.length ? (
+        <ul className="flex flex-wrap gap-3 text-sm">{open.map((r) => (
+          <li key={r.run_id}><a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a> <span className="text-xs text-foreground-muted">{r.lane} · {r.age_days} d</span></li>
+        ))}</ul>
+      ) : <p className="text-sm text-foreground-secondary">No audit-sample PR waiting.</p>}
+    </section>
+  );
+}
 
 /** UX-7: the last step of the loop — its draft PRs, how old they are, and whether merge survival has settled them. */
 export function DraftPrsSection() {
   const [data, setData] = useState<DraftPrs | null>(null); const [error, setError] = useState<string | null>(null);
   useEffect(() => { api.getDraftPrs().then(setData, (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load draft PRs')); }, []);
+  const audit = data?.rows.filter((r) => r.auto_merge === 'audit_sample') ?? [];
+  const rows = data?.rows.filter((r) => r.auto_merge !== 'audit_sample') ?? [];
   return (
-    <section aria-labelledby="draft-prs">
-      <h2 id="draft-prs" className="text-lg font-semibold mb-1">Loop draft PRs</h2>
+    <Section id="draft-prs" title="Loop draft PRs" headingClassName="text-lg font-semibold mb-1">
       {error && <p role="alert" className="text-status-error text-sm">{error}</p>}
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
-      {data && (data.rows.length === 0 ? <p className="text-sm text-foreground-secondary">The loop has opened no draft PR yet.</p> : (
+      {data && (
         <>
-          <p className="text-sm text-foreground-secondary mb-2">{data.total} PRs (n), {data.unsettled} not settled yet — still open, or merged less than 14 days ago; merge survival settles them after 14 days.</p>
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-foreground-tertiary"><th>PR</th><th>Lane</th><th>Age (days)</th><th>Settlement</th></tr></thead>
-            <tbody>{data.rows.map((r) => (
-              <tr key={r.run_id} className="border-t border-border">
-                <td><a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a></td>
-                <td>{r.lane}</td><td>{r.age_days}</td>
-                <td>{r.outcome ? `${r.outcome}${r.survived === null ? '' : r.survived ? ' · survived' : ' · removed'}` : 'not settled'}</td>
-              </tr>
-            ))}</tbody>
-          </table>
+          {data.rows.length > 0 && (
+            <p className="text-sm text-foreground-secondary mb-2">
+              {data.total ?? 'unknown'} PRs (n), {data.unsettled ?? 'unknown'} not settled yet — open, merged and inside the 14-day survival window, or a pipeline anomaly.
+              {data.by_settlement && <> By settlement: {LOOP_PR_SETTLEMENT_STATES.map((s) => `${SETTLEMENT_LABEL[s]} ${data.by_settlement![s]}`).join(' · ')}{data.closed_unmerged ? ` (open/blocked includes ${data.closed_unmerged} closed unmerged)` : ''}.</>}
+            </p>
+          )}
+          {audit.length > 0 && <AuditBatchCard rows={audit} />}
+          <DataTable caption="Loop draft PRs and their settlement" rows={rows} rowKey={(r) => r.run_id} empty={audit.length ? 'No loop PR outside the audit batch.' : 'The loop has opened no draft PR yet.'} columns={[
+            { key: 'pr', label: 'PR', render: (r) => <a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a> },
+            { key: 'lane', label: 'Lane', render: (r) => r.lane },
+            { key: 'age', label: 'Age (days)', render: (r) => r.age_days },
+            { key: 'github', label: 'GitHub state', render: (r) => r.outcome?.replace(/_/g, ' ') ?? 'not polled' },
+            { key: 'settlement', label: 'Settlement', render: (r) => <span title={r.settlement_reason}>{SETTLEMENT_LABEL[r.settlement]}{r.settlement_terminal ? ' (closed)' : ''}{r.settlement_age_days === null ? '' : ` · ${r.settlement_age_days} d`}</span>,
+              cellClassName: (r) => (r.settlement === 'PIPELINE_ANOMALY' || r.settlement === 'SETTLED_REGRESSED' ? 'text-status-error' : undefined) },
+            // earned auto-merge decision; audit-sample PRs are in the weekly audit batch above, not in this table
+            { key: 'auto', label: 'Auto-merge', render: (r) => (r.auto_merge ? r.auto_merge.replace(/_/g, ' ') : '—') },
+          ]} />
         </>
-      ))}
-    </section>
+      )}
+    </Section>
   );
 }
 
-const button = 'rounded border border-border px-2 py-0.5 text-sm hover:bg-background-tertiary disabled:opacity-50';
+/** Dependency lane: the Dependabot queue and what the lane decided per PR (read-only; DEPENDENCY_LANE_MODE). */
+export function DependencyLaneSection() {
+  const [data, setData] = useState<DependencyLane | null>(null); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.getDependencyLane().then(setData, (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load the dependency lane')); }, []);
+  return (
+    <Section id="dependency-lane" title="Dependency lane (Dependabot)" headingClassName="text-lg font-semibold mb-1">
+      {error && <p role="alert" className="text-status-error text-sm">{error}</p>}
+      {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
+      {data && (
+        <>
+          <p className="text-sm text-foreground-secondary mb-2">
+            Mode {data.effective_mode}{data.revoked_at ? ` — act revoked ${data.revoked_at.slice(0, 16)}: ${data.revoked_reason ?? ''}` : ''}; {data.open} open, {data.merged_24h} merged in 24 h (cap {data.max_per_day}/day).
+          </p>
+          <DataTable caption="Dependabot PRs and the lane's decision" rows={data.rows} rowKey={(r) => String(r.pr_number)} empty={data.mode === 'off' ? 'The dependency lane is off (DEPENDENCY_LANE_MODE).' : 'No Dependabot PRs seen yet.'} columns={[
+            { key: 'pr', label: 'PR', render: (r) => (r.html_url ? <a className="underline" href={r.html_url} target="_blank" rel="noreferrer">#{r.pr_number}</a> : `#${r.pr_number}`) },
+            { key: 'title', label: 'Title', render: (r) => r.title },
+            { key: 'bump', label: 'Bump', render: (r) => r.bump },
+            { key: 'age', label: 'Age (days)', render: (r) => r.age_days ?? '—' },
+            { key: 'checks', label: 'Checks', render: (r) => r.check_state ?? '—' },
+            { key: 'decision', label: 'Decision', render: (r) => <span title={r.reason ?? undefined}>{r.decision}</span> },
+          ]} />
+        </>
+      )}
+    </Section>
+  );
+}
+
+type RequeueAuto = NonNullable<NonNullable<DecisionsInbox['totals']>['requeue_auto']>;
+type RowAuto = NonNullable<DecisionsInbox['requeue'][number]['auto']>;
+const AUTO_LABEL: Record<RowAuto['action'], string> = { requeue: 'system will requeue', dismiss: 'system will dismiss', wait: 'system will handle', hold: 'needs you' };
+
+/** REQUEUE_AUTO_MODE: with mode on the policy handles every row except the held ones; shadow only says what it would do. */
+export function RequeueAutoNote({ auto }: { auto: RequeueAuto | null | undefined }) {
+  if (auto === undefined) return null; // an older server without the policy
+  if (auto === null) return <p className="text-xs text-status-warning mb-2">Auto-requeue policy: unknown (the policy query failed).</p>;
+  if (auto.mode === 'off') return null;
+  return (
+    <p className="text-sm mb-2" data-testid="requeue-auto">
+      {auto.mode === 'on'
+        ? <><strong>System will handle {auto.will_handle}</strong> (auto-requeue on: retryable failures are requeued once, the rest dismissed after 14 days, audited); {auto.held} need{auto.held === 1 ? 's' : ''} you.</>
+        : <>Auto-requeue shadow: it would handle {auto.will_handle} and hold {auto.held}; nothing acts yet, every row still needs you.</>}
+    </p>
+  );
+}
+
+function AutoVerdict({ auto }: { auto: RowAuto }) {
+  const label = auto.mode === 'shadow' ? `shadow: ${AUTO_LABEL[auto.action].replace('system will', 'would')}` : AUTO_LABEL[auto.action];
+  return <div className={`text-xs ${auto.action === 'hold' ? 'text-status-warning' : 'text-foreground-muted'}`} title={auto.reason}>{label} · {auto.cls.replace(/_/g, ' ')}</div>;
+}
+
+/** D5, CAR, E1 and DI-001 are ground-truth labelling: optional, with its own count, never decisions. */
+export function OptionalLabellingHeader({ inbox }: { inbox: DecisionsInbox }) {
+  const d5 = typeof inbox.totals?.prescreen_unlabelled === 'number' ? inbox.totals.prescreen_unlabelled : inbox.prescreen.items.filter((i) => !i.label).length;
+  const car = inbox.attribution_audit.items.filter((i) => !i.verdict).length;
+  return (
+    <div className="border-t border-border pt-4" data-testid="optional-labelling-header">
+      <h2 className="text-xl font-semibold">Optional labelling</h2>
+      <p className="text-xs text-foreground-tertiary">Ground truth for the gates: {d5} D5 label(s) and {car} CAR audit(s) open; E1 and DI-001 show their own queue below. Not decisions: nothing waits on these, and they are not in the needs-you count.</p>
+    </div>
+  );
+}
+
+const KIND_LABEL = { requeue: 'requeue', loop_pr: 'loop PR merge', label: 'pre-screen label', memory_review: 'memory review' } as const;
+/** Cockpit 3.0 Phase 3: the top 5 by expected value per operator minute — shadow only, it changes nothing that needs you. */
+export function RankingSection({ ranking }: { ranking: NonNullable<DecisionsInbox['ranking']> }) {
+  const top = ranking.slice(0, 5);
+  return (
+    <Section id="ranking" title="Highest expected value first (shadow)" headingClassName="text-lg font-semibold mb-1">
+      <p className="text-sm text-foreground-secondary mb-2">Shadow ranking — does not change what needs you. Score = measured expected gain × reversibility ÷ operator minutes; no score = insufficient evidence.</p>
+      {top.length ? <ol className="list-decimal pl-5 space-y-1 text-sm">{top.map((r) => (
+        <li key={`${r.kind}:${r.id}`}>
+          <span className="font-medium">{KIND_LABEL[r.kind]}</span> · {r.title} · score {r.score === null ? 'insufficient evidence' : r.score}
+          <div className="text-xs text-foreground-tertiary">{r.evidence.join(' · ')}</div>
+        </li>
+      ))}</ol> : <p className="text-sm text-foreground-secondary">Nothing to rank.</p>}
+    </Section>
+  );
+}
 
 export function DecisionsInboxPage() {
   const [data, setData] = useState<DecisionsInbox | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canLabel = useCan(P.labelPrescreen); const canTelegram = useCan(P.telegramIdentity);
+  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canDismiss = useCan(P.dismissRequeue); const canLabel = useCan(P.labelPrescreen); const canAudit = useCan(P.auditAttribution); const canTelegram = useCan(P.telegramIdentity);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [tgId, setTgId] = useState('');
   const [tgUser, setTgUser] = useState('');
@@ -87,120 +205,128 @@ export function DecisionsInboxPage() {
       </p>
       <section className="rounded-lg border border-border p-4"><ApprovalQueuePage embedded /></section>
       <DraftPrsSection />
+      <DependencyLaneSection />
       {error && <p role="alert" className="text-status-error">{error}</p>}
       {notice && <p role="status" className="text-status-completed">{notice}</p>}
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
 
       {data && (
         <>
-          <section aria-labelledby="autonomy">
-            <h2 id="autonomy" className="text-lg font-semibold mb-1">Earned autonomy (U1, read-only)</h2>
+          {data.ranking && <RankingSection ranking={data.ranking} />}
+          <Section id="autonomy" title="Earned autonomy (U1, read-only)" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">Per action class over 30 days. A class earns autonomy after ≥ 20 human approvals, none denied or expired, and at most one regression. Nothing is auto-approved from this table yet.</p>
-            {data.autonomy.length === 0 ? <p className="text-sm text-foreground-secondary">No approvals in the last 30 days.</p> : (
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Class</th><th>Human</th><th>Auto</th><th>Denied / expired</th><th>Verified</th><th>Regressed</th><th>Status</th></tr></thead>
-                <tbody>{data.autonomy.map((c) => (
-                  <tr key={c.cls} className="border-t border-border">
-                    <td className="font-mono text-xs">{c.cls}</td><td>{c.human_approved}</td><td>{c.auto_approved}</td><td>{c.denied} / {c.expired}</td>
-                    <td>{c.verified}</td><td className={c.regressed > 1 ? 'text-status-error' : ''}>{c.regressed}</td>
-                    <td className={c.earned ? 'text-status-completed' : 'text-foreground-secondary'}>{c.why}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
+            <DataTable caption="Approvals and outcomes per action class (30 d)" rows={data.autonomy} rowKey={(c) => c.cls} empty="No approvals in the last 30 days." columns={[
+              { key: 'cls', label: 'Class', render: (c) => c.cls, cellClassName: () => 'font-mono text-xs' },
+              { key: 'human', label: 'Human', render: (c) => c.human_approved },
+              { key: 'auto', label: 'Auto', render: (c) => c.auto_approved },
+              { key: 'denied', label: 'Denied / expired', render: (c) => `${c.denied} / ${c.expired}` },
+              { key: 'verified', label: 'Verified', render: (c) => c.verified },
+              { key: 'regressed', label: 'Regressed', render: (c) => c.regressed, cellClassName: (c) => (c.regressed > 1 ? 'text-status-error' : undefined) },
+              { key: 'status', label: 'Status', render: (c) => c.why, cellClassName: (c) => (c.earned ? 'text-status-completed' : 'text-foreground-secondary') },
+            ]} />
+          </Section>
 
-          <section aria-labelledby="memory">
-            <h2 id="memory" className="text-lg font-semibold mb-1">Memory review</h2>
+          <Section id="memory" title="Memory review" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">Rules and memories waiting for a human. Promoted engineering rules reach maker assignments and are then kept or dropped by their measured fitness.</p>
-            {data.memory.length === 0 ? <p className="text-sm text-foreground-secondary">Nothing waiting for review.</p> : (
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Memory</th><th>Type</th><th>Status</th><th /></tr></thead>
-                <tbody>{data.memory.map((m) => (
-                  <tr key={m.id} className="border-t border-border align-top">
-                    <td><div className="font-medium">{m.title}</div><div className="text-xs text-foreground-secondary whitespace-pre-wrap">{m.content}</div></td>
-                    <td>{m.memory_type}</td><td>{m.status.replace('_', ' ')}</td>
-                    <td className="whitespace-nowrap space-x-1">
-                      <button title={canMemory ? undefined : needsText(P.memoryReview)} type="button" className={button} disabled={busy !== null || !canMemory} onClick={() => void act(`p-${m.id}`, () => api.promoteMemoryCandidate(m.id), `Promoted '${m.title}'`)}>Promote</button>
-                      <button title={canMemory ? undefined : needsText(P.memoryReview)} type="button" className={button} disabled={busy !== null || !canMemory} onClick={() => void act(`r-${m.id}`, () => api.rejectMemoryCandidate(m.id), `Rejected '${m.title}'`)}>Reject</button>
-                    </td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
+            <DataTable caption="Memories waiting for review" rows={data.memory} rowKey={(m) => m.id} rowClassName={() => 'align-top'} empty="Nothing waiting for review." columns={[
+              { key: 'memory', label: 'Memory', render: (m) => <><div className="font-medium">{m.title}</div><div className="text-xs text-foreground-secondary whitespace-pre-wrap">{m.content}</div></> },
+              { key: 'type', label: 'Type', render: (m) => m.memory_type },
+              { key: 'status', label: 'Status', render: (m) => <>{m.status.replace('_', ' ')}{m.template_duplicate ? <div className="text-xs text-foreground-muted">template duplicate — system dedup, not counted</div> : null}</> },
+              { key: 'actions', label: 'Actions', cellClassName: () => 'whitespace-nowrap space-x-1', render: (m) => (
+                <>
+                  <Button needs={canMemory ? undefined : P.memoryReview} disabled={busy !== null} onClick={() => void act(`p-${m.id}`, () => api.promoteMemoryCandidate(m.id), `Promoted '${m.title}'`)}>Promote</Button>
+                  <Button needs={canMemory ? undefined : P.memoryReview} disabled={busy !== null} onClick={() => void act(`r-${m.id}`, () => api.rejectMemoryCandidate(m.id), `Rejected '${m.title}'`)}>Reject</Button>
+                </>
+              ) },
+            ]} />
+          </Section>
 
-          <section aria-labelledby="requeue">
-            <h2 id="requeue" className="text-lg font-semibold mb-1">Requeue failed proposals</h2>
-            <p className="text-xs text-foreground-tertiary mb-2">A requeue creates a new, linked attempt; the original and its outcome stay untouched. Counts against the lane budget.</p>
-            {data.requeue.length === 0 ? <p className="text-sm text-foreground-secondary">No regressed or infra-failed proposal in the last 30 days.</p> : (
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Proposal</th><th>Status</th><th>Reason</th><th /></tr></thead>
-                <tbody>{data.requeue.map((r) => (
-                  <tr key={r.id} className="border-t border-border align-top">
-                    <td>{r.title}<div className="text-xs text-foreground-muted">{r.id.slice(0, 8)}</div></td>
-                    <td>{r.status}</td>
-                    <td>{r.requeued_as ? <span className="text-foreground-muted">requeued as {r.requeued_as.slice(0, 8)}</span> : (
-                      <input aria-label={`Reason for requeueing ${r.id.slice(0, 8)}`} value={reasons[r.id] ?? ''} onChange={(e) => setReasons({ ...reasons, [r.id]: e.target.value })}
-                        placeholder="why (required)" className="w-full rounded border border-border bg-background px-2 py-0.5" />
-                    )}</td>
-                    <td>{!r.requeued_as && (
-                      <button title={canRequeue ? undefined : needsText(P.requeueProposal)} type="button" className={button} disabled={busy !== null || !canRequeue || (reasons[r.id] ?? '').trim().length < 5}
-                        onClick={() => void act(r.id, () => api.requeueProposal(r.id, reasons[r.id].trim()), `Requeued ${r.id.slice(0, 8)}`)}>Requeue</button>
-                    )}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
+          <Section id="requeue" title="Requeue failed proposals" headingClassName="text-lg font-semibold mb-1">
+            <p className="text-xs text-foreground-tertiary mb-2">A requeue creates a new, linked attempt; the original and its outcome stay untouched. Counts against the lane budget. Dismiss records that no requeue is needed (audited) and removes the row; no change outcomes are listed but not counted as waiting for you.</p>
+            <RequeueAutoNote auto={data.totals?.requeue_auto} />
+            <DataTable caption="Regressed or infra-failed proposals (30 d)" rows={data.requeue} rowKey={(r) => r.id} rowClassName={() => 'align-top'} empty="No regressed or infra-failed proposal in the last 30 days." columns={[
+              { key: 'proposal', label: 'Proposal', render: (r) => <>{r.title}<div className="text-xs text-foreground-muted">{r.id.slice(0, 8)}</div></> },
+              { key: 'status', label: 'Status', render: (r) => <>{r.status}{r.auto && <AutoVerdict auto={r.auto} />}</> },
+              { key: 'reason', label: 'Reason', render: (r) => (r.requeued_as ? <span className="text-foreground-muted">requeued as {r.requeued_as.slice(0, 8)}</span> : (
+                <input aria-label={`Reason for requeueing ${r.id.slice(0, 8)}`} value={reasons[r.id] ?? ''} onChange={(e) => setReasons({ ...reasons, [r.id]: e.target.value })}
+                  placeholder="why (required)" className="w-full rounded border border-border bg-background px-2 py-0.5" />
+              )) },
+              { key: 'action', label: 'Action', cellClassName: () => 'whitespace-nowrap space-x-1', render: (r) => !r.requeued_as && (
+                <>
+                  <Button needs={canRequeue ? undefined : P.requeueProposal} disabled={busy !== null || (reasons[r.id] ?? '').trim().length < 5}
+                    onClick={() => void act(r.id, () => api.requeueProposal(r.id, reasons[r.id].trim()), `Requeued ${r.id.slice(0, 8)}`)}>Requeue</Button>
+                  <Button needs={canDismiss ? undefined : P.dismissRequeue} disabled={busy !== null} aria-label={`Dismiss ${r.id.slice(0, 8)}`}
+                    onClick={() => void act(`d-${r.id}`, () => api.dismissRequeue(r.id, (reasons[r.id] ?? '').trim() || undefined), `Dismissed ${r.id.slice(0, 8)}`)}>Dismiss</Button>
+                </>
+              ) },
+            ]} />
+          </Section>
 
-          <section aria-labelledby="prescreen">
-            <h2 id="prescreen" className="text-lg font-semibold mb-1">Pre-screen rejections (D5)</h2>
+          <OptionalLabellingHeader inbox={data} />
+
+          <Section id="prescreen" title="Pre-screen rejections (D5)" headingClassName="text-lg font-semibold mb-1">
             {p && (
               <p className="text-xs text-foreground-tertiary mb-2">
                 Label each rejection: <strong>ok</strong> = rejecting was right, <strong>wrong</strong> = it deserved a panel. Labelled {p.labelled}, wrong {p.wrong}
                 {p.false_rejection_pct !== null && <> · false-rejection rate <strong>{p.false_rejection_pct}%</strong></>} · enforce when {p.enforce_threshold}.
               </p>
             )}
-            {p && p.items.length === 0 ? <p className="text-sm text-foreground-secondary">No pre-screen rejection to label.</p> : (
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Proposal</th><th>Outcome</th><th>Pre-screen reason</th><th>Label</th></tr></thead>
-                <tbody>{p?.items.map((i) => (
-                  <tr key={i.id} className="border-t border-border align-top">
-                    <td>{i.title}</td><td>{i.status}</td><td className="text-foreground-secondary">{i.reason}</td>
-                    <td className="whitespace-nowrap space-x-1">
-                      {(['ok', 'wrong'] as const).map((label) => (
-                        <button title={canLabel ? undefined : needsText(P.labelPrescreen)} key={label} type="button" aria-pressed={i.label === label} disabled={busy !== null || !canLabel}
-                          className={`${button} ${i.label === label ? 'bg-background-tertiary font-semibold' : ''}`}
-                          onClick={() => void act(`${i.id}-${label}`, () => api.labelPrescreen(i.id, label), `Labelled '${label}'`)}>{label}</button>
-                      ))}
-                    </td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
+            <DataTable caption="Pre-screen rejections to label" rows={p?.items ?? []} rowKey={(i) => i.id} rowClassName={() => 'align-top'} empty="No pre-screen rejection to label." columns={[
+              { key: 'proposal', label: 'Proposal', render: (i) => i.title },
+              { key: 'outcome', label: 'Outcome', render: (i) => i.status },
+              { key: 'reason', label: 'Pre-screen reason', render: (i) => i.reason, cellClassName: () => 'text-foreground-secondary' },
+              { key: 'label', label: 'Label', cellClassName: () => 'whitespace-nowrap space-x-1', render: (i) => (['ok', 'wrong'] as const).map((label) => (
+                <Button key={label} needs={canLabel ? undefined : P.labelPrescreen} aria-pressed={i.label === label} disabled={busy !== null}
+                  className={i.label === label ? 'bg-background-tertiary font-semibold' : ''}
+                  onClick={() => void act(`${i.id}-${label}`, () => api.labelPrescreen(i.id, label), `Labelled '${label}'`)}>{label}</Button>
+              )) },
+              // D5 enforce: a proposal the pre-screen parked before the panel (reason 'prescreen: …') can be requeued (D2)
+              { key: 'requeue', label: 'Requeue', render: (i) => i.status === 'needs_more_evidence' && i.reason.startsWith('prescreen:') && (
+                <Button needs={canRequeue ? undefined : P.requeueProposal} disabled={busy !== null} aria-label={`Requeue ${i.id.slice(0, 8)}`}
+                  onClick={() => void act(`q-${i.id}`, () => api.requeueProposal(i.id, 'pre-screen rejection overridden by the operator'), `Requeued ${i.id.slice(0, 8)}`)}>Requeue</Button>
+              ) },
+            ]} />
+          </Section>
 
-          <section aria-labelledby="telegram">
-            <h2 id="telegram" className="text-lg font-semibold mb-1">Telegram allowlist (D3)</h2>
+          <Section id="attribution-audit" title="Attribution audit (CAR)" headingClassName="text-lg font-semibold mb-1">
+            <p className="text-xs text-foreground-tertiary mb-2">
+              Is the computed class right? Judge each sampled run from its evidence: <strong>correct</strong>, <strong>wrong</strong> or <strong>unclear</strong>.
+              Sample of the week of {data.attribution_audit.week_start.slice(0, 10)} (seed {data.attribution_audit.seed}, {data.attribution_audit.items.length} of {data.attribution_audit.frame_n} computed attributions, stratified by class);
+              fixed for the week. {data.attribution_audit.audited.total} audited so far ({data.attribution_audit.audited.correct} correct, {data.attribution_audit.audited.wrong} wrong, {data.attribution_audit.audited.unclear} unclear). Your labels are the ground truth for CAR; the system never labels.
+            </p>
+            <DataTable caption="Sampled attributions to judge" rows={data.attribution_audit.items} rowKey={(i) => i.run_id} rowClassName={() => 'align-top'} empty="No computed attribution to audit this week." columns={[
+              { key: 'run', label: 'Run', render: (i) => <>{i.lane ?? '—'}<div className="text-xs text-foreground-muted">{i.run_id.slice(0, 8)}</div></> },
+              { key: 'class', label: 'Computed class', render: (i) => i.computed, cellClassName: () => 'font-mono text-xs' },
+              { key: 'evidence', label: 'Evidence', render: (i) => <>{i.reason ?? '—'}{i.failed_gates.length > 0 && <div className="text-xs text-foreground-muted">gates: {i.failed_gates.join(', ')}</div>}</>, cellClassName: () => 'text-foreground-secondary' },
+              { key: 'verdict', label: 'Verdict', cellClassName: () => 'whitespace-nowrap space-x-1', render: (i) => (['correct', 'wrong', 'unclear'] as const).map((verdict) => (
+                <Button key={verdict} needs={canAudit ? undefined : P.auditAttribution} aria-pressed={i.verdict === verdict} disabled={busy !== null} aria-label={`${verdict} ${i.run_id.slice(0, 8)}`}
+                  className={i.verdict === verdict ? 'bg-background-tertiary font-semibold' : ''}
+                  onClick={() => void act(`a-${i.run_id}-${verdict}`, () => api.adjudicateAttribution(i.run_id, verdict), `Judged ${i.run_id.slice(0, 8)} '${verdict}'`)}>{verdict}</Button>
+              )) },
+            ]} />
+          </Section>
+
+          <DiscoveryRelevanceSection />
+
+          <E1RetrievalLabelSection />
+
+          <Section id="telegram" title="Telegram allowlist (D3)" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">Only listed Telegram user ids are recognised; the mapped user&apos;s role decides what they may do. Chat or group membership grants nothing. Needs manage:config.</p>
-            {data.telegram.length === 0 ? <p className="text-sm text-foreground-secondary">Empty — no Telegram user is recognised.</p> : (
-              <table className="w-full text-sm mb-2">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Telegram id</th><th>User</th><th>Role</th><th>Added by</th><th /></tr></thead>
-                <tbody>{data.telegram.map((t) => (
-                  <tr key={t.telegram_user_id} className="border-t border-border">
-                    <td>{t.telegram_user_id}</td><td>{t.email ?? t.user_id}</td><td>{t.role ?? 'missing user'}</td><td>{t.added_by}</td>
-                    <td><button title={canTelegram ? undefined : needsText(P.telegramIdentity)} type="button" className={button} disabled={busy !== null || !canTelegram} onClick={() => void act(`tg-${t.telegram_user_id}`, () => api.removeTelegramIdentity(t.telegram_user_id), `Removed ${t.telegram_user_id}`)}>Remove</button></td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-            <form onSubmit={addIdentity} className="flex flex-wrap gap-2 items-end">
+            <DataTable caption="Recognised Telegram users" rows={data.telegram} rowKey={(t) => t.telegram_user_id} empty="Empty — no Telegram user is recognised." columns={[
+              { key: 'id', label: 'Telegram id', render: (t) => t.telegram_user_id },
+              { key: 'user', label: 'User', render: (t) => t.email ?? t.user_id },
+              { key: 'role', label: 'Role', render: (t) => t.role ?? 'missing user' },
+              { key: 'by', label: 'Added by', render: (t) => t.added_by },
+              { key: 'action', label: 'Action', render: (t) => (
+                <Button needs={canTelegram ? undefined : P.telegramIdentity} disabled={busy !== null} onClick={() => void act(`tg-${t.telegram_user_id}`, () => api.removeTelegramIdentity(t.telegram_user_id), `Removed ${t.telegram_user_id}`)}>Remove</Button>
+              ) },
+            ]} />
+            <form onSubmit={addIdentity} className="flex flex-wrap gap-2 items-end mt-2">
               <label className="text-sm">Telegram user id<input value={tgId} onChange={(e) => setTgId(e.target.value)} inputMode="numeric" className="block rounded border border-border bg-background px-2 py-1" /></label>
               <label className="text-sm">Djimitflo user id<input value={tgUser} onChange={(e) => setTgUser(e.target.value)} className="block rounded border border-border bg-background px-2 py-1" /></label>
-              <button type="submit" className={button} disabled={busy !== null || !canTelegram} title={canTelegram ? undefined : needsText(P.telegramIdentity)}>Add</button>
+              <Button type="submit" needs={canTelegram ? undefined : P.telegramIdentity} disabled={busy !== null}>Add</Button>
             </form>
-          </section>
+          </Section>
         </>
       )}
     </div>

@@ -13,6 +13,7 @@ const MAX_TASK_CHARS = 4_000;
 
 export const checkerSecondOpinion: JudgmentDef = {
   id: 'checker_second_opinion',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     verdict: {
       type: 'choice',

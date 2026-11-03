@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { isDeepStrictEqual } from 'util';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { swarmEventBus } from './swarm-event-bus';
@@ -15,6 +16,7 @@ import { SkillTrainingPromotionGate } from './skill-training-promotion-gate';
 import { AgentInteractionLedgerService, type AgentInteractionRecord } from './agent-interaction-ledger-service';
 import { OutcomeLearningService, type OutcomeLearningAssessment } from './outcome-learning-service';
 import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
+import { COMPLETED_UNVERIFIED_REF, DELIVERED_ATTRIBUTION_SQL } from './skill-evolution-engine';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -56,6 +58,17 @@ const ECOSYSTEM_CONTRACTS = [
   { from: 'federation', to: 'djimitflo', exchange: 'traces and outcomes -> causal learning', boundary: 'Runtime presence alone is not execution proof.' },
   { from: 'knowledge', to: 'djimitflo', exchange: 'retrieval and experiences -> bounded context', boundary: 'Retrieved content retains provenance and confidence.' },
 ] as const;
+
+/**
+ * OMEGA slice 4: typed refusals of the capability lifecycle. CAPABILITY_IMMUTABLE — an upsert would change version, allowed/forbidden
+ * actions or risk of a row that is no longer a draft (a new version is a new id). CAPABILITY_ACTIONS_EXCEED_PARENT /
+ * CAPABILITY_PARENT_NOT_FOUND — a derived capability (metadata.parent_versions) may not allow more than the exact parent version.
+ */
+export class CapabilityLifecycleError extends Error {
+  constructor(public code: 'CAPABILITY_IMMUTABLE' | 'CAPABILITY_ACTIONS_EXCEED_PARENT' | 'CAPABILITY_PARENT_NOT_FOUND', message: string) {
+    super(`${code}: ${message}`); this.name = 'CapabilityLifecycleError';
+  }
+}
 
 export interface SwarmCapabilityRecord {
   id: string;
@@ -147,6 +160,27 @@ export interface RunnerManifestRecord {
   created_at: string;
 }
 
+/** SW-02: Mission Control reads this many capabilities (latest by updated_at); capability_health also reports the whole registry */
+export const MISSION_CONTROL_CAPABILITY_LIMIT = 100;
+
+const MISSION_EXECUTION_SELECT = `SELECT m.id, m.title, m.status, m.goal_id, m.created_at, g.id AS goal_found, g.status AS goal_status
+  FROM swarm_missions m LEFT JOIN goals g ON g.id = m.goal_id`;
+type MissionExecutionSource = { id: string; title: string; status: string; goal_id: string | null; created_at: string; goal_found: string | null; goal_status: string | null };
+type Stmt = { all: (...params: unknown[]) => unknown[]; get: (...params: unknown[]) => unknown };
+
+/** SW-02: one mission's planning status next to its goal, the goal's unique loop runs and closures (missing lineage is not a failure). */
+function missionExecutionRow(m: MissionExecutionSource, runsOf: Stmt, closedOf: Stmt | null) {
+  const lineage = !m.goal_id ? 'no_goal' as const : m.goal_found ? 'linked' as const : 'goal_missing' as const;
+  if (lineage !== 'linked') return { mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: null, execution: null };
+  const runs = runsOf.all(m.goal_id) as Array<{ id: string; loop_name: string; status: string; created_at: string }>;
+  const byStatus: Record<string, number> = {};
+  for (const r of runs) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  return {
+    mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: m.goal_status,
+    execution: { loop_runs: runs.length, by_status: byStatus, latest_run: runs[0] ?? null, closed_runs: closedOf ? (closedOf.get(m.goal_id) as { n: number }).n : null },
+  };
+}
+
 export class SwarmIntelligenceService {
   private panels: SpecialistPanelService;
   readonly evidence: SwarmEvidenceService;
@@ -169,7 +203,8 @@ export class SwarmIntelligenceService {
     // G15.9: Avoid duplicate runtime status probes — cache the status snapshot
     const statusService = this.swarmStatus();
     const status = statusService.getStatus();
-    const capabilities = this.listCapabilities(100);
+    const capabilities = this.listCapabilities(MISSION_CONTROL_CAPABILITY_LIMIT);
+    const registry = this.capabilityRegistryCounts();
     const claims = this.listClaims(100);
     // Pass the already-fetched status to avoid a duplicate probe inside planCapacityV2
     const capacity = this.planCapacityV2({}, statusService);
@@ -194,9 +229,15 @@ export class SwarmIntelligenceService {
         running_leases: status.fleet_pools.reduce((sum, pool) => sum + pool.running_leases, 0),
         active_execution_count: status.active_execution_count,
         registry_is_not_execution: true,
+        current_executions: this.currentExecutions(),
       },
       capability_health: {
+        /** the loaded slice (latest MISSION_CONTROL_CAPABILITY_LIMIT by updated_at); kept for compatibility — see registry_total */
         total: capabilities.length,
+        loaded: capabilities.length,
+        load_limit: MISSION_CONTROL_CAPABILITY_LIMIT,
+        registry_total: registry.total,
+        registry_by_status: registry.by_status,
         validated: capabilities.filter((capability) => capability.status === 'validated').length,
         routable: capabilities.filter((capability) => capability.live_route_allowed).length,
         blocked: capabilities.filter((capability) => capability.blocked_reasons.length > 0).length,
@@ -262,6 +303,7 @@ export class SwarmIntelligenceService {
     if (!evidence.length) throw new Error('SWARM_CAPABILITY_REQUIRED_EVIDENCE_REQUIRED');
     if (!input.removal_strategy?.trim()) throw new Error('SWARM_CAPABILITY_REMOVAL_STRATEGY_REQUIRED');
     this.rejectSecretLike(input);
+    this.assertMutable(input.id.trim(), { version: input.version.trim(), risk_ceiling: input.risk_ceiling, allowed, forbidden });
 
     const evalScore = this.normalizedScore(input.eval_score ?? 0);
     const evalThreshold = this.normalizedScore(input.eval_threshold ?? 0.75);
@@ -315,6 +357,34 @@ export class SwarmIntelligenceService {
     return this.getCapability(input.id.trim());
   }
 
+  /** OMEGA slice 4: identity fields of a non-draft capability never change in place (CAPABILITY_IMMUTABLE). */
+  private assertMutable(id: string, next: { version: string; risk_ceiling: RiskClass; allowed: string[]; forbidden: string[] }): void {
+    const prior = this.db.prepare('SELECT status, version, risk_ceiling, allowed_actions_json, forbidden_actions_json FROM swarm_capabilities WHERE id = ?').get(id) as
+      { status: string; version: string; risk_ceiling: string; allowed_actions_json: string; forbidden_actions_json: string } | undefined;
+    if (!prior || prior.status === 'draft') return;
+    const set = (values: unknown) => JSON.stringify([...new Set(this.stringArray(values))].sort());
+    const parse = (json: string) => { try { return JSON.parse(json) as unknown; } catch { return []; } };
+    const changed = [
+      ...(prior.version !== next.version ? ['version'] : []),
+      ...(prior.risk_ceiling !== next.risk_ceiling ? ['risk_ceiling'] : []),
+      ...(set(parse(prior.allowed_actions_json)) !== set(next.allowed) ? ['allowed_actions'] : []),
+      ...(set(parse(prior.forbidden_actions_json)) !== set(next.forbidden) ? ['forbidden_actions'] : []),
+    ];
+    if (changed.length) throw new CapabilityLifecycleError('CAPABILITY_IMMUTABLE', `${id} is ${prior.status}; ${changed.join(', ')} cannot change (register a new version as a new id)`);
+  }
+
+  /** OMEGA slice 4: a derived capability allows no action its exact parent version (`<id>@<version>`) does not allow. */
+  assertWithinParents(allowedActions: string[], parentVersions: string[]): void {
+    for (const ref of parentVersions) {
+      const at = ref.lastIndexOf('@');
+      const parent = at > 0 ? this.db.prepare('SELECT allowed_actions_json AS a FROM swarm_capabilities WHERE id = ? AND version = ?').get(ref.slice(0, at), ref.slice(at + 1)) as { a: string } | undefined : undefined;
+      if (!parent) throw new CapabilityLifecycleError('CAPABILITY_PARENT_NOT_FOUND', `parent ${ref} is not in the registry at that version`);
+      let parentAllowed: unknown = []; try { parentAllowed = JSON.parse(parent.a); } catch { /* none */ }
+      const extra = allowedActions.filter((a) => !this.stringArray(parentAllowed).includes(a));
+      if (extra.length) throw new CapabilityLifecycleError('CAPABILITY_ACTIONS_EXCEED_PARENT', `${extra.join(', ')} not allowed by parent ${ref}`);
+    }
+  }
+
   // G15.2: Split candidate creation from validated promotion
   createCandidate(input: {
     id?: string;
@@ -343,6 +413,7 @@ export class SwarmIntelligenceService {
     eval_scorecard_ref?: string;
     evidence_refs?: string[];
     baseline_skill_content_hash?: string;
+    baseline_capability_id?: string;
     security_checker_ref?: string;
     human_approval_ref?: string;
     validation_report?: string;
@@ -409,12 +480,26 @@ export class SwarmIntelligenceService {
         const outcomeRows = skillId && candidateHash
           ? this.db.prepare(`
               SELECT skill_content_hash AS hash, COUNT(*) AS count
-              FROM skill_outcomes WHERE skill_id = ? AND skill_content_hash IS NOT NULL
+              FROM skill_outcomes WHERE skill_id = ? AND skill_content_hash IS NOT NULL AND ${DELIVERED_ATTRIBUTION_SQL}
+              AND evidence_refs_json NOT LIKE '%"${COMPLETED_UNVERIFIED_REF}"%'
+              AND (? IS NULL OR EXISTS (SELECT 1 FROM json_each(skill_outcomes.evidence_refs_json) WHERE value = ?))
               GROUP BY skill_content_hash ORDER BY MAX(created_at) DESC
-            `).all(skillId) as Array<{ hash: string; count: number }>
+            `).all(skillId, capability.metadata.executable_skill ? String(capability.metadata.package_hash || '') : null,
+              `skill_package_sha256:${String(capability.metadata.package_hash || '')}`) as Array<{ hash: string; count: number }>
           : [];
         const candidateRuns = Number(outcomeRows.find((row) => row.hash === candidateHash)?.count || 0);
-        const baselineHashes = outcomeRows.filter((row) => row.hash !== candidateHash).map((row) => row.hash);
+        const baselines: Array<{ hash: string; capability_id?: string; skill_id: string }> = outcomeRows
+          .filter((row) => row.hash !== candidateHash).map((row) => ({ hash: row.hash, skill_id: skillId }));
+        if (capability.metadata.executable_skill && skillId.endsWith(`-v${skillVersion.replaceAll('.', '-')}`)) {
+          const prefix = skillId.slice(0, -(skillVersion.length + 2));
+          const siblings = this.db.prepare(`SELECT id FROM swarm_capabilities WHERE kind = ? AND id != ?
+            AND json_extract(metadata, '$.executable_skill.id') LIKE ? ORDER BY id`).all(capability.kind, capability.id, `${prefix}-v%`) as Array<{ id: string }>;
+          for (const { id } of siblings) {
+            const sibling = this.getCapability(id);
+            baselines.push({ hash: String(sibling.metadata.agent_skill_content_hash || ''), capability_id: id, skill_id: String(sibling.metadata.agent_skill_id || '') });
+          }
+        }
+        const baselineHashes = [...new Set(baselines.map((baseline) => baseline.hash).filter(Boolean))];
         const evalRefs = skillId
           ? (this.db.prepare("SELECT id FROM openmythos_eval_runs WHERE agent_id = ? AND status = 'completed'").all(skillId) as Array<{ id: string }>)
             .map((row) => `openmythos:${row.id}`)
@@ -426,11 +511,12 @@ export class SwarmIntelligenceService {
         else if (capability.status !== 'candidate') blockedReasons.push(`CAPABILITY_NOT_CANDIDATE:${capability.status}`);
         else if (baselineHashes.length === 0) blockedReasons.push('CAPABILITY_PROMOTION_SKILL_BASELINE_REQUIRED');
         else {
-          for (const baselineHash of baselineHashes) {
+          for (const baseline of baselines) {
             try {
               comparison = this.assertSkillPromotionEvidence(capability, {
-                baseline_skill_content_hash: baselineHash,
-                evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, ...evalRefs],
+                baseline_skill_content_hash: baseline.hash,
+                baseline_capability_id: baseline.capability_id,
+                evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, `skill_outcomes:${baseline.skill_id}:${baseline.hash}`, ...evalRefs],
               });
               if (comparison) break;
             } catch (error) {
@@ -446,7 +532,7 @@ export class SwarmIntelligenceService {
           : 0;
         const baselineHash = comparison ? String(comparison.baseline_hash) : null;
         const evidenceRefs = openmythosRunId
-          ? [`skill_outcomes:${skillId}:${candidateHash}`, `openmythos:${openmythosRunId}`]
+          ? [`skill_outcomes:${skillId}:${candidateHash}`, `skill_outcomes:${comparison?.baseline_skill_id}:${baselineHash}`, `openmythos:${openmythosRunId}`]
           : [];
 
         return {
@@ -466,6 +552,7 @@ export class SwarmIntelligenceService {
             eval_scorecard_ref: `openmythos:${openmythosRunId}`,
             evidence_refs: evidenceRefs,
             baseline_skill_content_hash: baselineHash,
+            ...(comparison.baseline_capability_id ? { baseline_capability_id: comparison.baseline_capability_id } : {}),
           } : null,
         };
       });
@@ -473,7 +560,7 @@ export class SwarmIntelligenceService {
 
   private assertSkillPromotionEvidence(
     capability: SwarmCapabilityRecord,
-    input: { evidence_refs?: string[]; baseline_skill_content_hash?: string },
+    input: { evidence_refs?: string[]; baseline_skill_content_hash?: string; baseline_capability_id?: string },
   ): Record<string, unknown> | null {
     if (capability.kind !== 'skill' && capability.kind !== 'openai_skill') return null;
 
@@ -489,22 +576,59 @@ export class SwarmIntelligenceService {
       throw new Error('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=0:minimum=30');
     }
 
-    type OutcomeRow = { id: string; success: number; tokens_used: number; duration_ms: number };
-    const outcomes = (hash: string) => this.db.prepare(`
+    let baselineSkillId = skillId;
+    let baselinePackageHash: string | null = null;
+    const candidatePackageHash = capability.metadata.executable_skill ? String(capability.metadata.package_hash || '') : null;
+    if (candidatePackageHash !== null && (!/^[a-f0-9]{64}$/.test(candidatePackageHash) || !input.baseline_capability_id)) {
+      throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+    }
+    if (input.baseline_capability_id) {
+      const baseline = this.getCapability(input.baseline_capability_id);
+      const candidateContract = capability.metadata.executable_skill as Record<string, unknown> | undefined;
+      const baselineContract = baseline.metadata.executable_skill as Record<string, unknown> | undefined;
+      const family = (c: SwarmCapabilityRecord, contract: Record<string, unknown> | undefined): string | null => {
+        const id = c.metadata.agent_skill_id, version = c.metadata.agent_skill_version;
+        if (!contract || contract.format !== 1 || typeof id !== 'string' || typeof version !== 'string'
+          || !/^\d+\.\d+\.\d+$/.test(version) || contract.id !== id || contract.version !== version
+          || !id.endsWith(`-v${version.replaceAll('.', '-')}`)) return null;
+        return id.slice(0, -(version.length + 2));
+      };
+      const candidateFamily = family(capability, candidateContract);
+      if (baseline.id === capability.id || baseline.kind !== capability.kind || !candidateFamily
+        || candidateFamily !== family(baseline, baselineContract)
+        || baseline.metadata.agent_skill_content_hash !== baselineHash
+        || !candidateContract?.input || !candidateContract.output
+        || !Array.isArray(candidateContract.capabilities) || !candidateContract.capabilities.length
+        || !['input', 'output', 'capabilities', 'dependencies'].every((key) => isDeepStrictEqual(candidateContract[key], baselineContract?.[key]))
+        || !isDeepStrictEqual([...capability.allowed_actions].sort(), [...baseline.allowed_actions].sort())
+        || !isDeepStrictEqual([...capability.forbidden_actions].sort(), [...baseline.forbidden_actions].sort())) {
+        throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+      }
+      baselineSkillId = String(baseline.metadata.agent_skill_id);
+      baselinePackageHash = String(baseline.metadata.package_hash || '');
+      if (!/^[a-f0-9]{64}$/.test(baselinePackageHash)) throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+    }
+
+    type OutcomeRow = { id: string; success: number; tokens_used: number | null; duration_ms: number };
+    const outcomes = (id: string, hash: string, packageHash: string | null) => this.db.prepare(`
       SELECT id, success, tokens_used, duration_ms FROM skill_outcomes
-      WHERE skill_id = ? AND skill_content_hash = ?
+      WHERE skill_id = ? AND skill_content_hash = ? AND ${DELIVERED_ATTRIBUTION_SQL}
+              AND evidence_refs_json NOT LIKE '%"${COMPLETED_UNVERIFIED_REF}"%'
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM json_each(skill_outcomes.evidence_refs_json) WHERE value = ?))
       ORDER BY created_at ASC, id ASC
-    `).all(skillId, hash) as OutcomeRow[];
-    const candidate = outcomes(candidateHash);
-    const baseline = outcomes(baselineHash);
+    `).all(id, hash, packageHash, `skill_package_sha256:${packageHash}`) as OutcomeRow[];
+    const candidate = outcomes(skillId, candidateHash, candidatePackageHash);
+    const baseline = outcomes(baselineSkillId, baselineHash, baselinePackageHash);
     const minimum = 30;
     if (candidate.length < minimum || baseline.length < minimum) {
       throw new Error(`CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=${candidate.length}:baseline=${baseline.length}:minimum=${minimum}`);
     }
 
     const successRate = (rows: OutcomeRow[]) => rows.filter((row) => row.success === 1).length / rows.length;
-    const median = (rows: OutcomeRow[], field: 'tokens_used' | 'duration_ms') => {
-      const values = rows.map((row) => Number(row[field]) || 0).sort((a, b) => a - b);
+    // median over reported values only: an unknown token count (NULL) is left out, never read as 0; none known = null
+    const median = (rows: OutcomeRow[], field: 'tokens_used' | 'duration_ms'): number | null => {
+      const values = rows.map((row) => row[field]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v)).sort((a, b) => a - b);
+      if (!values.length) return null;
       const middle = Math.floor(values.length / 2);
       return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
     };
@@ -516,8 +640,8 @@ export class SwarmIntelligenceService {
     const candidateDuration = median(candidate, 'duration_ms');
     const improved = candidateSuccess >= baselineSuccess + 0.1
       || (candidateSuccess >= baselineSuccess && (
-        (baselineTokens > 0 && candidateTokens <= baselineTokens * 0.85)
-        || (baselineDuration > 0 && candidateDuration <= baselineDuration * 0.85)
+        (baselineTokens !== null && candidateTokens !== null && baselineTokens > 0 && candidateTokens <= baselineTokens * 0.85)
+        || (baselineDuration !== null && candidateDuration !== null && baselineDuration > 0 && candidateDuration <= baselineDuration * 0.85)
       ));
     if (!improved) throw new Error('CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT');
 
@@ -542,6 +666,7 @@ export class SwarmIntelligenceService {
     const requiredRefs = [
       `skill_outcomes:${skillId}:${candidateHash}`,
       `openmythos:${evalRun.id}`,
+      ...(input.baseline_capability_id ? [`skill_outcomes:${baselineSkillId}:${baselineHash}`] : []),
     ];
     if (!requiredRefs.every((ref) => input.evidence_refs?.includes(ref))) {
       throw new Error('CAPABILITY_PROMOTION_SKILL_EVIDENCE_REFS_REQUIRED');
@@ -552,6 +677,8 @@ export class SwarmIntelligenceService {
       skill_version: skillVersion,
       candidate_hash: candidateHash,
       baseline_hash: baselineHash,
+      baseline_skill_id: baselineSkillId,
+      baseline_capability_id: input.baseline_capability_id ?? null,
       candidate_runs: candidate.length,
       baseline_runs: baseline.length,
       candidate_success_rate: candidateSuccess,
@@ -562,6 +689,52 @@ export class SwarmIntelligenceService {
       baseline_median_duration_ms: baselineDuration,
       openmythos_run_id: evalRun.id,
     };
+  }
+
+  /** SW-02: the whole registry, not a loaded slice — total rows and rows per status. */
+  capabilityRegistryCounts(): { total: number; by_status: Record<string, number> } {
+    const rows = this.db.prepare('SELECT status, COUNT(*) AS n FROM swarm_capabilities GROUP BY status').all() as Array<{ status: string; n: number }>;
+    return { total: rows.reduce((s, r) => s + r.n, 0), by_status: Object.fromEntries(rows.map((r) => [r.status, r.n])) };
+  }
+
+  /** SW-02: the leases executing or waiting to execute right now, with their run — links a runtime identity to its executions. */
+  currentExecutions(limit = 20): Array<{ lease_id: string; loop_run_id: string; loop_name: string | null; runtime: string; role: string; status: string; updated_at: string }> {
+    try {
+      return this.db.prepare(`SELECT l.id AS lease_id, l.loop_run_id, r.loop_name, l.runtime, l.role, l.status, l.updated_at FROM worker_leases l
+        LEFT JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.status IN ('running', 'prepared') ORDER BY l.status = 'running' DESC, l.updated_at DESC LIMIT ?`).all(limit) as any[];
+    } catch { return []; }
+  }
+
+  /**
+   * SW-02: each mission's planning status (GoalDecomposer writes advisory 'observed' rows) next to its linked goal and the
+   * goal's loop runs (unique run grain, not leases) and learning closures. Read-only: a finished goal never transitions
+   * its mission. Missing lineage is 'unknown', not a failure.
+   */
+  missionExecutions(limit = 50) {
+    const count = <T>(sql: string): T[] => { try { return this.db.prepare(sql).all() as T[]; } catch { return []; } };
+    const byPlanning = count<{ k: string; n: number }>('SELECT status AS k, COUNT(*) AS n FROM swarm_missions GROUP BY status');
+    const byGoal = count<{ k: string; n: number }>("SELECT COALESCE(g.status, 'unknown') AS k, COUNT(*) AS n FROM swarm_missions m LEFT JOIN goals g ON g.id = m.goal_id GROUP BY 1");
+    const rows = this.db.prepare(`${MISSION_EXECUTION_SELECT} ORDER BY m.created_at DESC LIMIT ?`).all(this.limit(limit)) as MissionExecutionSource[];
+    const runsOf = this.db.prepare('SELECT id, loop_name, status, created_at FROM loop_runs WHERE goal_id = ? ORDER BY created_at DESC, id DESC');
+    const closedOf = (() => { try { return this.db.prepare('SELECT COUNT(DISTINCT c.loop_run_id) AS n FROM loop_learning_closures c JOIN loop_runs r ON r.id = c.loop_run_id WHERE r.goal_id = ?'); } catch { return null; } })();
+    return {
+      totals: {
+        registered: byPlanning.reduce((s, r) => s + r.n, 0), loaded: rows.length,
+        by_planning_status: Object.fromEntries(byPlanning.map((r) => [r.k, r.n])),
+        by_goal_status: Object.fromEntries(byGoal.map((r) => [r.k, r.n])),
+      },
+      missions: rows.map((m) => missionExecutionRow(m, runsOf, closedOf)),
+      note: 'planning_status is the advisory mission projection; goal_status and execution are the canonical goal/loop records. Missions are never transitioned from here.',
+    };
+  }
+
+  /** SW-02 for one mission: the same read-only join as missionExecutions, independent of the list's newest-N window. */
+  missionExecution(id: string) {
+    const row = this.db.prepare(`${MISSION_EXECUTION_SELECT} WHERE m.id = ?`).get(id) as MissionExecutionSource | undefined;
+    if (!row) throw new Error('SWARM_MISSION_NOT_FOUND');
+    const runsOf = this.db.prepare('SELECT id, loop_name, status, created_at FROM loop_runs WHERE goal_id = ? ORDER BY created_at DESC, id DESC');
+    const closedOf = (() => { try { return this.db.prepare('SELECT COUNT(DISTINCT c.loop_run_id) AS n FROM loop_learning_closures c JOIN loop_runs r ON r.id = c.loop_run_id WHERE r.goal_id = ?'); } catch { return null; } })();
+    return missionExecutionRow(row, runsOf, closedOf);
   }
 
   listCapabilities(limit = 100): SwarmCapabilityRecord[] {

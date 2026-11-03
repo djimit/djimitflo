@@ -9,6 +9,7 @@
  * thread, reflection candidates and proposed improvements that retain review gates.
  */
 
+import { measured } from './model-selector';
 import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment, runJudgments } from './judgment-service';
 import { commonsContribution } from './judgments/commons-contribution';
@@ -16,6 +17,7 @@ import { commonsIdea } from './judgments/commons-idea';
 import { AgentCommunicationService, type AgentMessage, type SocialRuntimeReply } from './agent-communication-service';
 import { RuntimeGovernanceService } from './runtime-governance-service';
 import { arenaGate, arenaGateEnabled, parseForecastText, pendingResidentQuestion, recordResidentForecast } from './committee-swarm';
+import { budgetPause } from './inference-budget';
 import {
   chat as providerChat, isRuntimeConfigured, parseResidentRuntimes, parseRuntimeSpec, providerEnvFromEnv, PROVIDER_KINDS,
   type ProviderEnv, type ProviderKind, type RuntimeSpec,
@@ -40,6 +42,9 @@ export interface AutopilotConfig {
   /** Language the agents are asked to converse in; 'auto' leaves it to the model. */
   language?: AutopilotLanguage;
   providers?: ProviderEnv;
+  /** SOCIAL_AUTOPILOT_FORECAST_ONLY (operator scale-back 2026-10-07): heartbeat and committee forecasts only — no chat replies,
+   *  no rounds, no thread answers (chat was most of ~940k output tokens per 1.7 days). */
+  forecastOnly?: boolean;
 }
 
 export interface AutopilotTick {
@@ -98,6 +103,7 @@ export function autopilotConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Au
     residents: parseResidentRuntimes(env.SOCIAL_AUTOPILOT_RESIDENTS, fallback),
     language: languageText === 'nl' || languageText === 'en' ? languageText : 'auto',
     providers,
+    forecastOnly: (env.SOCIAL_AUTOPILOT_FORECAST_ONLY || '').trim().toLowerCase() === 'true',
   };
 }
 
@@ -117,6 +123,8 @@ export function extractReply(text: string): SocialRuntimeReply {
     creative_alternative: String(value.creative_alternative), stop_condition: String(value.stop_condition),
     ...Object.fromEntries(['interest', 'ecosystem_component', 'proposed_improvement'].filter(key => typeof value[key] === 'string').map(key => [key, value[key]])),
     evidence_refs: Array.isArray(value.evidence_refs) ? value.evidence_refs.filter((item): item is string => typeof item === 'string') : [],
+    // AC-06: passed through untouched; respondSocial ignores it unless the thread is a Commons investigation (COMMONS_INVESTIGATION_MODE)
+    ...(value.artefact && typeof value.artefact === 'object' && !Array.isArray(value.artefact) ? { artefact: value.artefact } : {}),
   };
 }
 
@@ -151,6 +159,13 @@ export class AgentSocialAutopilotService {
   private activeTick: AbortController | null = null;
   private readonly warnedUnconfigured = new Set<string>();
   private readonly config: AutopilotConfig & Required<Pick<AutopilotConfig, 'residents' | 'language' | 'providers'>>;
+
+  /** UX-18: every resident model call is a ledger row (consumer resident:<agent>); content and prompts are never stored. */
+  private residentCall<T extends { content: string; usage?: Record<string, unknown> }>(agentId: string, taskKind: string, spec: { runtime: string; model: string }, call: () => Promise<T>): Promise<T> {
+    const n = (u: Record<string, unknown> | undefined, ...keys: string[]): number | null => { for (const k of keys) { const v = u?.[k]; if (typeof v === 'number') return v; } return null; };
+    return measured({ consumer: `resident:${agentId}`, model: spec.model, provider: spec.runtime, taskKind, purpose: `resident:${agentId}:${taskKind}` }, call,
+      (r) => ({ outChars: r.content.length, tokensIn: n(r.usage, 'prompt_eval_count', 'prompt_tokens', 'input_tokens', 'promptTokenCount'), tokensOut: n(r.usage, 'eval_count', 'completion_tokens', 'output_tokens', 'candidatesTokenCount') }), this.db);
+  }
 
   constructor(private readonly db: Database, config: AutopilotConfig, deps: { comms?: AgentCommunicationService; governance?: RuntimeGovernanceService; chat?: ChatFn } = {}) {
     this.config = {
@@ -219,7 +234,7 @@ export class AgentSocialAutopilotService {
     return rows
       .filter((row) => !row.retired_at && (!wanted || wanted.has(String(row.id))))
       // AR-W5: survival of the fittest — a resident that makes no measurable calls, or forecasts worse than the base rate, stops
-      .filter((row) => !arenaGateEnabled() || arenaGate(this.db, String(row.id)).allowed)
+      .filter((row) => !arenaGateEnabled() || arenaGate(this.db, String(row.id), new Date(), { forecastOnly: this.config.forecastOnly === true }).allowed)
       .map((row) => ({ id: String(row.id), name: String(row.name || row.id), capabilities: this.stringArray(row.capabilities ?? row.capabilities_json) }));
   }
 
@@ -227,6 +242,7 @@ export class AgentSocialAutopilotService {
   async tick(): Promise<AutopilotTick> {
     const result: AutopilotTick = { heartbeats: 0, replies: 0, attempts: 0, failures: 0, round_started: false, skipped: null };
     if (this.config.runtime === 'off' || this.stopped || this.busy) return { ...result, skipped: this.busy ? 'busy' : this.stopped ? 'stopped' : 'off' };
+    if (budgetPause(this.db, 'residents')) return { ...result, skipped: 'inference_budget' }; // INFERENCE_BUDGET_THROTTLE=on
     this.busy = true;
     const controller = new AbortController();
     this.activeTick = controller;
@@ -243,7 +259,7 @@ export class AgentSocialAutopilotService {
       });
       for (const agent of agents) {
         const spec = this.runtimeFor(agent.id);
-        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model); result.heartbeats += 1; } catch { result.failures += 1; }
+        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model, 'in_process_resident'); result.heartbeats += 1; } catch { result.failures += 1; }
       }
       // AR-W5: an open committee question comes before chat — at most 2 residents per tick answer one (bounded cloud cost)
       let forecastsThisTick = 0;
@@ -258,12 +274,13 @@ export class AgentSocialAutopilotService {
             'Be calibrated: most proposals do not end verified; the lane record below shows the recent rate.',
             `Context (JSON): ${JSON.stringify(q.question).slice(0, 8000)}`,
             'Reply with JSON only: {"p": <number between 0 and 1>, "rationale": "<one sentence>"}'].join('\n');
-          const { content } = await this.chat(this.systemPrompt(agent), prompt, controller.signal, spec);
+          const { content } = await this.residentCall(agent.id, 'forecast', spec, () => this.chat(this.systemPrompt(agent), prompt, controller.signal, spec));
           const f = parseForecastText(content);
           if (f) recordResidentForecast(this.db, q, agent.id, f, `${spec.runtime}/${spec.model}`);
           result.forecasts = (result.forecasts ?? 0) + (f ? 1 : 0);
         } catch { result.failures += 1; }
       }
+      if (this.config.forecastOnly) { result.skipped = controller.signal.aborted ? 'stopped' : 'forecast_only'; return result; }
       // Claim immediately before inference so slow earlier replies cannot expire later leases.
       const maxAttempts = Math.min(16, Math.max(1, Math.floor(this.config.maxRepliesPerTick)));
       for (const agent of agents) {
@@ -282,7 +299,7 @@ export class AgentSocialAutopilotService {
         result.attempts += 1;
         try {
           const spec = this.runtimeFor(agent.id);
-          const { content, run_id, usage } = await this.chat(this.systemPrompt(agent), this.userPrompt(agent.id, message), controller.signal, spec);
+          const { content, run_id, usage } = await this.residentCall(agent.id, 'reply', spec, () => this.chat(this.systemPrompt(agent), this.userPrompt(agent.id, message), controller.signal, spec));
           if (controller.signal.aborted) break;
           // An operator can pause/quarantine an agent while inference is running.
           if (!this.eligibleAgents().some(current => current.id === agent.id) || !this.governance.isAllowed(agent.id)) {
@@ -368,9 +385,13 @@ export class AgentSocialAutopilotService {
   }
 }
 
-/** Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'. */
+/**
+ * Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'.
+ * AUTHZ-F3: only while the commons_contribution judgment itself is on — the rows of a judgment that was switched off are
+ * stale and must not gate anything (prod: off since 09-30 while the gate kept reading pre-09-30 verdicts).
+ */
 export function threadGated(db: Database, message: AgentMessage, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true') return false;
+  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true' || judgmentMode(commonsContribution.id, env) === 'off') return false;
   const threadId = String(message.payload?.thread_id || '');
   if (!threadId) return false;
   try {

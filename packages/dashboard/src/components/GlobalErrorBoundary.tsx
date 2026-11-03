@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { isChunkLoadError, reloadOnceForChunkError } from '../lib/chunk-reload';
 
 interface State { hasError: boolean; error: Error | null; }
 
@@ -11,6 +12,7 @@ export class GlobalErrorBoundary extends Component<{children: React.ReactNode}, 
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[GlobalErrorBoundary]', error, info);
+    if (isChunkLoadError(error)) reloadOnceForChunkError();
   }
 
   render() {
@@ -19,8 +21,9 @@ export class GlobalErrorBoundary extends Component<{children: React.ReactNode}, 
         <div style={{ padding: '2rem', color: '#ff6b6b', background: '#1a1a1a', minHeight: '100vh', fontFamily: 'monospace' }}>
           <h2 style={{ marginBottom: '1rem' }}>Something crashed</h2>
           <p style={{ marginBottom: '0.5rem' }}>{this.state.error?.message ?? 'Unknown error'}</p>
+          {isChunkLoadError(this.state.error) && <p style={{ marginBottom: '0.5rem' }}>A new version was deployed. Retry reloads the page.</p>}
           <button
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() => (isChunkLoadError(this.state.error) ? window.location.reload() : this.setState({ hasError: false, error: null }))}
             style={{ padding: '0.5rem 1rem', background: '#4a9eff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
             Retry

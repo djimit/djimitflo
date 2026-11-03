@@ -13,27 +13,64 @@
  * - Mutation: Random trait modification
  * - Selection: Keep top-N skills by fitness
  * - Reproduction: Create new skills from successful patterns
+ *
+ * DORMANT (fitness audit 2026-10-11, docs/research/eco/FITNESS_AUDIT.md): a SkillGenome has no executable genotype —
+ * only the trait numbers — and prod holds 0 rows. Traits and fitness are therefore measured PHENOTYPE, computed from
+ * the skill's recorded skill_outcomes only (null = INSUFFICIENT_EVIDENCE, never a default 0.5), and mutation refuses to
+ * touch them: changing a number is not changing behaviour. fitness = measured reliability (success share).
+ * generality/complexity/adaptability have no measurement and stay null. Retirement is for the W8 operator review (14-10).
+ * recordOutcome() and the skill_outcomes table are live (bandit, gym, attribution) and unchanged.
+ * tokens_used is nullable: null = the runtime reported no usage (unknown, never 0); efficiency averages known rows only.
+ * A stored 0 is read as unknown too (L-F05, forensic audit 2026-10-26): legacy rows and producers that coalesce a missing
+ * report to 0 would otherwise score maximal efficiency. efficiency_coverage reports known/total rows.
  */
 
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { UNFAIR_ZERO_SQL } from './runtime-bandit';
+import { supersededMergeOutcomeSql } from './merge-superseded';
 
 interface SkillGenome {
   id: string;
   skillId: string;
   generation: number;
   parents: string[];
+  /** measured phenotype from skill_outcomes; null = no measurement */
   traits: {
-    efficiency: number;    // 0-1, higher = fewer tokens per task
-    reliability: number;   // 0-1, higher = more successful
-    generality: number;    // 0-1, higher = works in more domains
-    complexity: number;    // 0-1, lower = simpler implementation
-    adaptability: number;  // 0-1, higher = learns faster
+    efficiency: number | null;    // mean min(1, 1000 / tokens) over outcomes
+    reliability: number | null;   // success share over outcomes
+    generality: number | null;    // no measurement → null
+    complexity: number | null;    // no measurement → null
+    adaptability: number | null;  // no measurement → null
+    /** rows with known (> 0) tokens behind efficiency, of all measured outcomes */
+    efficiency_coverage?: { known: number; total: number };
   };
-  fitness: number;
+  /** = traits.reliability; null = INSUFFICIENT_EVIDENCE */
+  fitness: number | null;
   mutations: string[];
   createdAt: string;
 }
+
+/**
+ * Evidence ref on a zero whose process completed but that no independent verification judged (execution engine). It is no
+ * observation of the skill — neither a success nor a failure — so reliability leaves it out, as UNFAIR_ZERO_SQL does for infra.
+ */
+export const COMPLETED_UNVERIFIED_REF = 'outcome_class:completed_unverified';
+
+/**
+ * INT-004 follow-up: a skill outcome is an observation of the skill only with positive delivery evidence — the engine's
+ * `skill_delivery:delivered` ref (a receipt that the skill text was in the assignment the runtime got). Assigned /
+ * unknown delivery (skill_attribution:unverified) and untagged legacy rows (written before receipts, or via the manual
+ * /evolution/outcome API) are a stored association, not a measurement: per-skill fitness and promotion leave them out.
+ */
+export const DELIVERED_ATTRIBUTION_SQL = `evidence_refs_json LIKE '%"skill_delivery:delivered"%'`;
+
+/**
+ * Outcome namespaces that are species, not delivered skills — makers (`[repo:<slug>:]loop-maker:<lane|gym|merge>:...`),
+ * fleet agents (`agent:`), falsifiers (`falsifier:`). They never carry a delivery receipt; their fitness reads every row.
+ */
+export const isSpeciesOutcome = (skillId: string): boolean =>
+  skillId.includes('loop-maker:') || skillId.startsWith('agent:') || skillId.startsWith('falsifier:');
 
 function seededRandom(seed?: string): () => number {
   if (!seed) return Math.random;
@@ -56,31 +93,20 @@ export class SkillEvolutionEngine {
    * Register a new skill genome.
    */
   registerSkill(skillId: string, initialTraits?: Partial<SkillGenome['traits']>): SkillGenome {
+    // declared traits are claims, not measurements: they are recorded as such and never enter fitness
+    const declared = initialTraits && Object.keys(initialTraits).length ? [`declared traits ignored: ${JSON.stringify(initialTraits)}`] : [];
+    const traits = this.measuredTraits(skillId);
     const genome: SkillGenome = {
       id: randomUUID(),
       skillId,
       generation: 1,
       parents: [],
-      traits: {
-        efficiency: initialTraits?.efficiency ?? 0.5,
-        reliability: initialTraits?.reliability ?? 0.5,
-        generality: initialTraits?.generality ?? 0.5,
-        complexity: initialTraits?.complexity ?? 0.5,
-        adaptability: initialTraits?.adaptability ?? 0.5,
-      },
-      fitness: 0,
-      mutations: [],
+      traits,
+      fitness: traits.reliability,
+      mutations: declared,
       createdAt: new Date().toISOString(),
     };
-
-    genome.fitness = this.calculateFitness(genome.traits);
-
-    this.db.prepare(`
-      INSERT INTO skill_genomes (id, skill_id, generation, parents_json, traits_json, fitness, mutations_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(genome.id, genome.skillId, genome.generation, JSON.stringify(genome.parents),
-      JSON.stringify(genome.traits), genome.fitness, JSON.stringify(genome.mutations), genome.createdAt);
-
+    this.persist(genome);
     return genome;
   }
 
@@ -94,10 +120,12 @@ export class SkillEvolutionEngine {
     const nextGen: SkillGenome[] = [];
 
     // Keep top 50% (elitism)
-    const sorted = [...currentGenomes].sort((a, b) => b.fitness - a.fitness);
+    const sorted = [...currentGenomes].sort((a, b) => (b.fitness ?? -1) - (a.fitness ?? -1));
     const elite = sorted.slice(0, Math.ceil(sorted.length / 2));
     nextGen.push(...elite.map((genome) => ({
       ...genome,
+      traits: this.measuredTraits(genome.skillId),
+      fitness: this.measuredTraits(genome.skillId).reliability,
       id: randomUUID(),
       generation: genome.generation + 1,
       parents: [genome.id],
@@ -119,13 +147,7 @@ export class SkillEvolutionEngine {
     }
 
     // Persist next generation
-    for (const genome of nextGen) {
-      this.db.prepare(`
-        INSERT INTO skill_genomes (id, skill_id, generation, parents_json, traits_json, fitness, mutations_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(genome.id, genome.skillId, genome.generation, JSON.stringify(genome.parents),
-        JSON.stringify(genome.traits), genome.fitness, JSON.stringify(genome.mutations), genome.createdAt);
-    }
+    for (const genome of nextGen) this.persist(genome);
 
     return nextGen;
   }
@@ -135,7 +157,8 @@ export class SkillEvolutionEngine {
    */
   recordOutcome(skillId: string, outcome: {
     success: boolean;
-    tokensUsed: number;
+    /** null = not reported by the runtime (unknown), stored as NULL, never as 0 */
+    tokensUsed: number | null;
     durationMs: number;
     domain: string;
     taskId?: string;
@@ -154,7 +177,7 @@ export class SkillEvolutionEngine {
       randomUUID(),
       skillId,
       outcome.success ? 1 : 0,
-      outcome.tokensUsed,
+      typeof outcome.tokensUsed === 'number' && Number.isFinite(outcome.tokensUsed) ? outcome.tokensUsed : null,
       outcome.durationMs,
       outcome.domain,
       outcome.taskId || null,
@@ -167,7 +190,39 @@ export class SkillEvolutionEngine {
     );
 
     // Update skill traits based on outcome
-    this.updateTraits(skillId, outcome);
+    this.updateTraits(skillId);
+  }
+
+  /** Trusted, hash-bound late verification settles one execution; ambiguous retries remain unknown. */
+  settleTaskVerification(taskId: string, skillId: string, contentHash: string, packageHash: string): void {
+    if (process.env.SKILL_FIRST_MODE !== 'on') return;
+    const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string } | undefined;
+    if (task?.status !== 'completed') return;
+    const rows = this.db.prepare(`SELECT id, evidence_refs_json FROM skill_outcomes
+      WHERE task_id = ? AND skill_id = ? AND skill_content_hash = ? AND ${DELIVERED_ATTRIBUTION_SQL}`)
+      .all(taskId, skillId, contentHash) as Array<{ id: string; evidence_refs_json: string }>;
+    if (rows.length !== 1 || !(JSON.parse(rows[0].evidence_refs_json) as string[]).includes(`skill_package_sha256:${packageHash}`)) return;
+    const receipt = this.db.prepare(`SELECT details FROM execution_evidence WHERE task_id = ? AND source = 'system'
+      AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt' ORDER BY captured_at DESC, rowid DESC LIMIT 1`)
+      .get(taskId) as { details: string } | undefined;
+    const delivered = receipt ? JSON.parse(receipt.details) as Record<string, unknown> : null;
+    if (delivered?.delivery_state !== 'delivered' || delivered.skill_id !== skillId
+      || delivered.skill_content_hash !== contentHash || delivered.skill_package_hash !== packageHash) return;
+    const checks = this.db.prepare(`SELECT id, severity FROM execution_evidence WHERE task_id = ?
+      AND evidence_type = 'test_result' AND source = 'system' AND json_valid(details)
+      AND json_extract(details, '$.skill_package_id') = ? AND json_extract(details, '$.skill_content_hash') = ?
+      AND json_extract(details, '$.skill_package_hash') = ?`)
+      .all(taskId, skillId, contentHash, packageHash) as Array<{ id: string; severity: string }>;
+    if (!checks.length) return;
+    const failed = checks.some((check) => ['error', 'critical'].includes(check.severity));
+    const passed = !failed && checks.every((check) => check.severity === 'info');
+    const refs = (JSON.parse(rows[0].evidence_refs_json) as string[]).filter((ref) =>
+      ref !== COMPLETED_UNVERIFIED_REF && ref !== 'outcome_class:regressed' && !ref.startsWith('verification:test_result:'));
+    refs.push(...checks.map((check) => check.id), ...(passed ? ['verification:test_result:passed']
+      : failed ? ['verification:test_result:failed', 'outcome_class:regressed'] : [COMPLETED_UNVERIFIED_REF]));
+    this.db.prepare('UPDATE skill_outcomes SET success = ?, evidence_refs_json = ? WHERE id = ?')
+      .run(passed ? 1 : 0, JSON.stringify([...new Set(refs)]), rows[0].id);
+    this.updateTraits(skillId);
   }
 
   /**
@@ -176,7 +231,7 @@ export class SkillEvolutionEngine {
   getStats(): {
     totalGenomes: number;
     currentGeneration: number;
-    avgFitness: number;
+    avgFitness: number | null;
     topSkill: string | null;
     totalOutcomes: number;
   } {
@@ -184,13 +239,12 @@ export class SkillEvolutionEngine {
     const outcomes = (this.db.prepare('SELECT COUNT(*) as c FROM skill_outcomes').get() as any)?.c || 0;
 
     const maxGen = genomes.reduce((max: number, g: any) => Math.max(max, g.generation), 0);
-    const avgFitness = genomes.length > 0
-      ? genomes.reduce((sum: number, g: any) => sum + g.fitness, 0) / genomes.length
-      : 0;
-
-    const topSkill = genomes.length > 0
-      ? genomes.sort((a: any, b: any) => b.fitness - a.fitness)[0].skill_id
-      : null;
+    // fitness is read from outcomes, never from the stored column; skills without outcomes are left out
+    // per distinct skill: elitism copies a genome row, which must not shift the average
+    const measured = [...new Set(genomes.map((g: any) => g.skill_id as string))].map((skill) => ({ skill, fitness: this.measuredTraits(skill).reliability }))
+      .filter((g): g is { skill: string; fitness: number } => g.fitness !== null);
+    const avgFitness = measured.length ? measured.reduce((sum, g) => sum + g.fitness, 0) / measured.length : null;
+    const topSkill = measured.length ? measured.sort((a, b) => b.fitness - a.fitness)[0].skill : null;
 
     return {
       totalGenomes: genomes.length,
@@ -203,15 +257,26 @@ export class SkillEvolutionEngine {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private calculateFitness(traits: SkillGenome['traits']): number {
-    // Weighted fitness function
-    return (
-      traits.efficiency * 0.3 +
-      traits.reliability * 0.3 +
-      traits.generality * 0.15 +
-      (1 - traits.complexity) * 0.15 +
-      traits.adaptability * 0.1
-    );
+  /** Phenotype measured from this skill's recorded outcomes only. */
+  measuredTraits(skillId: string): SkillGenome['traits'] {
+    // E2: an infra / no-change / completed-unverified zero is no observation of the skill (left out, never a 0).
+    // Unknown tokens (NULL, or a 0 that stands for a missing report) drop out of the efficiency AVG instead of scoring 1.
+    // A named skill counts only delivered attribution, on both sides (an undelivered success is no more the skill's than a failure).
+    const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
+        AVG(CASE WHEN tokens_used > 0 THEN MIN(1.0, 1000.0 / tokens_used) END) AS eff, COALESCE(SUM(tokens_used > 0), 0) AS eff_n FROM skill_outcomes WHERE skill_id = ?
+        ${isSpeciesOutcome(skillId) ? '' : `AND ${DELIVERED_ATTRIBUTION_SQL} `}AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
+    const has = r.n > 0;
+    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null,
+      efficiency_coverage: { known: r.eff_n, total: r.n } };
+  }
+
+  private persist(genome: SkillGenome): void {
+    // ponytail: the legacy NOT NULL fitness column stores 0 for 'no measurement'; every read goes through measuredTraits()
+    this.db.prepare(`
+      INSERT INTO skill_genomes (id, skill_id, generation, parents_json, traits_json, fitness, mutations_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(genome.id, genome.skillId, genome.generation, JSON.stringify(genome.parents),
+      JSON.stringify(genome.traits), genome.fitness ?? 0, JSON.stringify(genome.mutations), genome.createdAt);
   }
 
   private getCurrentGeneration(): SkillGenome[] {
@@ -222,63 +287,34 @@ export class SkillEvolutionEngine {
   }
 
   private crossover(parent1: SkillGenome, parent2: SkillGenome): SkillGenome {
-    const child: SkillGenome = {
+    // a child is a new, unmeasured skill: it inherits lineage, not its parents' measured numbers
+    const skillId = `${parent1.skillId}-x-${parent2.skillId}`;
+    const traits = this.measuredTraits(skillId);
+    return {
       id: randomUUID(),
-      skillId: `${parent1.skillId}-x-${parent2.skillId}`,
+      skillId,
       generation: parent1.generation + 1,
       parents: [parent1.id, parent2.id],
-      traits: {
-        efficiency: this.random() < 0.5 ? parent1.traits.efficiency : parent2.traits.efficiency,
-        reliability: this.random() < 0.5 ? parent1.traits.reliability : parent2.traits.reliability,
-        generality: this.random() < 0.5 ? parent1.traits.generality : parent2.traits.generality,
-        complexity: this.random() < 0.5 ? parent1.traits.complexity : parent2.traits.complexity,
-        adaptability: this.random() < 0.5 ? parent1.traits.adaptability : parent2.traits.adaptability,
-      },
-      fitness: 0,
+      traits,
+      fitness: traits.reliability,
       mutations: [],
       createdAt: new Date().toISOString(),
     };
-
-    child.fitness = this.calculateFitness(child.traits);
-    return child;
   }
 
-  private mutate(genome: SkillGenome): void {
-    const traits = ['efficiency', 'reliability', 'generality', 'complexity', 'adaptability'] as const;
-    const traitToMutate = traits[Math.floor(this.random() * traits.length)];
-
-    // Small random adjustment (±0.1)
-    const adjustment = (this.random() - 0.5) * 0.2;
-    genome.traits[traitToMutate] = Math.max(0, Math.min(1, genome.traits[traitToMutate] + adjustment));
-
-    genome.mutations.push(`mutated ${traitToMutate} by ${adjustment.toFixed(2)}`);
-    genome.fitness = this.calculateFitness(genome.traits);
+  /** Refuses: traits are measured phenotype and a SkillGenome has no executable genotype to mutate. */
+  mutate(genome: SkillGenome): void {
+    genome.mutations.push('refused: traits are measured phenotype; no executable genotype to mutate (DORMANT)');
   }
 
-  private updateTraits(skillId: string, outcome: {
-    success: boolean;
-    tokensUsed: number;
-    durationMs: number;
-    domain: string;
-  }): void {
+  private updateTraits(skillId: string): void {
     const genomes = this.db.prepare('SELECT * FROM skill_genomes WHERE skill_id = ? ORDER BY generation DESC LIMIT 1').all(skillId) as any[];
     if (genomes.length === 0) return;
 
-    const genome = parseGenome(genomes[0]);
-
-    // Update reliability based on success
-    const alpha = 0.3;
-    genome.traits.reliability = genome.traits.reliability * (1 - alpha) + (outcome.success ? 1 : 0) * alpha;
-
-    // Update efficiency based on token usage (normalized)
-    const expectedTokens = 1000;
-    const efficiencyGain = Math.max(0, Math.min(1, expectedTokens / Math.max(1, outcome.tokensUsed)));
-    genome.traits.efficiency = genome.traits.efficiency * (1 - alpha) + efficiencyGain * alpha;
-
-    genome.fitness = this.calculateFitness(genome.traits);
-
+    // the outcome is already in skill_outcomes: the stored phenotype is re-measured from all of them
+    const traits = this.measuredTraits(skillId);
     this.db.prepare('UPDATE skill_genomes SET traits_json = ?, fitness = ? WHERE id = ?')
-      .run(JSON.stringify(genome.traits), genome.fitness, genome.id);
+      .run(JSON.stringify(traits), traits.reliability ?? 0, genomes[0].id);
   }
 
   private ensureTables(): void {
@@ -298,7 +334,7 @@ export class SkillEvolutionEngine {
         id TEXT PRIMARY KEY,
         skill_id TEXT NOT NULL,
         success INTEGER NOT NULL DEFAULT 0,
-        tokens_used INTEGER NOT NULL DEFAULT 0,
+        tokens_used INTEGER DEFAULT 0,
         duration_ms INTEGER NOT NULL DEFAULT 0,
         domain TEXT NOT NULL DEFAULT '',
         task_id TEXT,
@@ -309,10 +345,6 @@ export class SkillEvolutionEngine {
         evidence_refs_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-
-      CREATE INDEX IF NOT EXISTS idx_skill_genomes_skill_id ON skill_genomes(skill_id);
-      CREATE INDEX IF NOT EXISTS idx_skill_genomes_generation ON skill_genomes(generation);
-      CREATE INDEX IF NOT EXISTS idx_skill_outcomes_skill_id ON skill_outcomes(skill_id);
     `);
     for (const [name, ddl] of [
       ['task_id', 'TEXT'],
@@ -325,6 +357,42 @@ export class SkillEvolutionEngine {
       const exists = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string }>)
         .some((column) => column.name === name);
       if (!exists) this.db.exec(`ALTER TABLE skill_outcomes ADD COLUMN ${name} ${ddl}`);
+    }
+    this.relaxTokensNotNull();
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_skill_genomes_skill_id ON skill_genomes(skill_id);
+      CREATE INDEX IF NOT EXISTS idx_skill_genomes_generation ON skill_genomes(generation);
+      CREATE INDEX IF NOT EXISTS idx_skill_outcomes_skill_id ON skill_outcomes(skill_id);
+    `);
+  }
+
+  /**
+   * One-time, idempotent widening of a skill_outcomes table created with `tokens_used INTEGER NOT NULL` so an unknown
+   * count can be NULL. SQLite cannot drop NOT NULL in place (same pattern as migrate.ts rebuildLoopTables): the stored DDL
+   * is copied with only that constraint removed (ALTER-added columns keep their order), every row is copied unchanged,
+   * and the copy is checked before the old table is dropped. The index is recreated by the caller. A table whose DDL does
+   * not match, or a failed rebuild (rolled back), is left as it was; existing writers that pass a number are unaffected.
+   */
+  private relaxTokensNotNull(): void {
+    const tokens = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string; notnull: number }>)
+      .find((column) => column.name === 'tokens_used');
+    if (!tokens?.notnull) return;
+    const ddl = (this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'skill_outcomes'").get() as { sql: string } | undefined)?.sql ?? '';
+    const relaxed = ddl.replace(/\btokens_used\s+INTEGER\s+NOT\s+NULL\b/i, 'tokens_used INTEGER');
+    const copy = relaxed.replace(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?skill_outcomes["`]?(?=\s*\()/i, 'CREATE TABLE skill_outcomes_nullable_tokens');
+    if (relaxed === ddl || copy === relaxed) return;
+    try {
+      this.db.transaction(() => {
+        this.db.exec('DROP TABLE IF EXISTS skill_outcomes_nullable_tokens');
+        this.db.exec(copy);
+        this.db.exec('INSERT INTO skill_outcomes_nullable_tokens SELECT * FROM skill_outcomes');
+        const count = (table: string) => (this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+        if (count('skill_outcomes_nullable_tokens') !== count('skill_outcomes')) throw new Error('skill_outcomes copy row count mismatch');
+        this.db.exec('DROP TABLE skill_outcomes');
+        this.db.exec('ALTER TABLE skill_outcomes_nullable_tokens RENAME TO skill_outcomes');
+      })();
+    } catch (err) {
+      console.warn('skill_outcomes: tokens_used NOT NULL not relaxed:', (err as Error)?.message || err);
     }
   }
 }

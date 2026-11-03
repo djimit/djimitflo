@@ -19,8 +19,9 @@ export type ExpertLifecycleState =
   | 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE'
   | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
 export type EvidenceKind = 'paper' | 'institutional_page' | 'technical_report' | 'repository' | 'presentation' | 'profile' | 'scholarly_metadata' | 'secondary' | 'signature' | 'other';
-/** E2: who or what carries the expertise. Only people come from signatures; papers and repositories come from evidence. */
-export type ExpertKind = 'person' | 'paper' | 'repository';
+/** E2: who or what carries the expertise. Only people come from signatures; papers and repositories come from evidence.
+ * FE-AREAS (2026-10-06): an `area` is a field of interest (one per taxonomy capability); people are no longer created by default. */
+export type ExpertKind = 'person' | 'paper' | 'repository' | 'area';
 export type ClaimRelation = 'SUPPORTS' | 'CONTRADICTS' | 'QUALIFIES' | 'ORTHOGONAL' | 'UNDETERMINED';
 
 export const IDENTITY_CONFIDENCE_THRESHOLD = 0.8;
@@ -132,12 +133,12 @@ export class FrontierExpertRegistryService {
   }
 
   /** Bounded listing for operators and tools; filters by lifecycle state, capability id and a name fragment. */
-  list(filter: { state?: string; capability?: string; name?: string; kind?: ExpertKind; random?: boolean; limit?: number } = {}): Array<ExpertIdentityRow & { capabilities: string[] }> {
+  list(filter: { state?: string; capability?: string; name?: string; kind?: ExpertKind; excludePersons?: boolean; random?: boolean; limit?: number } = {}): Array<ExpertIdentityRow & { capabilities: string[] }> {
     const limit = Math.max(1, Math.min(200, filter.limit ?? 50));
     const rows = this.db.prepare(`SELECT DISTINCT e.* FROM expert_identities e
       ${filter.capability ? "JOIN expert_capabilities c ON c.expert_id = e.id AND c.status != 'revoked' AND c.capability_id = @capability" : ''}
-      WHERE (@state IS NULL OR e.lifecycle_state = @state) AND (@name IS NULL OR e.canonical_name LIKE @name) AND (@kind IS NULL OR COALESCE(e.kind, 'person') = @kind)
-      ORDER BY ${filter.random ? 'RANDOM()' : 'e.updated_at DESC'} LIMIT @limit`).all({ capability: filter.capability ?? null, state: filter.state ?? null, name: filter.name ? `%${filter.name}%` : null, kind: filter.kind ?? null, limit }) as ExpertIdentityRow[];
+      WHERE (@state IS NULL OR e.lifecycle_state = @state) AND (@name IS NULL OR e.canonical_name LIKE @name) AND (@kind IS NULL OR COALESCE(e.kind, 'person') = @kind) AND (@excludePersons = 0 OR COALESCE(e.kind, 'person') != 'person')
+      ORDER BY ${filter.random ? 'RANDOM()' : 'e.updated_at DESC'} LIMIT @limit`).all({ capability: filter.capability ?? null, state: filter.state ?? null, name: filter.name ? `%${filter.name}%` : null, kind: filter.kind ?? null, excludePersons: filter.excludePersons ? 1 : 0, limit }) as ExpertIdentityRow[];
     const capabilities = this.db.prepare("SELECT capability_id FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'");
     return rows.map((row) => ({ ...row, capabilities: (capabilities.all(row.id) as Array<{ capability_id: string }>).map((item) => item.capability_id) }));
   }

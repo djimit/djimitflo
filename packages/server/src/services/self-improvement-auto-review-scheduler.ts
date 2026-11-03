@@ -43,10 +43,12 @@ import { SelfImprovementRefinementService } from './self-improvement-refinement-
 import { SpecialistPanelService } from './specialist-panel-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { judgmentMode, runJudgment } from './judgment-service';
+import { hasMandatoryProvenance } from './judgment-provenance';
 import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { namedPathsExist, proposalPrescreen } from './judgments/proposal-prescreen';
 import { recordForecasts } from './forecasters';
 import { enqueueCommittee } from './committee-swarm';
+import { guardTick, markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const REFINEMENT_MAX_PER_TICK_CEILING = 10;
@@ -97,9 +99,9 @@ export class SelfImprovementAutoReviewScheduler {
     const writerModel = process.env.SELF_IMPROVEMENT_REFINEMENT_MODEL || reviewModel;
     if (reviewModel && reviewModel === writerModel) console.warn(`⚠️  self-improvement review and refinement use the same model (${reviewModel}); use a different model family for independent review`);
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('self_improvement_auto_review', () => this.tick()), intervalMs);
     this.timer.unref();
-    void this.tick(); // catch-up on boot
+    guardTick('self_improvement_auto_review', () => this.tick())(); // catch-up on boot
     return true;
   }
 
@@ -133,6 +135,7 @@ export class SelfImprovementAutoReviewScheduler {
    * in bootstrap/autonomous-services.ts.
    */
   async tick(): Promise<AutoReviewTickResult> {
+    markRun('self_improvement_auto_review'); // Cockpit 3.0: execution evidence for the scheduler registry
     if (this.running) return { reviewed: [], approved: [], parked: [], refined: [], refinementAttempted: 0, failed: [] };
     this.running = true;
     try {
@@ -142,14 +145,24 @@ export class SelfImprovementAutoReviewScheduler {
 
       for (const proposal of proposed) {
         try {
-          // System One pre-screen: shadow mode records what it WOULD decide next to the panel's real outcome (fail-open, never blocks).
+          // System One pre-screen: shadow mode records what it WOULD decide next to the panel's real outcome (fail-open, never blocks);
+          // enforce (D5) parks a confident 'no' before the panel (below).
           const prescreen = judgmentMode(proposalPrescreen.id) !== 'off' ? await runJudgment(this.db, proposalPrescreen, { type: 'self_improvement', id: proposal.id },
             { proposal: { type: proposal.type, title: proposal.title, description: proposal.description, rationale: proposal.rationale } }, undefined,
             process.env.LOOP_REPOSITORY_PATH ? { pathExists: namedPathsExist(`${proposal.description ?? ''} ${proposal.rationale ?? ''}`, process.env.LOOP_REPOSITORY_PATH) } : undefined).catch(() => null) : null;
           // AR2: code forecasters, recorded before any gate decides (scored by forecast-scoring, AR1)
           try { enqueueCommittee(this.db, proposal); } catch { /* AR-W: committee is best-effort */ }
           if (process.env.ARENA_FORECASTS_ENABLED === 'true') recordForecasts(this.db, proposal, (prescreen?.answers as Record<string, unknown> | undefined) ?? null);
-          if (!oracleLaneSkipsPanel(proposal)) await this.reviewIfNeeded(proposal, runId, result); // Z1: no panel tokens for oracle lanes
+          if (oracleLaneSkipsPanel(proposal)) continue; // Z1: no panel tokens for oracle lanes (and never parked by the pre-screen)
+          // D5 (operator 28-09, met at 52 labelled / 1.9 % wrong): enforce parks a confident 'no'; 'uncertain', an error or no
+          // judgment fails open to the panel. The operator can requeue a parked proposal from /decisions (D2).
+          // DI-001 B: parking is an evidence-backed verdict, so it requires recorded provenance; without it the proposal goes
+          // to the panel (the stricter, pre-D5 path) — no gate is weakened.
+          if (judgmentMode(proposalPrescreen.id) === 'enforce' && prescreen?.mode === 'enforce' && prescreen.decision === 'no' && hasMandatoryProvenance(prescreen)) {
+            if (this.improvements.parkByPrescreen(proposal.id, prescreen.reason)) result.parked.push(proposal.id);
+            continue;
+          }
+          await this.reviewIfNeeded(proposal, runId, result);
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
         }

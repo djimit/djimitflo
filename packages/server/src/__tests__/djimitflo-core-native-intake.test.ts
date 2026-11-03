@@ -64,6 +64,17 @@ describe('roborev findings become Djimitflo work items via the event bus', () =>
     expect(JSON.parse(rows[0].metadata)).toMatchObject({ repo: 'djimit/x', sha: 'abc', affected_files: ['a.ts'] });
   });
 
+  it('decodes list fields the Redis bus delivers as JSON strings; malformed lists become [] without throwing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
+      finding({ affected_files: '["src/a.ts","src/b.ts"]', labels: '["roborev","security"]', blocked_by: '[]' }),
+      finding({ _id: '2-0', event_id: 'roborev:2', dedupe_key: 'roborev:djimit/x:abc:bad', affected_files: '[not json', labels: 'plain' }),
+    ] }), { status: 200 })));
+    await new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events').pollOnce();
+    const meta = (ref: string) => JSON.parse((db.prepare("SELECT metadata FROM work_items WHERE source = 'roborev' AND source_ref = ?").get(ref) as { metadata: string }).metadata);
+    expect(meta('roborev:djimit/x:abc:sql')).toMatchObject({ affected_files: ['src/a.ts', 'src/b.ts'], labels: ['roborev', 'security'], blocked_by: [] });
+    expect(meta('roborev:djimit/x:abc:bad')).toMatchObject({ affected_files: [], labels: [] });
+  });
+
   it('skips a malformed finding without breaking ingestion', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [finding({ task_title: '', dedupe_key: '' })] }), { status: 200 })));
     await expect(new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events').pollOnce()).resolves.toBeGreaterThanOrEqual(0);
