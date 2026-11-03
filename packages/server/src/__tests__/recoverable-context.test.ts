@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compress, expand, handleFor, isPreserved, isStructured, MemoryBlobStore, RecoverableContextError, type BlobStore } from '../services/recoverable-context';
-import { replayRun } from '../services/recoverable-context-replay';
+import { replayLog, replayRun, summarizeCheckLogs } from '../services/recoverable-context-replay';
 
 // seeded PRNG so a failing property is reproducible
 function rng(seed: number) {
@@ -244,5 +244,21 @@ describe('recoverable-context', () => {
     expect(run.estimatedSavedTokens).toBeCloseTo(((b.chars - b.compressedChars) / 4) * 2);
     expect(run.integrity).toMatchObject({ compressed: 1, recoveryFailures: 0 });
     expect(Object.values(run.integrity.preserved).every((c) => c.dropped === 0)).toBe(true);
+  });
+  it('keeps filling from the head when an oversized tail candidate does not fit the budget', () => {
+    // a final minified line > MAX_LINE collapses to ~1 030 chars, which alone exceeds a 1 000 budget
+    const input = [...filler(200), 'x'.repeat(5_000)].join('\n');
+    const out = compress(input, 1_000, new MemoryBlobStore());
+    expect(out.handle).not.toBeNull();
+    const lines = out.text.split('\n').slice(1);
+    expect(lines).toContain('build step 0 done in 0ms');
+    expect(lines.filter((l) => !l.startsWith('[rc: ')).length).toBeGreaterThan(5);
+  });
+
+  it('check-log summary counts error-class matches under an honest name, not as failing assertions', () => {
+    const passing = ['Tests 120 passed, 0 failed', '0 errors', 'No assertion failures', ...filler(400)].join('\n');
+    const summary = summarizeCheckLogs([replayLog(passing, 2_000, 4_000)], 2_000, 4_000);
+    expect(summary).not.toHaveProperty('files_with_failing_assertion_lines');
+    expect(summary).toMatchObject({ files: 1, files_with_error_class_lines: 1 });
   });
 });

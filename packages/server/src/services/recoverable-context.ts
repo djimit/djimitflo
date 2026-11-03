@@ -136,14 +136,20 @@ function fit(lines: Line[], budget: number): string[] {
   if (size(lines) <= budget) return lines.map((l) => l.text);
   const keep = lines.map((l) => l.keep);
   let used = lines.reduce((n, l) => n + (l.keep ? l.text.length + 1 : 0), 0);
-  // alternate head and tail (tail first: the end of a log carries the summary) until the budget is spent
-  for (let head = 0, tail = lines.length - 1, fromTail = true; head <= tail; fromTail = !fromTail) {
-    const i = fromTail ? tail-- : head++;
-    if (keep[i]) continue;
-    const cost = lines[i].text.length + 1;
-    if (used + cost > budget) break;
-    keep[i] = true;
-    used += cost;
+  // alternate head and tail (tail first: the end of a log carries the summary) until the budget is spent. A side stops at
+  // its first line that does not fit (keeps head and tail contiguous); the other side keeps filling, so one oversized
+  // candidate cannot leave the view with only markers.
+  const open = { head: true, tail: true };
+  for (let head = 0, tail = lines.length - 1, fromTail = true; head <= tail && (open.head || open.tail); fromTail = !fromTail) {
+    if (!open[fromTail ? 'tail' : 'head']) continue;
+    const i = fromTail ? tail : head;
+    if (!keep[i]) {
+      const cost = lines[i].text.length + 1;
+      if (used + cost > budget) { open[fromTail ? 'tail' : 'head'] = false; continue; }
+      keep[i] = true;
+      used += cost;
+    }
+    if (fromTail) tail--; else head++;
   }
   const out: string[] = [];
   for (let i = 0; i < lines.length;) {
