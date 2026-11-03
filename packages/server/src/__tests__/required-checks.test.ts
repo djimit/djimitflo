@@ -66,6 +66,17 @@ describe('requiredChecksOf', () => {
   it('skips empty-string contexts entries', () => {
     expect(requiredChecksOf({ contexts: ['', 'ci'] })).toEqual<RequiredCheck[]>([{ context: 'ci', app_id: null }]);
   });
+
+  it('maps an app_id of 0 to that producer (>= 0, not just > 0)', () => {
+    expect(requiredChecksOf({ checks: [{ context: 'ci', app_id: 0 }] })).toEqual<RequiredCheck[]>([
+      { context: 'ci', app_id: 0 },
+    ]);
+  });
+
+  it('treats a non-number app_id (e.g. a numeric string) as any-source (null), guarding the typeof check', () => {
+    const checks = [{ context: 'ci', app_id: '15368' as unknown as number }] as Array<{ context?: string; app_id?: number | null }>;
+    expect(requiredChecksOf({ checks })).toEqual<RequiredCheck[]>([{ context: 'ci', app_id: null }]);
+  });
 });
 
 // newestRuns keeps the newest run per (producer app id, name): a rerun replaces the run it re-ran,
@@ -108,6 +119,15 @@ describe('newestRuns', () => {
     const noId = { name: 'ci', completed_at: null, app: { id: 1 } } as CheckRun;
     expect(newestRuns([noId, withId])).toEqual([withId]);
   });
+
+  it('keeps same-app runs of different names distinct (the name is part of the dedup key)', () => {
+    const ci = run(1, 'ci', 5);
+    const lint = run(2, 'lint', 5);
+    const out = newestRuns([ci, lint]);
+    expect(out).toHaveLength(2);
+    expect(out).toContainEqual(ci);
+    expect(out).toContainEqual(lint);
+  });
 });
 
 // requiredRun is the newest run of a required check from its required producer;
@@ -144,5 +164,10 @@ describe('requiredRun', () => {
     const other = run(1, 'lint', 15368);
     const match = run(2, 'ci', 15368);
     expect(requiredRun([other, match], { context: 'ci', app_id: 15368 })).toBe(match);
+  });
+
+  it('ignores (does not throw on) a run with no app when a specific producer is required', () => {
+    const noApp = run(1, 'ci', null);
+    expect(requiredRun([noApp], { context: 'ci', app_id: 15368 })).toBeUndefined();
   });
 });
