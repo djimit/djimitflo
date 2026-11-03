@@ -24,10 +24,12 @@ import { autoMergeEvidence } from './loop-auto-merge-state';
  *   candidate's content; secret patterns redacted, no hosts.
  */
 export interface TriageButton { text: string; data: string }
+/** Per-recipient progress of one message: recipients in `skip` already have it; `onDelivered` records each new one. */
+export interface DeliveryProgress { skip?: readonly number[]; onDelivered?(recipient: number): void }
 export interface PushSender {
-  requestApproval(approvalId: string, text: string, openUrl?: string | null): Promise<void>;
-  broadcastAlert(text: string): Promise<void>;
-  requestTriage?(text: string, buttons: TriageButton[], openUrl?: string | null): Promise<void>;
+  requestApproval(approvalId: string, text: string, openUrl?: string | null, progress?: DeliveryProgress): Promise<void>;
+  broadcastAlert(text: string, progress?: DeliveryProgress): Promise<void>;
+  requestTriage?(text: string, buttons: TriageButton[], openUrl?: string | null, progress?: DeliveryProgress): Promise<void>;
 }
 let sender: PushSender | null = null;
 export const setPushSender = (s: PushSender | null): void => { sender = s; };
@@ -54,8 +56,36 @@ export function inQuietHours(spec: string | undefined, now: Date): boolean {
 
 const clean = (s: unknown, max = 160): string => redactSecrets(String(s ?? '')).redacted.replace(/\s+/g, ' ').trim().slice(0, max);
 const ensureLog = (db: Database): void => {
-  db.exec(`CREATE TABLE IF NOT EXISTS telegram_push_log (approval_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS operator_digest_log (day TEXT PRIMARY KEY, sent_at TEXT NOT NULL);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS telegram_push_log (approval_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'delivered', attempts INTEGER NOT NULL DEFAULT 1, last_error TEXT);
+    CREATE TABLE IF NOT EXISTS operator_digest_log (day TEXT PRIMARY KEY, sent_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'delivered', attempts INTEGER NOT NULL DEFAULT 1, last_error TEXT);`);
+  for (const table of ['telegram_push_log', 'operator_digest_log']) {
+    const columns = new Set((db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name));
+    if (!columns.has('status')) db.exec(`ALTER TABLE ${table} ADD COLUMN status TEXT NOT NULL DEFAULT 'delivered'`);
+    if (!columns.has('attempts')) db.exec(`ALTER TABLE ${table} ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1`);
+    if (!columns.has('last_error')) db.exec(`ALTER TABLE ${table} ADD COLUMN last_error TEXT`);
+    if (!columns.has('delivered_to')) db.exec(`ALTER TABLE ${table} ADD COLUMN delivered_to TEXT`);
+  }
+};
+
+const deliveryPending = (db: Database, table: 'telegram_push_log' | 'operator_digest_log', key: string, value: string, now: Date): void => {
+  db.prepare(`INSERT INTO ${table} (${key}, sent_at, status, attempts, last_error) VALUES (?, ?, 'pending', 1, NULL)
+    ON CONFLICT(${key}) DO UPDATE SET sent_at=excluded.sent_at, status='pending', attempts=${table}.attempts+1, last_error=NULL`).run(value, now.toISOString());
+};
+/** Recipients that already got this message survive a failed attempt, so a retry only reaches the ones that did not. */
+const deliveryProgress = (db: Database, table: 'telegram_push_log' | 'operator_digest_log', key: string, value: string): DeliveryProgress => {
+  const row = db.prepare(`SELECT delivered_to FROM ${table} WHERE ${key}=?`).get(value) as { delivered_to: string | null } | undefined;
+  const skip = (() => { try { const v: unknown = JSON.parse(row?.delivered_to ?? '[]'); return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : []; } catch { return []; } })();
+  const done = new Set(skip);
+  return { skip, onDelivered: (recipient) => {
+    done.add(recipient);
+    db.prepare(`UPDATE ${table} SET delivered_to=? WHERE ${key}=?`).run(JSON.stringify([...done]), value);
+  } };
+};
+const deliveryDone = (db: Database, table: 'telegram_push_log' | 'operator_digest_log', key: string, value: string): void => {
+  db.prepare(`UPDATE ${table} SET status='delivered', last_error=NULL WHERE ${key}=?`).run(value);
+};
+const deliveryFailed = (db: Database, table: 'telegram_push_log' | 'operator_digest_log', key: string, value: string): void => {
+  db.prepare(`UPDATE ${table} SET status='failed', last_error='TELEGRAM_DELIVERY_FAILED' WHERE ${key}=?`).run(value);
 };
 
 interface ApprovalLike { id: string; title?: string | null; risk_level?: string | null; action_type?: string | null; target_path?: string | null; expires_at?: string | null; metadata?: unknown; task_id?: string | null; request_data?: unknown }
@@ -122,16 +152,36 @@ export async function pushApproval(db: Database, a: ApprovalLike, env: NodeJS.Pr
     // TG-2 (prod 06-10): approvals auto-approved by a lane rule were pushed anyway; skip anything no longer pending
     const status = (() => { try { return (db.prepare('SELECT status FROM approvals WHERE id = ?').get(a.id) as { status: string } | undefined)?.status; } catch { return undefined; } })();
     if (status && status !== 'pending') return 'decided';
-    if (db.prepare('SELECT 1 FROM telegram_push_log WHERE approval_id = ?').get(a.id)) return 'duplicate';
+    const pendingCutoff = new Date(now.getTime() - 15 * 60_000).toISOString();
+    if (db.prepare("SELECT 1 FROM telegram_push_log WHERE approval_id = ? AND (status='delivered' OR (status='pending' AND sent_at >= ?))").get(a.id, pendingCutoff)) return 'duplicate';
     if (inQuietHours(env.TELEGRAM_QUIET_HOURS, now)) return 'quiet';
     const cap = Math.max(1, Number(env.TELEGRAM_PUSH_MAX_PER_HOUR) || 6);
-    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ? AND approval_id NOT LIKE '${TRIAGE_KEY}%' AND approval_id NOT LIKE '${STALL_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
+    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE status='delivered' AND sent_at >= ? AND approval_id NOT LIKE '${TRIAGE_KEY}%' AND approval_id NOT LIKE '${STALL_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
     if (sentHour >= cap) return 'capped';
-    db.prepare('INSERT INTO telegram_push_log (approval_id, sent_at) VALUES (?, ?)').run(a.id, now.toISOString());
+    deliveryPending(db, 'telegram_push_log', 'approval_id', a.id, now);
     const base = publicBase(env);
-    await sender.requestApproval(a.id, approvalMessage(a, approvalContext(db, a)), base ? `${base}/decisions#approvals` : null);
+    try {
+      await sender.requestApproval(a.id, approvalMessage(a, approvalContext(db, a)), base ? `${base}/decisions#approvals` : null, deliveryProgress(db, 'telegram_push_log', 'approval_id', a.id));
+      deliveryDone(db, 'telegram_push_log', 'approval_id', a.id);
+    } catch (error) {
+      deliveryFailed(db, 'telegram_push_log', 'approval_id', a.id);
+      throw error;
+    }
     return 'sent';
   } catch { return 'failed'; }
+}
+
+/** Retry unsent pending approvals from the durable queue, including after a process restart. */
+export async function pushPendingApprovals(db: Database, env: NodeJS.ProcessEnv = process.env, now = new Date()): Promise<number> {
+  if (!pushEnabled(env) || !sender || inQuietHours(env.TELEGRAM_QUIET_HOURS, now)) return 0;
+  ensureLog(db);
+  const cutoff = new Date(now.getTime() - 15 * 60_000).toISOString();
+  const approvals = db.prepare(`SELECT a.* FROM approvals a LEFT JOIN telegram_push_log l ON l.approval_id=a.id
+    WHERE a.status='pending' AND (l.approval_id IS NULL OR l.status='failed' OR (l.status='pending' AND l.sent_at < ?))
+    ORDER BY a.created_at ASC LIMIT 20`).all(cutoff) as ApprovalLike[];
+  let sent = 0;
+  for (const approval of approvals) if (await pushApproval(db, approval, env, now) === 'sent') sent++;
+  return sent;
 }
 
 /**
@@ -188,16 +238,23 @@ export async function pushTriage(db: Database, env: NodeJS.ProcessEnv = process.
     if (inQuietHours(env.TELEGRAM_QUIET_HOURS, now)) return { result: 'quiet', sent, human };
     const cap = Math.max(1, Number(env.TELEGRAM_PUSH_MAX_PER_HOUR) || 6);
     const perPush = Math.min(20, Math.max(1, Number(env.TELEGRAM_TRIAGE_MAX_PER_PUSH) || 3));
-    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ? AND approval_id LIKE '${TRIAGE_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
+    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE status='delivered' AND sent_at >= ? AND approval_id LIKE '${TRIAGE_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
     const budget = Math.min(perPush, cap - sentHour);
     if (budget <= 0) return { result: 'capped', sent, human };
-    const seen = db.prepare('SELECT 1 FROM telegram_push_log WHERE approval_id = ?');
-    const fresh = triageMessages(decisionsInbox(db, now.getTime())).filter((m) => !seen.get(m.key)).slice(0, budget);
+    const pendingCutoff = new Date(now.getTime() - 15 * 60_000).toISOString();
+    const seen = db.prepare("SELECT 1 FROM telegram_push_log WHERE approval_id = ? AND (status='delivered' OR (status='pending' AND sent_at >= ?))");
+    const fresh = triageMessages(decisionsInbox(db, now.getTime())).filter((m) => !seen.get(m.key, pendingCutoff)).slice(0, budget);
     if (!fresh.length) return { result: 'nothing', sent, human };
     const base = publicBase(env);
     for (const m of fresh) {
-      db.prepare('INSERT INTO telegram_push_log (approval_id, sent_at) VALUES (?, ?)').run(m.key, now.toISOString());
-      await sender.requestTriage(m.text, m.buttons, base ? `${base}${m.open}` : null);
+      deliveryPending(db, 'telegram_push_log', 'approval_id', m.key, now);
+      try {
+        await sender.requestTriage(m.text, m.buttons, base ? `${base}${m.open}` : null, deliveryProgress(db, 'telegram_push_log', 'approval_id', m.key));
+        deliveryDone(db, 'telegram_push_log', 'approval_id', m.key);
+      } catch (error) {
+        deliveryFailed(db, 'telegram_push_log', 'approval_id', m.key);
+        throw error;
+      }
       sent++; if (m.human) human++;
     }
     return { result: 'sent', sent, human };
@@ -258,6 +315,8 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     drafts_age_max_days: evidence?.drafts.age_days_max ?? null,
     gates: evidence ? Object.fromEntries(Object.entries(evidence.gates).map(([k, g]) => [k, (g as { state: string }).state])) : {},
     stalls: stalls ? stalls.map((s) => s.subsystem) : null,
+    scheduler_health: sched.health,
+    schedulers_by_status: sched.by_status,
     schedulers_off_by_flag: offByFlag.map((s) => ({ name: s.name, flag: s.flag })),
     schedulers_off_unexpected: offUnexpected.map((s) => ({ name: s.name, status: s.status })),
     needs_you: Object.fromEntries(sections.map((x) => [x.key, { count: x.count, link: x.link }])),
@@ -279,6 +338,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     `Loop PRs settled: ${n(data.loop_prs_settled)} (${n(data.loop_prs_survived)} survived)`,
     `Realm gates: ${gates}`,
     data.stalls === null ? 'Stalls: unknown (stall watch failed)' : data.stalls.length ? `Stalls: ${data.stalls.join(', ')}` : 'Stalls: none',
+    `Scheduler health: ${data.scheduler_health}`,
     data.schedulers_off_unexpected.length ? `Schedulers off unexpectedly: ${data.schedulers_off_unexpected.length} (${data.schedulers_off_unexpected.map((s) => `${s.name} ${s.status}`).join(', ')})` : null,
     data.schedulers_off_by_flag.length ? `Schedulers off by flag: ${data.schedulers_off_by_flag.length} (${data.schedulers_off_by_flag.map((s) => s.name).join(', ')})` : null,
     data.dependency_lane ? `Dependency lane (${data.dependency_lane.mode}${data.dependency_lane.revoked ? ', act revoked' : ''}): ${data.dependency_lane.open} Dependabot PRs open, ${data.dependency_lane.merged_24h} merged in 24 h` : null,
@@ -294,12 +354,22 @@ export async function maybeSendDigest(db: Database, env: NodeJS.ProcessEnv = pro
   try {
     if (!digestEnabled(env) || !sender) return false;
     const hour = Number.isInteger(Number(env.OPERATOR_DIGEST_HOUR)) && env.OPERATOR_DIGEST_HOUR !== '' && env.OPERATOR_DIGEST_HOUR !== undefined ? Number(env.OPERATOR_DIGEST_HOUR) % 24 : 7;
-    if (now.getUTCHours() !== hour) return false;
     ensureLog(db);
     const day = now.toISOString().slice(0, 10);
-    if (db.prepare('SELECT 1 FROM operator_digest_log WHERE day = ?').get(day)) return false;
-    db.prepare('INSERT INTO operator_digest_log (day, sent_at) VALUES (?, ?)').run(day, now.toISOString());
-    await sender.broadcastAlert(buildDigest(db, now.getTime(), env).text);
+    const pendingCutoff = new Date(now.getTime() - 15 * 60_000).toISOString();
+    // A failed or stale-pending attempt for today is retried on any later tick: a send that failed at 07:50 would
+    // otherwise miss the hour gate at 08:05 and the day's digest would never arrive. A day with no row waits for the hour.
+    const retry = !!db.prepare("SELECT 1 FROM operator_digest_log WHERE day = ? AND (status='failed' OR (status='pending' AND sent_at < ?))").get(day, pendingCutoff);
+    if (!retry && now.getUTCHours() !== hour) return false;
+    if (db.prepare("SELECT 1 FROM operator_digest_log WHERE day = ? AND (status='delivered' OR (status='pending' AND sent_at >= ?))").get(day, pendingCutoff)) return false;
+    deliveryPending(db, 'operator_digest_log', 'day', day, now);
+    try {
+      await sender.broadcastAlert(buildDigest(db, now.getTime(), env).text, deliveryProgress(db, 'operator_digest_log', 'day', day));
+      deliveryDone(db, 'operator_digest_log', 'day', day);
+    } catch (error) {
+      deliveryFailed(db, 'operator_digest_log', 'day', day);
+      throw error;
+    }
     return true;
   } catch { return false; }
 }
@@ -308,9 +378,9 @@ let digestTimer: ReturnType<typeof setInterval> | null = null;
 /** One 15-minute tick for the daily digest and the triage push; armed only when one of them is enabled. */
 export function startOperatorDigest(db: Database): void {
   // UXE-01: reports to the scheduler registry; a separate statement, so the arming check below is unchanged. The registry
-  // takes one flag name; TELEGRAM_TRIAGE_ENABLED (with TELEGRAM_PUSH_ENABLED) is the second gate that arms this tick.
-  noteScheduler('operator_digest', 'OPERATOR_DIGEST_ENABLED', digestEnabled() || triageEnabled(), 15 * 60_000);
-  if (digestTimer || (!digestEnabled() && !triageEnabled())) return;
+  // takes one flag name; TELEGRAM_PUSH_ENABLED (approval retries) and TELEGRAM_TRIAGE_ENABLED also arm this tick.
+  noteScheduler('operator_digest', 'OPERATOR_DIGEST_ENABLED', pushEnabled() || digestEnabled() || triageEnabled(), 15 * 60_000);
+  if (digestTimer || (!pushEnabled() && !digestEnabled() && !triageEnabled())) return;
   // ponytail: the Phase 3 shadow ranking rides this 15-min tick (once per day); its own scheduler if the digest is ever off
-  digestTimer = setInterval(guardTick('operator_digest', () => { recordNeedsYouRanking(db); return maybeSendDigest(db).then(() => pushTriage(db)); }), 15 * 60_000); digestTimer.unref?.();
+  digestTimer = setInterval(guardTick('operator_digest', () => { recordNeedsYouRanking(db); return maybeSendDigest(db).then(() => pushTriage(db)).then(() => pushPendingApprovals(db)); }), 15 * 60_000); digestTimer.unref?.();
 }
