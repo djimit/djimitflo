@@ -4,6 +4,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { SECURITY_FINDING_SOURCE, WorkItemService } from '../services/work-item-service';
 import { IntegrationInboxService } from '../services/integration-inbox-service';
+import { param } from './params';
 
 function boundedLimit(value: unknown): number | undefined {
   if (value === undefined) return undefined;
@@ -111,7 +112,7 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
 
   router.get('/:id', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(service.get(req.params.id));
+      res.json(service.get(param(req, 'id')));
     } catch (error) {
       try {
         mapWorkItemError(error);
@@ -123,7 +124,7 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
 
   router.patch('/:id', requirePermission('create:task'), (req, res, next) => {
     try {
-      const item = service.get(req.params.id);
+      const item = service.get(param(req, 'id'));
       if (item.source === 'agent_board' && req.body?.status && req.body.status !== 'blocked') {
         next(createError(409, 'board-origin work requires independent review before mutation', 'BOARD_HANDOFF_REVIEW_REQUIRED'));
         return;
@@ -145,7 +146,7 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
     }
   }, (req, res, next) => {
     try {
-      const existing = service.get(req.params.id);
+      const existing = service.get(param(req, 'id'));
       let input = req.body || {};
       if (existing.source === SECURITY_FINDING_SOURCE
         && (existing.risk_class === 'high' || existing.risk_class === 'critical')
@@ -172,7 +173,7 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
           },
         };
       }
-      res.json(service.update(req.params.id, input));
+      res.json(service.update(param(req, 'id'), input));
     } catch (error) {
       try {
         mapWorkItemError(error);
@@ -184,10 +185,10 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
 
   router.post('/:id/convert-to-goal', requirePermission('create:task'), (req, res, next) => {
     try {
-      if (service.get(req.params.id).source === 'agent_board') {
+      if (service.get(param(req, 'id')).source === 'agent_board') {
         throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
       }
-      res.status(201).json(service.convertToGoal(req.params.id));
+      res.status(201).json(service.convertToGoal(param(req, 'id')));
     } catch (error) {
       try {
         mapWorkItemError(error);

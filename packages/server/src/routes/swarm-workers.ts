@@ -10,6 +10,7 @@ import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmStatusService } from '../services/swarm-status-service';
+import { param } from './params';
 
 function mapWorkerPoolError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -61,7 +62,7 @@ export function createWorkerRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   router.post('/worker-pool/stop/:leaseId', requirePermission('write:swarm_action'), async (req, res, next) => {
-    try { res.json(await service.stopWorkerLease(req.params.leaseId)); } catch (error) { try { mapWorkerPoolError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(await service.stopWorkerLease(param(req, 'leaseId'))); } catch (error) { try { mapWorkerPoolError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
   router.post('/handoffs', requirePermission('write:swarm_action'), async (req, res, next) => {
@@ -78,7 +79,7 @@ export function createWorkerRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   router.post('/handoffs/:id/accept', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.json(service.acceptHandoff(req.params.id, (req.user as any)?.agent_id)); } catch (error) { try { mapHandoffError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(service.acceptHandoff(param(req, 'id'), (req.user as any)?.agent_id)); } catch (error) { try { mapHandoffError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
   return router;

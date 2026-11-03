@@ -5,6 +5,7 @@ import { EvidenceService } from '../services/evidence-service';
 import { AuthorizationService } from '../services/authorization-service';
 import { AuthTokenPayload } from '@djimitflo/shared';
 import type { AuthMiddleware } from '../middleware/auth';
+import { param } from './params';
 
 export function createEvidenceRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
@@ -39,12 +40,12 @@ export function createEvidenceRoutes(db: Database, auth: AuthMiddleware): Router
   // GET /evidence/task/:taskId
   router.get('/task/:taskId', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
       const { evidence_type, severity } = req.query;
       const filters: Record<string, string> = {};
       if (evidence_type) filters.evidence_type = evidence_type as string;
       if (severity) filters.severity = severity as string;
-      const evidence = evidenceService.getTaskEvidence(req.params.taskId, filters);
+      const evidence = evidenceService.getTaskEvidence(param(req, 'taskId'), filters);
       res.json({ evidence });
     } catch (error) {
       next(error);
@@ -54,8 +55,8 @@ export function createEvidenceRoutes(db: Database, auth: AuthMiddleware): Router
   // GET /evidence/summary/:taskId
   router.get('/summary/:taskId', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
-      const summary = evidenceService.getExecutionSummary(req.params.taskId);
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
+      const summary = evidenceService.getExecutionSummary(param(req, 'taskId'));
       if (!summary) {
         res.status(404).json({ error: { message: 'Summary not found', code: 'SUMMARY_NOT_FOUND' } });
         return;
@@ -69,8 +70,8 @@ export function createEvidenceRoutes(db: Database, auth: AuthMiddleware): Router
   // GET /evidence/file-changes/:taskId
   router.get('/file-changes/:taskId', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
-      const changes = evidenceService.getFileChanges(req.params.taskId);
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
+      const changes = evidenceService.getFileChanges(param(req, 'taskId'));
       res.json({ file_changes: changes });
     } catch (error) {
       next(error);
@@ -80,8 +81,8 @@ export function createEvidenceRoutes(db: Database, auth: AuthMiddleware): Router
   // GET /evidence/audit-trail/:taskId
   router.get('/audit-trail/:taskId', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
-      const auditTrail = evidenceService.getAuditTrail(req.params.taskId);
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
+      const auditTrail = evidenceService.getAuditTrail(param(req, 'taskId'));
       res.json({ audit_trail: auditTrail });
     } catch (error) {
       next(error);
@@ -91,8 +92,8 @@ export function createEvidenceRoutes(db: Database, auth: AuthMiddleware): Router
   // GET /evidence/review/:taskId
   router.get('/review/:taskId', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
-      const taskId = req.params.taskId;
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
+      const taskId = param(req, 'taskId');
       const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as any;
       if (!task) {
         res.status(404).json({ error: { message: 'Task not found', code: 'TASK_NOT_FOUND' } });
