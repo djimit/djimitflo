@@ -9,7 +9,8 @@ import { decisionsInbox } from '../services/decisions-inbox';
 let db: Database.Database;
 const NOW = Date.now();
 const iso = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
-const ON = { OUTCOME_ATTRIBUTION_ENABLED: 'true' } as NodeJS.ProcessEnv;
+// capability chain (stall-watch): a configured environment, so a missing skills dir / eval runner here is not a waiting stall
+const ON = { OUTCOME_ATTRIBUTION_ENABLED: 'true', DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename } as NodeJS.ProcessEnv;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = OFF'); });
 afterEach(() => db.close());
 const proposal = (id: string, status: string, o: { title?: string; source?: string; created?: number } = {}) => db.prepare(`INSERT INTO self_improvements
@@ -45,12 +46,12 @@ it('an unattributed regression is unknown, not maker, and keeps the guardrail ou
   for (let i = 0; i < 10; i++) proposal(`v${i}`, 'verified');
   proposal('r1', 'regressed');
   const reg = operatorCockpit(db, NOW, ON).guardrails.find((g) => g.name === 'regressions')!;
-  expect(reg.split).toEqual({ maker: 0, reviewer: 0, environment: 0, unknown: 1 });
+  expect(reg.split).toEqual({ maker: 0, reviewer: 0, environment: 0, unknown: 1, post_verification: 0 });
   expect(reg.state).toBe('DEGRADED');
   expect(reg.ok).toBe(false);
 });
 
-it('counts each loop PR once and a proposal waiting in two sections once', () => {
+it('counts each loop PR once; a pre-screen label is optional labelling, so a proposal in two sections is not double-counted', () => {
   prRun('1'); prRun('2', { state: 'open' }); prRun('3', { state: 'merged' }); prRun('4', { state: 'merged', survived: true, settled_at: iso(1) });
   proposal('r1', 'regressed'); attribute('r1', 'maker_failure'); prescreenNo('r1');
   db.exec('CREATE TABLE IF NOT EXISTS social_join_requests (id TEXT, status TEXT)'); // created by the social service at runtime; missing = total unknown
@@ -58,7 +59,9 @@ it('counts each loop PR once and a proposal waiting in two sections once', () =>
   expect(n.open_prs).toBe(2); // never-polled + open
   expect(n.draft_prs).toBe(1); // merged, still settling — not the never-polled PR again
   expect([n.requeue, n.labels, n.shared_subjects]).toEqual([1, 1, 1]);
-  expect(n.total).toBe(2 + 1 + 1 - 1);
+  // human decisions only: 2 open loop PRs (flagged, no audit sample) + 1 requeue; the D5 label is optional_labelling
+  expect([n.flagged_prs, n.audit_batch, n.optional_labelling?.d5]).toEqual([2, 0, 1]);
+  expect(n.total).toBe(2 + 1);
 });
 
 it('reflection inflow is NOT_APPLICABLE with reflection proposals capped at 0; the expired-approvals limit names its rule', () => {
@@ -68,7 +71,8 @@ it('reflection inflow is NOT_APPLICABLE with reflection proposals capped at 0; t
 });
 
 it('requeue candidates are classed; only operator rows count as needs-you, every row stays listed', () => {
-  proposal('op', 'infra_failed');
+  proposal('op', 'regressed'); attribute('op', 'maker_failure');
+  proposal('infra', 'infra_failed'); // E2: an operational failure is system work, never an operator decision beside regressions
   proposal('rev', 'regressed'); attribute('rev', 'reviewer_failure');
   proposal('unk', 'regressed');
   proposal('refl', 'regressed', { source: 'reflection' }); attribute('refl', 'maker_failure');
@@ -76,11 +80,11 @@ it('requeue candidates are classed; only operator rows count as needs-you, every
   proposal('new', 'verified', { title: 'same target', created: 12 });
   const inbox = decisionsInbox(db, NOW, { REFLECTION_PROPOSALS_MAX_PER_DAY: '0' } as NodeJS.ProcessEnv);
   expect(Object.fromEntries(inbox.requeue.map((r) => [r.id, r.queue_class]))).toEqual({
-    op: 'operator', rev: 'budgeted_requeue', unk: 'attribution_unknown', refl: 'not_actionable', old: 'not_actionable' });
-  expect(inbox.totals.requeue_classes).toEqual({ operator: 1, budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
+    op: 'operator', infra: 'infra_failed', rev: 'budgeted_requeue', unk: 'attribution_unknown', refl: 'not_actionable', old: 'not_actionable' });
+  expect(inbox.totals.requeue_classes).toEqual({ operator: 1, infra_failed: 1, budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
   const n = operatorCockpit(db, NOW, { ...ON, REFLECTION_PROPOSALS_MAX_PER_DAY: '0' }).needs_you;
   expect(n.requeue).toBe(1);
-  expect(n.system_requeue).toEqual({ budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
+  expect(n.system_requeue).toEqual({ budgeted_requeue: 1, infra_failed: 1, attribution_unknown: 1, not_actionable: 2 });
 });
 
 it('separates window spend per verified change from the verified changes\' own lease tokens', () => {
@@ -95,4 +99,15 @@ it('separates window spend per verified change from the verified changes\' own l
   expect(s.spend_per_verified_change_7d).toBe(4_000_000);
   expect(s.tokens_per_verified_change_7d).toBe(4_000_000);
   expect(s.direct_tokens_per_verified_change_7d).toBe(1_000_000);
+});
+
+it('panel unparseable counts quarantined attempts (#784) next to legacy coerced reviews; unreadable = UNKNOWN', () => {
+  const q = db.prepare(`INSERT INTO specialist_review_quarantine (id, panel_id, specialist_id, error, created_at) VALUES (?, 'p1', 's1', 'stance missing', ?)`);
+  q.run('q1', iso(2)); q.run('q2', iso(3)); q.run('q-old', iso(24 * 8));
+  db.prepare(`INSERT INTO specialist_reviews (id, panel_id, specialist_id, specialist_title, stance, confidence, findings_json, status, created_at)
+    VALUES ('r1', 'p1', 's2', 'S2', 'needs_evidence', 0, '["Review could not be parsed"]', 'submitted', ?)`).run(iso(5));
+  expect(operatorCockpit(db, NOW).guardrails.find((g) => g.name === 'panel unparseable (7 d)')!.value).toBe(3);
+  db.exec('DROP TABLE specialist_review_quarantine');
+  const g = operatorCockpit(db, NOW).guardrails.find((x) => x.name === 'panel unparseable (7 d)')!;
+  expect(g).toMatchObject({ value: null, state: 'UNKNOWN' });
 });

@@ -3,6 +3,7 @@ import type { Species } from './evolve-selection';
 import { speciesKey } from './runtime-bandit';
 import { LoopEventService } from './loop-event-service';
 import { nonMakerRunSql } from './outcome-attribution';
+import { supersededMergeOutcomeSql } from './merge-superseded';
 
 /**
  * D0 (Darwin engine, operator-approved 03-10): one fitness view over skill_outcomes for a maker species in a lane. The bandit
@@ -42,9 +43,10 @@ export interface FitnessRow { species: string; sources: Record<FitnessSource, { 
 export function fitnessPosterior(db: Database, lane: string, species: Species[], now = Date.now(), env: NodeJS.ProcessEnv = process.env): FitnessRow[] {
   const w = fitnessWeights(env); const halfLifeMs = num(env.FITNESS_HALF_LIFE_DAYS, 30) * 86_400_000;
   const rows = (skillId: string, model: string): Array<{ success: number; created_at: string; refs: string | null }> => {
-    // OUTCOME_ATTRIBUTION_ENABLED: reviewer/environment failures are left out (neither success nor failure)
+    // OUTCOME_ATTRIBUTION_ENABLED: reviewer/environment failures are left out (neither success nor failure); a merge zero
+    // whose PR was superseded by a requeue is no verdict either (merge-superseded.ts)
     try { return db.prepare(`SELECT success, created_at, evidence_refs_json AS refs FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, '') = ?
-      AND NOT (success = 0 AND ${nonMakerRunSql('skill_outcomes.task_id', env)})`).all(skillId, model) as Array<{ success: number; created_at: string; refs: string | null }>; }
+      AND NOT (success = 0 AND ${nonMakerRunSql('skill_outcomes.task_id', env)}) AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}`).all(skillId, model) as Array<{ success: number; created_at: string; refs: string | null }>; }
     catch { return []; } // skill_outcomes is created lazily
   };
   return species.map((s) => {
@@ -72,7 +74,8 @@ export function fitnessPosterior(db: Database, lane: string, species: Species[],
 export function recordFitnessShadow(db: Database, runId: string, lane: string, species: Species[], actual: string | null, now = Date.now()): void {
   if (!fitnessShadowEnabled() || species.length < 2) return;
   const table = fitnessPosterior(db, lane, species, now);
-  const pick = table.reduce((b, r) => (r.mean > b.mean ? r : b), table[0]).species;
+  // E2: pick on mean_clean — infra / no-change zeros are not the species' failure
+  const pick = table.reduce((b, r) => (r.mean_clean > b.mean_clean ? r : b), table[0]).species;
   new LoopEventService(db).recordEvent(runId, 'fitness_shadow', 'info', `Fitness view would pick ${pick}; bandit chose ${actual ?? 'none'}${pick === actual ? ' (agree)' : ''}`,
     { lane, would_pick: pick, actual, agree: pick === actual, weights: fitnessWeights(), table });
 }

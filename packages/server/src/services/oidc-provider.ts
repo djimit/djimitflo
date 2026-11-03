@@ -14,6 +14,9 @@
 import { createHash, createPublicKey, randomBytes } from 'crypto';
 import jwt from 'jsonwebtoken';
 
+// CODE-004: IdP reads sit on the login request path; a hung IdP fails the login instead of pinning the request.
+const IDP_TIMEOUT_MS = 10_000;
+
 export interface OIDCConfig {
   provider_name: string;
   client_id: string;
@@ -158,6 +161,7 @@ export class OIDCAbstraction {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
+      signal: AbortSignal.timeout(IDP_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -173,6 +177,7 @@ export class OIDCAbstraction {
   async getUserInfo(accessToken: string): Promise<OIDCUserInfo> {
     const response = await fetch(this.config.userinfo_endpoint, {
       headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(IDP_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -184,7 +189,7 @@ export class OIDCAbstraction {
 
   /** Validate an ID token signature and claims against the provider JWKS. */
   async validateIdToken(idToken: string): Promise<{ valid: boolean; payload?: Record<string, unknown> }> {
-    const jwksResponse = await fetch(this.config.jwks_uri);
+    const jwksResponse = await fetch(this.config.jwks_uri, { signal: AbortSignal.timeout(IDP_TIMEOUT_MS) });
     if (!jwksResponse.ok) {
       throw new OIDCError('JWKS_FETCH_FAILED', 'Failed to fetch JWKS');
     }

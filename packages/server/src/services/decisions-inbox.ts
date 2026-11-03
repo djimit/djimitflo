@@ -3,6 +3,8 @@ import type { Database } from 'better-sqlite3';
 import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
 import { attributionAuditSample, type AttributionAuditSample } from './outcome-attribution';
 import { listDraftPrs } from './loop-draft-pr-service';
+import { loopPrSettlements, survivalCounts } from './merge-survival';
+import { attributionOf, autoRequeueMode, policyColumns, previewContext, requeueVerdict, type AutoRequeueMode, type PolicyCandidate, type PolicyVerdict } from './requeue-policy';
 
 /**
  * S2 (operator 2026-09-28): the operator's open decisions in one place instead of in chat.
@@ -18,20 +20,27 @@ import { listDraftPrs } from './loop-draft-pr-service';
  */
 /**
  * Who has to act on a requeue candidate (Cockpit 3.0; prod 10-10: 59 'needs you' rows, of which 22 were system work):
- * - operator: regressed / infra_failed with a maker or environment attribution (or infra), nobody requeued it yet
+ * - operator: regressed with a maker or environment attribution, nobody requeued it yet
  * - budgeted_requeue: newest outcome attribution = reviewer_failure — the daily budgeted requeue handles it
+ * - infra_failed: the run failed operationally (infra / missing evidence) — system work, not a semantic operator decision (E2)
  * - attribution_unknown: regressed with no outcome attribution — evidence first, not a decision
  * - not_actionable: its source lane is switched off, or a later proposal with the same title verified
  * - requeued / no_change: already requeued, or nothing changed
  */
-export type RequeueClass = 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
-export interface InboxRequeue { id: string; title: string; status: string; updated_at: string; requeued_as: string | null; queue_class: RequeueClass }
+export type RequeueClass = 'operator' | 'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+/**
+ * auto: what the auto-requeue policy (REQUEUE_AUTO_MODE, requeue-policy.ts) does with the row — null when the mode is off
+ * or the row is already requeued. With mode on, every row except action 'hold' is system work ("system will handle").
+ */
+export interface InboxRequeue { id: string; title: string; status: string; updated_at: string; requeued_as: string | null; queue_class: RequeueClass;
+  auto?: { mode: Exclude<AutoRequeueMode, 'off'>; action: PolicyVerdict['action']; cls: string; reason: string } | null }
 export interface InboxLabel { id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }
 export interface DecisionsInbox {
   requeue: InboxRequeue[];
   prescreen: { items: InboxLabel[]; labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
-  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
+  /** template_duplicate: a `memory_template_duplicate` judgment names this candidate — system dedup work, not a human decision */
+  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string; template_duplicate?: number | boolean }>;
   autonomy: ClassRecord[];
   attribution_audit: AttributionAuditSample;
   /**
@@ -41,6 +50,13 @@ export interface DecisionsInbox {
    */
   totals: { requeue: number | null; requeue_open: number | null; requeue_classes: Partial<Record<RequeueClass, number>> | null; prescreen: number | null; prescreen_unlabelled: number | null;
     prescreen_labelled: number | null; prescreen_wrong: number | null; memory: number | null;
+    /** memory candidates waiting for review that are not template duplicates (the human part of `memory`) */
+    memory_human: number | null;
+    /**
+     * REQUEUE_AUTO_MODE: rows (not yet requeued) the policy requeues or dismisses itself (will_handle) vs holds for a human.
+     * With mode on, requeue_open = held. null = the policy query failed.
+     */
+    requeue_auto: { mode: AutoRequeueMode; will_handle: number; held: number; by_action: Partial<Record<PolicyVerdict['action'], number>> } | null;
     /** proposals counted twice in needs-you: operator requeue AND an unlabelled pre-screen rejection */
     shared_subjects: number | null };
   /** Cockpit 3.0 Phase 3 (shadow): needs-you items ranked by expected value; display only, it changes nothing that needs you */
@@ -63,15 +79,13 @@ const KIND_ASSUMPTIONS: Record<RankedItem['kind'], { reversibility: number; oper
 const MIN_N = 5;
 
 /** newest outcome_attribution decision on proposal `s` or any of its runs (same rule as the cockpit regression split) */
-export const ATTRIBUTION_OF_PROPOSAL = `(SELECT j.decision FROM judgments j WHERE j.judgment = 'outcome_attribution'
-      AND ((j.subject_type = 'self_improvement' AND j.subject_id = s.id)
-        OR (j.subject_type = 'loop_run' AND j.subject_id IN (SELECT r.id FROM goals g JOIN loop_runs r ON r.goal_id = g.id WHERE g.improvement_id = s.id)))
-      ORDER BY j.created_at DESC LIMIT 1)`;
+export const ATTRIBUTION_OF_PROPOSAL = attributionOf('s');
 
-export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): DecisionsInbox {
-  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
-  const count = (sql: string, ...args: unknown[]): number | null => { try { return Number((db.prepare(sql).get(...args) as { n: number }).n); } catch { return null; } };
-  const d30 = new Date(now - 30 * 86_400_000).toISOString();
+/**
+ * The requeue candidates of the last 30 days (`from`, one `?` = the 30-day cutoff) and their queue class, shared by the
+ * inbox and the auto-requeue policy so both see the same rows.
+ */
+export function requeueCandidateSql(env: NodeJS.ProcessEnv = process.env): { from: string; queueClass: string; requeuedAs: string } {
   const requeueFrom = `FROM self_improvements s WHERE s.status IN ('regressed', 'infra_failed', 'no_change') AND s.updated_at >= ?
       AND NOT EXISTS (SELECT 1 FROM judgments d WHERE d.judgment = 'requeue_dismiss' AND d.subject_id = s.id)`;
   const requeuedAs = `(SELECT c.id FROM self_improvements c WHERE c.evidence_refs_json LIKE '%"requeue-of:' || s.id || '"%' LIMIT 1)`;
@@ -88,12 +102,38 @@ export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.Proce
       WHEN ${offLanes.length ? `(${offLanes.join(' OR ')}) OR ` : ''}EXISTS (SELECT 1 FROM self_improvements v WHERE v.status = 'verified' AND v.title = s.title
         AND v.id != s.id AND v.created_at > s.created_at) THEN 'not_actionable'
       WHEN ${ATTRIBUTION_OF_PROPOSAL} = 'reviewer_failure' THEN 'budgeted_requeue'
+      WHEN s.status = 'infra_failed' THEN 'infra_failed'
       WHEN s.status = 'regressed' AND ${ATTRIBUTION_OF_PROPOSAL} IS NULL THEN 'attribution_unknown'
       ELSE 'operator' END`;
+  return { from: requeueFrom, queueClass, requeuedAs };
+}
+
+export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): DecisionsInbox {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const count = (sql: string, ...args: unknown[]): number | null => { try { return Number((db.prepare(sql).get(...args) as { n: number }).n); } catch { return null; } };
+  const d30 = new Date(now - 30 * 86_400_000).toISOString();
+  const { from: requeueFrom, queueClass, requeuedAs } = requeueCandidateSql(env);
   const requeue = all<InboxRequeue>(`SELECT s.id, s.title, s.status, s.updated_at, ${requeuedAs} AS requeued_as, ${queueClass} AS queue_class
     ${requeueFrom} ORDER BY s.updated_at DESC LIMIT 50`, d30);
   const classRows = (() => { try { return db.prepare(`SELECT ${queueClass} AS c, COUNT(*) AS n ${requeueFrom} GROUP BY 1`).all(d30) as Array<{ c: RequeueClass; n: number }>; } catch { return null; } })();
   const requeueClasses = classRows ? Object.fromEntries(classRows.map((r) => [r.c, r.n])) as Partial<Record<RequeueClass, number>> : null;
+  // auto-requeue preview over every not-yet-requeued candidate (untruncated); the tick re-checks the target file on main
+  const mode = autoRequeueMode(env);
+  const requeueAuto = ((): DecisionsInbox['totals']['requeue_auto'] => {
+    if (mode === 'off') return { mode, will_handle: 0, held: 0, by_action: {} };
+    try {
+      const ctx = previewContext(db, env, now);
+      const rows = db.prepare(`SELECT ${policyColumns(queueClass)} ${requeueFrom} LIMIT 5000`).all(d30) as PolicyCandidate[];
+      const verdicts = new Map(rows.filter((r) => r.queue_class !== 'requeued').map((r) => [r.id, requeueVerdict(r, ctx)]));
+      for (const r of requeue) {
+        const v = verdicts.get(r.id);
+        r.auto = v ? { mode, action: v.action, cls: v.cls, reason: v.reason } : null;
+      }
+      const by_action: Partial<Record<PolicyVerdict['action'], number>> = {};
+      for (const v of verdicts.values()) by_action[v.action] = (by_action[v.action] ?? 0) + 1;
+      return { mode, will_handle: verdicts.size - (by_action.hold ?? 0), held: by_action.hold ?? 0, by_action };
+    } catch { return null; }
+  })();
   const labelOf = `(SELECT CASE l.decision WHEN 'yes' THEN 'ok' WHEN 'no' THEN 'wrong' END FROM judgments l
         WHERE l.judgment = 'operator_label' AND l.subject_id = s.id ORDER BY l.created_at DESC LIMIT 1)`;
   const prescreenFrom = `FROM judgments j JOIN self_improvements s ON s.id = j.subject_id
@@ -107,15 +147,19 @@ export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.Proce
   const labels = (() => { try { return db.prepare(`SELECT COUNT(*) AS n, SUM(label IS NULL) AS unlabelled, SUM(label = 'wrong') AS wrong
       FROM (SELECT ${labelOf} AS label ${prescreenFrom})`).get() as { n: number; unlabelled: number | null; wrong: number | null }; } catch { return null; } })();
   const memoryWhere = `FROM memory_candidates WHERE status IN ('review_required', 'candidate')`;
+  const templateDup = `EXISTS (SELECT 1 FROM judgments t WHERE t.judgment = 'memory_template_duplicate' AND t.subject_id = memory_candidates.id)`;
   const totals: DecisionsInbox['totals'] = {
     requeue: requeueClasses ? Object.values(requeueClasses).reduce((a, b) => a + b, 0) : null,
-    requeue_open: requeueClasses ? requeueClasses.operator ?? 0 : null,
+    // with auto-requeue on, the policy handles every row it does not hold; off/shadow: the operator class, as before
+    requeue_open: mode === 'on' ? (requeueAuto ? requeueAuto.held : null) : requeueClasses ? requeueClasses.operator ?? 0 : null,
+    requeue_auto: requeueAuto,
     requeue_classes: requeueClasses,
     prescreen: labels ? labels.n : null,
     prescreen_unlabelled: labels ? labels.unlabelled ?? 0 : null,
     prescreen_labelled: labels ? labels.n - (labels.unlabelled ?? 0) : null,
     prescreen_wrong: labels ? labels.wrong ?? 0 : null,
     memory: count(`SELECT COUNT(*) AS n ${memoryWhere}`),
+    memory_human: count(`SELECT COUNT(*) AS n ${memoryWhere} AND NOT ${templateDup}`),
     shared_subjects: count(`SELECT COUNT(*) AS n FROM (SELECT s.id ${prescreenFrom} AND ${labelOf} IS NULL) p
       WHERE p.id IN (SELECT s.id ${requeueFrom} AND ${queueClass} = 'operator')`, d30),
   };
@@ -125,9 +169,10 @@ export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.Proce
   const telegram = all<DecisionsInbox['telegram'][number]>(`SELECT t.telegram_user_id, t.user_id, u.email, u.role, t.added_by, t.created_at
     FROM telegram_identities t LEFT JOIN users u ON u.id = t.user_id ORDER BY t.created_at`);
   // memory review (U4): candidates waiting for a human; promote/reject via /swarms/memory/candidates/:id/{promote,reject}
-  const memory = all<DecisionsInbox['memory'][number]>(`SELECT id, title, substr(content, 1, 600) AS content, memory_type, status, created_at ${memoryWhere}
+  const memory = all<DecisionsInbox['memory'][number]>(`SELECT id, title, substr(content, 1, 600) AS content, memory_type, status, created_at, ${templateDup} AS template_duplicate ${memoryWhere}
     ORDER BY CASE status WHEN 'review_required' THEN 0 ELSE 1 END, created_at DESC LIMIT 50`);
-  const ranking = rankNeedsYou(db, requeue.filter((r) => r.queue_class === 'operator'), items.filter((i) => !i.label), memory, now,
+  const humanRequeue = mode === 'on' ? requeue.filter((r) => r.auto?.action === 'hold') : requeue.filter((r) => r.queue_class === 'operator');
+  const ranking = rankNeedsYou(db, humanRequeue, items.filter((i) => !i.label), memory.filter((m) => !m.template_duplicate), now,
     { labelled: totals.prescreen_labelled, wrong: totals.prescreen_wrong });
   return {
     ranking,
@@ -153,8 +198,11 @@ export function rankNeedsYou(db: Database, requeue: InboxRequeue[], labels: Inbo
   const rq = rate(`SELECT SUM(status = 'verified') AS k, COUNT(*) AS n FROM self_improvements
     WHERE evidence_refs_json LIKE '%"requeue-of:%' AND status IN ('verified', 'regressed', 'infra_failed', 'no_change') AND updated_at >= ?`, d30);
   // loop PR: already verified (gain 1) × merge survival rate of settled loop PRs
-  const ms = rate(`SELECT SUM(json_extract(metadata, '$.pr_outcome.survived') = 1) AS k, COUNT(*) AS n FROM loop_runs
-    WHERE json_extract(metadata, '$.pr_outcome.survived') IS NOT NULL`);
+  // E1: settled states only — merged PRs still in the window and pipeline anomalies are in neither k nor n
+  const ms = (() => {
+    try { const c = survivalCounts(loopPrSettlements(db, now).map((p) => p.settlement.state)); return { p: c.settled >= MIN_N ? c.survived / c.settled : null, n: c.settled, k: c.survived }; }
+    catch { return { p: null, n: 0, k: 0 }; }
+  })();
   // label: before the D5 gate (30 labels) each label is 1/remaining of the way; after it, the chance it catches a wrong rejection
   const labelled = d5.labelled, wrong = d5.wrong;
   const labelGain = labelled === null || wrong === null ? null : labelled < 30 ? 1 / (30 - labelled) : labelled >= MIN_N ? wrong / labelled : null;
@@ -165,7 +213,9 @@ export function rankNeedsYou(db: Database, requeue: InboxRequeue[], labels: Inbo
       score, evidence: [gain === null ? `INSUFFICIENT_EVIDENCE: ${why}` : why, a.why] };
   };
   let prs: ReturnType<typeof listDraftPrs>['rows'] = [];
-  try { prs = listDraftPrs(db, 100, now).rows.filter((r) => !r.outcome); } catch { /* table absent */ }
+  // E1: PRs that wait for the operator = open on GitHub, or never polled (an overdue poll is an anomaly, but the PR still
+  // waits) — not merged PRs settling, not closed ones
+  try { prs = listDraftPrs(db, 100, now).rows.filter((r) => (r.settlement === 'OPEN_BLOCKED' && !r.settlement_terminal) || r.outcome === null); } catch { /* table absent */ }
   const out = [
     ...requeue.map((r) => item('requeue', r.id, r.title, rq.p, `earlier requeues verified ${rq.k}/${rq.n} (30 d${rq.n < MIN_N ? `, need ${MIN_N}` : ''})`)),
     ...prs.map((r) => item('loop_pr', String(r.pr_number ?? r.run_id), r.pr_url, ms.p, `merge survival ${ms.k}/${ms.n} settled loop PRs${ms.n < MIN_N ? ` (need ${MIN_N})` : ''}`)),
@@ -192,11 +242,13 @@ export function recordNeedsYouRanking(db: Database, now = Date.now()): boolean {
 
 /**
  * Needs-you counts shared by the cockpit and the daily digest. Requeue counts only the `operator` class (see RequeueClass):
- * system-side rows (budgeted requeue, unknown attribution, not actionable) are counted in totals.requeue_classes instead.
+ * system-side rows (budgeted requeue, infra failure, unknown attribution, not actionable) are counted in totals.requeue_classes instead.
+ * With REQUEUE_AUTO_MODE=on the policy handles every row it does not hold, so requeue = the held rows (totals.requeue_auto).
  * Counts come from the untruncated totals (prod 10-10: the listed arrays stop at 50/100); null = the count failed.
  */
 export function openDecisionCounts(inbox: DecisionsInbox): { requeue: number | null; labels: number | null; memory_review: number | null; shared_subjects: number | null } {
-  return { requeue: inbox.totals.requeue_open, labels: inbox.totals.prescreen_unlabelled, memory_review: inbox.totals.memory, shared_subjects: inbox.totals.shared_subjects };
+  // memory_review: template duplicates are dedup work for the system, not a human decision
+  return { requeue: inbox.totals.requeue_open, labels: inbox.totals.prescreen_unlabelled, memory_review: inbox.totals.memory_human, shared_subjects: inbox.totals.shared_subjects };
 }
 
 /** D2: the operator decides a requeue candidate needs no requeue; audited as a `requeue_dismiss` judgment, the row leaves the list. */

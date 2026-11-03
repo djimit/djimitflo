@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { judgmentMode, type JudgmentDef } from './judgment-service';
+import { insertJudgmentRow, judgmentMode, type JudgmentDef } from './judgment-service';
+import { buildProvenance, provenanceJson } from './judgment-provenance';
 import type { TsAnswer } from './typesafe-client';
 import { checkerSecondOpinion } from './judgments/checker-second-opinion';
 import { commonsContribution } from './judgments/commons-contribution';
@@ -42,14 +43,21 @@ export class LocalShadowQueue {
     if (def && judgmentMode(def.id) === 'off') { this.db.prepare(`UPDATE local_shadow_jobs SET status = 'skipped' WHERE id = ?`).run(id); return; }
     const at = new Date().toISOString();
     const name = `${job.judgment}@local`;
+    const subject = { type: job.subject_type, id: job.subject_id };
+    // DI-001 B: the queued state is already scrubbed, so its digest equals the jev row's (join @local to its original on input_digest)
+    const prov = (decision: string, extra: { model?: string; reason?: string; answers?: Record<string, TsAnswer> } = {}) => (def
+      ? provenanceJson(buildProvenance({ writer: 'local-shadow-queue', def: { ...def, id: name }, mode: 'shadow', state: (() => { try { return JSON.parse(job.state_json) as unknown; } catch { return null; } })(),
+        subject, stateHash: job.state_hash, at, decision, evaluator: 'def.decide/v1', ...extra }))
+      : null);
     if (!def || body.error || !body.answers || typeof body.answers !== 'object') {
-      this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, error, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, 'shadow', 'error', ?, ?, ?)`)
-        .run(randomUUID(), name, job.subject_type, job.subject_id, job.state_hash, String(body.error ?? (def ? 'no answers' : 'unknown judgment')).slice(0, 200), Number(body.latency_ms) || 0, at);
+      insertJudgmentRow(this.db, { id: randomUUID(), judgment: name, subject_type: job.subject_type, subject_id: job.subject_id, state_hash: job.state_hash, mode: 'shadow', decision: 'error',
+        error: String(body.error ?? (def ? 'no answers' : 'unknown judgment')).slice(0, 200), latency_ms: Number(body.latency_ms) || 0, created_at: at, provenance_json: prov('error') });
     } else {
       const { decision, reason } = def.decide(body.answers, job.facts_json ? JSON.parse(job.facts_json) : undefined);
-      this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, input_tokens, output_tokens, latency_ms, model, created_at)
-        VALUES (?, ?, ?, ?, ?, 'shadow', ?, ?, ?, ?, 0, ?, ?, ?)`).run(randomUUID(), name, job.subject_type, job.subject_id, job.state_hash, decision, reason,
-        JSON.stringify(body.answers), Number(body.input_tokens) || 0, Number(body.latency_ms) || 0, String(body.model ?? 'local').slice(0, 60), at);
+      const model = String(body.model ?? 'local').slice(0, 60);
+      insertJudgmentRow(this.db, { id: randomUUID(), judgment: name, subject_type: job.subject_type, subject_id: job.subject_id, state_hash: job.state_hash, mode: 'shadow', decision, reason,
+        answers_json: JSON.stringify(body.answers), input_tokens: Number(body.input_tokens) || 0, output_tokens: 0, latency_ms: Number(body.latency_ms) || 0, model, created_at: at,
+        provenance_json: prov(decision, { model, reason, answers: body.answers }) });
     }
     this.db.prepare(`UPDATE local_shadow_jobs SET status = 'done' WHERE id = ?`).run(id);
   }

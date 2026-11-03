@@ -15,12 +15,14 @@
     "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
-    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present",
+    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && node scripts/gen-agent-docs.mjs --check && node scripts/gen-agent-docs.test.mjs && node scripts/gym-worker.mjs --selfcheck && node scripts/gym-worker.test.mjs && node scripts/kb-sync.test.mjs && node scripts/mutation-gain.test.mjs && node scripts/ci-workflows.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present",
     "test:changed": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test -w @djimitflo/server -w @djimitflo/shared -w @djimitflo/agent-catalog -w @djimitflo/mcp-server -- --changed",
     "test:mutation": "stryker run",
     "test:mutation:grounded": "node scripts/mutation-gain.mjs",
     "test:dead-code:grounded": "node scripts/dead-code-gate.mjs",
+    "test:finding-fix:grounded": "node scripts/finding-fix-gate.mjs",
     "audit:ci": "node scripts/ci-audit.mjs",
+    "budget:dashboard": "node scripts/dashboard-bundle-budget.mjs",
     "assurance:truth": "node scripts/assurance-truth.mjs",
     "assurance:contracts": "node scripts/contract-inventory.mjs",
     "assurance:route-contracts": "node scripts/contract-inventory.mjs --route-contracts-only",
@@ -28,6 +30,7 @@
     "assurance:integrations": "node scripts/integration-probes.mjs",
     "assurance:live": "node scripts/live-identity-evidence.mjs",
     "audit:tables": "node scripts/table-reachability.mjs",
+    "docs:agents": "node scripts/gen-agent-docs.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "type-check": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run type-check --workspaces --if-present",
     "proof:test": "npm run test --workspace=@djimitflo/server -- proof-run-service.test.ts",
@@ -44,14 +47,14 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/express-serve-static-core": "5.0.7",
-    "eslint": "^10.10.0",
+    "eslint": "^10.13.0",
     "jsdom": "^29.1.1",
     "npm-run-all": "^4.1.5",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "vitest": "^4.1.11",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vitest": "^4.1.12",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.70.0"
+    "typescript-eslint": "8.72.0"
   },
   "engines": {
     "node": ">=22.0.0 <25.0.0",
@@ -69,6 +72,7 @@
     "ip-address": "^10.3.1",
     "nanoid": "^3.3.18",
     "brace-expansion@1": "^1.1.12",
+    "brace-expansion@5": "^5.0.12",
     "qs": "^6.16.0"
   }
 }

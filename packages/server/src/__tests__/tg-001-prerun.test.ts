@@ -179,7 +179,7 @@ it('the plan must strictly predate the first physical attempt (a claim, not only
   const worker = m.harness?.split(':').pop() ?? null;
   const pre = tgGoChecklist(db, { commit: m.commit, build_id: 'b1', worker_sha256: worker }, process.env, NOW);
   expect(pre.checks).toMatchObject({ frozen: true, analysis_valid: true, plan_predates_first_attempt: true, no_attempt_yet: true });
-  expect(pre.record).toMatchObject({ experiment_id: 'tg-001', seed: m.seed, step_budget: 40, classifier_version: expect.any(String), model_router: SPECIES });
+  expect(pre.record).toMatchObject({ experiment_id: 'tg-001-r2', generation: 'r2', seed: m.seed, step_budget: 40, classifier_version: expect.any(String), model_router: SPECIES });
   expect(Object.keys(pre.record!.prompt_fingerprints).sort()).toEqual(['A', 'B', 'C', 'D']);
   expect(pre.go).toBe(m.harness !== null && m.commit !== null); // in this sandbox the checkout has no git head / worker file
   // a claim (no result yet) dated at or before the plan invalidates the analysis

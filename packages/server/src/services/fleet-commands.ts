@@ -9,7 +9,8 @@ import { AuditService } from './audit-service';
  * host runs scripts/djimit-host-agent.py, which polls (heartbeat), receives commands and reports results.
  * - diagnostics: a fixed set of read-only names the agent maps to its own commands (no operator text reaches a shell)
  * - shell: any command, executed by the agent as root (sudo -n), only after a human with approve:task approved exactly that
- *   text: the approval is bound to the command's sha256 and must be picked up within 15 minutes
+ *   text: the approval is bound to the command's sha256 and must be picked up within 15 minutes; poll() re-checks both, and
+ *   the agent refuses shell unless its host opted in (DJIMIT_AGENT_ALLOW_SHELL=1)
  * Output is capped (64 KiB) and passed through the same secret scrubber as judgments before it is stored.
  */
 export const DIAGNOSTICS = ['ping', 'uptime', 'disk', 'failed-services', 'top'] as const;
@@ -48,7 +49,7 @@ export class FleetCommands {
     if (sha !== c.command_sha256 || sha256(c.command) !== c.command_sha256) throw new Error('FLEET_COMMAND_HASH_MISMATCH');
     const at = now();
     this.db.prepare(`UPDATE fleet_commands SET status = 'queued', approved_by = ?, approved_at = ?, expires_at = ? WHERE id = ? AND status = 'pending_approval'`)
-      .run(approver, at, new Date(Date.now() + APPROVAL_WINDOW_MS).toISOString(), id);
+      .run(approver, at, new Date(Date.parse(at) + APPROVAL_WINDOW_MS).toISOString(), id); // same instant as approved_at
     // ponytail: no separation of duties with a single operator (operator decision 10-10) — self-approval is recorded, not blocked
     new AuditService(this.db).record({ event_type: AuditEventType.APPROVAL_GRANTED, action: 'fleet_command_approved', resource_type: 'fleet_command', resource_id: id,
       user_id: approver, risk_level: RiskLevel.CRITICAL, metadata: { host: c.host, command_sha256: c.command_sha256, requested_by: c.requested_by, self_approved: approver === c.requested_by } });
@@ -63,17 +64,36 @@ export class FleetCommands {
     return this.get(id)!;
   }
 
-  /** Heartbeat + hand-out: expired approvals lapse; queued commands for this host are delivered once. */
+  /** Heartbeat + hand-out: expired approvals lapse; queued commands for this host are delivered once. A row that fails the
+   *  hand-out checks (see refusal) is marked refused with its reason and kept, never delivered. */
   poll(host: string, info: Record<string, unknown> = {}, version = ''): Array<{ id: string; kind: string; command: string; sha256: string }> {
     const at = now();
     this.db.prepare(`INSERT INTO fleet_hosts (host, last_seen, agent_version, info_json) VALUES (?, ?, ?, ?)
       ON CONFLICT(host) DO UPDATE SET last_seen = excluded.last_seen, agent_version = excluded.agent_version, info_json = excluded.info_json`)
       .run(host, at, String(version).slice(0, 40), JSON.stringify(info).slice(0, 4_000));
     this.db.prepare(`UPDATE fleet_commands SET status = 'expired', finished_at = ? WHERE host = ? AND status = 'queued' AND kind = 'shell' AND expires_at < ?`).run(at, host, at);
-    const due = this.db.prepare(`SELECT * FROM fleet_commands WHERE host = ? AND status = 'queued' ORDER BY created_at LIMIT 5`).all(host) as FleetCommand[];
+    const queued = this.db.prepare(`SELECT * FROM fleet_commands WHERE host = ? AND status = 'queued' ORDER BY created_at`).all(host) as FleetCommand[];
+    const refuse = this.db.prepare(`UPDATE fleet_commands SET status = 'refused', decided_reason = ?, finished_at = ? WHERE id = ? AND status = 'queued'`);
     const take = this.db.prepare(`UPDATE fleet_commands SET status = 'running', started_at = ? WHERE id = ? AND status = 'queued'`);
-    return due.filter((c) => take.run(at, c.id).changes === 1 && sha256(c.command) === c.command_sha256)
-      .map((c) => ({ id: c.id, kind: c.kind, command: c.command, sha256: c.command_sha256 }));
+    const out: Array<{ id: string; kind: string; command: string; sha256: string }> = [];
+    for (const c of queued) {
+      const reason = this.refusal(c, Date.parse(at));
+      if (reason) { refuse.run(reason, at, c.id); continue; }
+      if (out.length < 5 && take.run(at, c.id).changes === 1) out.push({ id: c.id, kind: c.kind, command: c.command, sha256: c.command_sha256 });
+    }
+    return out;
+  }
+
+  /** Defence in depth: anything but a known diagnostic needs a live expiry inside the approval window and the audit record that
+   *  approve() wrote for exactly this row, approver and sha — a row that only claims approval in its own columns is not enough. */
+  private refusal(c: FleetCommand, nowMs: number): string | null {
+    if (sha256(c.command) !== c.command_sha256) return 'command_sha_mismatch';
+    if (c.kind === 'diagnostic' && (DIAGNOSTICS as readonly string[]).includes(c.command)) return null;
+    const expires = Date.parse(c.expires_at ?? ''), approvedAt = Date.parse(c.approved_at ?? '');
+    if (!(expires > nowMs) || expires - approvedAt > APPROVAL_WINDOW_MS) return 'shell_expiry_missing_or_invalid';
+    const recorded = c.approved_by && Number.isFinite(approvedAt) && this.db.prepare(`SELECT 1 FROM audit_events WHERE action = 'fleet_command_approved' AND resource_type = 'fleet_command'
+      AND resource_id = ? AND user_id = ? AND json_extract(metadata, '$.command_sha256') = ? LIMIT 1`).get(c.id, c.approved_by, c.command_sha256);
+    return recorded ? null : 'shell_approval_not_recorded';
   }
 
   result(id: string, host: string, exitCode: number | null, output: string): void {

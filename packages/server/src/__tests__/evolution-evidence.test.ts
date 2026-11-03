@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { buildEvolutionEvidence, fisherExact } from '../services/evolution-evidence';
+import { buildEvolutionEvidence, fisherExact, gateRuleDisagreements } from '../services/evolution-evidence';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
 const NOW = Date.parse('2026-10-04T20:00:00Z');
@@ -10,15 +10,33 @@ const ago = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
 let db: Database.Database;
 afterEach(() => db?.close());
 
+it('reports the process-group termination mode without changing runtime admission', () => {
+  db = new Database(':memory:');
+  const e = buildEvolutionEvidence(db, { RUNTIME_PROCESS_GROUP_KILL: 'on' }, NOW);
+  expect(e.flags.find((flag) => flag.name === 'RUNTIME_PROCESS_GROUP_KILL')).toEqual({ name: 'RUNTIME_PROCESS_GROUP_KILL', acting: true, value: 'on' });
+});
+
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'checker_family', 'graded', 'ace_001', 'ste_001', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'fail_before_pass_after', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'knowledge_gaps', 'jev_challenger', 'gate_rule_disagreements', 'experiments', 'learning_ledger', 'fleet_signatures', 'falsifier', 'settlement_execution', 'settlement_value', 'scheduler_capacity', 'procedure_selection', 'pl_001', 'memory_delivery', 'fleet_repair', 'advisory_exposure', 'content_drafts', 'capability_factory']);
+  // capability factory: no judgments table → counts unknown (null), never 0
+  expect(e.capability_factory).toEqual({ mode: 'off', requests: null, registered_downgraded: null });
+  // G3.5: no tables → genomes unknown (INSUFFICIENT), never 'none adopted' counted as 0
+  expect(e.learning_ledger.mechanisms.find((m) => m.mechanism === 'genomes')?.status).toBe('INSUFFICIENT');
+  // E3: no proposal table → every provenance answer is UNKNOWN, never a 0 count
+  expect(e.provenance.answers.every((a) => a.status === 'UNKNOWN')).toBe(true);
   expect(e.knowledge_links).toEqual({ genomes_with_refs: null, genomes_total: null, proposals_with_refs: null });
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null, write_test: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
   expect(e.gym_diffs).toEqual({ enabled: false, stored: 0, distinct_tasks: 0, successes: 0, failures: 0, redacted_attempts: 0 }); // no table yet
+  expect(e.panel_attempts.unreadable).toEqual(['specialist_reviews', 'specialist_review_quarantine', 'llm_model_calls']); // unknown, not 0 attempts
+  expect(e.negative_evidence).toMatchObject({ mode: 'off', by_entry: null, proposals: null }); // no judgments table: unknown, not 0 matches
+  expect(e.inference.panel_fallback).toMatchObject({ reviews: null, quarantined: null }); // no tables: unknown, not 0
+  expect(e.inference.budget.usage).toEqual({ ledger: null, opencode_leases: null, total_tokens: null });
+  expect(e.inference.failover.transitions).toBeNull();
+  expect(e.gate_rule_disagreements).toBeNull(); // P0-8: no loop_runs table → unknown, not 0
 });
 
 it('RX-1: counts outcomes per source, loop PRs, genomes and gym tiers like hand SQL (foreign keys on)', () => {
@@ -29,9 +47,9 @@ it('RX-1: counts outcomes per source, loop PRs, genomes and gym tiers like hand 
   out.run('m', 'loop-maker:merge:opencode', 1, 'merge', ago(1));
   const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES (?, ?, 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
-  run.run('p1', 'test-gap', JSON.stringify({ pr_url: 'u1', pr_outcome: { state: 'merged', survived: true, settled_at: ago(1) } }), ago(20), ago(1));
-  run.run('p2', 'test-gap', JSON.stringify({ pr_url: 'u2' }), ago(3), ago(3));
-  run.run('p3', 'test-gap', JSON.stringify({ pr_url: 'u3' }), ago(1), ago(1));
+  run.run('p1', 'test-gap', JSON.stringify({ pr_url: 'u1', pr_outcome: { state: 'merged', merged_at: ago(16), survived: true, settled_at: ago(1) } }), ago(20), ago(1));
+  run.run('p2', 'test-gap', JSON.stringify({ pr_url: 'u2', pr_outcome: { state: 'open', checked_at: ago(0) } }), ago(3), ago(3));
+  run.run('p3', 'test-gap', JSON.stringify({ pr_url: 'u3', pr_outcome: { state: 'open', checked_at: ago(0) } }), ago(1), ago(1));
   run.run('g1', 'evolution-gym', JSON.stringify({ gym: { commit: 'mut:abc:x:4:1', tier: 4 }, gym_result: { status: 'failure' } }), ago(1), ago(1));
   run.run('g2', 'evolution-gym', JSON.stringify({ gym: { commit: 'abc' }, gym_result: { status: 'success' } }), ago(1), ago(1));
   db.prepare("INSERT INTO maker_genomes (id, origin, status, created_at, updated_at) VALUES ('g-1', 'dream', 'retired', ?, ?)").run(ago(1), ago(1));
@@ -41,7 +59,7 @@ it('RX-1: counts outcomes per source, loop PRs, genomes and gym tiers like hand 
   expect(e.outcomes).toEqual(expect.arrayContaining([
     { domain: 'loop', skill: 'loop-maker:test-gap', n: 2, ok: 1 }, { domain: 'gym', skill: 'loop-maker:gym', n: 1, ok: 1 }, { domain: 'merge', skill: 'loop-maker:merge', n: 1, ok: 1 }]));
   expect(e.merge).toMatchObject({ merge_outcomes: 1, settled: [{ state: 'merged', survived: 1, n: 1 }] });
-  expect(e.drafts).toMatchObject({ unsettled: 2, unsettled_open_or_recent: 2, age_days_max: 3 });
+  expect(e.drafts).toMatchObject({ unsettled: 2, unsettled_open_or_recent: 2, anomalous: 0, age_days_max: 3 });
   expect(e.gates.C.reason).toContain('open or merged < 14 d ago');
   expect(e.genomes.by_status).toEqual([{ status: 'retired', origin: 'dream', n: 1 }]);
   expect(e.genomes.holdout).toEqual({ mined: 1, mutant: 0, write_test: 0 });
@@ -243,4 +261,17 @@ it('§16 step 7: holdout exposure counts distinct candidates run or decided per 
 it('§16 step 7: holdout exposure is fail-soft on an empty schema', () => {
   db = new Database(':memory:');
   expect(buildEvolutionEvidence(db, {}, NOW).holdout_exposure).toMatchObject({ limit: 10, epochs: [], reuse_risk: false });
+});
+
+it('P0-8: counts runs the strict daemon rule and certification judge differently (skipped security review), in the window only', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db);
+  const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'test-gap', 'closed', 'blocked', '[]', '{}', ?, '[]', '{}', ?, ?)`);
+  const g = (sec: string, other = 'pass') => JSON.stringify([{ name: 'checker_verdict', status: other, evidence: '' }, { name: 'security_checker_verdict', status: sec, evidence: '' }]);
+  run.run('disagree', g('skipped'), ago(2), ago(2));
+  run.run('agree-pass', g('pass'), ago(2), ago(2));
+  run.run('agree-fail', g('skipped', 'fail'), ago(2), ago(2)); // both rules fail it
+  run.run('old', g('skipped'), ago(40), ago(40));
+  expect(gateRuleDisagreements(db, ago(30))).toBe(1);
+  expect(buildEvolutionEvidence(db, {}, NOW).gate_rule_disagreements).toBe(1);
 });
