@@ -109,3 +109,22 @@ export function replayLog(text: string, budget: number, minChars?: number) {
   if (out.handle) { try { recoveryFailure = expand(out.handle, store) !== text; } catch { recoveryFailure = true; } }
   return { chars: text.length, compressedChars: out.text.length, compressed: out.handle !== null, recoveryFailure, preserved: tallyPreserved(text, out.text) };
 }
+
+/**
+ * Aggregate of replayLog over the deterministic-check logs. `files_with_error_class_lines` counts files with at least one
+ * line matching the broad PRESERVED.error class; that class also matches passing summaries ("0 failed", "0 errors"), so it
+ * is a preservation count, not a count of failing assertions.
+ */
+export function summarizeCheckLogs(logs: Array<ReturnType<typeof replayLog>>, budget: number, minChars: number) {
+  const sum = (ts: ClassTally[]) => ts.reduce((acc, t) => {
+    for (const k of Object.keys(t) as PreservedClass[]) { acc[k].seen += t[k].seen; acc[k].dropped += t[k].dropped; }
+    return acc;
+  }, emptyTally());
+  return {
+    note: 'deterministic-check logs; not re-sent per step, so ratio only', budget, files: logs.length,
+    over_min_chars: logs.filter((l) => l.chars >= minChars).length, compressed: logs.filter((l) => l.compressed).length,
+    chars: logs.reduce((n, l) => n + l.chars, 0), compressed_chars: logs.reduce((n, l) => n + l.compressedChars, 0),
+    files_with_error_class_lines: logs.filter((l) => l.preserved.error.seen > 0).length,
+    integrity: { recovery_failures: logs.filter((l) => l.recoveryFailure).length, preserved_lines: sum(logs.map((l) => l.preserved)) },
+  };
+}

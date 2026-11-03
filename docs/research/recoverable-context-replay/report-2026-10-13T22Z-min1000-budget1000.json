@@ -248,7 +248,7 @@
     "compressed": 266,
     "chars": 6428704,
     "compressed_chars": 3409862,
-    "files_with_failing_assertion_lines": 412,
+    "files_with_error_class_lines": 412,
     "integrity": {
       "recovery_failures": 0,
       "preserved_lines": {

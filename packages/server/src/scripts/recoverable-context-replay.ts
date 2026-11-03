@@ -9,7 +9,7 @@
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { quantile, replayLog, replayRun, type ClassTally, type RunReplay } from '../services/recoverable-context-replay';
+import { quantile, replayLog, replayRun, summarizeCheckLogs, type ClassTally, type RunReplay } from '../services/recoverable-context-replay';
 
 const args = process.argv.slice(2);
 const root = args[0];
@@ -102,11 +102,5 @@ for (const [scope, tools] of Object.entries(SCOPES)) {
 report.replay = results;
 
 const logs = checkLogs.map((f) => replayLog(fs.readFileSync(f, 'utf8'), budgets[0], minChars));
-report.check_logs = {
-  note: 'deterministic-check logs; not re-sent per step, so ratio only', budget: budgets[0], files: logs.length,
-  over_min_chars: logs.filter((l) => l.chars >= minChars).length, compressed: logs.filter((l) => l.compressed).length,
-  chars: logs.reduce((n, l) => n + l.chars, 0), compressed_chars: logs.reduce((n, l) => n + l.compressedChars, 0),
-  files_with_failing_assertion_lines: logs.filter((l) => l.preserved.error.seen > 0).length,
-  integrity: { recovery_failures: logs.filter((l) => l.recoveryFailure).length, preserved_lines: sumTally(logs.map((l) => l.preserved)) },
-};
+report.check_logs = summarizeCheckLogs(logs, budgets[0], minChars);
 console.log(JSON.stringify(report, null, 2));
