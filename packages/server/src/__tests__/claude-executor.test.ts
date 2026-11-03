@@ -129,4 +129,38 @@ process.exit(0);
     fs.rmSync(binDir, { recursive: true, force: true });
     fs.rmSync(workDir, { recursive: true, force: true });
   }, 15000);
+  it.each([
+    ['permission denial', { type: 'result', is_error: false, permission_denials: [{ tool_name: 'Bash' }] }, true],
+    ['provider error', { type: 'result', is_error: true }, true],
+    ['turn limit', { type: 'result', subtype: 'error_max_turns' }, true],
+    ['oversized denied result', { type: 'result', result: 'x'.repeat(5 * 1024 * 1024), permission_denials: [{ tool_name: 'Bash' }] }, true],
+    ['successful result', { type: 'result', subtype: 'success', is_error: false, permission_denials: [] }, false],
+  ].flatMap(([name, payload, failed]) => [
+    { name: `${name} (JSON)`, output: JSON.stringify(payload, null, 2), failed },
+    { name: `${name} (NDJSON)`, output: JSON.stringify({ type: 'assistant', is_error: true }) + '\n' + JSON.stringify(payload), failed },
+  ]))('classifies $name consistently despite exit 0', async ({ output, failed }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-result-'));
+    try {
+      const bin = path.join(dir, 'claude');
+      // Pretty JSON split across chunks; stderr must not contaminate result parsing.
+      fs.writeFileSync(bin, `#!/usr/bin/env node
+const output = ${JSON.stringify(output)};
+process.stdout.write(output.slice(0, 12));
+process.stderr.write(JSON.stringify({type: 'result', is_error: true}) + '\\n');
+setTimeout(() => process.stdout.write(output.slice(12)), 20);
+`);
+      fs.chmodSync(bin, 0o755);
+      const session = await new ClaudeExecutor(bin).start(makeTask(), { workingDirectory: dir });
+      const events = [];
+      for await (const event of session.events) events.push(event);
+      const result = await session.result;
+      expect(result.status).toBe(failed ? 'failed' : 'completed');
+      expect(events.filter(event => event.event_type === ExecutionEventType.TASK_FAILED)).toHaveLength(failed ? 1 : 0);
+      expect(events.filter(event => event.event_type === ExecutionEventType.TASK_COMPLETED)).toHaveLength(failed ? 0 : 1);
+      if (failed) expect(result.error).toBeTruthy();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
 });

@@ -1,0 +1,938 @@
+{
+ "meta": {
+  "repo": "djimit/djimitflo",
+  "origin_main": "4a9cbdf4 (2026-10-22)",
+  "prod_build": "5dfc6cd",
+  "generated": "2026-10-22",
+  "directive": "DKF-EVOLUTION-001 Phase A",
+  "method": "read-only: git worktree from origin/main; 2 parallel code inventories + spot-verification (okf.ts:2,49-60,283; okf-knowledge-updater.ts:99-109; kb-corpus.ts:12-18,25-94; vector-memory-service.ts:127; autonomous-services.ts:441-443); prod SQLite {readonly:true} via docker exec; workstation/NAS listings, sizes, counts only; excluded NAS areas never entered",
+  "status_vocab": [
+   "EXISTS",
+   "PARTIAL",
+   "MISSING",
+   "SUPERSEDED",
+   "UNKNOWN"
+  ],
+  "evidence_vocab": [
+   "VERIFIED_RUNTIME",
+   "VERIFIED_CODE",
+   "DOCUMENTED_ONLY",
+   "UNVERIFIED"
+  ],
+  "supersedes_nodes_from": "docs/research/l3-forensics/capability-graph.json (knowledge.kb_corpus, knowledge.okf, knowledge.reasoning_bank_qdrant, fleet.kb_sync, ws.qdrant, ws.kbwiki_maintenance)",
+  "corrections_to_l3": [
+   "ws.kbwiki_maintenance was ACTIVE; crons fire but commands never start (logs/ missing, scripts absent)",
+   "ws.qdrant 'KBWiki index target' -> two diverged Qdrant instances share collection names"
+  ]
+ },
+ "nodes": [
+  {
+   "id": "nas.share",
+   "kind": "storage",
+   "plane": "source",
+   "location": "//192.168.1.92/NAS via workstation autofs /mnt/nas (CIFS 3.1.1, rw mount)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "1.8T, 1.4T used (75%); measured dirs ~305G; excluded areas ~1.1T",
+   "consumers": [
+    "ws.kbwiki_backup_cron"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "mount is rw; fabric must open read-only"
+   ],
+   "fabric_disposition": "REUSE (read-only source)"
+  },
+  {
+   "id": "nas.wiki_snapshot",
+   "kind": "corpus",
+   "plane": "source",
+   "location": "/mnt/nas/workstation-backup/wiki (660M, 4287 md)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "frozen 2026-07-01; contains qdrant-storage 627M and an .env file (name only)",
+   "consumers": [],
+   "duplicates_of": [
+    "ws.kbwiki_vault"
+   ],
+   "failure_modes": [
+    "stale vs live vault"
+   ],
+   "fabric_disposition": "CANDIDATE CORPUS (slice option B)"
+  },
+  {
+   "id": "nas.agent_shared",
+   "kind": "corpus",
+   "plane": "source",
+   "location": "/mnt/nas/agent-shared (12 files, Apr 2026)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "stale; includes infrastructure/credentials-refs.md",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "stale ops facts",
+    "credential references"
+   ],
+   "fabric_disposition": "RETIRE / exclude (Phase L5 parked)"
+  },
+  {
+   "id": "nas.qdrant_snapshots",
+   "kind": "backup",
+   "plane": "index",
+   "location": "/mnt/nas/qdrant-snapshots/knowledge_base_v2",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "nightly 02:30, 202MB, 18957 points",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "KEEP (backup)"
+  },
+  {
+   "id": "ws.kbwiki_vault",
+   "kind": "corpus",
+   "plane": "source",
+   "location": "workstation ~/djimit/DjimitKBWiki (OpenKB-compiled; git djimit/DjimitKBWiki)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "252 concepts, 47 entities, 1014 summaries, 1014 sources, 24 reports; last commit 2026-09-12; every page has type",
+   "consumers": [
+    "fleet.kb_sync"
+   ],
+   "duplicates_of": [
+    "nas.wiki_snapshot"
+   ],
+   "failure_modes": [
+    "log.md violates OKF v0.2 §9",
+    "wikilinks not markdown links",
+    "sources are strings not {resource}"
+   ],
+   "fabric_disposition": "REUSE (curated corpus, nearest to OKF v0.2)"
+  },
+  {
+   "id": "ws.kbwiki_backup_cron",
+   "kind": "job",
+   "plane": "ops",
+   "location": "workstation crontab 03:00 rsync, 07:20 daily-validate.sh, Sun 04:00 rebuild_indexes.py",
+   "status": "PARTIAL",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "cron fires; logs/ dir missing so commands never start; scripts absent; NAS copy frozen 2026-07-01",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "silent failure (no MTA)"
+   ],
+   "fabric_disposition": "FIX (operator) — corrects L3 ws.kbwiki_maintenance ACTIVE"
+  },
+  {
+   "id": "fleet.kb_sync",
+   "kind": "ingest",
+   "plane": "ingestion",
+   "location": "scripts/kb-sync.mjs; ~/.config/systemd/user/djimit-kb-sync.timer 04:30; S/routes/remote-gym.ts:67",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "daily runs ok; 0 changed pages 20-22 Oct; first sync 1312/1313 (27-09)",
+   "consumers": [
+    "knowledge.kb_pages"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "only changed pages re-sent -> unverdicted pages never re-checked"
+   ],
+   "fabric_disposition": "EXTEND (state machine, manifest, path allowlist)"
+  },
+  {
+   "id": "ws.qdrant",
+   "kind": "vector-store",
+   "plane": "index",
+   "location": "workstation 0.0.0.0:6333 Qdrant 1.19.1 (24 collections)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "djiment_kb 25854, djimit_okf 25581, knowledge_base_v2 18957, djimitkb-wiki 58",
+   "consumers": [],
+   "duplicates_of": [
+    "as.qdrant"
+   ],
+   "failure_modes": [
+    "not used by Djimitflo prod"
+   ],
+   "fabric_disposition": "FREEZE (no new writers)"
+  },
+  {
+   "id": "as.qdrant",
+   "kind": "vector-store",
+   "plane": "index",
+   "location": "agenticservices 100.77.58.72:6333 Qdrant 1.19.1 (prod QDRANT_URL)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "same 24 names + authority_events 1797; djimit_okf 30575, djiment_kb 60618",
+   "consumers": [
+    "knowledge.context_injection"
+   ],
+   "duplicates_of": [
+    "ws.qdrant"
+   ],
+   "failure_modes": [
+    "diverged counts; source of truth UNKNOWN",
+    "nomic embed 404 (L3 F5)"
+   ],
+   "fabric_disposition": "FREEZE; consolidation = operator decision"
+  },
+  {
+   "id": "knowledge.kb_pages",
+   "kind": "store",
+   "plane": "index",
+   "location": "S/services/kb-corpus.ts:21 (kb_pages table)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "1313 pages, nemotron 2048-d vectors, embedding_model/dim NULL on all rows, updated_at max 2026-10-06",
+   "consumers": [
+    "knowledge.kb_context"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "no validity interval",
+    "no classification",
+    "no source commit"
+   ],
+   "fabric_disposition": "EXTEND (manifest + OKF metadata columns)"
+  },
+  {
+   "id": "knowledge.kb_context",
+   "kind": "retrieval",
+   "plane": "retrieval",
+   "location": "S/services/kb-corpus.ts:55-94",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "142 kb_retrieval 30d (36 in 7d); cos>=0.3, k=3; full-table scan",
+   "consumers": [
+    "panel.specialist",
+    "swarm.committee"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "fail-open on missing safety verdict",
+    "linear scan"
+   ],
+   "fabric_disposition": "REUSE as arm B; EXTEND to arm C"
+  },
+  {
+   "id": "judgment.kb_passage_relevance",
+   "kind": "gate",
+   "plane": "retrieval",
+   "location": "S/services/kb-corpus.ts:98-112",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "enforce since 28-09; 170 rows, 88/452 page verdicts dropped, 0 labels",
+   "consumers": [
+    "knowledge.kb_context"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "acting without labels (contradicts ADR 0002 rule 1)"
+   ],
+   "fabric_disposition": "VERIFY via E-KB (#961)"
+  },
+  {
+   "id": "safety.content_safety",
+   "kind": "guard",
+   "plane": "governance",
+   "location": "S/services/content-safety.ts:6-24,58,117,139",
+   "status": "PARTIAL",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "6096 rows: 2085 yes / 18 no / 3993 error; 456/1313 KB pages unverdicted",
+   "consumers": [
+    "fleet.kb_sync",
+    "knowledge.kb_context"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "NVIDIA 429/timeouts",
+    "external API for every page"
+   ],
+   "fabric_disposition": "REUSE; add re-check of unverdicted pages"
+  },
+  {
+   "id": "integrity.p1_seal",
+   "kind": "guard",
+   "plane": "governance",
+   "location": "S/services/kb-corpus.ts:60-69; S/services/assignment-context.ts:92-123",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "0 artifact_integrity rows",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "TOFU seal"
+   ],
+   "fabric_disposition": "REUSE"
+  },
+  {
+   "id": "okf.djimitflo_mcp",
+   "kind": "tools",
+   "plane": "retrieval",
+   "location": "M/tools/okf.ts:15-31,37-47,117,167,211,271,332",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "call volume UNKNOWN; okf_status always healthy; validator requires type,title,description,timestamp,tags",
+   "consumers": [],
+   "duplicates_of": [
+    "okf.runtime_service"
+   ],
+   "failure_modes": [
+    "flat key:value parser cannot read OKF v0.2 nested fields",
+    "strict validator rejects v0.2-conformant docs",
+    "no permission checks"
+   ],
+   "fabric_disposition": "EXTEND (v0.2 reader) or SUPERSEDE"
+  },
+  {
+   "id": "okf.bundle_prod",
+   "kind": "corpus",
+   "plane": "source",
+   "location": "/srv/djimitflo/djimitflo-knowledge/okf (OKF_BASE)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "413 docs: memory 260, tasks 98, runs 26, ...; 154 fail own validator; machine exhaust",
+   "consumers": [
+    "okf.djimitflo_mcp"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "not curated knowledge"
+   ],
+   "fabric_disposition": "KEEP as operational memory, not fabric corpus"
+  },
+  {
+   "id": "okf.runtime_service",
+   "kind": "service",
+   "plane": "governance",
+   "location": "S/services/knowledge-runtime-service.ts:16-19,91,156,365-380,474-499",
+   "status": "PARTIAL",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "okf-synchronization-loop 0 runs ever",
+   "consumers": [],
+   "duplicates_of": [
+    "okf.djimitflo_mcp"
+   ],
+   "failure_modes": [
+    "second resolver and parser"
+   ],
+   "fabric_disposition": "CONSOLIDATE"
+  },
+  {
+   "id": "okf.updater",
+   "kind": "writer",
+   "plane": "ingestion",
+   "location": "S/services/okf-knowledge-updater.ts:99-109; S/bootstrap/autonomous-services.ts:441-443",
+   "status": "MISSING",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "okf_knowledge_updates 0 rows; constructed and voided at boot",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "writes docs that fail okf_validate"
+   ],
+   "fabric_disposition": "RETIRE"
+  },
+  {
+   "id": "knowledge.maintenance",
+   "kind": "job",
+   "plane": "ops",
+   "location": "S/services/knowledge-maintenance-service.ts:8-26",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "69 runs ok, 0 findings",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "signal-free lint"
+   ],
+   "fabric_disposition": "EXTEND (OKF v0.2 conformance report)"
+  },
+  {
+   "id": "knowledge.context_injection",
+   "kind": "retrieval",
+   "plane": "retrieval",
+   "location": "S/services/context-injection-service.ts:12-13,33,57,139-171,225,279",
+   "status": "PARTIAL",
+   "evidence": "UNVERIFIED",
+   "evaluation_evidence": "prod use rate UNKNOWN; Qdrant swarm path dead per L3 F5",
+   "consumers": [
+    "exp.e1_labels"
+   ],
+   "duplicates_of": [
+    "knowledge.kb_context"
+   ],
+   "failure_modes": [
+    "cross-source raw scores (UX-24)"
+   ],
+   "fabric_disposition": "FREEZE; E1 decides RRF"
+  },
+  {
+   "id": "eval.retrieval_harness",
+   "kind": "eval",
+   "plane": "evaluation",
+   "location": "S/services/retrieval-eval.ts:50,88; scripts/e1-rrf-score.mjs",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "E1 INSUFFICIENT (0 labels)",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "REUSE"
+  },
+  {
+   "id": "exp.e1_labels",
+   "kind": "labelling",
+   "plane": "evaluation",
+   "location": "S/services/e1-retrieval-labels.ts; S/routes/self-improvement.ts:166-180; dashboard E1RetrievalLabelSection.tsx",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "0 e1_retrieval_task, 0 operator_label rows",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "never triggered"
+   ],
+   "fabric_disposition": "REUSE (operator action only)"
+  },
+  {
+   "id": "exp.835_labels",
+   "kind": "labelling",
+   "plane": "evaluation",
+   "location": "discovery-relevance-labels.ts (#835)",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "0 labels",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "REUSE pattern"
+  },
+  {
+   "id": "knowledge.fitness",
+   "kind": "fitness",
+   "plane": "evolution",
+   "location": "S/services/knowledge-fitness.ts:5-40; S/services/knowledge-overview.ts:121",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "read-only; knowledge credits 0",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "no discriminating outcome signal yet"
+   ],
+   "fabric_disposition": "REUSE"
+  },
+  {
+   "id": "knowledge.gaps",
+   "kind": "signal",
+   "plane": "evolution",
+   "location": "S/services/knowledge-gaps.ts:21-22",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "13 open knowledge_gap judgments (shadow)",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "REUSE as demand signal"
+  },
+  {
+   "id": "outcome.attribution",
+   "kind": "fitness",
+   "plane": "evolution",
+   "location": "S/services/outcome-attribution.ts:5-17,209-214",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "189 annotations 30d; outcome_credits knowledge kind 0",
+   "consumers": [
+    "knowledge.fitness"
+   ],
+   "duplicates_of": [],
+   "failure_modes": [
+    "44% non-verified outcomes are reviewer/env noise (L3)"
+   ],
+   "fabric_disposition": "REUSE"
+  },
+  {
+   "id": "ne.registry",
+   "kind": "registry",
+   "plane": "evolution",
+   "location": "docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml; S/services/negative-evidence-check.ts:6-33",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "NE-001..NE-012(+NE-013 in #959); NE_GENERATOR_CHECK_MODE=shadow",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "REUSE (add knowledge NE entries)"
+  },
+  {
+   "id": "memory.candidates",
+   "kind": "store",
+   "plane": "memory",
+   "location": "S/services/memory-candidate-service.ts; S/services/assignment-context.ts:79-130",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "235 candidates, 189 promoted; 937 reads/19 distinct 30d",
+   "consumers": [
+    "loop.makers"
+   ],
+   "duplicates_of": [
+    "memory.central",
+    "memory.proactive",
+    "memory.vector"
+   ],
+   "failure_modes": [
+    "S14 machine approver"
+   ],
+   "fabric_disposition": "REUSE (operational memory plane)"
+  },
+  {
+   "id": "memory.central",
+   "kind": "store",
+   "plane": "memory",
+   "location": "S/services/memory-store.ts:50",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "893 episodes, write-only",
+   "consumers": [],
+   "duplicates_of": [
+    "memory.candidates"
+   ],
+   "failure_modes": [],
+   "fabric_disposition": "FREEZE"
+  },
+  {
+   "id": "memory.proactive",
+   "kind": "store",
+   "plane": "memory",
+   "location": "S/services/proactive-memory-service.ts:412,430",
+   "status": "SUPERSEDED",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "0 rows",
+   "consumers": [],
+   "duplicates_of": [
+    "memory.candidates"
+   ],
+   "failure_modes": [],
+   "fabric_disposition": "RETIRE candidate"
+  },
+  {
+   "id": "memory.vector",
+   "kind": "store",
+   "plane": "memory",
+   "location": "S/services/vector-memory-service.ts:7,127,294,333",
+   "status": "SUPERSEDED",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "0 rows; 'RRF' is a linear blend",
+   "consumers": [],
+   "duplicates_of": [
+    "memory.candidates"
+   ],
+   "failure_modes": [
+    "dim resampling by striding"
+   ],
+   "fabric_disposition": "RETIRE candidate"
+  },
+  {
+   "id": "memory.reasoning_bank",
+   "kind": "store",
+   "plane": "memory",
+   "location": "S/services/reasoning-bank-service.ts:12,15",
+   "status": "PARTIAL",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "write-only (L3)",
+   "consumers": [],
+   "duplicates_of": [
+    "memory.candidates"
+   ],
+   "failure_modes": [],
+   "fabric_disposition": "RETIRE candidate"
+  },
+  {
+   "id": "memory.uams_sync",
+   "kind": "sync",
+   "plane": "memory",
+   "location": "S/services/memory-sync-service.ts:9-11,60-93,138,205",
+   "status": "PARTIAL",
+   "evidence": "UNVERIFIED",
+   "evaluation_evidence": "OKF tasks/ leg evidenced by 98 docs; UAMS/Qdrant legs unverified",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "384-d vs 768-d collection mismatch"
+   ],
+   "fabric_disposition": "FREEZE"
+  },
+  {
+   "id": "claims.swarm",
+   "kind": "store",
+   "plane": "decision",
+   "location": "S/database/migrate.ts:1089-1110",
+   "status": "PARTIAL",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "400 rows, last 2026-09-13; valid_until/invalidated_by/contradicts_ref present",
+   "consumers": [],
+   "duplicates_of": [
+    "claims.knowledge",
+    "claims.expert",
+    "claims.research"
+   ],
+   "failure_modes": [],
+   "fabric_disposition": "TEMPLATE for bitemporal claim"
+  },
+  {
+   "id": "claims.expert",
+   "kind": "store",
+   "plane": "decision",
+   "location": "S/database/migrate.ts:2077,2096",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "2265 claims (2263 undetermined), 1 CONTRADICTS relation unresolved, temporal_scope empty",
+   "consumers": [],
+   "duplicates_of": [
+    "claims.swarm"
+   ],
+   "failure_modes": [],
+   "fabric_disposition": "TEMPLATE (SPO + polarity + relations)"
+  },
+  {
+   "id": "claims.knowledge",
+   "kind": "store",
+   "plane": "decision",
+   "location": "S/database/migrate.ts:2174; S/services/knowledge-sharing-service.ts:201",
+   "status": "SUPERSEDED",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "5 rows, last 2026-07-11",
+   "consumers": [],
+   "duplicates_of": [
+    "claims.swarm"
+   ],
+   "failure_modes": [
+    "table created twice"
+   ],
+   "fabric_disposition": "RETIRE candidate"
+  },
+  {
+   "id": "claims.research",
+   "kind": "store",
+   "plane": "decision",
+   "location": "citation-research-service.ts:383",
+   "status": "SUPERSEDED",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "42 rows, last 2026-07-16",
+   "consumers": [],
+   "duplicates_of": [
+    "claims.swarm"
+   ],
+   "failure_modes": [],
+   "fabric_disposition": "RETIRE candidate"
+  },
+  {
+   "id": "expert.affiliations_asof",
+   "kind": "pattern",
+   "plane": "decision",
+   "location": "S/database/migrate.ts:2031-2041; frontier-expert-registry-service.ts:176",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "only valid_from/valid_to + as-of query in the codebase; 0 rows after persons->areas",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "TEMPLATE (as-of query)"
+  },
+  {
+   "id": "decision.adr",
+   "kind": "docs",
+   "plane": "decision",
+   "location": "docs/adr/0001-0003",
+   "status": "EXISTS",
+   "evidence": "DOCUMENTED_ONLY",
+   "evaluation_evidence": "3 ADRs (21-23 Sep); no table",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "practice diverges (kb_passage_relevance enforce vs ADR 0002 rule 1)"
+   ],
+   "fabric_disposition": "REUSE as decision source"
+  },
+  {
+   "id": "decision.approvals",
+   "kind": "store",
+   "plane": "decision",
+   "location": "S/database/schema.ts:244,266",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "509 approvals 2026-07-29..2026-10-22",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "REUSE (link decisions to approvals)"
+  },
+  {
+   "id": "decision.authority_events",
+   "kind": "ledger",
+   "plane": "decision",
+   "location": "S/database/migrate.ts:1290",
+   "status": "EXISTS",
+   "evidence": "UNVERIFIED",
+   "evaluation_evidence": "append-only; row count not probed in SQLite (Qdrant mirror 1797)",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "REUSE"
+  },
+  {
+   "id": "judgments.provenance",
+   "kind": "ledger",
+   "plane": "governance",
+   "location": "S/services/judgment-provenance.ts:13-16; migrate.ts:127-131",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "19924 judgments, provenance_json on new rows",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "REUSE"
+  },
+  {
+   "id": "frontier.experts",
+   "kind": "corpus",
+   "plane": "source",
+   "location": "S/database/migrate.ts:2005-2141; expert-areas.ts",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "4568 identities, 15197 evidence, 25007 versions; 0 proposals cite units",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "unbounded unit growth"
+   ],
+   "fabric_disposition": "FREEZE"
+  },
+  {
+   "id": "explainer",
+   "kind": "service",
+   "plane": "retrieval",
+   "location": "M/tools/explainer.ts:188-377; routes/explainer.ts",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "120 bundles; 0 tasks in 7d",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "own chunker duplicated in MCP package"
+   ],
+   "fabric_disposition": "FREEZE"
+  },
+  {
+   "id": "openwiki",
+   "kind": "corpus",
+   "plane": "source",
+   "location": "openwiki/; .github/workflows/openwiki-update.yml; S/services/commons-grounding.ts:53",
+   "status": "PARTIAL",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "last update interrupted 2026-09-25; reader flag off",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "NE-003 grounding REJECT"
+   ],
+   "fabric_disposition": "FREEZE"
+  },
+  {
+   "id": "notebooklm",
+   "kind": "external-tool",
+   "plane": "retrieval",
+   "location": "M/tools/notebooks.ts:16-26",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "external Google upload; no permission check (S6)",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "can upload any local file"
+   ],
+   "fabric_disposition": "EXCLUDE from private corpora"
+  },
+  {
+   "id": "panel.specialist",
+   "kind": "consumer",
+   "plane": "consumer",
+   "location": "S/services/self-improvement-agent-review-service.ts:250",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "415 panels 30d (86 in 7d)",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "CONSUMER (slice)"
+  },
+  {
+   "id": "swarm.committee",
+   "kind": "consumer",
+   "plane": "consumer",
+   "location": "S/services/committee-swarm.ts:79-103",
+   "status": "PARTIAL",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "134 jobs 30d, last 2026-10-19; COMMITTEE_SWARM_ENABLED=false",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "CONSUMER (dormant)"
+  },
+  {
+   "id": "loop.makers",
+   "kind": "consumer",
+   "plane": "consumer",
+   "location": "S/services/loop-daemon.ts; worker_leases",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_RUNTIME",
+   "evaluation_evidence": "3556 leases 30d",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [
+    "S0: makers own the prod DB"
+   ],
+   "fabric_disposition": "EXCLUDED from fabric until S0 closed"
+  },
+  {
+   "id": "okf.google_v02",
+   "kind": "spec",
+   "plane": "representation",
+   "location": "github.com/GoogleCloudPlatform/open-knowledge-format SPEC.md @ad30107c",
+   "status": "EXISTS",
+   "evidence": "VERIFIED_CODE",
+   "evaluation_evidence": "external spec; required: type only",
+   "consumers": [],
+   "duplicates_of": [],
+   "failure_modes": [],
+   "fabric_disposition": "ADOPT as interchange format"
+  }
+ ],
+ "edges": [
+  {
+   "from": "ws.kbwiki_vault",
+   "to": "fleet.kb_sync",
+   "type": "read_by",
+   "exercised_in_prod": "yes (0 changed pages since 2026-09-12)"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "safety.content_safety",
+   "type": "checked_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "knowledge.kb_pages",
+   "type": "writes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "knowledge.kb_pages",
+   "to": "knowledge.kb_context",
+   "type": "read_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "knowledge.kb_context",
+   "to": "integrity.p1_seal",
+   "type": "checked_by",
+   "exercised_in_prod": "yes (0 violations)"
+  },
+  {
+   "from": "knowledge.kb_context",
+   "to": "judgment.kb_passage_relevance",
+   "type": "gated_by",
+   "exercised_in_prod": "yes (enforce)"
+  },
+  {
+   "from": "knowledge.kb_context",
+   "to": "panel.specialist",
+   "type": "feeds",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "knowledge.kb_context",
+   "to": "swarm.committee",
+   "type": "feeds",
+   "exercised_in_prod": "yes until 2026-10-19"
+  },
+  {
+   "from": "ws.kbwiki_backup_cron",
+   "to": "nas.wiki_snapshot",
+   "type": "writes",
+   "exercised_in_prod": "no (broken since ~2026-07-01)"
+  },
+  {
+   "from": "ws.qdrant",
+   "to": "nas.qdrant_snapshots",
+   "type": "snapshots_to",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "as.qdrant",
+   "to": "knowledge.context_injection",
+   "type": "read_by",
+   "exercised_in_prod": "UNKNOWN"
+  },
+  {
+   "from": "memory.candidates",
+   "to": "loop.makers",
+   "type": "feeds",
+   "exercised_in_prod": "yes (19 rules)"
+  },
+  {
+   "from": "memory.candidates",
+   "to": "okf.bundle_prod",
+   "type": "writes",
+   "exercised_in_prod": "yes (memory/ 260 docs)"
+  },
+  {
+   "from": "memory.uams_sync",
+   "to": "okf.bundle_prod",
+   "type": "writes",
+   "exercised_in_prod": "yes (tasks/ 98 docs)"
+  },
+  {
+   "from": "okf.bundle_prod",
+   "to": "okf.djimitflo_mcp",
+   "type": "read_by",
+   "exercised_in_prod": "UNKNOWN"
+  },
+  {
+   "from": "okf.bundle_prod",
+   "to": "knowledge.maintenance",
+   "type": "linted_by",
+   "exercised_in_prod": "yes (0 findings)"
+  },
+  {
+   "from": "outcome.attribution",
+   "to": "knowledge.fitness",
+   "type": "feeds",
+   "exercised_in_prod": "yes (knowledge credits 0)"
+  },
+  {
+   "from": "judgment.kb_passage_relevance",
+   "to": "exp.e1_labels",
+   "type": "evaluable_by",
+   "exercised_in_prod": "no (0 labels)"
+  },
+  {
+   "from": "okf.google_v02",
+   "to": "ws.kbwiki_vault",
+   "type": "near_conformant",
+   "exercised_in_prod": "n/a"
+  },
+  {
+   "from": "okf.google_v02",
+   "to": "okf.djimitflo_mcp",
+   "type": "incompatible_with",
+   "exercised_in_prod": "n/a"
+  }
+ ]
+}
