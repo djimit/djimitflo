@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { RemoteGymService, prodGatesConfig } from '../services/remote-gym-service';
+import { RemoteGymService, prodGatesConfig, sweepOrphanedGymRuns } from '../services/remote-gym-service';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { TG_ID, TG_LOOP } from '../services/tg-001';
 import type { FailureTask } from '../services/gym-failure-tasks';
@@ -73,6 +73,19 @@ describe('claim + result binding (non-TG)', () => {
     expect(meta(c.runId).gym.gate_policy).toMatchObject({ gated: false, task: 'c9', species: 'atomic', config_digest: gateConfigDigest(GATES) });
     expect(meta(c.runId).gym.gate_policy.holdout).toBeUndefined();
     expect(holdoutEpochOf(db, 'c9')).toBeUndefined();
+  });
+  it('a bound attempt the server settles itself (lost at the next claim, or orphaned) keeps a result-side binding', () => {
+    vi.stubEnv('GYM_ORPHAN_SWEEP', 'on');
+    const svc = new RemoteGymService(db, () => [TASK('c1'), TASK('c2'), TASK('c3')]);
+    const lost = svc.claim('workstation', ['atomic'], new Date('2026-10-14T10:00:00.000Z')) as { runId: string };
+    svc.claim('workstation', ['atomic'], new Date('2026-10-14T11:00:00.000Z')); // same host claims again: the first run is lost
+    const r = meta(lost.runId).gym_result;
+    expect(r.status).toBe('discarded');
+    expect(r.gate_policy).toEqual({ policy_id: 'gym-prod-gates', policy_version: 'v1', config_digest: gateConfigDigest(GATES), result_at: expect.any(String), gate_results: null });
+    expect(gatePolicyClass(attemptGatePolicy(JSON.stringify(meta(lost.runId))), currentPolicyIdentity(GATES, process.env))).toBe('CURRENT_POLICY');
+    const orphan = svc.claim('laptop', ['atomic'], new Date('2026-10-14T12:00:00.000Z')) as { runId: string };
+    expect(sweepOrphanedGymRuns(db, new Date('2026-10-15T12:00:00.000Z')).settled).toContain(orphan.runId);
+    expect(meta(orphan.runId).gym_result.gate_policy).toMatchObject({ config_digest: gateConfigDigest(GATES), gate_results: null });
   });
 });
 

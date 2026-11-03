@@ -160,11 +160,16 @@ export class GymRunSettledError extends Error {
  */
 function settleLostRuns(db: Database, runs: Array<{ id: string; tg: string | null; pl?: string | null }>, reason: string, now: string): string[] {
   const settle = db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
-      metadata = json_set(metadata, '$.gym_result', json_object('status', 'discarded', 'reason', ?))
+      metadata = json_set(metadata, '$.gym_result', json(?))
       WHERE id = ? AND status = 'running' AND json_extract(metadata, '$.gym_result') IS NULL`);
+  const claimPolicy = db.prepare("SELECT json_extract(metadata, '$.gym.gate_policy') AS p FROM loop_runs WHERE id = ?");
   const settled: string[] = [];
   for (const r of runs) {
-    if (!settle.run(now, reason, r.id).changes) continue;
+    // gate-policy binding: a bound (non-TG/PL) claim keeps its result-side binding on a server-generated discard too
+    let claim: GatePolicyClaim | undefined;
+    if (!r.tg && !r.pl) { try { claim = JSON.parse((claimPolicy.get(r.id) as { p: string | null } | undefined)?.p ?? 'null') ?? undefined; } catch { /* unreadable: unbound */ } }
+    const bound = gatePolicyResult(claim, now, undefined);
+    if (!settle.run(now, JSON.stringify({ status: 'discarded', reason, ...(bound ? { gate_policy: bound } : {}) }), r.id).changes) continue;
     settled.push(r.id);
     if (r.tg) { try { recordTg001(db, r.tg, r.id, { status: 'discarded', reason }, now); } catch { /* bookkeeping */ } }
     // PL-001: a lost report is an infra discard of the arm (re-served, or INFRA_CENSORED after the permitted retries)
