@@ -24,10 +24,12 @@ import { autoMergeEvidence } from './loop-auto-merge-state';
  *   candidate's content; secret patterns redacted, no hosts.
  */
 export interface TriageButton { text: string; data: string }
+/** Per-recipient progress of one message: recipients in `skip` already have it; `onDelivered` records each new one. */
+export interface DeliveryProgress { skip?: readonly number[]; onDelivered?(recipient: number): void }
 export interface PushSender {
-  requestApproval(approvalId: string, text: string, openUrl?: string | null): Promise<void>;
-  broadcastAlert(text: string): Promise<void>;
-  requestTriage?(text: string, buttons: TriageButton[], openUrl?: string | null): Promise<void>;
+  requestApproval(approvalId: string, text: string, openUrl?: string | null, progress?: DeliveryProgress): Promise<void>;
+  broadcastAlert(text: string, progress?: DeliveryProgress): Promise<void>;
+  requestTriage?(text: string, buttons: TriageButton[], openUrl?: string | null, progress?: DeliveryProgress): Promise<void>;
 }
 let sender: PushSender | null = null;
 export const setPushSender = (s: PushSender | null): void => { sender = s; };
@@ -61,12 +63,23 @@ const ensureLog = (db: Database): void => {
     if (!columns.has('status')) db.exec(`ALTER TABLE ${table} ADD COLUMN status TEXT NOT NULL DEFAULT 'delivered'`);
     if (!columns.has('attempts')) db.exec(`ALTER TABLE ${table} ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1`);
     if (!columns.has('last_error')) db.exec(`ALTER TABLE ${table} ADD COLUMN last_error TEXT`);
+    if (!columns.has('delivered_to')) db.exec(`ALTER TABLE ${table} ADD COLUMN delivered_to TEXT`);
   }
 };
 
 const deliveryPending = (db: Database, table: 'telegram_push_log' | 'operator_digest_log', key: string, value: string, now: Date): void => {
   db.prepare(`INSERT INTO ${table} (${key}, sent_at, status, attempts, last_error) VALUES (?, ?, 'pending', 1, NULL)
     ON CONFLICT(${key}) DO UPDATE SET sent_at=excluded.sent_at, status='pending', attempts=${table}.attempts+1, last_error=NULL`).run(value, now.toISOString());
+};
+/** Recipients that already got this message survive a failed attempt, so a retry only reaches the ones that did not. */
+const deliveryProgress = (db: Database, table: 'telegram_push_log' | 'operator_digest_log', key: string, value: string): DeliveryProgress => {
+  const row = db.prepare(`SELECT delivered_to FROM ${table} WHERE ${key}=?`).get(value) as { delivered_to: string | null } | undefined;
+  const skip = (() => { try { const v: unknown = JSON.parse(row?.delivered_to ?? '[]'); return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : []; } catch { return []; } })();
+  const done = new Set(skip);
+  return { skip, onDelivered: (recipient) => {
+    done.add(recipient);
+    db.prepare(`UPDATE ${table} SET delivered_to=? WHERE ${key}=?`).run(JSON.stringify([...done]), value);
+  } };
 };
 const deliveryDone = (db: Database, table: 'telegram_push_log' | 'operator_digest_log', key: string, value: string): void => {
   db.prepare(`UPDATE ${table} SET status='delivered', last_error=NULL WHERE ${key}=?`).run(value);
@@ -148,7 +161,7 @@ export async function pushApproval(db: Database, a: ApprovalLike, env: NodeJS.Pr
     deliveryPending(db, 'telegram_push_log', 'approval_id', a.id, now);
     const base = publicBase(env);
     try {
-      await sender.requestApproval(a.id, approvalMessage(a, approvalContext(db, a)), base ? `${base}/decisions#approvals` : null);
+      await sender.requestApproval(a.id, approvalMessage(a, approvalContext(db, a)), base ? `${base}/decisions#approvals` : null, deliveryProgress(db, 'telegram_push_log', 'approval_id', a.id));
       deliveryDone(db, 'telegram_push_log', 'approval_id', a.id);
     } catch (error) {
       deliveryFailed(db, 'telegram_push_log', 'approval_id', a.id);
@@ -236,7 +249,7 @@ export async function pushTriage(db: Database, env: NodeJS.ProcessEnv = process.
     for (const m of fresh) {
       deliveryPending(db, 'telegram_push_log', 'approval_id', m.key, now);
       try {
-        await sender.requestTriage(m.text, m.buttons, base ? `${base}${m.open}` : null);
+        await sender.requestTriage(m.text, m.buttons, base ? `${base}${m.open}` : null, deliveryProgress(db, 'telegram_push_log', 'approval_id', m.key));
         deliveryDone(db, 'telegram_push_log', 'approval_id', m.key);
       } catch (error) {
         deliveryFailed(db, 'telegram_push_log', 'approval_id', m.key);
@@ -341,14 +354,17 @@ export async function maybeSendDigest(db: Database, env: NodeJS.ProcessEnv = pro
   try {
     if (!digestEnabled(env) || !sender) return false;
     const hour = Number.isInteger(Number(env.OPERATOR_DIGEST_HOUR)) && env.OPERATOR_DIGEST_HOUR !== '' && env.OPERATOR_DIGEST_HOUR !== undefined ? Number(env.OPERATOR_DIGEST_HOUR) % 24 : 7;
-    if (now.getUTCHours() !== hour) return false;
     ensureLog(db);
     const day = now.toISOString().slice(0, 10);
     const pendingCutoff = new Date(now.getTime() - 15 * 60_000).toISOString();
+    // A failed or stale-pending attempt for today is retried on any later tick: a send that failed at 07:50 would
+    // otherwise miss the hour gate at 08:05 and the day's digest would never arrive. A day with no row waits for the hour.
+    const retry = !!db.prepare("SELECT 1 FROM operator_digest_log WHERE day = ? AND (status='failed' OR (status='pending' AND sent_at < ?))").get(day, pendingCutoff);
+    if (!retry && now.getUTCHours() !== hour) return false;
     if (db.prepare("SELECT 1 FROM operator_digest_log WHERE day = ? AND (status='delivered' OR (status='pending' AND sent_at >= ?))").get(day, pendingCutoff)) return false;
     deliveryPending(db, 'operator_digest_log', 'day', day, now);
     try {
-      await sender.broadcastAlert(buildDigest(db, now.getTime(), env).text);
+      await sender.broadcastAlert(buildDigest(db, now.getTime(), env).text, deliveryProgress(db, 'operator_digest_log', 'day', day));
       deliveryDone(db, 'operator_digest_log', 'day', day);
     } catch (error) {
       deliveryFailed(db, 'operator_digest_log', 'day', day);
@@ -366,5 +382,5 @@ export function startOperatorDigest(db: Database): void {
   noteScheduler('operator_digest', 'OPERATOR_DIGEST_ENABLED', pushEnabled() || digestEnabled() || triageEnabled(), 15 * 60_000);
   if (digestTimer || (!pushEnabled() && !digestEnabled() && !triageEnabled())) return;
   // ponytail: the Phase 3 shadow ranking rides this 15-min tick (once per day); its own scheduler if the digest is ever off
-  digestTimer = setInterval(guardTick('operator_digest', () => { recordNeedsYouRanking(db); return pushPendingApprovals(db).then(() => maybeSendDigest(db)).then(() => pushTriage(db)); }), 15 * 60_000); digestTimer.unref?.();
+  digestTimer = setInterval(guardTick('operator_digest', () => { recordNeedsYouRanking(db); return maybeSendDigest(db).then(() => pushTriage(db)).then(() => pushPendingApprovals(db)); }), 15 * 60_000); digestTimer.unref?.();
 }
