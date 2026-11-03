@@ -94,55 +94,35 @@ export function SwarmMissionControlPage() {
 
   async function refresh() {
     const sequence = ++refreshSequence.current;
+    const live = () => sequence === refreshSequence.current;
     setLoading(true);
     setError(null);
     try {
-      const reads = [
-        api.getSwarmMissionControl().then((value) => {
-          if (sequence !== refreshSequence.current) return;
-          setMission(value);
-          setCapacity(value.capacity);
-        }),
-        api.getSwarmCapabilities(50).then((value) => {
-          if (sequence !== refreshSequence.current) return;
+      const reads: Array<[string, Promise<void>]> = [
+        ['mission control', api.getSwarmMissionControl().then((value) => { if (live()) { setMission(value); setCapacity(value.capacity); } })],
+        ['capabilities', api.getSwarmCapabilities(50).then((value) => {
+          if (!live()) return;
           setCapabilities(asArray<SwarmCapabilityRecord>(value.capabilities));
           const loaded = asArray(value.capabilities).length;
           setCapabilityCounts({ total: loaded, loaded, load_limit: value.limit, registry_total: value.registry_total, registry_by_status: value.registry_by_status, validated: 0, routable: 0, blocked: 0 });
-        }),
-        api.getSwarmClaims(50).then((value) => {
-          if (sequence === refreshSequence.current) setClaims(asArray<ClaimLedgerRecord>(value.claims));
-        }),
-        api.getKnowledgeRuntime().then((value) => {
-          if (sequence === refreshSequence.current) setKnowledge(value);
-        }),
-        api.request<{ events: unknown[] }>('/knowledge/events?limit=20').then((value) => {
-          if (sequence === refreshSequence.current) setKnowledgeEvents(asArray(value.events));
-        }),
-        api.request<LearningCurve>('/swarms/learning-curve').then((value) => {
-          if (sequence === refreshSequence.current) setLearningCurve(value);
-        }),
-        api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((value) => {
-          if (sequence === refreshSequence.current) setMissionExecutions(value);
-        }),
+        })],
+        ['claims', api.getSwarmClaims(50).then((value) => { if (live()) setClaims(asArray<ClaimLedgerRecord>(value.claims)); })],
+        ['knowledge runtime', api.getKnowledgeRuntime().then((value) => { if (live()) setKnowledge(value); })],
+        ['knowledge events', api.request<{ events: unknown[] }>('/knowledge/events?limit=20').then((value) => { if (live()) setKnowledgeEvents(asArray(value.events)); })],
+        ['learning curve', api.request<LearningCurve>('/swarms/learning-curve').then((value) => { if (live()) setLearningCurve(value); })],
+        ['mission executions', api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((value) => { if (live()) setMissionExecutions(value); })],
       ];
-      const names = ['mission control', 'capabilities', 'claims', 'knowledge runtime', 'knowledge events', 'learning curve', 'mission executions'];
-      const observed = reads.map((read, index) => read.then(
-        () => {
-          if (sequence === refreshSequence.current) setLoadErrors((previous) => previous.filter((line) => !line.startsWith(`${names[index]}: `)));
-        },
-        (reason: unknown) => {
-          if (sequence === refreshSequence.current) setLoadErrors((previous) => [
-            ...previous.filter((line) => !line.startsWith(`${names[index]}: `)),
-            `${names[index]}: ${reason instanceof Error ? reason.message : String(reason)}`,
-          ]);
-        },
+      const others = (name: string) => (previous: string[]) => previous.filter((line) => !line.startsWith(`${name}: `));
+      const observed = reads.map(([name, read]) => read.then(
+        () => { if (live()) setLoadErrors(others(name)); },
+        (reason: unknown) => { if (live()) setLoadErrors((previous) => [...others(name)(previous), `${name}: ${reason instanceof Error ? reason.message : String(reason)}`]); },
       ));
       // Optional evidence must not keep Refresh or a completed operator action waiting.
       await Promise.all(observed.slice(0, 4));
     } catch (err) {
-      if (sequence === refreshSequence.current) setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
+      if (live()) setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
     } finally {
-      if (sequence === refreshSequence.current) setLoading(false);
+      if (live()) setLoading(false);
     }
   }
 
