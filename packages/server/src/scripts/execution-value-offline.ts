@@ -86,7 +86,7 @@ export function analyse(snap: Snapshot) {
     const fitTargets = new Set(model.fitTargets);
     const outcomes = new Map<string, EvOutcome>(evalPart.map((b) => [b.f.id, {
       id: b.f.id, y: b.y[label], cost: b.cost ?? pMap.get(b.f.id)!.cost, cost_imputed: b.cost === null, latency_h: b.latency_h,
-      merged: b.merged, regressed: b.regressed, first_pair: !fitTargets.has(`${b.f.lane}|${b.f.target}`), arms: b.arms }]));
+      merged: b.merged, regressed: b.regressed, first_pair: !fitTargets.has(`${b.f.lane}|${b.f.target}`), pair: `${b.f.lane}|${b.f.target}`, arms: b.arms }]));
     const costOf = (id: string) => outcomes.get(id)!.cost;
     const { difficultIds } = protectedPool(ps);
     const run = (subset: EvPrediction[], f: number) => {
@@ -165,7 +165,7 @@ export function analyse(snap: Snapshot) {
       task_selection: 'BLOCKED_CAUSAL_IDENTIFICATION',
       reason: 'task choice was deterministic (priority DESC + approvals + lane caps); no logged propensity; B/C are a restricted replay over executed runs only (assumes no interference and order invariance)',
       species_bandit: bandit,
-      effort_decision: 'shadow, acted on nothing: no counterfactual',
+      effort_controller: 'shadow, acted on nothing: no counterfactual',
     },
     selection_bias: selectionBias,
     y_merge: perLabel('y_merge'),

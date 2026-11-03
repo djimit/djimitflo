@@ -1,7 +1,12 @@
+import { execFileSync } from 'child_process';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import {
-  fitEvModel, orderB, policyC, predict, protectedPool, replay, seeded, selectUnderBudget, verdict,
-  type EvFeatures, type FitRow,
+  fitEvModel, metrics, orderB, policyC, predict, protectedPool, replay, seeded, selectUnderBudget, verdict,
+  type EvFeatures, type EvOutcome, type FitRow,
 } from '../services/execution-value';
 import { buildRun } from '../scripts/execution-value-offline';
 
@@ -133,5 +138,46 @@ describe('DI-001 verdict and labels', () => {
     expect(mk.attribution).toBe('maker_failure'); expect(mk.y).toEqual({ y_merge: 0, y_oracle: 0 });
     const rej = buildRun(run({ failed_gates: ['checker_verdict: rejected'] }, {}, [{ id: 'c1', role: 'checker', status: 'completed', runtime: 'opencode', model: null, tokens: 1, metadata: { maker_lease_id: 'm1', verdict: 'rejected' } }]));
     expect(rej.y).toEqual({ y_merge: 0, y_oracle: 1 });
+  });
+});
+
+describe('DI-001 M2 first-time targets', () => {
+  it('counts distinct first-time (lane, target) pairs, not runs against them', () => {
+    const model = fitEvModel(fitRows(), CUT);
+    const ps = [0, 1, 2].map((i) => predict(model, { ...feat(300 + i, 'build', 'docs/x', 10), target: 'docs/x/same.md' }));
+    const outcomes = new Map<string, EvOutcome>(ps.map((p) => [p.id, { id: p.id, y: 1, cost: 1, cost_imputed: false, latency_h: 1, merged: true,
+      regressed: false, first_pair: true, pair: 'doc-drift|docs/x/same.md', arms: [] }]));
+    const m = metrics(ps.map((p) => p.id), ps, outcomes, new Set(), () => 'doc-drift|build|docs/x', new Set());
+    expect(m.m2_first_pairs_executed).toBe(1);
+    expect(m.m2_new_capability_successes).toBe(3); // the success count stays per run (prereg §10 M2)
+  });
+});
+
+describe('DI-001 extractor', () => {
+  it('a proposal whose only run is excluded from the replay population is not reported as never ran', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ev-extract-')); const dbPath = join(dir, 'db.sqlite');
+    try {
+      const db = new Database(dbPath);
+      db.exec(`CREATE TABLE goals (id TEXT, improvement_id TEXT, metadata TEXT);
+        CREATE TABLE loop_runs (id TEXT, loop_name TEXT, status TEXT, created_at TEXT, completed_at TEXT, updated_at TEXT, metadata TEXT, gates_json TEXT, findings_json TEXT, goal_id TEXT);
+        CREATE TABLE worker_leases (id TEXT, loop_run_id TEXT, role TEXT, status TEXT, runtime TEXT, created_at TEXT, metadata TEXT);
+        CREATE TABLE self_improvements (id TEXT, type TEXT, source TEXT, status TEXT, priority REAL, created_at TEXT, evidence_refs_json TEXT, grounding_json TEXT);
+        CREATE TABLE judgments (judgment TEXT, subject_type TEXT, subject_id TEXT, decision TEXT, created_at TEXT);
+        CREATE TABLE loop_events (loop_run_id TEXT, event_type TEXT, message TEXT, metadata TEXT, created_at TEXT);`);
+      const t = '2026-10-10T00:00:00Z';
+      const add = (n: string, status: string, maker: boolean) => {
+        db.prepare('INSERT INTO self_improvements VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`p-${n}`, 'feature', 's', 'executed', 0.5, t, '[]', '{}');
+        db.prepare('INSERT INTO goals VALUES (?, ?, ?)').run(`g-${n}`, `p-${n}`, '{}');
+        db.prepare('INSERT INTO loop_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(`r-${n}`, 'doc-drift-and-small-fix-loop', status, t, t, t, '{}', '[]', '[]', `g-${n}`);
+        if (maker) db.prepare('INSERT INTO worker_leases VALUES (?, ?, ?, ?, ?, ?, ?)').run(`l-${n}`, `r-${n}`, 'maker', 'completed', 'codex', t, '{}');
+      };
+      add('ok', 'completed', true); add('running', 'running', true); add('nomaker', 'completed', false);
+      db.prepare('INSERT INTO self_improvements VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('p-idle', 'feature', 's', 'proposed', 0.5, t, '[]', '{}');
+      db.close();
+      const out = JSON.parse(execFileSync(process.execPath, [join(__dirname, '../scripts/execution-value-extract.cjs')], { env: { ...process.env, DB_PATH: dbPath }, encoding: 'utf8' }));
+      expect(out.runs.map((r: { id: string }) => r.id)).toEqual(['r-ok']);
+      expect(out.excluded).toEqual({ not_terminal: 1, no_maker: 1, pr_review: 0 });
+      expect(out.unexecuted_proposals.map((p: { id: string }) => p.id)).toEqual(['p-idle']);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

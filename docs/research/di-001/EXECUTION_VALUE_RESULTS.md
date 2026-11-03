@@ -90,11 +90,11 @@ At f = 0.25 and f = 0.75 the direction is the same. At f = 0.75, B and C select 
   - Propensity: median 1.0, minimum 0.0022.
   - ESS for a uniform target: 1.3.
   - Positivity fails in practice, so even the species dimension is not usable for off-policy evaluation.
-- **effort_decision**: shadow, so it acted on nothing and carries no counterfactual.
+- **effort controller**: shadow, so it acted on nothing and carries no counterfactual.
 
 ## Selection bias (M7)
 
-- **Never-run proposals.** Only 3 proposals created in the eval window never ran: all `build` kind, all
+- **Never-run proposals.** At most 3 proposals created in the eval window never ran (see Corrections): all `build` kind, all
   `needs_more_evidence`, priority SMD +0.29 against those that ran. In this lane the gate between proposal and run
   executes nearly everything. The budget is the lever, not task choice.
 - **Censoring of Y_merge.** Labels are 67 % NA (open PRs, reviewer and environment failures) and the missingness is
@@ -115,6 +115,16 @@ At f = 0.25 and f = 0.75 the direction is the same. At f = 0.75, B and C select 
 - **Exploratory additions** (labelled as such, not used for the verdict):
   - the random-order A comparator;
   - per-cell and per-half counts.
+
+## Corrections after review (not re-run)
+
+The snapshot was deleted after the single run, so these were fixed in code and not re-measured.
+
+- **M7(c) never-run count.** The extractor marked a proposal as executed only when its run passed the population
+  filters (has a maker, terminal, not a PR review). A proposal whose only run was excluded was then counted as never
+  run. The fixed extractor records every run's proposal first. The 3 above is therefore an upper bound.
+- **M2 first-time targets executed.** `m2_first_pairs_executed` counted runs, not distinct (lane, target) pairs. It
+  now counts distinct pairs. This field is not in the tables above; the per-run M2 success count is unaffected.
 
 ## Next measurement (not built)
 

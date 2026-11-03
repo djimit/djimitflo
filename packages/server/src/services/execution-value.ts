@@ -104,7 +104,7 @@ export function policyC(ps: EvPrediction[], costOf: (id: string) => number, budg
 }
 
 /** Evaluation-only facts about a run (never passed to fit/predict/rank). */
-export interface EvOutcome { id: string; y: 0 | 1 | null; cost: number; cost_imputed: boolean; latency_h: number | null; merged: boolean; regressed: boolean; first_pair: boolean; arms: string[] }
+export interface EvOutcome { id: string; y: 0 | 1 | null; cost: number; cost_imputed: boolean; latency_h: number | null; merged: boolean; regressed: boolean; first_pair: boolean; pair: string; arms: string[] }
 export interface PolicyMetrics {
   selected: number; spent_m: number; successes: number; failures: number; na: number;
   m1_success_per_m: number | null; m2_new_capability_successes: number; m2_first_pairs_executed: number; m2_first_cells_executed: number;
@@ -134,7 +134,7 @@ export function metrics(ids: string[], ps: EvPrediction[], outcomes: Map<string,
     selected: ids.length, spent_m: r4(spent) ?? 0, successes: succ.length, failures: fail.length, na: na.length,
     m1_success_per_m: spent > 0 ? r4(succ.length / spent) : null,
     m2_new_capability_successes: succ.filter((o) => o.first_pair).length,
-    m2_first_pairs_executed: sel.filter((o) => o.first_pair).length,
+    m2_first_pairs_executed: new Set(sel.filter((o) => o.first_pair).map((o) => o.pair)).size,
     m2_first_cells_executed: new Set(ids.map(cellOf).filter((c) => !fitCells.has(c))).size,
     m3_difficult_count_share: difficultIds.size ? r4(diffSel.length / difficultIds.size) : null,
     m3_difficult_cost_share: diffCostAll > 0 ? r4(diffSel.reduce((a, id) => a + outcomes.get(id)!.cost, 0) / diffCostAll) : null,

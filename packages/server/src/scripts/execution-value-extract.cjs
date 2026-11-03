@@ -25,6 +25,7 @@ const tokensOf = (m) => { const t = Number(m?.runtime_usage?.total_tokens); retu
 const out = { snapshot_at: new Date().toISOString(), runs: [], unexecuted_proposals: [], excluded: { not_terminal: 0, no_maker: 0, pr_review: 0 } };
 const executed = new Set();
 for (const r of runs) {
+  executed.add(r.improvement_id); // it ran, even if the run is excluded from the replay population below (M7c)
   const gates = parse(r.gates_json);
   const prReview = Array.isArray(gates) && gates.some((g) => /pull-request review/i.test(String(g?.evidence ?? '')));
   const leases = leaseQ.all(r.id).map((l) => {
@@ -38,7 +39,6 @@ for (const r of runs) {
   if (!leases.some((l) => l.role === 'maker')) { out.excluded.no_maker++; continue; }
   if (prReview) { out.excluded.pr_review++; continue; }
   if (!TERMINAL.includes(r.status)) { out.excluded.not_terminal++; continue; }
-  executed.add(r.improvement_id);
   const meta = parse(r.metadata); const gm = parse(r.goal_meta); const p = propQ.get(r.improvement_id) || {};
   const refs = parse(p.evidence_refs_json); const grounding = parse(p.grounding_json); const findings = parse(r.findings_json);
   const events = evQ.all(r.id).map((e) => ({ type: e.event_type, message: e.message, meta: parse(e.metadata) }));
