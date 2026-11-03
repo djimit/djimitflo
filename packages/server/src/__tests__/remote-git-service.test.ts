@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-describe("RemoteGitService", () => {
+// These tests clone octocat/Hello-World over the network; a slow GitHub moment failed unrelated PRs (CI 2026-11-03 20:11).
+describe("RemoteGitService", { retry: 2, timeout: 120_000 }, () => {
   let cacheRoot: string;
   let service: RemoteGitService;
 
