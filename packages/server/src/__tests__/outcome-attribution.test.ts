@@ -10,7 +10,7 @@ import { UserRole } from '@djimitflo/shared';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
-import { attributeOutcome, attributionSummary, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
+import { attributeOutcome, attributionSummary, creditedContributors, leaseRanOn, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
 import { chooseSpecies } from '../services/runtime-bandit';
 import { fitnessPosterior } from '../services/fitness-view';
 import { assignmentContext } from '../services/assignment-context';
@@ -235,5 +235,23 @@ describe('recording and credit', () => {
     expect(res.body.credited_runs).toBe(1);
     expect(res.body.top_contributors).toContainEqual({ kind: 'maker', ref: 'opencode@ollama/kimi-k2.6:cloud', credits: 1 });
     authDb.close();
+  });
+});
+
+describe('P0-7: credit goes to the runtime that ran (engine fallback), not the one requested', () => {
+  it('leaseRanOn: effective_runtime wins only when it differs; its model is effective_model (unknown = null)', () => {
+    expect(leaseRanOn('opencode', { model: 'm1' })).toEqual({ runtime: 'opencode', model: 'm1' });
+    expect(leaseRanOn('opencode', { model: 'm1', effective_runtime: 'opencode', effective_model: null })).toEqual({ runtime: 'opencode', model: 'm1' });
+    expect(leaseRanOn('opencode', { model: 'm1', effective_runtime: 'claude', effective_model: null })).toEqual({ runtime: 'claude', model: null });
+  });
+  it('creditedContributors names the effective maker and reviewer runtime', () => {
+    const db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db);
+    const lease = db.prepare('INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES (?, ?, ?, ?, ?, ?)');
+    lease.run('m-fb', 'r-fb', 'maker', 'opencode', 'completed', JSON.stringify({ model: 'ollama/x', requested_runtime: 'opencode', effective_runtime: 'claude', effective_model: null }));
+    lease.run('c-fb', 'r-fb', 'checker', 'codex', 'completed', JSON.stringify({ verdict: 'accepted', maker_lease_id: 'm-fb', effective_runtime: 'claude', effective_model: null }));
+    const refs = creditedContributors(db, 'r-fb', 'm-fb');
+    expect(refs).toEqual(expect.arrayContaining([{ kind: 'maker', ref: 'claude' }, { kind: 'reviewer', ref: 'checker:claude' }]));
+    expect(refs.some((r) => r.kind === 'model' || r.ref.includes('opencode') || r.ref.includes('codex'))).toBe(false);
+    db.close();
   });
 });

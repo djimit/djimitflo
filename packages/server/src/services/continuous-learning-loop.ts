@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { realRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { MemoryCurator } from './memory-curator';
 import { ReflectionEngine } from './reflection-engine';
@@ -104,9 +105,14 @@ export class ContinuousLearningLoop {
     const dreamTasksPlanned = legacyDream ? this.dreamTasks.exportPending() : 0;
     const socialization = this.communication.socialize();
     // Empty commons: cast an autonomous lure (invites + Paperclip task, no tokens) at most once per lure lifetime.
-    const lureCast = socialization.reason === 'insufficient_agents'
-      ? this.lure.castIfQuiet({ by: 'continuous-learning-loop', baseUrl: process.env.DJIMITFLO_PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3001}` })
-      : null;
+    // Operator 2026-10-21: off by default (33 cast, 0 probes / 0 joins ever); AUTONOMOUS_LURES_ENABLED=true restores it.
+    // Expiries are still swept every cycle so open lures close and are recorded.
+    let lureCast: ReturnType<AgentLureService['castIfQuiet']> = null;
+    if (socialization.reason === 'insufficient_agents' && process.env.AUTONOMOUS_LURES_ENABLED === 'true') {
+      lureCast = this.lure.castIfQuiet({ by: 'continuous-learning-loop', baseUrl: process.env.DJIMITFLO_PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3001}` });
+    } else {
+      this.lure.sweepExpired();
+    }
     const result: LearningCycleResult = {
       id,
       timestamp: new Date().toISOString(),
@@ -173,6 +179,8 @@ export class ContinuousLearningLoop {
       SELECT lr.id, lr.loop_name, lr.status, lr.created_at
       FROM loop_runs lr
       WHERE lr.status = 'completed'
+        -- a synthetic PR-review run (its maker is the PR's own commits) teaches the loop nothing
+        AND ${realRunSql('lr')}
         AND EXISTS (
           SELECT 1 FROM worker_leases wl
           WHERE wl.loop_run_id = lr.id AND wl.role = 'maker' AND wl.status = 'completed'

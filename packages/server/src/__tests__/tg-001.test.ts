@@ -26,10 +26,12 @@ function seedTask(i: number, lane: 'test-gap' | 'exports' = 'exports'): FailureT
 }
 
 beforeEach(() => {
+  // Keep the seeded engineering rule inside its freshness window on every calendar date.
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(NOW));
   db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db);
   vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'true'); vi.stubEnv('LOOP_DAEMON_REPOSITORY_PATH', '/repo-that-does-not-exist');
 });
-afterEach(() => { vi.unstubAllEnvs(); db.close(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); db.close(); });
 
 it('TG-001 arm A is exactly the worker\'s gym goal; arms B/C/D differ as specified and B is the production assignment', async () => {
   const workerPath = path.resolve(__dirname, '../../../../scripts/gym-worker.mjs');

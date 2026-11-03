@@ -3,11 +3,11 @@
  * streams best-effort execution events.
  *
  * CLI contract (headless, verified against the installed binary):
- *   claude -p "<prompt>" --output-format json [--dangerously-skip-permissions] [--model <m>]
+ *   claude -p "<prompt>" --output-format json [--dangerously-skip-permissions | --permission-mode acceptEdits (subscription maker)] [--model <m>]
  *
  * The worktree is inherited as cwd via spawn (no --cd flag). MVP parsing: each
  * stdout line is attempted as JSON (emitted as a LOG carrying the parsed shape)
- * and otherwise heuristic-parsed; the final result is decided by exit code.
+ * and otherwise heuristic-parsed; explicit provider failures override exit code 0.
  * Native Claude streaming-event schema mapping (tool-call traces) is deferred —
  * this mirrors how CodexExecutor falls back to heuristics for non-JSON output.
  */
@@ -15,10 +15,11 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { isSubscriptionRun } from './subscription-env';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 import { structuredRuntimeEvent } from './structured-runtime-event';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { captureExecutorOutput } from '../executor-output';
 
@@ -61,15 +62,15 @@ export class ClaudeExecutor implements TaskExecutor {
     let resolveClosed!: () => void;
     const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
 
-    const skipPerms = options?.skipPermissions ?? this.skipPermissions;
+    const skipPerms = !isSubscriptionRun(options, 'claude') && (options?.skipPermissions ?? this.skipPermissions);
 
     const spawnProcess = () => {
       if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
-      const env = buildExecutorEnv(options?.environment);
+      const env = buildExecutorEnv(options?.environment, 'claude');
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
-      const child = spawn(this.claudePath, args, {
+      const child = spawnRuntime(this.claudePath, args, {
         cwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -91,7 +92,8 @@ export class ClaudeExecutor implements TaskExecutor {
         emitter.emit('output', data.toString(), 'stderr');
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
+        session.exit = { code, signal };
         clearTimeout(timeoutHandle);
         emitter.emit('exit', code);
       });
@@ -101,8 +103,8 @@ export class ClaudeExecutor implements TaskExecutor {
       });
     };
 
-    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
     const result = this.createResultPromise(task, emitter);
+    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms, result);
 
     const session: ExecutionSession = {
       id: sessionId,
@@ -138,8 +140,10 @@ export class ClaudeExecutor implements TaskExecutor {
       args.push('--output-format', 'json');
     }
 
-    const skipPerms = options?.skipPermissions ?? this.skipPermissions;
-    if (skipPerms) {
+    // SUBSCRIPTION_GYM_SPECIES maker: file edits in cwd only (no shell, no blanket bypass) — never the skip flag.
+    if (isSubscriptionRun(options, 'claude')) {
+      args.push('--permission-mode', 'acceptEdits');
+    } else if (options?.skipPermissions ?? this.skipPermissions) {
       args.push('--dangerously-skip-permissions');
     }
 
@@ -211,6 +215,7 @@ export class ClaudeExecutor implements TaskExecutor {
     emitter: EventEmitter,
     spawnProcess: () => void,
     skipPerms: boolean,
+    result: Promise<ExecutionResult>,
   ): AsyncIterable<ExecutionEventCreateInput> {
     spawnProcess();
 
@@ -303,11 +308,12 @@ export class ClaudeExecutor implements TaskExecutor {
       yield this.lineToExecutionEvent(task.id, buffer, 'stdout');
     }
 
-    if (exitCode === 0) {
+    const outcome = await result;
+    if (outcome.status === 'completed') {
       yield {
         task_id: task.id,
         event_type: ExecutionEventType.TASK_COMPLETED,
-        message: 'Claude execution completed successfully',
+        message: outcome.message,
         level: LogLevel.INFO,
         metadata: { executor: 'claude', exit_code: exitCode },
       };
@@ -315,11 +321,31 @@ export class ClaudeExecutor implements TaskExecutor {
       yield {
         task_id: task.id,
         event_type: ExecutionEventType.TASK_FAILED,
-        message: `Claude execution failed with exit code ${exitCode}`,
+        message: outcome.message,
         level: LogLevel.ERROR,
         metadata: { executor: 'claude', exit_code: exitCode },
       };
     }
+  }
+
+  // Inspect stdout only: stderr diagnostics and model text are not result envelopes.
+  private providerFailure(stdout: string): string | undefined {
+    const parse = (text: string): unknown => {
+      try { return JSON.parse(text); } catch { return undefined; }
+    };
+    const document = parse(stdout);
+    const records = document === undefined ? stdout.split('\n').map(parse) : [document];
+    for (const record of records) {
+      if (!record || typeof record !== 'object' || !('type' in record) || record.type !== 'result') continue;
+      if ('permission_denials' in record && Array.isArray(record.permission_denials) && record.permission_denials.length > 0) {
+        return 'Claude tool permission denied; execution is not complete';
+      }
+      if (('is_error' in record && record.is_error === true)
+        || ('subtype' in record && typeof record.subtype === 'string' && record.subtype.startsWith('error_'))) {
+        return 'Claude reported an unsuccessful provider result';
+      }
+    }
+    return undefined;
   }
 
   // ── Result promise ─────────────────────────────────────────────────────────
@@ -328,11 +354,20 @@ export class ClaudeExecutor implements TaskExecutor {
     _task: Task,
     emitter: EventEmitter,
   ): Promise<ExecutionResult> {
-    const output = captureExecutorOutput(emitter);
+    const maxOutputChars = 5 * 1024 * 1024;
+    const output = captureExecutorOutput(emitter, maxOutputChars);
+    let stdoutChars = 0;
+    emitter.on('output', (text: string, stream: 'stdout' | 'stderr') => {
+      if (stream === 'stdout') stdoutChars = Math.min(maxOutputChars + 1, stdoutChars + text.length);
+    });
     return new Promise((resolveResult) => {
       const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
-      emitter.on('exit', (code: number) => {
-        if (code === 0) {
+      emitter.on('exit', (code: number | null) => {
+        // A truncated JSON envelope cannot establish provider success.
+        const providerFailure = stdoutChars > maxOutputChars
+          ? 'Claude output exceeded verification limit; provider result is unknown'
+          : this.providerFailure(output().stdout);
+        if (code === 0 && !providerFailure) {
           resolve({
             status: 'completed',
             message: 'Claude execution completed successfully',
@@ -341,8 +376,8 @@ export class ClaudeExecutor implements TaskExecutor {
         } else {
           resolve({
             status: 'failed',
-            message: `Claude execution failed with exit code ${code}`,
-            error: `Process exited with code ${code}`,
+            message: providerFailure ?? `Claude execution failed with exit code ${code}`,
+            error: providerFailure ?? `Process exited with code ${code}`,
             metrics: { executionTimeMs: 0 },
           });
         }

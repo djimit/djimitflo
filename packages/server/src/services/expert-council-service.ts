@@ -16,10 +16,12 @@ import { ExpertResolverService, type ResolveOptions, type ResolvedExpert } from 
 import { buildPerspectivePrompt, validatePerspectiveOutput, type PerspectiveOutput } from './expert-perspective-builder';
 import { procedureForCapability } from './frontier-expert-skills';
 import { quoteUntrusted } from './expert-perspective-builder';
+import { filterForPrompt } from './content-safety';
 import { AuditService } from './audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 import { normalizeName } from './expert-evidence-enrichment-service';
 import { selectingRunner } from './model-selector';
+import { recordAbstentionGap } from './knowledge-gaps';
 
 /** purpose: the caller's identity on the model-call ledger row (default 'frontier_experts:<role>'). */
 export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string, purpose?: string) => Promise<unknown>;
@@ -140,6 +142,7 @@ export class ExpertCouncilService {
 
   async convene(question: string, selection: ResolveOptions = {}, options: { maxParallel?: number; adversarial?: boolean; language?: 'en' | 'nl' } = {}): Promise<CouncilResult> {
     const resolution = this.resolver.resolve(question, selection);
+    recordAbstentionGap(this.db, resolution); // K2: KNOWLEDGE_GAP_MODE=shadow, never throws
     const empty = (reason: string): CouncilResult => ({ abstained: true, reason, resolution, perspectives: [], claims: [], relations: [], agreements: [], disagreements: [], uncertainties: [], adversarial: null, unsupported_attribution_count: 0, rejected_perspectives: [] });
     if (resolution.abstained) return empty(resolution.reason ?? 'no_experts');
     if (!this.modelRunnerResolved) {
@@ -201,8 +204,13 @@ export class ExpertCouncilService {
         return [{ ...item, excerpt: this.excerpt(row.metadata_json) ?? '', authors: authors.filter((author) => normalizeName(author) === normalizeName(name)), author_list_scope: 'matching subject only', total_authors: authors.length }];
       }),
     }));
-    const capabilities = dossier(expertId);
-    const reviewerCapabilities = dossier(reviewerId);
+    // B19: dossier titles and excerpts are untrusted; under CONTENT_SAFETY_MODE=enforce items without a 'safe' verdict are left out
+    const gated = async (items: ReturnType<typeof dossier>) => {
+      for (const item of items) item.evidence = await filterForPrompt(this.db, item.evidence, (evidence) => ({ type: 'expert_evidence', id: evidence.id }), (evidence) => `${evidence.title}\n${evidence.excerpt}`);
+      return items;
+    };
+    const capabilities = await gated(dossier(expertId));
+    const reviewerCapabilities = await gated(dossier(reviewerId));
     if (!capabilities.length || !reviewerCapabilities.some((item) => item.evidence.length)) throw new Error('EXPERT_REVIEW_EVIDENCE_REQUIRED');
     const model = this.runner ? { runner: this.runner, label: this.runtimeLabel } : await createModelPerspectiveRunner(process.env, this.db);
     if (!model) throw new Error('FRONTIER_EXPERTS_RUNTIME_NOT_CONFIGURED');
@@ -234,7 +242,9 @@ export class ExpertCouncilService {
   }
 
   private async perspective(question: string, expert: ResolvedExpert, language?: 'en' | 'nl'): Promise<CouncilPerspective | null> {
-    const evidence = this.db.prepare("SELECT id, kind, tier, title, url, metadata_json FROM expert_evidence WHERE expert_id = ? AND lifecycle = 'active' AND kind NOT IN ('signature', 'secondary', 'other') ORDER BY tier, created_at LIMIT 12").all(expert.expert_id) as Array<{ id: string; kind: string; tier: number; title: string; url: string | null; metadata_json: string }>;
+    const rows = this.db.prepare("SELECT id, kind, tier, title, url, metadata_json FROM expert_evidence WHERE expert_id = ? AND lifecycle = 'active' AND kind NOT IN ('signature', 'secondary', 'other') ORDER BY tier, created_at LIMIT 12").all(expert.expert_id) as Array<{ id: string; kind: string; tier: number; title: string; url: string | null; metadata_json: string }>;
+    // B19: titles and abstracts are untrusted; under CONTENT_SAFETY_MODE=enforce only items with a 'safe' verdict are quoted
+    const evidence = await filterForPrompt(this.db, rows, (item) => ({ type: 'expert_evidence', id: item.id }), (item) => `${item.title}\n${this.excerpt(item.metadata_json) ?? ''}`);
     const prompt = buildPerspectivePrompt({
       expert: { id: expert.expert_id, canonical_name: expert.canonical_name, capabilities: expert.capabilities.map((capability) => capability.id) },
       question, language,

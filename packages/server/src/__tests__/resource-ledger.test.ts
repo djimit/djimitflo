@@ -150,7 +150,23 @@ it('E3: GET /api/health/efficiency requires read:evidence and returns consumers,
   expect(res.status).toBe(200);
   expect(res.body).toMatchObject({ window_days: 7, ledger_enabled: false, consumers: expect.any(Array), ledger: expect.any(Array), hosts: [], notes: expect.any(Array) });
   expect(res.body.north_star.weeks).toHaveLength(8);
-  expect(res.body.north_star.weeks[0]).toMatchObject({ local_kwh: null, per_kwh: null });
+  expect(res.body.north_star.weeks[0]).toMatchObject({ local_kwh: null, per_kwh: null, metric_version: 2 });
+  expect(res.body.cost_per_verified).toMatchObject({ window: { days: 7 }, scopes: expect.any(Array), operational_savings: { verified: [] } });
+  const month = await request(app).get('/api/health/efficiency?days=30').set('Authorization', `Bearer ${viewer}`);
+  expect(month.body).toMatchObject({ window_days: 30, cost_per_verified: { window: { days: 30 } } });
+  expect((await request(app).get('/api/health/efficiency?days=9999').set('Authorization', `Bearer ${viewer}`)).body.window_days).toBe(7);
+});
+
+it('BUG 10-12: a maker run counts its tokens once — the llm_model_calls maker row mirrors the lease (v1 double count kept as superseded)', () => {
+  db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at) VALUES ('r1', 'test-gap', 'closed', 'completed', '{}', ?, ?)").run(iso(2 * H), iso(2 * H));
+  db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('l1', 'r1', 'maker', 'opencode', 'completed', ?, ?, ?)")
+    .run(JSON.stringify({ model: 'glm-5.2', runtime_usage: { prompt_tokens: 100_000, completion_tokens: 20_000, total_tokens: 3_000_000, usage_source: 'runtime_stdout' } }), iso(2 * H), iso(2 * H));
+  // what loop-daemon's recordMakerCall writes when the run settles (B29): the same lease tokens, consumer 'maker'
+  db.prepare("INSERT INTO llm_model_calls (consumer, model, ok, provider, tokens_in, tokens_out, run_id, created_at) VALUES ('maker', 'glm-5.2', 1, 'opencode', 3000000, NULL, 'r1', ?)").run(iso(H));
+  const v = efficiencyView(db, NOW, {});
+  expect(v.consumers.reduce((sum, c) => sum + c.cloud_tokens, 0)).toBe(3_000_000); // was 6 000 000
+  expect(v.consumers.find((c) => c.consumer === 'llm:maker')).toBeUndefined();
+  expect(v.north_star.weeks[0]).toMatchObject({ cloud_m_tokens: 3, metric_version: 2, superseded: { metric_version: 1, cloud_m_tokens: 6, correction: 'ACCOUNTING_CORRECTION' } });
 });
 
 it('CP3: overlapping jobs on one host share the measured Wh — the consumers never sum to more than the host', () => {

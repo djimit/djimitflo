@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { cosine } from './proposal-dedupe';
 import { wilson } from './evolution-estimators';
+import { notFallbackOutcomeSql } from './ollama-outage-fallback';
 
 /**
  * ACE-001 (operator 10-10, protocol docs/research/ace/ACE-001_PROTOCOL.md): a 2×2 factorial on real oracle-lane maker goals
@@ -20,6 +21,10 @@ import { wilson } from './evolution-estimators';
  */
 export const ace001On = (env: NodeJS.ProcessEnv = process.env): boolean => env.ACE_001_MODE === 'on';
 export const ACE_001_TARGET_PER_ARM = 50;
+/** Amendment 2 (2026-10-19): the readout runs at whatever n is reached by this date (experiment-registry stop_by) */
+export const ACE_001_STOP_BY = '2026-11-15T00:00:00.000Z';
+/** "No interim efficacy looks" (ACE-001_PROTOCOL.md, Analysis): the main-effect estimate is withheld until the readout */
+export const ACE_001_INTERIM_WITHHELD = 'withheld: no interim efficacy looks (docs/research/ace/ACE-001_PROTOCOL.md, Analysis) — the estimate is read once every arm reaches the target or at stop_by (Amendment 2)';
 export const ACE_ARMS = ['00', '01', '10', '11'] as const;
 export type AceArm = typeof ACE_ARMS[number];
 export interface AceContext { arm: AceArm; lane: AceLane; examples_source: 'recency' | 'similarity' | 'fallback_recency'; kb_paths: string[]; fallback: Array<'r' | 's'>;
@@ -80,54 +85,63 @@ export function similarExamples(db: Database, improvementId: string, lane: AceLa
   return hits.length ? hits.map((h) => `${h.r.artifact} — ${h.r.title}`) : null;
 }
 
-/** R=1: top-k KB pages by cosine to the goal's proposal (P1: a page whose body no longer matches its ingest sha is skipped). */
+/** R=1: top-k KB pages by cosine to the goal's proposal (P1: a page whose body no longer matches its ingest sha is skipped; so is a quarantined page). */
 export function similarKbPages(db: Database, improvementId: string, k = 3, min = 0.3): Array<{ path: string; title: string; body: string; score: number }> | null {
   const q = proposalVector(db, improvementId);
   if (!q) return null;
-  let rows: Array<{ path: string; title: string; body: string; sha: string; vector: Buffer }> = [];
-  try { rows = db.prepare('SELECT path, title, body, sha, vector FROM kb_pages').all() as typeof rows; } catch { return []; }
+  let rows: Array<{ path: string; title: string; body: string; sha: string; vector: Buffer; quarantined_at?: string | null }> = [];
+  // SELECT *: quarantined_at is added lazily by kb-corpus ingest; a table without it has no quarantined page
+  try { rows = db.prepare('SELECT * FROM kb_pages').all() as typeof rows; } catch { return []; }
   // ponytail: full scan (~1.3k pages × 2048 dims per maker assignment, a few ms); move to Qdrant when the corpus passes ~20k pages
-  return rows.filter((r) => createHash('sha256').update(r.body).digest('hex') === r.sha)
+  return rows.filter((r) => !r.quarantined_at && createHash('sha256').update(r.body).digest('hex') === r.sha)
     .map((r) => ({ r, v: vec(r.vector) })).filter((x) => x.v.length === q.length)
     .map((x) => ({ path: x.r.path, title: x.r.title, body: x.r.body, score: cosine(q, x.v) }))
     .filter((h) => h.score >= min).sort((a, b) => b.score - a.score).slice(0, k);
 }
 
-/** Per-arm evidence (production maker outcomes carrying `ace-001-arm:<RS>`): n, verified, graded mean, tokens, Wilson 95 %. */
-export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.ProcessEnv = process.env) {
+/**
+ * Per-arm evidence (production maker outcomes carrying `ace-001-arm:<RS>`): n, verified, graded mean, tokens, Wilson 95 %.
+ * Amendment 3 (2026-10-27, L-F05): tokens_mean averages runs with known tokens (> 0) only and tokens_n reports how many;
+ * a run without a usage report is not a 0-token run. Secondary reading only: n, verified and the arm assignment are unchanged.
+ */
+export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
   const analysisSince = aceAnalysisSince(env);
   const since = windowSince > analysisSince ? windowSince : analysisSince;
-  let rows: Array<{ arm: string; success: number; tokens: number; graded: number | null }> = [];
+  let rows: Array<{ arm: string; success: number; tokens: number | null; graded: number | null }> = [];
   let deliveryInvalid = 0;
   try {
     deliveryInvalid = (db.prepare(`SELECT COUNT(*) AS n FROM skill_outcomes o, json_each(o.evidence_refs_json) r
-      WHERE r.value LIKE 'ace-001-arm:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at < ?`).get(analysisSince) as { n: number }).n;
+      WHERE r.value LIKE 'ace-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at < ?`).get(analysisSince) as { n: number }).n;
   } catch { /* skill_outcomes absent */ }
   try {
     rows = db.prepare(`SELECT substr(r.value, 13) AS arm, o.success, o.tokens_used AS tokens,
         (SELECT CAST(substr(g.value, 8) AS REAL) FROM json_each(o.evidence_refs_json) g WHERE g.value LIKE 'graded:%' LIMIT 1) AS graded
       FROM skill_outcomes o, json_each(o.evidence_refs_json) r
-      WHERE r.value LIKE 'ace-001-arm:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at >= ?`).all(since) as typeof rows;
+      WHERE r.value LIKE 'ace-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND ${notFallbackOutcomeSql('o')} AND o.created_at >= ?`).all(since) as typeof rows;
   } catch { /* skill_outcomes absent */ }
   const arms = Object.fromEntries(ACE_ARMS.map((a) => {
     const r = rows.filter((x) => x.arm === a); const v = r.filter((x) => x.success).length;
     const g = r.map((x) => x.graded).filter((x): x is number => x !== null && Number.isFinite(x));
+    const t = r.map((x) => x.tokens).filter((x): x is number => typeof x === 'number' && x > 0);
     return [a, { n: r.length, verified: v, verified_rate: r.length ? +(v / r.length).toFixed(3) : null, ci: r.length ? wilson(v, r.length) : null,
       graded_n: g.length, graded_mean: g.length ? +(g.reduce((s, x) => s + x, 0) / g.length).toFixed(3) : null,
-      tokens_mean: r.length ? Math.round(r.reduce((s, x) => s + (x.tokens || 0), 0) / r.length) : null }];
-  })) as Record<AceArm, { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_mean: number | null }>;
+      tokens_n: t.length, tokens_mean: t.length ? Math.round(t.reduce((s, x) => s + x, 0) / t.length) : null }];
+  })) as Record<AceArm, { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_n: number; tokens_mean: number | null }>;
   const reached = ACE_ARMS.every((a) => arms[a].n >= ACE_001_TARGET_PER_ARM);
+  // re-20261030 B §3: before the readout no effect estimate is published (counts per arm only), with the reason
+  const readout = reached || now >= Date.parse(ACE_001_STOP_BY);
   const main = (pick: (a: AceArm) => boolean) => {
     const on = ACE_ARMS.filter(pick); const off = ACE_ARMS.filter((a) => !pick(a));
     const sum = (as: readonly AceArm[], f: 'n' | 'verified') => as.reduce((s, a) => s + arms[a][f], 0);
     const pOn = sum(on, 'n') ? sum(on, 'verified') / sum(on, 'n') : null; const pOff = sum(off, 'n') ? sum(off, 'verified') / sum(off, 'n') : null;
-    return { on_n: sum(on, 'n'), off_n: sum(off, 'n'), diff: pOn !== null && pOff !== null ? +(pOn - pOff).toFixed(3) : null };
+    return { on_n: sum(on, 'n'), off_n: sum(off, 'n'), diff: readout && pOn !== null && pOff !== null ? +(pOn - pOff).toFixed(3) : null,
+      withheld: readout ? null : ACE_001_INTERIM_WITHHELD };
   };
   return { mode: env.ACE_001_MODE ?? null, target_per_arm: ACE_001_TARGET_PER_ARM, analysis_since: analysisSince, delivery_invalid: deliveryInvalid,
     delivery: aceDelivery(db, since), arms,
     main_effects: { retrieval: main((a) => a[0] === '1'), examples: main((a) => a[1] === '1') },
     status: reached ? 'analysable' as const : 'collecting' as const,
-    note: 'Production maker outcomes of oracle-lane goals by ACE-001 arm (R = KB retrieval, S = similarity examples), from analysis_since (Amendment 1); delivery_invalid = earlier outcomes, kept but excluded. Interim diffs are descriptive only; the pre-registered analysis (docs/research/ace/ACE-001_PROTOCOL.md) runs once every arm reaches the target.' };
+    note: 'Production maker outcomes of oracle-lane goals by ACE-001 arm (R = KB retrieval, S = similarity examples), from analysis_since (Amendment 1); delivery_invalid = earlier outcomes, kept but excluded. No interim efficacy looks: main-effect diffs are null (withheld) until every arm reaches the target or stop_by; the pre-registered analysis (docs/research/ace/ACE-001_PROTOCOL.md) runs then.' };
 }
 
 /**
