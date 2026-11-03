@@ -290,6 +290,33 @@
         "leaked system prompt"
       ],
       "reopen_condition": "A pre-registered experiment on a verified Djimitflo gap whose intervention is written in Djimitflo's own words and uses no leaked prompt text, with a frozen holdout. Permits a new evaluation, not ingestion of the collection."
+    },
+    {
+      "id": "NE-016",
+      "title": "Static procedure lines appended to a gym maker prompt (ts-build-error-repair-v1, PL-001)",
+      "hypothesis": "For atomic@llama-router on gym repair tasks the procedure applies to, appending the five static lines of procedure ts-build-error-repair-v1 to the gym goal raises the share of tasks with a gated verified success (H-PL1).",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-30",
+      "conditions": "Pre-registered paired experiment PL-001 in production, gym-only (loop_name pl-001). Species atomic@llama-router with the production gym oracle (prod_gates). New frozen task set of 75 TypeScript repair tasks in packages/server/src/services, disjoint from every holdout, trial and earlier gym key. Manifest frozen 2026-10-27T00:14:54Z. Arm A was the gym goal alone; arm B was the same goal plus the 5 procedure lines (lines_sha256 6dddbba1...), with a fire check on both arms.",
+      "result": "PL-001 verdict NOT_SUPPORTED at 60 completed pairs. Both verified 23, only A 5, only B 1, neither 31: A 28/60 vs B 24/60. Exact one-sided McNemar (B better than A): 6 discordant pairs, B wins 1, p = 63/64 (about 0.98). Accounting: 10 attempts INVALID (task discard per protocol), 20 never needed, 120 counted in the pairs. The lifecycle set the procedure genome to retired at 2026-10-30T23:13:16Z.",
+      "why": "The lines were delivered (the fire check makes a counted B attempt carry all 5 lines) and still produced no gain. The point estimate points against them (1 win vs 5 losses). The protocol was powered for about +20 points, and the observed effect is about -7 points.",
+      "evidence": [
+        "docs/research/procedure-loop/PL-001_PROTOCOL.md (PREREG_SHA256 fa136ae5946574f749bce23a190acc7632e5a6135f4d4577e311e9ea0dfb616c)",
+        "docs/research/procedure-loop/PL-001_RESULT.md",
+        "manifest sha256 1621c055... (frozen 2026-10-27T00:14:54Z)",
+        "maker_genomes procedure ts-build-error-repair-v1: status retired 2026-10-30T23:13:16Z; negative_evidence_draft judgment (amendment 9)"
+      ],
+      "allowed_follow_up": "The procedure registry, the task-fit selector in shadow and the PL-001 runner remain valid experiment infrastructure. A different or revised procedure, a different delivery form or another maker species may be tested under its own pre-registration on a fresh task set. PL-001 says nothing about procedures in general (n = 60, one species, one procedure).",
+      "forbidden_reuse": [
+        "delivering ts-build-error-repair-v1 (lines_sha256 6dddbba1...) to gym or production makers, or a PROCEDURE_SELECTOR_MODE on mode justified by PL-001",
+        "re-running PL-001 or tuning a procedure on the PL-001 manifest tasks and counting it as fresh evidence",
+        "citing PL-001 as evidence that procedures never help"
+      ],
+      "forbidden_code_patterns": [],
+      "match_terms": [
+        "ts-build-error-repair-v1"
+      ],
+      "reopen_condition": "A new pre-registered procedure (new lines and digest) and arm, evaluated on a fresh frozen task set disjoint from the PL-001 manifest, with its own frozen decision rule reaching SUPPORTED. This reopens procedure delivery for that procedure only; ts-build-error-repair-v1 stays retired."
     }
   ]
 }

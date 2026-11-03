@@ -45,8 +45,8 @@ export const autoMergeRecheckHours = (env: NodeJS.ProcessEnv = process.env): num
 /**
  * U2 (B-intelligence 10-29: 24/24 merges of the last 7 d were auto-merges on a label that cannot fail; 31/66 verified exports
  * tests kill < 20 % of seeded mutants): test-only eligibility additionally needs a value signal from the maker lease — the
- * fail-before-pass-after shadow verdict 'pass' (FBPA_CHECK in deterministic_checks) OR a graded mutant kill share
- * (metadata.graded kind mutant_kill, test-gap / exports lanes) >= VALUE_KILL_SHARE_MIN. 'low' = a signal exists and says no
+ * fail-before-pass-after shadow verdict 'pass' against the parent source (FBPA_CHECK in deterministic_checks) OR a graded share
+ * (metadata.graded kind mutant_kill on test-gap / exports, mutation_score on mutation) >= VALUE_KILL_SHARE_MIN. 'low' = a signal exists and says no
  * (FBPA fail, kill share below); 'missing' = neither was measured — unknown is never a pass.
  * LOOP_AUTO_MERGE_VALUE_GATE = off (default: not read) | shadow (the decision carries would_block_value, unchanged) | on
  * (ineligible: value_signal_missing / value_signal_low — not re-checked while on: the signals are written before the PR; after a
@@ -57,16 +57,37 @@ export const autoMergeValueGate = (env: NodeJS.ProcessEnv = process.env): ValueG
   const v = String(env.LOOP_AUTO_MERGE_VALUE_GATE ?? '').trim().toLowerCase();
   return v === 'shadow' || v === 'on' ? v : 'off';
 };
+/**
+ * LOOP_AUTO_MERGE_VALUE_GATE_LANES (operator 30-10: exports first — 70 % of exports PRs kill < 0.2 fresh mutants): a comma list
+ * of oracle lanes (gym-failure-tasks oracleLane, the settlement lanes: exports | test-gap | mutation | other). With the gate on,
+ * only PRs of a listed lane are blocked; every other lane is evaluated like shadow (would_block_value). Unset / empty = all lanes.
+ */
+export const autoMergeValueGateLanes = (env: NodeJS.ProcessEnv = process.env): string[] | null => {
+  const lanes = String(env.LOOP_AUTO_MERGE_VALUE_GATE_LANES ?? '').split(',').map((l) => l.trim().toLowerCase()).filter(Boolean);
+  return lanes.length ? lanes : null;
+};
+/** Whether the value gate acts (blocks) on a PR of this lane: on, and the lane is listed (or no list is set). */
+export const valueGateActsOn = (mode: ValueGateMode, lanes: string[] | null, lane: string): boolean => mode === 'on' && (!lanes || lanes.includes(lane));
 export const VALUE_KILL_SHARE_MIN = 0.2;
+/** C4 (re-20261030): the one-off replay of the value gate on past auto-merges (auto-merge-value-replay.ts), shadow evidence only */
+export const VALUE_GATE_REPLAY_JUDGMENT = 'auto_merge_value_gate_replay';
 /** The value gate's own ineligible reasons: final while the gate is on, re-evaluated once it is off or shadow (rollback). */
 export const VALUE_GATE_REASONS = ['value_signal_missing', 'value_signal_low'] as const;
 const FBPA_CHECK_NAME = 'test:fail-before-pass-after'; // fail-before-pass-after.ts FBPA_CHECK (not imported: that module spawns test runs)
+/**
+ * re-20261030 (B §2): the graded share is the mutant kill share (test-gap / exports) or, on the mutation lane, the Stryker
+ * mutation_score (after / 100) — both >= VALUE_KILL_SHARE_MIN. FBPA counts only when its fail-before ran against the parent
+ * source: with before 'seeded_mutant' (test-only lanes) it reads the same graded seeded mutants (fail-before-pass-after.ts:145-149,
+ * `failBefore = graded.killed > 0`, no second run; else one kill of the same targetMutants), so it is that signal again with
+ * a threshold of one mutant, not an independent one.
+ */
 export function autoMergeValueSignal(checks: unknown, graded: unknown): 'pass' | 'low' | 'missing' {
-  const fbpa = Array.isArray(checks) ? (checks as Array<{ name?: unknown; shadow_status?: unknown } | null>).find((c) => c?.name === FBPA_CHECK_NAME)?.shadow_status : undefined;
+  const rec = Array.isArray(checks) ? (checks as Array<{ name?: unknown; shadow_status?: unknown; before?: unknown } | null>).find((c) => c?.name === FBPA_CHECK_NAME) : undefined;
+  const fbpa = rec && rec.before !== 'seeded_mutant' ? rec.shadow_status : undefined;
   const g = graded && typeof graded === 'object' ? graded as { kind?: unknown; score?: unknown } : null;
-  const kill = g?.kind === 'mutant_kill' && typeof g.score === 'number' && Number.isFinite(g.score) ? g.score : null;
-  if (fbpa === 'pass' || (kill !== null && kill >= VALUE_KILL_SHARE_MIN)) return 'pass';
-  return fbpa === 'fail' || kill !== null ? 'low' : 'missing';
+  const share = (g?.kind === 'mutant_kill' || g?.kind === 'mutation_score') && typeof g.score === 'number' && Number.isFinite(g.score) ? g.score : null;
+  if (fbpa === 'pass' || (share !== null && share >= VALUE_KILL_SHARE_MIN)) return 'pass';
+  return fbpa === 'fail' || share !== null ? 'low' : 'missing';
 }
 
 /** At most this many re-checks per tick (each is a handful of GitHub calls). */
@@ -138,6 +159,9 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
       json_extract(metadata, '$.auto_merge.rechecked_at') AS rechecked_at, json_extract(metadata, '$.auto_merge.would_block_value') AS would_block
       FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') IS NOT NULL`).all() as typeof rows;
   } catch { /* loop_runs absent */ }
+  let replay: Array<{ decision: string; n: number }> = [];
+  try { replay = db.prepare('SELECT decision, COUNT(*) AS n FROM judgments WHERE judgment = ? GROUP BY decision').all(VALUE_GATE_REPLAY_JUDGMENT) as typeof replay; } catch { /* judgments absent */ }
+  const replayed = (d: string) => replay.find((r) => r.decision === d)?.n ?? 0;
   const d1 = new Date(now - 86_400_000).toISOString();
   const count = (decision: string) => rows.filter((r) => r.decision === decision).length;
   const reasons: Record<string, number> = {};
@@ -160,8 +184,10 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
     },
     ineligible_by_reason: reasons,
     // U2: what the value gate blocks (on: ineligible reasons) or would block (shadow: decisions carrying would_block_value)
-    value_gate: { mode: autoMergeValueGate(env), kill_share_min: VALUE_KILL_SHARE_MIN,
-      would_block: { value_signal_missing: rows.filter((r) => r.would_block === 'value_signal_missing').length, value_signal_low: rows.filter((r) => r.would_block === 'value_signal_low').length } },
+    value_gate: { mode: autoMergeValueGate(env), lanes: autoMergeValueGateLanes(env) ?? 'all', kill_share_min: VALUE_KILL_SHARE_MIN,
+      would_block: { value_signal_missing: rows.filter((r) => r.would_block === 'value_signal_missing').length, value_signal_low: rows.filter((r) => r.would_block === 'value_signal_low').length },
+      // C4: the operator-run replay of the rule on past auto-merges (shadow judgments, replay: true); n 0 = not run
+      replay: { n: replay.reduce((a, r) => a + r.n, 0), pass: replayed('pass'), low: replayed('low'), missing: replayed('missing') } },
     recheck: {
       enabled: autoMergeRecheck(env), window_hours: autoMergeRecheckHours(env), per_tick: RECHECK_PER_TICK,
       ineligible_by_class: { permanent: ineligible.length - transient, transient },

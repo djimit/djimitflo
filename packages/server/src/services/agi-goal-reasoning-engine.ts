@@ -19,6 +19,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { realRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 
 interface GoalHypothesis {
@@ -81,7 +82,7 @@ export class AgiGoalReasoningEngine {
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
         SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) as blocked
       FROM loop_runs
-      WHERE created_at > datetime('now', '-24 hours')
+      WHERE created_at > datetime('now', '-24 hours') AND ${realRunSql()}
     `).get() as any;
 
     observations.push(`Loop health: ${loopStats.running || 0} running, ${loopStats.failed || 0} failed, ${loopStats.blocked || 0} blocked`);

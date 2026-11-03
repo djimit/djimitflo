@@ -196,6 +196,10 @@ export interface EvolutionEvidence {
     class: { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string };
     counts: { merged: number; merged_24h: number; would_merge: number; audit_samples: number; audit_samples_open: number; waiting: number; ineligible: number };
     ineligible_by_reason: Record<string, number>;
+    /** U2 value gate (loop-auto-merge-state.ts); optional: an older server may lack it during a rolling deploy */
+    value_gate?: { mode: 'off' | 'shadow' | 'on'; lanes: string[] | 'all'; kill_share_min: number;
+      would_block: { value_signal_missing: number; value_signal_low: number };
+      replay: { n: number; pass: number; low: number; missing: number } };
     /** LOOP_AUTO_MERGE_RECHECK: latest decision × reason code, ineligible permanent vs transient, PRs re-checked in the last 24 h */
     recheck?: { enabled: boolean; window_hours: number; per_tick: number; ineligible_by_class: { permanent: number; transient: number };
       by_decision_reason: Record<string, Record<string, number>>; rechecked_24h: number; rechecked_24h_by_decision: Record<string, number> } };
@@ -336,6 +340,20 @@ export interface EvolutionEvidence {
   /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
   memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
     by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
+  /** Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after settlement; candidates null = no table (services/fleet-repair.ts) */
+  fleet_repair?: { mode: 'off' | 'shadow'; requested: string | null; on_available: boolean; on_blocked_reason: string; window_days: number; min_failures: number;
+    settlement_days: number; last_run_at: string | null; n_candidates: number | null;
+    candidates: Array<{ key: string; recorded_at: string; n: number | null; failures: number | null; failure_ratio: number | null; last_failure_at: string | null;
+      linked_action_events: number; has_failure_tail: boolean;
+      settlement: { status: 'no_linked_fix' | 'pending' | 'settled'; pr_url: string | null; merged_at: string | null; delta: number | null;
+        before: { n: number; successes: number; rate: number | null } | null; after: { n: number; successes: number; rate: number | null } | null } | null }> | null };
+  /** Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory; counts null before the first judgment (services/advisory-exposure.ts) */
+  advisory_exposure?: { mode: 'off' | 'shadow' | 'on'; advisories: number | null; by_verdict: Record<'affected' | 'not_affected' | 'unknown', number> | null;
+    affected: Array<{ advisory_id: string; repo: string; package: string; installed_version: string; first_fixed_version: string | null }>;
+    pending: number | null; proposals: Record<string, number> | null; last_judged_at: string | null };
+  content_drafts?: Record<string, unknown>;
+  /** capability factory (CAPABILITY_FACTORY_MODE): operator requests by status; null counts when unreadable (services/capability-factory.ts) */
+  capability_factory?: { mode: 'off' | 'on'; requests: Record<'reused' | 'proposed' | 'in_progress' | 'merged' | 'registered' | 'rejected', number> | null; registered_downgraded: number | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
@@ -1809,22 +1827,41 @@ export interface MCPRefreshScope {
   skipped: Array<{ id: string; reason: 'no_url' | 'known_unreachable' }>;
 }
 
+/** A failed API call: the message is unchanged from the plain Error it replaces; status, code and request id ride along. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly request_id?: string;
+  constructor(message: string, info: { status: number; code?: string; request_id?: string }) {
+    super(message);
+    this.status = info.status;
+    this.code = info.code;
+    this.request_id = info.request_id;
+  }
+}
+
+/** Reads `{error:{message,code}}`, `{message}` or `{error:'text'}`; 403/404 keep their fixed messages. */
+async function apiError(response: Response, prefix: string): Promise<ApiError> {
+  let body: any;
+  try { body = await response.json(); } catch { body = { message: response.statusText }; }
+  body = body ?? {};
+  const status = response.status;
+  const message = status === 403 ? 'Access denied'
+    : status === 404 ? 'Not found'
+    : body.message || body.error?.message || (typeof body.error === 'string' && body.error) || `${prefix}: ${status}`;
+  const code = body.error?.code ?? body.code;
+  return new ApiError(message, {
+    status,
+    code: typeof code === 'string' ? code : undefined,
+    request_id: response.headers?.get?.('X-Request-ID') ?? undefined,
+  });
+}
+
 class ApiClient {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await authenticatedFetch(endpoint, options);
 
-    if (response.status === 403) {
-      throw new Error('Access denied');
-    }
-
-    if (response.status === 404) {
-      throw new Error('Not found');
-    }
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(error.message || error.error?.message || `API error: ${response.status}`);
-    }
+    if (!response.ok) throw await apiError(response, 'API error');
 
     if (response.status === 204) return undefined as T;
     return response.json();
@@ -2011,9 +2048,10 @@ class ApiClient {
   }
 
   // Health
-  async getHealth(): Promise<{ status: string; timestamp: string; uptime: number }> {
-    const url = API_BASE.replace('/api', '/health');
-    const response = await fetch(url);
+  async getHealth(): Promise<{ status: string; timestamp: string; ui?: { navigation_discovery_mode?: 'off' | 'shadow' | 'on' } }> {
+    // Basic health is public: a rollout lookup must not refresh or invalidate the user's session.
+    const response = await fetch(`${API_BASE}/health`);
+    if (!response.ok) throw new Error(`Health unavailable (${response.status})`);
     return response.json();
   }
 
@@ -2778,12 +2816,7 @@ class ApiClient {
       method,
       body: method === 'GET' ? undefined : JSON.stringify({ format, ...options }),
     });
-    if (response.status === 403) throw new Error('Access denied');
-    if (response.status === 404) throw new Error('Not found');
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(error.message || error.error?.message || `Export failed: ${response.status}`);
-    }
+    if (!response.ok) throw await apiError(response, 'Export failed');
 
     const blob = await response.blob();
     const contentDisposition = response.headers.get('Content-Disposition') || '';

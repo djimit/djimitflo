@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { EvidenceType, EvidenceSeverity, RiskLevel } from '@djimitflo/shared';
 import type { ExecutionEvidence, ExecutionSummary, FileChange, CaptureEvidenceInput, FileChangeInput, ObservabilityMetrics, AuditTrailEntry } from '@djimitflo/shared';
 
@@ -7,6 +8,10 @@ export class EvidenceService {
   constructor(private db: Database) {}
 
   captureEvidence(input: CaptureEvidenceInput): string {
+    return this.db.transaction(() => this.persistEvidence(input))();
+  }
+
+  private persistEvidence(input: CaptureEvidenceInput): string {
     const id = randomUUID();
     const now = new Date().toISOString();
 
@@ -32,6 +37,13 @@ export class EvidenceService {
       now
     );
 
+    const details = input.details as Record<string, unknown> | undefined;
+    if (process.env.SKILL_FIRST_MODE === 'on' && input.evidence_type === EvidenceType.TEST_RESULT && input.source === 'system'
+      && typeof details?.skill_package_id === 'string' && typeof details.skill_content_hash === 'string'
+      && /^[a-f0-9]{64}$/.test(details.skill_content_hash)
+      && typeof details.skill_package_hash === 'string' && /^[a-f0-9]{64}$/.test(details.skill_package_hash)) {
+      new SkillEvolutionEngine(this.db).settleTaskVerification(input.task_id, details.skill_package_id, details.skill_content_hash, details.skill_package_hash);
+    }
     return id;
   }
 
