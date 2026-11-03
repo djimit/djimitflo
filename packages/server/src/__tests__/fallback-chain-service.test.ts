@@ -139,4 +139,19 @@ describe('FallbackChainService', () => {
     const result = chain.getFirstAvailable('restricted', breaker);
     expect(result).toBe('codex');
   });
+
+  it('getNextAvailable returns null when current is not in the chain and every circuit is open', () => {
+    for (const kind of ['claude', 'codex', 'gemini'] as const) {
+      breaker.recordFailure(kind);
+      breaker.recordFailure(kind);
+      breaker.recordFailure(kind);
+    }
+    expect(chain.getNextAvailable('hermes', 'standard', breaker)).toBeNull();
+  });
+
+  it('constructor custom chains do not leak into the defaults of other instances', () => {
+    const custom = new FallbackChainService({ controlled: ['codex'] });
+    expect(custom.getChain('controlled')).toEqual(['codex']);
+    expect(chain.getChain('controlled')).toEqual(['claude', 'codex']);
+  });
 });
