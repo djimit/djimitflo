@@ -2,17 +2,18 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { NotFoundPage } from './pages/NotFoundPage';
 import { WebSocketProvider } from './components/WebSocketProvider';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
-import { DashboardPage } from './pages/DashboardPage';
-import { TasksPage } from './pages/TasksPage';
-import { AgentsPage } from './pages/AgentsPage';
-import { LoginPage } from './pages/LoginPage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
 
+// UX-28: every page is a lazy chunk; a stale chunk after a deploy is handled by lib/chunk-reload (main.tsx + GlobalErrorBoundary).
+const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })));
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
+const TasksPage = lazy(() => import('./pages/TasksPage').then((module) => ({ default: module.TasksPage })));
+const AgentsPage = lazy(() => import('./pages/AgentsPage').then((module) => ({ default: module.AgentsPage })));
 const AgentCatalogPage = lazy(() => import('./pages/AgentCatalogPage').then((module) => ({ default: module.AgentCatalogPage })));
 const AgiReasoningPage = lazy(() => import('./pages/AgiReasoningPage').then((module) => ({ default: module.AgiReasoningPage })));
 const ConsensusDebatePage = lazy(() => import('./pages/ConsensusDebatePage').then((module) => ({ default: module.ConsensusDebatePage })));

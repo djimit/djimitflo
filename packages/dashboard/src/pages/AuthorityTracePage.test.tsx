@@ -12,7 +12,7 @@ it('distinguishes an unavailable ledger from zero events and allows retry', asyn
   vi.stubGlobal('fetch', fetch);
   render(<AuthorityTracePage />);
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Authority ledger unavailable');
-  expect(screen.queryByText('Totaal events')).toBeNull();
+  expect(screen.queryByText('Total events')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByText('3')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
