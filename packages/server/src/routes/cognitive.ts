@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
+import { param } from './params';
 
 export function createCognitiveRoutes(
   db: Database,
@@ -28,7 +29,7 @@ export function createCognitiveRoutes(
 
   // GET /api/cognitive/strategy/:goalType — best strategy for a goal type
   router.get('/strategy/:goalType', requirePermission('read:evidence'), (req, res) => {
-    const strategy = service.getBestStrategy(req.params.goalType);
+    const strategy = service.getBestStrategy(param(req, 'goalType'));
     if (!strategy) {
       res.json({ message: 'No learned strategy yet for this goal type. Need ≥3 episodes.' });
       return;

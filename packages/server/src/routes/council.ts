@@ -6,6 +6,7 @@ import { CouncilOrchestrator, type CouncilCreateInput } from '../services/counci
 import { CouncilRegistry, type CouncilModelInput } from '../services/council-registry';
 import { StructuredEvaluator } from '../services/structured-evaluator';
 import { TaskRouter } from '../services/task-router';
+import { param } from './params';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -117,7 +118,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // GET /api/council/sessions/:id — Get session details
   router.get('/sessions/:id', requirePermission('read:evidence'), route(async (req, res) => {
     try {
-      const status = orchestrator.getSessionStatus(req.params.id);
+      const status = orchestrator.getSessionStatus(param(req, 'id'));
       res.json(status);
     } catch (error) {
       mapCouncilError(error);
@@ -127,7 +128,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // POST /api/council/sessions/:id/execute — Execute council session
   router.post('/sessions/:id/execute', requirePermission('write:governance'), route(async (req, res) => {
     try {
-      const result = await orchestrator.executeCouncil(req.params.id);
+      const result = await orchestrator.executeCouncil(param(req, 'id'));
       res.json(result);
     } catch (error) {
       mapCouncilError(error);
@@ -137,7 +138,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // GET /api/council/sessions/:id/outputs — Get session outputs
   router.get('/sessions/:id/outputs', requirePermission('read:evidence'), route(async (req, res) => {
     try {
-      const outputs = orchestrator.getSessionOutputs(req.params.id);
+      const outputs = orchestrator.getSessionOutputs(param(req, 'id'));
       res.json(outputs);
     } catch (error) {
       mapCouncilError(error);
@@ -147,8 +148,8 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // GET /api/council/sessions/:id/evaluations — Get session evaluations
   router.get('/sessions/:id/evaluations', requirePermission('read:evidence'), route(async (req, res) => {
     try {
-      orchestrator.getSession(req.params.id);
-      const evaluations = evaluator.getEvaluationsForSession(req.params.id);
+      orchestrator.getSession(param(req, 'id'));
+      const evaluations = evaluator.getEvaluationsForSession(param(req, 'id'));
       res.json(evaluations);
     } catch (error) {
       mapCouncilError(error);
@@ -162,9 +163,9 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
       if (!AGGREGATION_METHODS.has(method)) {
         throw createError(400, 'Invalid aggregation method', 'COUNCIL_AGGREGATION_METHOD_INVALID');
       }
-      orchestrator.getSession(req.params.id);
-      const aggregated = evaluator.aggregateScores(req.params.id, method);
-      const disagreement = evaluator.calculateDisagreement(req.params.id);
+      orchestrator.getSession(param(req, 'id'));
+      const aggregated = evaluator.aggregateScores(param(req, 'id'), method);
+      const disagreement = evaluator.calculateDisagreement(param(req, 'id'));
       res.json({ aggregated, disagreement, method });
     } catch (error) {
       mapCouncilError(error);
@@ -214,7 +215,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // GET /api/council/models/:id — Get model details
   router.get('/models/:id', requirePermission('read:evidence'), route(async (req, res) => {
     try {
-      const model = registry.getModel(req.params.id);
+      const model = registry.getModel(param(req, 'id'));
       res.json(model);
     } catch (error) {
       mapCouncilError(error);
@@ -224,7 +225,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // DELETE /api/council/models/:id — Deprecate a model
   router.delete('/models/:id', requirePermission('write:capability'), route(async (req, res) => {
     try {
-      registry.deprecateModel(req.params.id);
+      registry.deprecateModel(param(req, 'id'));
       res.json({ success: true, message: 'Model deprecated' });
     } catch (error) {
       mapCouncilError(error);

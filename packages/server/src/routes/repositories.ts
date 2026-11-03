@@ -8,6 +8,7 @@ import { createError } from '../middleware/error-handler';
 import { AuthTokenPayload } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import { param } from './params';
 
 function sanitizeRepository(repo: any, isAdmin: boolean): any {
   if (isAdmin) return repo;
@@ -43,7 +44,7 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
     try {
       const user = getUser(req);
       const isAdmin = AuthorizationService.isAdmin(user);
-      const repository = scanner.getRepository(req.params.id);
+      const repository = scanner.getRepository(param(req, 'id'));
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');
       res.json({ repository: sanitizeRepository(repository, isAdmin) });
     } catch (error) { next(error); }
@@ -69,7 +70,7 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.post('/:id/rescan', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
-      const repository = scanner.getRepository(req.params.id);
+      const repository = scanner.getRepository(param(req, 'id'));
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');
       const result = scanner.scan(repository.path);
       res.json(result);
@@ -79,18 +80,18 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
   // Detailed repository internals require scan:repository permission (operator/admin)
   router.get('/:id/health', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
-      const repository = scanner.getRepository(req.params.id);
+      const repository = scanner.getRepository(param(req, 'id'));
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');
-      const findings = scanner.getHealthFindings(req.params.id);
+      const findings = scanner.getHealthFindings(param(req, 'id'));
       res.json({ health_score: repository.health_score, findings });
     } catch (error) { next(error); }
   });
 
   router.get('/:id/agents-md', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
-      const repository = scanner.getRepository(req.params.id);
+      const repository = scanner.getRepository(param(req, 'id'));
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');
-      const files = scanner.getAgentsMdFiles(req.params.id);
+      const files = scanner.getAgentsMdFiles(param(req, 'id'));
       const allIssues: any[] = [];
       for (const file of files) {
         const issues = agentsMdValidator.validateFile(file);
@@ -102,9 +103,9 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.get('/:id/agents-md/effective', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
-      const repository = scanner.getRepository(req.params.id);
+      const repository = scanner.getRepository(param(req, 'id'));
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');
-      const files = scanner.getAgentsMdFiles(req.params.id);
+      const files = scanner.getAgentsMdFiles(param(req, 'id'));
       const targetPath = (req.query.path as string) || '/';
       const stack = agentsMdValidator.getEffectiveStack(repository.id, files, targetPath);
       res.json(stack);
@@ -113,9 +114,9 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.post('/:id/agents-md/validate', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
-      const repository = scanner.getRepository(req.params.id);
+      const repository = scanner.getRepository(param(req, 'id'));
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');
-      const files = scanner.getAgentsMdFiles(req.params.id);
+      const files = scanner.getAgentsMdFiles(param(req, 'id'));
       const allIssues: any[] = [];
       for (const file of files) {
         const issues = agentsMdValidator.validateFile(file);
@@ -167,24 +168,24 @@ export function createDiffRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   router.get('/tasks/:taskId/diff', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
-      const result = diffCapture.getTaskDiff(req.params.taskId);
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
+      const result = diffCapture.getTaskDiff(param(req, 'taskId'));
       res.json(result);
     } catch (error) { next(error); }
   });
 
   router.get('/tasks/:taskId/file-changes', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
-      const files = diffCapture.getTaskDiff(req.params.taskId);
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
+      const files = diffCapture.getTaskDiff(param(req, 'taskId'));
       res.json({ files: files.files });
     } catch (error) { next(error); }
   });
 
   router.get('/tasks/:taskId/snapshots', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!checkTaskAccess(req, res, req.params.taskId)) return;
-      const snapshots = diffCapture.getTaskSnapshots(req.params.taskId);
+      if (!checkTaskAccess(req, res, param(req, 'taskId'))) return;
+      const snapshots = diffCapture.getTaskSnapshots(param(req, 'taskId'));
       res.json({ snapshots });
     } catch (error) { next(error); }
   });

@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { ProactiveMemoryService } from '../services/proactive-memory-service';
 import { createError } from '../middleware/error-handler';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback: number): number {
   if (value === undefined) return fallback;
@@ -67,7 +68,7 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
 
   // GET /api/memory/:id — get a memory and update usage
   router.get('/:id', requirePermission('read:evidence'), (req, res) => {
-    const memory = service.accessMemory(req.params.id);
+    const memory = service.accessMemory(param(req, 'id'));
     if (!memory) {
       res.status(404).json({ error: { message: 'Memory not found', code: 'NOT_FOUND' } });
       return;
@@ -77,7 +78,7 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
 
   // GET /api/memory/:id/related — get related memories
   router.get('/:id/related', requirePermission('read:evidence'), (req, res) => {
-    res.json({ related: service.getRelatedMemories(req.params.id) });
+    res.json({ related: service.getRelatedMemories(param(req, 'id')) });
   });
 
   // POST /api/memory/relations — create a relation between memories
