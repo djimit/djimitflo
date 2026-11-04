@@ -111,7 +111,7 @@ describe('skillAssignment', () => {
     const taskId = randomUUID();
     db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode) VALUES (?, 'f', 'f', 'completed', 'low', 'low', 'review_only')").run(taskId);
     db.prepare(`INSERT INTO execution_evidence (id,task_id,evidence_type,severity,title,summary,details,source,captured_at) VALUES (?,?,'test_result','info','f','f',?,'system',?)`)
-      .run(randomUUID(), taskId, JSON.stringify({ skill_package_hash: p.contentHash }), new Date().toISOString());
+      .run(randomUUID(), taskId, JSON.stringify({ status: 'passed', skill_package_hash: p.contentHash, skill_package_id: p.skill.id, skill_content_hash: p.skill.contentHash }), new Date().toISOString());
     const candidate = new ExecutableSkills(db, dir).capture(id, taskId, 'fixture-owner');
     db.prepare("UPDATE swarm_capabilities SET status='validated', eval_score=1 WHERE id=?").run(candidate.id);
     return candidate;

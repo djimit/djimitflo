@@ -162,6 +162,9 @@ describe('full aggregator inventory', () => {
     expect(paths).toContain('/api/openapi.json');
     expect(paths).toContain('/api/health/services');
     expect(paths).toContain('/api/swarms/scheduler/tick');
+    // M2b: swarm orchestration is mounted once, at /swarm-v2 (dashboard + pollers); the /swarm alias had 0 hits in 14 d
+    expect(paths).toContain('/api/swarm-v2/sessions');
+    expect(paths.filter(p => p.startsWith('/api/swarm/'))).toEqual([]);
     expect(payload.paths['/api/tasks/{id}'].get.security).toEqual([{ bearerAuth: [] }]);
 
     db.close();

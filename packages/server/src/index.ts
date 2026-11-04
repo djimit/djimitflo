@@ -62,12 +62,15 @@ import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './servic
 import { CONTENT_DRAFTS_INTERVAL_MS, startContentDrafts } from './services/content-drafts';
 import { buildProvenance } from './utils/build-provenance';
 import { recordTreatmentEnvBoundaries } from './services/experiment-registry';
+import { warnUnknownEnvFlags } from './services/env-flags';
 import { fleetDrift } from './utils/fleet-drift';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 // §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
 let outboundViolationDb: ReturnType<typeof initializeDatabase> | null = null;
 installOutboundGuard(process.env, undefined, (host) => { if (outboundViolationDb) outboundViolation(outboundViolationDb, host); });
+// M2c: name (never value) every flag-shaped env var that nothing in this build reads — a typo or a retired flag.
+warnUnknownEnvFlags();
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string; allowedUsers?: number[]; userMap?: Record<string, string> };
 
