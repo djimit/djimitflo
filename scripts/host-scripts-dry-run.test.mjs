@@ -49,6 +49,7 @@ const MUTATING = {
 // Match a mutating pattern but are not checked above.
 const EXEMPT = {
   'scripts/auto-deploy.sh': 'systemd timer entrypoint (scripts/systemd/) that must act; gated by kill switch and checks, covered by auto-deploy.test.ts',
+  'scripts/nightly-retention.sh': 'read-only: docker exec opens /data/djimitflo.sqlite readonly and prints counts (#1094 replaced the host DELETE)',
   'scripts/uams.sh': 'read-only: ssh runs curl health/search/stats queries against UAMS, no remote writes',
   'scripts/uams-tunnel.sh': 'read-only: a local ssh -L port forward and health curls, no remote writes; default verb is status',
   'scripts/scan-container.sh': 'read-only: docker inspect and trivy image scans; `brew install trivy` is only printed advice',
