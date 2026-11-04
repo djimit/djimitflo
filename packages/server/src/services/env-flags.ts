@@ -98,6 +98,7 @@ export const NON_EVOLUTION_FLAGS: Readonly<Record<string, string>> = {
   GOAL_DECOMPOSER_AUTO_MISSIONS: 'observe-only',
   GOVERNANCE_GATE_ENABLED: 'governance',
   GOVERNANCE_GUARD_MODE: 'governance',
+  GYM_REQUIRE_GATE_POLICY_HASH: 'gym',
   KNOWLEDGE_MAINTENANCE_ENABLED: 'knowledge',
   LLM_JSON_REPAIR_ENABLED: 'parsing',
   LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED: 'checker',
