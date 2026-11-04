@@ -205,8 +205,8 @@ export class ExpertSourceUnitsService {
 
   /**
    * KE-2 one-shot backfill (not run automatically): every existing 'yes' verdict on a gate-rejected ref without a unit
-   * becomes a unit from its stored bus event, exactly as the live override does. Idempotent. Run on prod with:
-   *   docker exec -e NODE_PATH=/app/node_modules djimitflo-live node -e "const D=require('better-sqlite3');const {ExpertSourceUnitsService}=require('/app/packages/server/dist/services/expert-source-units-service.js');console.log(new ExpertSourceUnitsService(new D('/data/djimitflo.sqlite',{timeout:10000})).backfillRejectedOverrides())"
+   * becomes a unit from its stored bus event, exactly as the live override does. Idempotent. No prod recipe (M2e): the app is
+   * the only writer of /data/djimitflo.sqlite, so run it against a copy in a throwaway container, never via docker exec on prod.
    */
   backfillRejectedOverrides(limit = 1_000): { candidates: number; created: number; missing_event: number; known: number; no_provenance: number } {
     const rows = this.db.prepare(`SELECT subject_id AS ref, MAX(created_at) AS at, id, provenance_json FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND decision = 'yes'

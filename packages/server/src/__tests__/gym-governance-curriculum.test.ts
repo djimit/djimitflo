@@ -65,6 +65,7 @@ describe('GymGovernanceCurriculum', () => {
     writeCorpus(tempDir, corpusPath, cases);
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
     process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST = 'subject-digest';
+    process.env.OLLAMA_URL = 'http://ollama.test:11434'; // M2d: no workstation default any more
     process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST = 'judge-digest';
 
     curriculum = new GymGovernanceCurriculum(db);
@@ -79,6 +80,7 @@ describe('GymGovernanceCurriculum', () => {
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.OPENMYTHOS_CORPUS_PATH;
     delete process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST;
+    delete process.env.OLLAMA_URL;
     delete process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST;
     vi.restoreAllMocks();
   });
@@ -169,6 +171,7 @@ describe('SkillEvolutionGym Governance', () => {
     writeCorpus(tempDir, corpusPath, cases);
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
     process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST = 'subject-digest';
+    process.env.OLLAMA_URL = 'http://ollama.test:11434'; // M2d: no workstation default any more
     process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST = 'judge-digest';
 
     gym = new SkillEvolutionGym(db);
@@ -183,6 +186,7 @@ describe('SkillEvolutionGym Governance', () => {
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.OPENMYTHOS_CORPUS_PATH;
     delete process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST;
+    delete process.env.OLLAMA_URL;
     delete process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST;
     vi.restoreAllMocks();
   });

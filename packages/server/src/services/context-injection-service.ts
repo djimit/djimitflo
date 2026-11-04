@@ -8,7 +8,8 @@ import { ContextSanitizer } from './context-sanitizer';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { checkCollection, memoryEmbedModel, SWARM_MEMORY_COLLECTION } from './memory-embedding-contract';
 
-const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
+// Resolved per call; unset = that context source is off (M2d: never a workstation default).
+const qdrantUrl = (): string => process.env.QDRANT_URL || '';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const OKF_COLLECTION = 'djimit_okf';
 const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
@@ -39,7 +40,7 @@ const qdrantHeaders = (extra: Record<string, string> = {}): Record<string, strin
 });
 const MAX_CONTEXT_TOKENS = 1500;
 const MIN_SCORE = 0.5;
-const DJIMITKB_MCP_URL = process.env.DJIMITKB_MCP_URL || 'http://192.168.1.28:8008';
+const djimitkbMcpUrl = (): string => process.env.DJIMITKB_MCP_URL || '';
 
 export interface ContextResult {
   source: 'qdrant_swarm' | 'okf_search' | 'okf_related' | 'djimitkb_search' | 'experience_retrieval';
@@ -184,6 +185,7 @@ export class ContextInjectionService {
    * collection is reported as unavailable, never queried with a foreign vector space.
    */
   private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<{ results: ContextResult[]; unavailable?: string }> {
+    if (!qdrantUrl()) return { results: [], unavailable: 'QDRANT_URL unset' };
     try {
       const model = memoryEmbedModel();
       const embedRes = await fetchJsonWithTimeout<{ embedding?: number[] }>(`${OLLAMA_URL}/api/embeddings`, {
@@ -195,13 +197,13 @@ export class ContextInjectionService {
       const vector = embedRes.json?.embedding;
       if (!vector?.length) return { results: [], unavailable: `embedding ${model} returned no vector` };
 
-      const state = await checkCollection(QDRANT_URL, SWARM_MEMORY_COLLECTION, qdrantHeaders(), vector.length, model);
+      const state = await checkCollection(qdrantUrl(), SWARM_MEMORY_COLLECTION, qdrantHeaders(), vector.length, model);
       if (state.status === 'missing') return { results: [], unavailable: `${SWARM_MEMORY_COLLECTION} collection missing` };
       if (state.status === 'unavailable') return { results: [], unavailable: state.reason };
 
       const must: unknown[] = [{ key: 'embedding_model', match: { value: model } }];
       if (storeFilter) must.push({ key: 'store', match: { value: storeFilter } });
-      const searchRes = await fetchJsonWithTimeout<{ result: any[] }>(`${QDRANT_URL}/collections/${SWARM_MEMORY_COLLECTION}/points/search`, {
+      const searchRes = await fetchJsonWithTimeout<{ result: any[] }>(`${qdrantUrl()}/collections/${SWARM_MEMORY_COLLECTION}/points/search`, {
         method: 'POST',
         headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE, filter: { must } }),
@@ -242,6 +244,7 @@ export class ContextInjectionService {
 
   private async searchOkfMcp(query: string): Promise<ContextResult[]> {
     const results: ContextResult[] = [];
+    if (!qdrantUrl()) return results;
 
     try {
       const embedRes = await fetchJsonWithTimeout<{ embedding: number[] }>(`${OLLAMA_URL}/api/embeddings`, {
@@ -252,7 +255,7 @@ export class ContextInjectionService {
       if (!embedRes.ok) return [];
       const vector = embedRes.json?.embedding;
 
-      const searchRes = await fetchJsonWithTimeout<{ result: any[] }>(`${QDRANT_URL}/collections/${OKF_COLLECTION}/points/search`, {
+      const searchRes = await fetchJsonWithTimeout<{ result: any[] }>(`${qdrantUrl()}/collections/${OKF_COLLECTION}/points/search`, {
         method: 'POST',
         headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE }),
@@ -306,11 +309,12 @@ export class ContextInjectionService {
 
 
   private async searchDjimitKB(query: string): Promise<ContextResult[]> {
+    if (!djimitkbMcpUrl()) return [];
     try {
       const res = await fetchJsonWithTimeout<{ results: Array<{
         title: string; path: string; type: string; score: number;
         tags: string[]; date: string; excerpt: string; chunk_index: number;
-      }> }>(`${DJIMITKB_MCP_URL}/search?q=${encodeURIComponent(query)}&limit=3`, {}, this.fetchTimeoutMs);
+      }> }>(`${djimitkbMcpUrl()}/search?q=${encodeURIComponent(query)}&limit=3`, {}, this.fetchTimeoutMs);
       if (!res.ok) return [];
 
       return (res.json?.results || []).map((r: any) => ({

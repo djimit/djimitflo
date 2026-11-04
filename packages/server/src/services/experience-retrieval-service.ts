@@ -56,7 +56,7 @@ export class ExperienceRetrievalService {
 
   constructor(
     private db: Database,
-    qdrantUrl: string = process.env.QDRANT_URL || 'http://192.168.1.28:6333',
+    qdrantUrl: string = process.env.QDRANT_URL || '', // unset = no vector write/search (SQLite fallback only)
   ) {
     this.qdrantUrl = qdrantUrl.replace(/\/$/, '');
     this.db.exec(`
@@ -145,6 +145,7 @@ export class ExperienceRetrievalService {
   }
 
   private async upsertToQdrant(runId: string, objective: string, outcome: string): Promise<void> {
+    if (!this.qdrantUrl) return;
     try {
       const embedding = await this.embedText(objective);
       if (!embedding) return;
@@ -161,6 +162,7 @@ export class ExperienceRetrievalService {
   }
 
   private async queryQdrant(objective: string, limit: number): Promise<ExperienceResult[]> {
+    if (!this.qdrantUrl) return [];
     const embedding = await this.embedText(objective);
     if (!embedding) return [];
     try {
@@ -192,7 +194,8 @@ export class ExperienceRetrievalService {
 
   private async embedText(text: string): Promise<number[] | null> {
     try {
-      const ollamaUrl = process.env.OLLAMA_URL || 'http://192.168.1.28:11434';
+      const ollamaUrl = process.env.OLLAMA_URL;
+      if (!ollamaUrl) return null;
       // STATE-03: AbortSignal.timeout bounds the body read too (a timer cleared after headers did not).
       const response = await fetch(ollamaUrl + '/api/embeddings', {
         method: 'POST',
