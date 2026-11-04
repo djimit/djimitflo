@@ -12,6 +12,7 @@ import { ExecutableSkills, skillFirstMode, skillParent } from '../services/execu
 import { AuthorizationService, type OwnableResource } from '../services/authorization-service';
 import { SkillFactoryService, skillFactoryPrepareInput, skillFactoryAdvanceInput } from '../services/skill-factory-service';
 import { LoopService } from '../services/loop-service';
+import { param } from './params';
 
 const skillName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/);
 const taskId = z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
@@ -107,7 +108,7 @@ export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   // GET /api/skills/:id — get skill details
   router.get('/:id', requirePermission('read:evidence'), (req, res) => {
-    const skill = getLoader().getSkill(req.params.id);
+    const skill = getLoader().getSkill(param(req, 'id'));
     if (!skill) {
       res.status(404).json({ error: { message: 'Skill not found', code: 'NOT_FOUND' } });
       return;
@@ -127,7 +128,7 @@ export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   // POST /api/skills/:id/assign/:agentId — assign skill to agent
   router.post('/:id/assign/:agentId', requirePermission('write:skills'), requirePermission('write:agents'), (req, res) => {
-    if (!getLoader().getSkill(req.params.id)) {
+    if (!getLoader().getSkill(param(req, 'id'))) {
       res.status(404).json({ error: { code: 'SKILL_NOT_ADMITTED', message: 'Skill is not admitted from the operator-configured skill directory' } });
       return;
     }
@@ -135,13 +136,13 @@ export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
       res.status(404).json({ error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' } });
       return;
     }
-    const assignment = getLoader().assignSkillToAgent(req.params.agentId, req.params.id);
+    const assignment = getLoader().assignSkillToAgent(param(req, 'agentId'), param(req, 'id'));
     res.status(201).json(assignment);
   });
 
   // DELETE /api/skills/:id/assign/:agentId — remove skill from agent
   router.delete('/:id/assign/:agentId', requirePermission('write:skills'), requirePermission('write:agents'), (req, res) => {
-    if (!getLoader().getSkill(req.params.id)) {
+    if (!getLoader().getSkill(param(req, 'id'))) {
       res.status(404).json({ error: { code: 'SKILL_NOT_ADMITTED', message: 'Skill is not admitted from the operator-configured skill directory' } });
       return;
     }
@@ -149,18 +150,18 @@ export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
       res.status(404).json({ error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' } });
       return;
     }
-    getLoader().removeSkillFromAgent(req.params.agentId, req.params.id);
+    getLoader().removeSkillFromAgent(param(req, 'agentId'), param(req, 'id'));
     res.json({ removed: true });
   });
 
   // GET /api/skills/agent/:agentId — get agent's skills
   router.get('/agent/:agentId', requirePermission('read:evidence'), (req, res) => {
-    res.json({ skills: getLoader().getAgentSkills(req.params.agentId) });
+    res.json({ skills: getLoader().getAgentSkills(param(req, 'agentId')) });
   });
 
   // GET /api/skills/trigger/:trigger — find skills by trigger
   router.get('/trigger/:trigger', requirePermission('read:evidence'), (req, res) => {
-    res.json({ skills: getLoader().findSkillsByTrigger(req.params.trigger) });
+    res.json({ skills: getLoader().findSkillsByTrigger(param(req, 'trigger')) });
   });
 
   // POST /api/skills/reload — reload all skills from disk

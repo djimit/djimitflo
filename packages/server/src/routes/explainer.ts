@@ -14,6 +14,7 @@ import { ExplainerProvider } from "@djimitflo/shared";
 import { ExplainerKnowledgeService } from "../services/explainer-knowledge-service";
 import { ExplainerAskService } from "../services/explainer-ask-service";
 import { createError } from "../middleware/error-handler";
+import { param } from "./params";
 
 function boundedLimit(value: unknown, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -79,14 +80,14 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
 
   // GET /api/explainer/tasks/:id — get a task
   router.get("/tasks/:id", requirePermission("read:repository"), (req, res) => {
-    const task = service.getTask(req.params.id);
+    const task = service.getTask(param(req, "id"));
     if (!task) { res.status(404).json({ error: { message: "Task not found", code: "NOT_FOUND" } }); return; }
     res.json(task);
   });
 
   // POST /api/explainer/tasks/:id/run — run the pipeline
   router.post("/tasks/:id/run", requirePermission("write:governance"), async (req, res) => {
-    const admission = admitPipelineRun(req.params.id, (req as any).user?.sub ?? "operator");
+    const admission = admitPipelineRun(param(req, "id"), (req as any).user?.sub ?? "operator");
     if (admission === "paused") {
       res.status(409).json({ error: { message: "Explainer fleet is paused", code: "FLEET_PAUSED" } });
       return;
@@ -101,7 +102,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
     }
     try {
       const { skipGraph, skipEval, dryRun } = req.body || {};
-      const bundlePath = await service.runPipeline(req.params.id, { skipGraph, skipEval, dryRun });
+      const bundlePath = await service.runPipeline(param(req, "id"), { skipGraph, skipEval, dryRun });
       res.json({ task_id: req.params.id, bundle_path: bundlePath });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -111,7 +112,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
 
   // GET /api/explainer/tasks/:id/bundles — list bundles for a task
   router.get("/tasks/:id/bundles", requirePermission("read:repository"), (req, res) => {
-    const bundles = service.listBundles(req.params.id);
+    const bundles = service.listBundles(param(req, "id"));
     res.json({ bundles, count: bundles.length });
   });
 
@@ -322,7 +323,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
 
   // GET /api/explainer/knowledge/fact/:id — one fact with citation
   router.get("/knowledge/fact/:id", publicReadLimiter, requirePermission("read:repository"), (req, res) => {
-    const fact = knowledge.getFact(req.params.id);
+    const fact = knowledge.getFact(param(req, "id"));
     if (!fact) {
       res.status(404).json({ error: { message: "Fact not found", code: "NOT_FOUND" } });
       return;
@@ -372,7 +373,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
 
   // POST /api/explainer/bundles/:id/unpublish — EC-005: pull misleading content fast
   router.post("/bundles/:id/unpublish", mutationLimiter, requirePermission("write:governance"), async (req, res) => {
-    const bundleId = req.params.id;
+    const bundleId = param(req, "id");
     const row = db.prepare("SELECT id, status FROM explainer_bundles WHERE id = ?").get(bundleId) as any;
     if (!row) {
       res.status(404).json({ error: { message: "Bundle not found", code: "NOT_FOUND" } });

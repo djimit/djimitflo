@@ -16,7 +16,7 @@ import { realRunIdSql, realRunSql } from './synthetic-runs';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
 import type { TelegramApiService } from './telegram-api-service';
 import { mayActViaTelegram, mayApproveViaTelegram } from './telegram-identity';
-import { CALLBACK_DATA_MAX_BYTES, triageEnabled, type TriageButton } from './operator-push';
+import { CALLBACK_DATA_MAX_BYTES, triageEnabled, type DeliveryProgress, type TriageButton } from './operator-push';
 
 interface TelegramConfig {
   botToken: string;
@@ -206,36 +206,46 @@ export class TelegramBotService {
   /**
    * Broadcast an alert to all allowed users.
    */
-  async broadcastAlert(text: string): Promise<void> {
+  async broadcastAlert(text: string, progress?: DeliveryProgress): Promise<void> {
     if (!this.config) return;
+    await this.deliverToAll(`🚨 Alert: ${text}`, undefined, progress);
+  }
 
+  /**
+   * One message to every allowed user. A failing recipient does not stop the others; recipients in `progress.skip`
+   * already have it and are not sent it again. Throws TELEGRAM_DELIVERY_FAILED after the loop when any recipient failed.
+   */
+  private async deliverToAll(text: string, replyMarkup?: unknown, progress?: DeliveryProgress): Promise<void> {
+    if (!this.config) return;
+    let failed = false;
     for (const userId of this.config.allowedUsers) {
-      await this.sendMessage(userId, `🚨 Alert: ${text}`);
+      if (progress?.skip?.includes(userId)) continue;
+      try {
+        await this.sendMessage(userId, text, replyMarkup);
+        progress?.onDelivered?.(userId);
+      } catch { failed = true; }
     }
+    if (failed) throw new Error('TELEGRAM_DELIVERY_FAILED');
   }
 
   /**
    * UX-12: approval request with one-tap buttons. `text` is pre-built and redacted by operator-push (ids + aggregates).
    * The buttons only carry the approval id; the decision runs through the API as the mapped user (see handleCallback).
    */
-  async requestApproval(approvalId: string, text: string, openUrl?: string | null): Promise<void> {
+  async requestApproval(approvalId: string, text: string, openUrl?: string | null, progress?: DeliveryProgress): Promise<void> {
     if (!this.config) return;
     const keyboard = { inline_keyboard: [[
       { text: 'Approve', callback_data: `ap:${approvalId}` }, { text: 'Deny', callback_data: `dn:${approvalId}` },
       ...(openUrl ? [{ text: 'Open', url: openUrl }] : []),
     ]] };
-    for (const userId of this.config.allowedUsers) {
-      await this.sendMessage(userId, text, keyboard);
-    }
+    await this.deliverToAll(text, keyboard, progress);
   }
 
   /** One-tap triage (D5 label / memory review). Buttons carry only a kind + id; see handleTriageCallback. */
-  async requestTriage(text: string, buttons: TriageButton[], openUrl?: string | null): Promise<void> {
+  async requestTriage(text: string, buttons: TriageButton[], openUrl?: string | null, progress?: DeliveryProgress): Promise<void> {
     if (!this.config) return;
     const keyboard = { inline_keyboard: [[...buttons.map((b) => ({ text: b.text, callback_data: b.data })), ...(openUrl ? [{ text: 'Open', url: openUrl }] : [])]] };
-    for (const userId of this.config.allowedUsers) {
-      await this.sendMessage(userId, text, keyboard);
-    }
+    await this.deliverToAll(text, keyboard, progress);
   }
 
   /** Fixed deny reasons for the one-tap picker (callback_data stays under Telegram's 64-byte limit). */

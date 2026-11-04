@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { MultiModelIntelligence } from '../services/multi-model-intelligence';
 import { createError } from '../middleware/error-handler';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback = 5): number {
   if (value === undefined) return fallback;
@@ -79,7 +80,7 @@ export function createMultiModelRoutes(db: Database, auth?: AuthMiddleware): Rou
   // GET /api/models/best/:taskType — best models for a task type
   router.get('/best/:taskType', requirePermission('read:evidence'), (req, res) => {
     const limit = boundedLimit(req.query.limit);
-    res.json({ models: service.getBestModels(req.params.taskType, limit) });
+    res.json({ models: service.getBestModels(param(req, 'taskType'), limit) });
   });
 
   return router;
