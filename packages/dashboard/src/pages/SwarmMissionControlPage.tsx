@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
 import { api, type CohortWindow, type LearningCohort, type LearningCurve, type MissionExecutions, type RegisteredReadout, type SwarmCapabilityHealth, type SwarmCurrentExecution, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { useDialog } from '../components/ConfirmDialog';
+import { SkillEvolutionSection, StatusBadge, type SkillAction } from './swarm-mission/SkillEvolutionSection';
 
 const FLYWHEEL_BATCH_PATH = 'openspec/changes/archive/2026-06-26-prove-learning-flywheel-operator-loop/goals.batch.json';
 
@@ -81,57 +82,63 @@ export function SwarmMissionControlPage() {
   const [learningCurve, setLearningCurve] = useState<LearningCurve | null>(null);
   const [missionExecutions, setMissionExecutions] = useState<MissionExecutions | null>(null);
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  const refreshSequence = useRef(0);
 
   // D12: Knowledge bus events
   const [knowledgeEvents, setKnowledgeEvents] = useState<any[]>([]);
-  useEffect(() => {
-    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(Array.isArray(res.events) ? res.events : [])).catch((err) => setLoadErrors((prev) => [...prev, `knowledge events: ${err instanceof Error ? err.message : String(err)}`]));
-  }, []);
-
-  // D11: Learning curve
-  useEffect(() => {
-    api.request<LearningCurve>('/swarms/learning-curve').then((res) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `learning curve: ${err instanceof Error ? err.message : String(err)}`]));
-    // SW-02: mission planning status next to its linked goal/loop execution (read-only)
-    api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((res) => setMissionExecutions(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `mission executions: ${err instanceof Error ? err.message : String(err)}`]));
-  }, []);
   const [expandedClaim, setExpandedClaim] = useState<string | null>(null);
 
   useEffect(() => {
     void refresh();
+    return () => { refreshSequence.current += 1; };
   }, []);
 
   async function refresh() {
+    const sequence = ++refreshSequence.current;
+    const live = () => sequence === refreshSequence.current;
     setLoading(true);
     setError(null);
     try {
-      const [missionResult, capabilitiesResult, claimsResult, knowledgeResult] = await Promise.allSettled([
-        api.getSwarmMissionControl(),
-        api.getSwarmCapabilities(50),
-        api.getSwarmClaims(50),
-        api.getKnowledgeRuntime(),
-      ]);
-      if (missionResult.status === 'fulfilled') {
-        setMission(missionResult.value);
-        setCapacity(missionResult.value.capacity);
-      }
-      if (capabilitiesResult.status === 'fulfilled') {
-        const value = capabilitiesResult.value;
-        setCapabilities(asArray<SwarmCapabilityRecord>(value.capabilities));
-        const loaded = asArray(value.capabilities).length;
-        setCapabilityCounts({ total: loaded, loaded, load_limit: value.limit, registry_total: value.registry_total, registry_by_status: value.registry_by_status, validated: 0, routable: 0, blocked: 0 });
-      }
-      if (claimsResult.status === 'fulfilled') setClaims(asArray<ClaimLedgerRecord>(claimsResult.value.claims));
-      if (knowledgeResult.status === 'fulfilled') setKnowledge(knowledgeResult.value);
-      const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult]
-        .filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
-      if (failures.length === 4) throw failures[0].reason;
-      if (failures.length > 0) setError(`${failures.length} data source${failures.length === 1 ? '' : 's'} unavailable`);
+      const reads: Array<[string, Promise<void>]> = [
+        ['mission control', api.getSwarmMissionControl().then((value) => { if (live()) { setMission(value); setCapacity(value.capacity); } })],
+        ['capabilities', api.getSwarmCapabilities(50).then((value) => {
+          if (!live()) return;
+          setCapabilities(asArray<SwarmCapabilityRecord>(value.capabilities));
+          const loaded = asArray(value.capabilities).length;
+          setCapabilityCounts({ total: loaded, loaded, load_limit: value.limit, registry_total: value.registry_total, registry_by_status: value.registry_by_status, validated: 0, routable: 0, blocked: 0 });
+        })],
+        ['claims', api.getSwarmClaims(50).then((value) => { if (live()) setClaims(asArray<ClaimLedgerRecord>(value.claims)); })],
+        ['knowledge runtime', api.getKnowledgeRuntime().then((value) => { if (live()) setKnowledge(value); })],
+        ['knowledge events', api.request<{ events: unknown[] }>('/knowledge/events?limit=20').then((value) => { if (live()) setKnowledgeEvents(asArray(value.events)); })],
+        ['learning curve', api.request<LearningCurve>('/swarms/learning-curve').then((value) => { if (live()) setLearningCurve(value); })],
+        ['mission executions', api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((value) => { if (live()) setMissionExecutions(value); })],
+      ];
+      const others = (name: string) => (previous: string[]) => previous.filter((line) => !line.startsWith(`${name}: `));
+      const observed = reads.map(([name, read]) => read.then(
+        () => { if (live()) setLoadErrors(others(name)); },
+        (reason: unknown) => { if (live()) setLoadErrors((previous) => [...others(name)(previous), `${name}: ${reason instanceof Error ? reason.message : String(reason)}`]); },
+      ));
+      // Optional evidence must not keep Refresh or a completed operator action waiting.
+      await Promise.all(observed.slice(0, 4));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
+      if (live()) setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
     } finally {
-      setLoading(false);
+      if (live()) setLoading(false);
     }
   }
+
+  const runSkillAction: SkillAction = async (id, failure, action) => {
+    setActionId(id);
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : failure);
+    } finally {
+      setActionId(null);
+    }
+  };
 
   async function runCapacityPlan() {
     setActionId('capacity-plan');
@@ -296,11 +303,11 @@ export function SwarmMissionControlPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Metric icon={<Network className="h-5 w-5" />} label="Registry" value={mission?.swarm_truth.registry_agent_count ?? 0} />
-        <Metric icon={<CheckCircle2 className="h-5 w-5" />} label="Live Agents" value={mission?.swarm_truth.live_agent_count ?? 0} />
-        <Metric icon={<Workflow className="h-5 w-5" />} label="Prepared" value={mission?.swarm_truth.prepared_leases ?? 0} />
-        <Metric icon={<Gauge className="h-5 w-5" />} label="Running" value={mission?.swarm_truth.running_leases ?? 0} />
-        <Metric icon={<BrainCircuit className="h-5 w-5" />} label="Active Exec" value={mission?.swarm_truth.active_execution_count ?? 0} />
+        <Metric icon={<Network className="h-5 w-5" />} label="Registry" value={mission?.swarm_truth.registry_agent_count ?? 'unknown'} />
+        <Metric icon={<CheckCircle2 className="h-5 w-5" />} label="Live Agents" value={mission?.swarm_truth.live_agent_count ?? 'unknown'} />
+        <Metric icon={<Workflow className="h-5 w-5" />} label="Prepared" value={mission?.swarm_truth.prepared_leases ?? 'unknown'} />
+        <Metric icon={<Gauge className="h-5 w-5" />} label="Running" value={mission?.swarm_truth.running_leases ?? 'unknown'} />
+        <Metric icon={<BrainCircuit className="h-5 w-5" />} label="Active Exec" value={mission?.swarm_truth.active_execution_count ?? 'unknown'} />
       </div>
 
       <ProofRunPanel
@@ -345,21 +352,21 @@ export function SwarmMissionControlPage() {
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <HealthStrip label="Capability Health" values={[
             `registry ${mission?.capability_health.registry_total ?? 'unknown'}`,
-            `loaded ${mission?.capability_health.loaded ?? mission?.capability_health.total ?? 0}`,
-            `validated ${mission?.capability_health.validated ?? 0}`,
-            `routable ${mission?.capability_health.routable ?? 0}`,
-            `blocked ${mission?.capability_health.blocked ?? 0}`,
+            `loaded ${mission?.capability_health.loaded ?? mission?.capability_health.total ?? 'unknown'}`,
+            `validated ${mission?.capability_health.validated ?? 'unknown'}`,
+            `routable ${mission?.capability_health.routable ?? 'unknown'}`,
+            `blocked ${mission?.capability_health.blocked ?? 'unknown'}`,
           ]} />
           <HealthStrip label="Claim Health" values={[
-            `total ${mission?.claim_health.total ?? 0}`,
-            `supported ${mission?.claim_health.supported ?? 0}`,
-            `proposed ${mission?.claim_health.proposed ?? 0}`,
-            `contradicted ${mission?.claim_health.contradicted ?? 0}`,
+            `total ${mission?.claim_health.total ?? 'unknown'}`,
+            `supported ${mission?.claim_health.supported ?? 'unknown'}`,
+            `proposed ${mission?.claim_health.proposed ?? 'unknown'}`,
+            `contradicted ${mission?.claim_health.contradicted ?? 'unknown'}`,
           ]} />
           <HealthStrip label="Specialist Panels" values={[
-            `total ${mission?.specialist_panels.total ?? 0}`,
-            `ready ${mission?.specialist_panels.consensus_ready ?? 0}`,
-            `blocked/evidence ${mission?.specialist_panels.blocked_or_needs_evidence ?? 0}`,
+            `total ${mission?.specialist_panels.total ?? 'unknown'}`,
+            `ready ${mission?.specialist_panels.consensus_ready ?? 'unknown'}`,
+            `blocked/evidence ${mission?.specialist_panels.blocked_or_needs_evidence ?? 'unknown'}`,
           ]} />
         </div>
         <CurrentExecutions executions={asArray<SwarmCurrentExecution>(mission?.swarm_truth.current_executions)} />
@@ -367,45 +374,7 @@ export function SwarmMissionControlPage() {
 
       {missionExecutions && <MissionExecutionPanel data={missionExecutions} />}
 
-      <section className="rounded-lg border border-border bg-background-secondary p-5">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Skill Evolution Readiness</h2>
-          <p className="mt-1 text-sm text-foreground-secondary">Exact outcomes, baseline and OpenMythos evidence required by the existing promotion gate. The final training gate still runs during promotion.</p>
-        </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase text-foreground-tertiary">
-              <tr>
-                <th className="py-2 pr-4">Skill</th>
-                <th className="py-2 pr-4">Assigned</th>
-                <th className="py-2 pr-4">Candidate runs</th>
-                <th className="py-2 pr-4">Baselines</th>
-                <th className="py-2 pr-4">OpenMythos</th>
-                <th className="py-2 pr-4">Evidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {skillEvolution.map((skill) => (
-                <tr key={skill.capability_id} className="border-t border-border">
-                  <td className="py-2 pr-4">
-                    <div className="font-medium text-foreground">{skill.skill_id || skill.capability_id}</div>
-                    <div className="font-mono text-xs text-foreground-tertiary">v{skill.skill_version || '?'} · {skill.candidate_hash.slice(0, 12) || 'unattributed'}</div>
-                  </td>
-                  <td className="py-2 pr-4 text-foreground-secondary">{skill.assigned_agents}</td>
-                  <td className="py-2 pr-4 text-foreground-secondary">{skill.candidate_runs}</td>
-                  <td className="py-2 pr-4 text-foreground-secondary">{skill.baseline_hashes.length}</td>
-                  <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{skill.openmythos_run_id || 'missing'}</td>
-                  <td className="py-2 pr-4">
-                    <StatusBadge status={skill.evidence_ready ? 'ready' : 'blocked'} />
-                    {!skill.evidence_ready && <div className="mt-1 max-w-xl text-xs text-status-warning">{skill.blocked_reasons.join(', ')}</div>}
-                  </td>
-                </tr>
-              ))}
-              {!skillEvolution.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={6}>No governed skill capabilities registered.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <SkillEvolutionSection skills={skillEvolution} actionId={actionId} run={runSkillAction} />
 
       <section className="rounded-lg border border-border bg-background-secondary p-5">
         <div>
@@ -1091,16 +1060,6 @@ function HealthStrip({ label, values }: { label: string; values: string[] }) {
       </div>
     </div>
   );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const normalized = status.toLowerCase();
-  const tone = ['routable', 'available', 'start', 'truth-gated', 'supported', 'validated'].includes(normalized)
-    ? 'border-status-success/30 bg-status-success/10 text-status-success'
-    : ['blocked', 'contradicted', 'review_required', 'skip', 'draft', 'candidate'].includes(normalized)
-      ? 'border-status-warning/30 bg-status-warning/10 text-status-warning'
-      : 'border-border bg-background-elevated text-foreground-secondary';
-  return <span className={`rounded border px-2 py-1 text-xs font-medium ${tone}`}>{status}</span>;
 }
 
 function ExpandToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {

@@ -354,6 +354,23 @@ export class SkillEvolutionEngine {
         evidence_refs_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+
+      -- Evidence-bound instruction versions of a SKILL.md skill (SkillArtifactEvolutionService): candidate → active → revoked.
+      CREATE TABLE IF NOT EXISTS skill_artifact_versions (
+        skill_id TEXT NOT NULL, version TEXT NOT NULL, content_hash TEXT NOT NULL,
+        source_package_hash TEXT NOT NULL, parent_hash TEXT, instructions TEXT NOT NULL,
+        lifecycle TEXT NOT NULL CHECK(lifecycle IN ('candidate','approved','active','deprecated','revoked')),
+        candidate_id TEXT, capability_id TEXT, created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL, activated_at TEXT, origin_task_id TEXT, source_outcome_id TEXT,
+        PRIMARY KEY(skill_id, content_hash), UNIQUE(skill_id, version)
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_evolution_comparisons (
+        id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL, baseline_eval_id TEXT NOT NULL,
+        candidate_eval_id TEXT NOT NULL, verdict TEXT NOT NULL CHECK(verdict IN ('PASS','FAIL','INCONCLUSIVE')),
+        reason TEXT NOT NULL, baseline_score REAL, candidate_score REAL, case_results_json TEXT NOT NULL,
+        manifest_json TEXT NOT NULL, created_at TEXT NOT NULL
+      );
     `);
     for (const [name, ddl] of [
       ['task_id', 'TEXT'],

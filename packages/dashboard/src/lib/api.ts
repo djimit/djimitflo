@@ -1488,10 +1488,25 @@ export type SwarmMissionControl = {
   latest_runner_manifests: RunnerManifestRecord[];
   latest_proof_run: ProofRunSummary | null;
   next_safe_actions: string[];
-  skill_evolution?: {
-    readiness: number;
-    recent_changes: Array<Record<string, unknown>>;
-  } | null;
+  skill_evolution: SkillEvolutionReadiness[];
+};
+
+export type SkillEvolutionReadiness = {
+  capability_id: string;
+  candidate_id?: string | null;
+  artifact_lifecycle?: string | null;
+  skill_id: string;
+  skill_version: string;
+  candidate_hash: string;
+  status: string;
+  assigned_agents: number;
+  candidate_runs: number;
+  baseline_hashes: string[];
+  openmythos_run_id: string | null;
+  evidence_ready: boolean;
+  blocked_reasons: string[];
+  promotion_input: Record<string, unknown> | null;
+  candidate_comparison?: { verdict: 'PASS' | 'FAIL' | 'INCONCLUSIVE'; reason: string; baseline_score: number | null; candidate_score: number | null; baseline_eval_id: string; candidate_eval_id: string; cases: Array<{ case_id: string; baseline_status: string; candidate_status: string; baseline_score: number; candidate_score: number | null; baseline_scoring_source: string; candidate_scoring_source: string; baseline_oracle_pass: boolean | null; candidate_oracle_pass: boolean | null; oracle_regression: boolean }>; manifest?: { baseline_run_ms?: number; candidate_run_ms?: number } } | null;
 };
 
 export type SocialMessage = {
@@ -2725,6 +2740,32 @@ class ApiClient {
 
   async rollbackProofRun(id: string): Promise<ProofRunSummary> {
     return this.request(`/swarms/proof-runs/${id}/rollback`, { method: 'POST' });
+  }
+
+  async rollbackSkillEvolutionCandidate(id: string): Promise<Record<string, unknown>> {
+    return this.request(`/swarms/intelligence/skills/candidates/${encodeURIComponent(id)}/rollback`, { method: 'POST' });
+  }
+
+  async compareSkillEvolutionCandidate(id: string, model: string, caseIds: string[]): Promise<Record<string, unknown>> {
+    return this.request(`/swarms/intelligence/skills/candidates/${encodeURIComponent(id)}/compare`, {
+      method: 'POST', body: JSON.stringify({ model, case_ids: caseIds }),
+    });
+  }
+
+  async getSkillEvolutionInventory(): Promise<{ skills: Array<{ id: string; version: string; content_hash: string; source_tasks: string[] }> }> {
+    return this.request('/swarms/intelligence/skills/inventory');
+  }
+
+  async getOpenMythosCaseMetadata(): Promise<{ cases: Array<{ id: string; category: string; difficulty: number }> }> {
+    return this.request('/openmythos/cases');
+  }
+
+  async createSkillEvolutionCandidate(input: { skill_id: string; baseline_hash: string; source_task_id: string; find: string; replace: string }): Promise<Record<string, unknown>> {
+    return this.request('/swarms/intelligence/skills/candidates', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  async promoteSwarmCapability(id: string, input: Record<string, unknown>): Promise<SwarmCapabilityRecord> {
+    return this.request(`/swarms/intelligence/capabilities/${encodeURIComponent(id)}/promote`, { method: 'POST', body: JSON.stringify(input) });
   }
 
   async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[]; registry_total?: number; registry_by_status?: Record<string, number>; loaded?: number; limit?: number }> {
