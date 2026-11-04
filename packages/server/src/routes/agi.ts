@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { AgiGoalReasoningEngine } from '../services/agi-goal-reasoning-engine';
 import { MultiAgentConsensusService } from '../services/multi-agent-consensus-service';
+import { param } from './params';
 
 export function createAgiRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -46,7 +47,7 @@ export function createAgiRoutes(db: Database, auth?: AuthMiddleware): Router {
       res.status(400).json({ error: { message: 'agentId and content are required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    const proposal = consensus.submitProposal(req.params.debateId, agentId, content, evidence, confidence);
+    const proposal = consensus.submitProposal(param(req, 'debateId'), agentId, content, evidence, confidence);
     res.status(201).json(proposal);
   });
 
@@ -56,20 +57,20 @@ export function createAgiRoutes(db: Database, auth?: AuthMiddleware): Router {
       res.status(400).json({ error: { message: 'proposalId, agentId, and type are required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    consensus.vote(req.params.debateId, proposalId, agentId, type, reason || '');
+    consensus.vote(param(req, 'debateId'), proposalId, agentId, type, reason || '');
     res.json({ voted: true });
   });
 
   router.post('/consensus/debates/:debateId/resolve', requirePermission('write:governance'), (req, res) => {
-    if (!consensus.getDebate(req.params.debateId)) {
+    if (!consensus.getDebate(param(req, 'debateId'))) {
       res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Debate not found' } });
       return;
     }
-    res.json(consensus.resolve(req.params.debateId));
+    res.json(consensus.resolve(param(req, 'debateId')));
   });
 
   router.get('/consensus/debates/:debateId', requirePermission('read:evidence'), (req, res) => {
-    const debate = consensus.getDebate(req.params.debateId);
+    const debate = consensus.getDebate(param(req, 'debateId'));
     if (!debate) {
       res.status(404).json({ error: { message: 'Debate not found', code: 'NOT_FOUND' } });
       return;

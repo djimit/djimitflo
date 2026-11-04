@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import { BackupService } from '../services/backup-service';
 import { AuditService } from '../services/audit-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import { param } from './params';
 
 export function createBackupRoutes(db: Database.Database, auth: AuthMiddleware): Router {
   const router = Router();
@@ -39,7 +40,7 @@ export function createBackupRoutes(db: Database.Database, auth: AuthMiddleware):
 
   router.get('/:filename', requireBackupPermission, (req: Request, res: Response) => {
     try {
-      const metadata = backupService.getBackupMetadata(req.params.filename);
+      const metadata = backupService.getBackupMetadata(param(req, 'filename'));
       if (!metadata) {
         res.status(404).json({ error: { message: 'Backup not found', code: 'BACKUP_NOT_FOUND' } });
         return;
@@ -52,7 +53,7 @@ export function createBackupRoutes(db: Database.Database, auth: AuthMiddleware):
 
   router.get('/:filename/download', requireBackupPermission, (req: Request, res: Response) => {
     try {
-      const result = backupService.downloadBackup(req.params.filename);
+      const result = backupService.downloadBackup(param(req, 'filename'));
       if (!result) {
         res.status(404).json({ error: { message: 'Backup not found', code: 'BACKUP_NOT_FOUND' } });
         return;
@@ -68,7 +69,7 @@ export function createBackupRoutes(db: Database.Database, auth: AuthMiddleware):
 
   router.post('/:filename/validate', requireBackupPermission, async (req: Request, res: Response) => {
     try {
-      const result = await backupService.validateBackup(req.params.filename);
+      const result = await backupService.validateBackup(param(req, 'filename'));
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: { message: err instanceof Error ? err.message : 'Validation failed', code: 'BACKUP_VALIDATE_FAILED' } });
@@ -77,7 +78,7 @@ export function createBackupRoutes(db: Database.Database, auth: AuthMiddleware):
 
   router.post('/:filename/restore', requireBackupPermission, async (req: Request, res: Response) => {
     try {
-      const result = await backupService.stageRestore(req.params.filename, {
+      const result = await backupService.stageRestore(param(req, 'filename'), {
         confirm: req.body?.confirm,
         actorId: (req as any).user?.sub,
         actorEmail: (req as any).user?.email,

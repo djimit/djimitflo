@@ -114,7 +114,8 @@ it('GYM_ORPHAN_SWEEP settles only stale running remote runs without a result, wr
   expect(sweepOrphanedGymRuns(db, now)).toEqual({ mode: 'on', candidates: [stale.runId], settled: [stale.runId] });
   expect(sweepOrphanedGymRuns(db, now).settled).toEqual([]); // idempotent
 
-  expect(gymResult(stale.runId)).toEqual({ status: 'discarded', reason: 'infra: orphaned_no_result' });
+  // a server-settled discard keeps the claim's gate-policy binding (gym-gate-policy), with no gate results
+  expect(gymResult(stale.runId)).toEqual({ status: 'discarded', reason: 'infra: orphaned_no_result', gate_policy: expect.objectContaining({ gate_results: null }) });
   for (const id of [fresh.runId, withResult.runId, 'local']) expect(db.prepare('SELECT status FROM loop_runs WHERE id = ?').get(id)).toEqual({ status: 'running' });
   expect(gymResult(withResult.runId)).toEqual({ status: 'failure', reason: 'tests still red' });
   expect(db.prepare('SELECT COUNT(*) AS n FROM skill_outcomes').get()).toEqual({ n: 0 });
@@ -123,7 +124,7 @@ it('GYM_ORPHAN_SWEEP settles only stale running remote runs without a result, wr
 
   // the lost worker reports after all: still refused (409), recorded as a late result, still no outcome
   expect(() => svc.record(stale.runId, 'workstation', { ...WIN, tokens: 500 })).toThrow('GYM_RUN_ALREADY_SETTLED');
-  expect(gymResult(stale.runId)).toEqual({ status: 'discarded', reason: 'infra: orphaned_no_result', late_result: 1 });
+  expect(gymResult(stale.runId)).toEqual({ status: 'discarded', reason: 'infra: orphaned_no_result', gate_policy: expect.objectContaining({ gate_results: null }), late_result: 1 });
   expect(db.prepare('SELECT COUNT(*) AS n FROM skill_outcomes').get()).toEqual({ n: 0 });
 });
 

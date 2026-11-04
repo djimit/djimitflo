@@ -6,6 +6,7 @@ import { GoalBatchService } from '../services/goal-batch-service';
 import { GoalDecomposer } from '../services/goal-decomposer';
 import { LoopService } from '../services/loop-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { param } from './params';
 
 function mapLoopServiceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -80,7 +81,7 @@ export function createGoalRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   router.get('/:id', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(loopService.getGoal(req.params.id));
+      res.json(loopService.getGoal(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -92,7 +93,7 @@ export function createGoalRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   router.patch('/:id', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(loopService.updateGoal(req.params.id, req.body));
+      res.json(loopService.updateGoal(param(req, 'id'), req.body));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -104,7 +105,7 @@ export function createGoalRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   router.post('/:id/decompose', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(goalDecomposer.decomposeGoalToDAG(req.params.id));
+      res.json(goalDecomposer.decomposeGoalToDAG(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);

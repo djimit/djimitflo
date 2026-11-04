@@ -19,6 +19,7 @@ import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 import { replyToEvidenceRoom } from '../services/commons-evidence-room';
+import { param } from './params';
 
 function boundedLimit(value: unknown): number {
   if (value === undefined) return 10;
@@ -61,7 +62,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   // POST /api/swarm/sessions/:id/execute — start execution
   router.post('/sessions/:id/execute', requirePermission('write:swarm_action'), (req, res) => {
     try {
-      swarm.executeSession(req.params.id);
+      swarm.executeSession(param(req, 'id'));
       res.json({ started: true, sessionId: req.params.id });
     } catch (error) {
       if (error instanceof Error && error.message === 'SWARM_RUNTIME_EXECUTOR_NOT_CONFIGURED') {
@@ -75,7 +76,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   // GET /api/swarm/sessions/:id/progress — get progress
   router.get('/sessions/:id/progress', requirePermission('read:evidence'), (req, res) => {
     try {
-      res.json(swarm.getProgress(req.params.id));
+      res.json(swarm.getProgress(param(req, 'id')));
     } catch (error) {
       if (error instanceof Error && error.message === 'SWARM_SESSION_NOT_FOUND') {
         res.status(404).json({ error: { message: 'swarm session not found', code: 'SWARM_SESSION_NOT_FOUND' } });
@@ -124,11 +125,11 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
 
   // GET /api/swarm/messages/:agentId — receive messages for agent
   router.get('/messages/:agentId', requirePermission('read:evidence'), (req, res) => {
-    if (!principalMatches(req, req.params.agentId)) {
+    if (!principalMatches(req, param(req, 'agentId'))) {
       res.status(403).json({ error: { message: 'message read identity does not match authenticated principal', code: 'BOARD_READ_PRINCIPAL_INVALID' } });
       return;
     }
-    res.json({ messages: comms.receive(req.params.agentId, boundedLimit(req.query.limit)) });
+    res.json({ messages: comms.receive(param(req, 'agentId'), boundedLimit(req.query.limit)) });
   });
 
   // POST /api/swarm/messages/:id/acknowledge — acknowledge receipt
@@ -142,7 +143,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
       }
       const leaseToken = typeof req.body?.leaseToken === 'string' ? req.body.leaseToken.trim()
         : (typeof req.body?.lease_token === 'string' ? req.body.lease_token.trim() : undefined);
-      comms.acknowledge(req.params.id, agentId || undefined, leaseToken);
+      comms.acknowledge(param(req, 'id'), agentId || undefined, leaseToken);
       res.json({ acknowledged: true });
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('BOARD_')) {
@@ -256,7 +257,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   const reputation = new AgentReputationService(db);
   router.get('/social/reputation/:agentId', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(reputation.computeReputation(req.params.agentId));
+      res.json(reputation.computeReputation(param(req, 'agentId')));
     } catch (error) {
       const code = error instanceof Error ? error.message : 'AGENT_REPUTATION_FAILED';
       if (code === 'AGENT_REPUTATION_AGENT_NOT_FOUND') { res.status(404).json({ error: { code, message: code } }); return; }
@@ -286,10 +287,10 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.agentId) as { status: string; retired_at?: string | null } | undefined;
     if (!agent) throw createError(404, 'Registered agent required', 'SOCIAL_AGENT_NOT_FOUND');
     if (agent.retired_at || !['active', 'idle'].includes(agent.status)) throw createError(409, 'Agent is not active or idle', 'SOCIAL_AGENT_NOT_ELIGIBLE');
-    if (!new RuntimeGovernanceService(db).isAllowed(req.params.agentId)) throw createError(403, 'Agent is blocked by runtime governance', 'SOCIAL_AGENT_BLOCKED');
-    const token = mintSpawnToken(resolveSpawnTokenSecret(), req.params.agentId, 'social-runtime', ttlMs);
+    if (!new RuntimeGovernanceService(db).isAllowed(param(req, 'agentId'))) throw createError(403, 'Agent is blocked by runtime governance', 'SOCIAL_AGENT_BLOCKED');
+    const token = mintSpawnToken(resolveSpawnTokenSecret(), param(req, 'agentId'), 'social-runtime', ttlMs);
     const expiresAt = new Date(Date.now() + ttlMs).toISOString();
-    audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_runtime_token_issued', resource_type: 'agent', resource_id: req.params.agentId, user_id: req.user.sub, metadata: { scope: 'social-runtime', expires_at: expiresAt } });
+    audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_runtime_token_issued', resource_type: 'agent', resource_id: param(req, 'agentId'), user_id: req.user.sub, metadata: { scope: 'social-runtime', expires_at: expiresAt } });
     res.set('Cache-Control', 'no-store').status(201).json({
       agent_id: req.params.agentId, scope: 'social-runtime',
       token, expires_at: expiresAt,

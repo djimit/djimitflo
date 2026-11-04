@@ -39,7 +39,7 @@ describe('request-logger middleware', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('WARN'));
   });
 
-  it('omits query strings from join-status logs but preserves other query logging', () => {
+  it('never logs query strings', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const joinRes = makeRes(401);
     requestLogger(makeReq('/API/SWARM-V2/SOCIAL-RUNTIME/JOIN/WANDERER/STATUS?secret=top-secret'), joinRes, vi.fn());
@@ -51,7 +51,8 @@ describe('request-logger middleware', () => {
     expect(logSpy.mock.calls[0]?.[0]).toContain('/API/SWARM-V2/SOCIAL-RUNTIME/JOIN/WANDERER/STATUS 401');
     expect(logSpy.mock.calls[0]?.[0]).not.toContain('top-secret');
     expect(logSpy.mock.calls[0]?.[0]).not.toContain('?');
-    expect(logSpy.mock.calls[1]?.[0]).toContain('/api/tasks?state=pending');
+    expect(logSpy.mock.calls[1]?.[0]).toContain('/api/tasks 200');
+    expect(logSpy.mock.calls[1]?.[0]).not.toContain('?');
   });
 
   it('logs ERROR for 5xx status', () => {

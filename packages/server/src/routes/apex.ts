@@ -11,6 +11,7 @@ import { BackgroundWorkerService } from '../services/background-worker-service';
 import { LlmRouterService } from '../services/llm-router-service';
 import { lifecycleManager } from '../services/lifecycle-manager';
 import { createError } from '../middleware/error-handler';
+import { param } from './params';
 
 function boundedLimit(value: unknown): number {
   if (value === undefined) return 10;
@@ -112,7 +113,7 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
 
   router.post('/workers/:id/run', requirePermission('manage:config'), requirePermission('execute:task'), async (req, res, next) => {
     try {
-      const result = await workers.runWorker(req.params.id);
+      const result = await workers.runWorker(param(req, 'id'));
       res.json(result);
     } catch (error) {
       if (error instanceof Error && /^Worker not found:/.test(error.message)) {
@@ -125,7 +126,7 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
 
   router.post('/workers/:id/start', requirePermission('manage:config'), requirePermission('execute:task'), (req, res, next) => {
     try {
-      workers.startWorker(req.params.id);
+      workers.startWorker(param(req, 'id'));
       res.json({ started: true });
     } catch (error) {
       if (error instanceof Error && /^Worker not found:/.test(error.message)) {
@@ -138,7 +139,7 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
 
   router.post('/workers/:id/stop', requirePermission('manage:config'), (req, res, next) => {
     try {
-      workers.stopWorker(req.params.id);
+      workers.stopWorker(param(req, 'id'));
       res.json({ stopped: true });
     } catch (error) {
       if (error instanceof Error && /^Worker not found:/.test(error.message)) {

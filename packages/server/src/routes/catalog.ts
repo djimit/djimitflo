@@ -5,6 +5,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { getCatalog } from '../services/agent-catalog-service';
 import { evaluateAgent, summarizeEvaluations } from '../services/agent-evaluation-service';
 import { compile, runStaticGate, TARGETS, type Evaluation, type Profile, type Target } from '@djimitflo/agent-catalog';
+import { param } from './params';
 
 interface CatalogCounts { imported: number; evaluated: number; active: number; duplicate: number; rejected: number; }
 interface CatalogAgent {
@@ -94,7 +95,7 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
   router.get('/agents/:id', requireAuth, requirePermission('read:evidence'), (req, res, next) => {
     try {
       const cat = getCatalog();
-      const profile = cat.db.getProfile(req.params.id);
+      const profile = cat.db.getProfile(param(req, 'id'));
       if (!profile) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
       res.json({ ...toCatalogAgent(profile), profile });
     } catch (e) { next(e); }
@@ -111,7 +112,7 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
   router.get('/compile/:id', requireAuth, requirePermission('read:evidence'), (req, res, next) => {
     try {
       const cat = getCatalog();
-      const profile = cat.db.getProfile(req.params.id);
+      const profile = cat.db.getProfile(param(req, 'id'));
       if (!profile) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
       const target = (req.query.target as Target) || 'openclaw';
       if (!TARGETS.includes(target)) throw createError(400, 'Unknown compilation target', 'INVALID_CATALOG_TARGET');
@@ -123,8 +124,8 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
     try {
       const target = (req.body?.target || 'openclaw') as Target;
       if (!['openclaw', 'codex'].includes(target)) throw createError(400, 'Artifact activation requires openclaw or codex', 'INVALID_CATALOG_TARGET');
-      if (!getCatalog().db.getProfile(req.params.id)) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
-      const r = getCatalog().registry.activate(req.params.id, target);
+      if (!getCatalog().db.getProfile(param(req, 'id'))) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
+      const r = getCatalog().registry.activate(param(req, 'id'), target);
       res.json({ target: r.target, active: true, runtime_registered: false, execution_started: false });
     } catch (e) {
       if (e instanceof Error && /^(no evaluation record|evaluation not passed|evaluation is stale)/.test(e.message)) return next(createError(409, e.message, 'CATALOG_EVALUATION_REQUIRED'));
@@ -133,7 +134,7 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
   });
 
   router.post('/deactivate/:id', requireAuth, requirePermission('manage:config'), (_req, res, next) => {
-    try { getCatalog().registry.deactivate(_req.params.id); res.json({ active: false }); } catch (e) {
+    try { getCatalog().registry.deactivate(param(_req, 'id')); res.json({ active: false }); } catch (e) {
       if (e instanceof Error && /^no activation for /.test(e.message)) { next(createError(404, e.message, 'ACTIVATION_NOT_FOUND')); return; }
       next(e);
     }
@@ -161,7 +162,7 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
     try {
       const { score, categories } = req.body;
       const result = evaluateAndPersist({
-        agentId: req.params.id,
+        agentId: param(req, 'id'),
         score,
         categories: categories || {},
         evaluator: req.user?.email || 'system',
