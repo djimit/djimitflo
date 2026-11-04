@@ -106,6 +106,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   MEMORY_TEMPLATE_DEDUP_MODE: 'off (`shadow`, `enforce`)',
   MERGE_SURVIVAL_ENABLED: 'off',
   MERGE_SURVIVAL_V2: 'off',
+  MERMAID_VALIDATE_MODE: 'off (`shadow`)',
   MODEL_SELECTOR_MODE: 'off (`shadow` samples a cheaper candidate per panel review and discards it; `enforce` uses the cheapest qualified model)',
   NE_GENERATOR_CHECK_MODE: 'off (`shadow`)',
   OLLAMA_ACCOUNT_KEY_ENV: '`SOCIAL_COMPAT_API_KEY`',

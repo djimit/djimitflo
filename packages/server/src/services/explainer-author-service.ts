@@ -13,6 +13,7 @@
 import type { RepoEvidencePacket } from './repo-evidence-packet';
 import { ExplainerMermaidService } from './explainer-mermaid-service';
 import type { ExplainerFact } from '@djimitflo/shared';
+import type { Database } from 'better-sqlite3';
 
 const fileCountCite = (f: { id: string } | undefined): string => (f ? ` [${f.id}]` : '');
 
@@ -48,8 +49,11 @@ export class ExplainerAuthorService {
   private baseUrl: string | null;
   private apiKey: string | null;
   private model: string;
+  /** Only for the MERMAID_VALIDATE_MODE shadow judgment row; the authored output never depends on it. */
+  private db: Database | null;
 
-  constructor(options: { baseUrl?: string; apiKey?: string; model?: string } = {}) {
+  constructor(options: { baseUrl?: string; apiKey?: string; model?: string; db?: Database } = {}) {
+    this.db = options.db ?? null;
     this.baseUrl = options.baseUrl ?? process.env.DJIMITFLO_AUTHOR_LLM_BASE_URL ?? null;
     this.apiKey = options.apiKey ?? process.env.DJIMITFLO_AUTHOR_LLM_API_KEY ?? null;
     this.model = options.model ?? process.env.DJIMITFLO_AUTHOR_LLM_MODEL ?? 'gpt-oss:20b';
@@ -144,7 +148,7 @@ export class ExplainerAuthorService {
     ].filter(Boolean).join('\n');
 
     const communities = packet.graph.communities ?? [];
-    const mermaid = new ExplainerMermaidService();
+    const mermaid = new ExplainerMermaidService(this.db ? { db: this.db, repo: packet.repository_full_name } : undefined);
     const diagram = mermaid.generateArchitectureDiagram(packet.graph);
     const diagramBlock = diagram?.valid
       ? ['', '```mermaid', diagram.source, '```', '', 'Diagram textual equivalent: the architecture section below and the communities list above describe the same structure for screen readers.']
