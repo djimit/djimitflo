@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { rateLimit } from 'express-rate-limit';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { ROLE_PERMISSIONS, UserRole } from '@djimitflo/shared';
@@ -29,10 +29,9 @@ import { createLoopRoutes } from '../routes/loops';
  * Invariant: an agent or system identity can never resolve a human-required gate. "Human" = a role holding approve:task
  * (ADMIN, APPROVER); every other role is how agents, workers and service accounts authenticate. The existing tests
  * (#963-#968, cockpit-decisions-authz, telegram-api-chain, operator-push) cover single roles per path; this file
- * iterates every non-human role over every human gate, plus every machine `decided_by` over reviewer inheritance.
+ * iterates every non-human role over every human gate, plus every `decided_by` kind over reviewer inheritance.
  */
 const NON_HUMAN = Object.values(UserRole).filter((r) => !ROLE_PERMISSIONS[r].includes('approve:task'));
-const MACHINE_DECIDERS = ['system', 'auto', 'autonomy:oracle-lane-v1', 'autonomy:test-gap-rule-v1', 'autonomy:gym-rule-v1', 'inherit:ap-original'];
 
 it('the human set is exactly ADMIN and APPROVER; agent roles (incl. PLATFORM_ADMIN) are all non-human', () => {
   expect(Object.values(UserRole).filter((r) => !NON_HUMAN.includes(r)).sort()).toEqual([UserRole.ADMIN, UserRole.APPROVER].sort());
@@ -145,30 +144,42 @@ describe('HTTP and Telegram human gates refuse every non-human role', () => {
   });
 });
 
-describe('reviewer inheritance never treats a machine decision as the human maker approval', () => {
-  it.each(MACHINE_DECIDERS)('decided_by %s is not inheritable', (decidedBy) => {
-    const db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const prev = process.env.LOOP_REVIEWER_APPROVAL_INHERIT;
+describe('reviewer inheritance: a human or an allowlisted rule approver only', () => {
+  let db: Database.Database;
+  const prev = process.env.LOOP_REVIEWER_APPROVAL_INHERIT;
+  const inherits = (taskId: string) => (new ExecutionEngine(db) as unknown as { reviewerInheritsRunApproval(id: string): boolean }).reviewerInheritsRunApproval(taskId);
+  const workerTask = (id: string, role: string, runId: string, lease = true) => {
+    db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at) VALUES (?, 't', 'd', 'awaiting_approval', 'low', 'medium', 'local', ?, ?, datetime('now'), datetime('now'))")
+      .run(id, JSON.stringify(['loop-worker', role, 'opencode']), JSON.stringify({ loop_run_id: runId, lease_id: `lease-${id}` }));
+    if (lease) db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, ?, 'opencode', 'prepared', ?, datetime('now'), datetime('now'))")
+      .run(`lease-${id}`, runId, role, JSON.stringify({ execution_task_id: id }));
+  };
+  const makerApproval = (decidedBy: string) => db.prepare("INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, decided_by, expires_at, created_at, updated_at) VALUES ('a1', 'maker-1', 'approved', 'medium', 'high_risk_action', 'm', '{}', ?, ?, datetime('now'), datetime('now'))")
+    .run(decidedBy, new Date(Date.now() + 3_600_000).toISOString());
+
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db);
     process.env.LOOP_REVIEWER_APPROVAL_INHERIT = 'true';
-    try {
-      for (const [id, role] of [['maker-1', 'maker'], ['checker-1', 'checker']]) {
-        db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at) VALUES (?, 't', 'd', 'awaiting_approval', 'low', 'medium', 'local', ?, ?, datetime('now'), datetime('now'))")
-          .run(id, JSON.stringify(['loop-worker', role, 'opencode']), JSON.stringify({ loop_run_id: 'run-1', lease_id: `lease-${id}` }));
-        db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, 'run-1', ?, 'opencode', 'prepared', ?, datetime('now'), datetime('now'))")
-          .run(`lease-${id}`, role, JSON.stringify({ execution_task_id: id }));
-      }
-      db.prepare("INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, decided_by, expires_at, created_at, updated_at) VALUES ('a1', 'maker-1', 'approved', 'medium', 'high_risk_action', 'm', '{}', ?, ?, datetime('now'), datetime('now'))")
-        .run(decidedBy, new Date(Date.now() + 3_600_000).toISOString());
-      const engine = new ExecutionEngine(db) as unknown as { reviewerInheritsRunApproval(id: string): boolean };
-      expect(engine.reviewerInheritsRunApproval('checker-1')).toBe(false);
-      // control: the same approval decided by a person is inherited
-      db.exec('DROP TRIGGER IF EXISTS approvals_no_update');
-      db.prepare("UPDATE approvals SET decided_by = 'user-approver' WHERE id = 'a1'").run();
-      expect(engine.reviewerInheritsRunApproval('checker-1')).toBe(true);
-    } finally {
-      if (prev === undefined) delete process.env.LOOP_REVIEWER_APPROVAL_INHERIT; else process.env.LOOP_REVIEWER_APPROVAL_INHERIT = prev;
-      log.mockRestore(); db.close();
-    }
+    workerTask('maker-1', 'maker', 'run-1'); workerTask('checker-1', 'checker', 'run-1');
+    workerTask('checker-other-run', 'checker', 'run-2'); workerTask('forged-checker', 'checker', 'run-1', false);
+  });
+  afterEach(() => {
+    if (prev === undefined) delete process.env.LOOP_REVIEWER_APPROVAL_INHERIT; else process.env.LOOP_REVIEWER_APPROVAL_INHERIT = prev;
+    vi.restoreAllMocks(); db.close();
+  });
+
+  // (a) an earlier inheritance, (b) an unknown rule approver, and the generic machine deciders never count
+  it.each(['inherit:ap-original', 'autonomy:other-v1', 'autonomy:gym-rule-v1', 'system', 'auto'])('a maker approval decided by %s is not inherited', (decidedBy) => {
+    makerApproval(decidedBy);
+    expect(inherits('checker-1')).toBe(false);
+  });
+
+  // (c) the two allowlisted rule approvers, and (d) a human: inherited by the bound reviewer lease of the same run only
+  it.each(['autonomy:oracle-lane-v1', 'autonomy:test-gap-rule-v1', 'user-approver'])('a maker approval decided by %s is inherited by the bound reviewer of that run only', (decidedBy) => {
+    makerApproval(decidedBy);
+    expect(inherits('checker-1')).toBe(true);
+    expect(inherits('checker-other-run')).toBe(false);
+    expect(inherits('forged-checker')).toBe(false);
   });
 });
