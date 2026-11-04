@@ -6,6 +6,7 @@ import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
 import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 import { AuditService } from '../services/audit-service';
+import { param } from './params';
 
 function parsePolicy(row: any) {
   const riskLevels = JSON.parse(row.risk_levels || '[]');
@@ -140,7 +141,7 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
           user_id: req.user?.sub,
           action: 'approval_policy.updated',
           resource_type: 'approval_policy',
-          resource_id: req.params.id,
+          resource_id: param(req, 'id'),
           risk_level: RiskLevel.HIGH,
           before: parsePolicy(existing),
           after: parsePolicy(nextPolicy),
@@ -166,7 +167,7 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
           user_id: req.user?.sub,
           action: 'approval_policy.deleted',
           resource_type: 'approval_policy',
-          resource_id: req.params.id,
+          resource_id: param(req, 'id'),
           risk_level: RiskLevel.HIGH,
           before: parsePolicy(existing),
           after: { deleted: true },

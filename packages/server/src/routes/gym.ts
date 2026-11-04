@@ -8,6 +8,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { SkillEvolutionGym } from '../services/skill-evolution-gym';
 import { GymGovernanceCurriculum } from '../services/gym-governance-curriculum';
 import { createError } from '../middleware/error-handler';
+import { param } from './params';
 
 export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -27,7 +28,7 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/gym/governance/:skillId — governance status
   router.get('/governance/:skillId', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const status = curriculum.getSkillStatus(req.params.skillId);
+      const status = curriculum.getSkillStatus(param(req, 'skillId'));
       res.json(status);
     } catch (error) {
       next(error);
@@ -41,13 +42,13 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
       let result;
 
       if (phase) {
-        result = await curriculum.runPhaseEvaluation(req.params.skillId, phase, model);
+        result = await curriculum.runPhaseEvaluation(param(req, 'skillId'), phase, model);
       } else if (categories) {
-        result = await gym.runGovernanceEvaluation(req.params.skillId, categories, model);
+        result = await gym.runGovernanceEvaluation(param(req, 'skillId'), categories, model);
       } else {
         // Run full curriculum
         result = await curriculum.runFullCurriculum({
-          id: req.params.skillId,
+          id: param(req, 'skillId'),
           autonomy_level: req.body?.autonomy_level,
           risk_class: req.body?.risk_class,
           complexity: req.body?.complexity,
@@ -64,7 +65,7 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/gym/governance/:skillId/history — governance evaluation history
   router.get('/governance/:skillId/history', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const history = gym.getGovernanceHistory(req.params.skillId, boundedLimit(req.query.limit));
+      const history = gym.getGovernanceHistory(param(req, 'skillId'), boundedLimit(req.query.limit));
       res.json({ skillId: req.params.skillId, history });
     } catch (error) {
       next(error);
@@ -75,7 +76,7 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.post('/governance/:skillId/retest', requirePermission('write:governance'), async (req, res, next) => {
     try {
       const result = await curriculum.retestSkill({
-        id: req.params.skillId,
+        id: param(req, 'skillId'),
         autonomy_level: req.body?.autonomy_level,
         risk_class: req.body?.risk_class,
         complexity: req.body?.complexity,

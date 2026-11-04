@@ -19,6 +19,7 @@ import { decisionsInbox, dismissRequeue, labelPrescreen, setTelegramIdentity } f
 import { adjudicateAttribution } from '../services/outcome-attribution';
 import { recordRelevanceLabel, relevanceQueue } from '../services/discovery-relevance-labels';
 import { e1LabelQueue, exportE1Labels, generateE1Tasks, recordE1Label } from '../services/e1-retrieval-labels';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback = 100): number {
   if (value === undefined) return fallback;
@@ -58,7 +59,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
   });
 
   router.get('/proposals/:id', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(improvements.getImprovement(req.params.id)); }
+    try { res.json(improvements.getImprovement(param(req, 'id'))); }
     catch (error) { next(mapImprovementError(error)); }
   });
 
@@ -67,10 +68,10 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       const actor = req.user?.sub || req.user?.email;
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const result = db.transaction(() => {
-        improvements.approveImprovement(req.params.id, actor);
+        improvements.approveImprovement(param(req, 'id'), actor);
         return {
-          goalCreated: goals.generateImprovement(req.params.id) === 1,
-          proposal: improvements.getImprovement(req.params.id),
+          goalCreated: goals.generateImprovement(param(req, 'id')) === 1,
+          proposal: improvements.getImprovement(param(req, 'id')),
         };
       })();
       res.json(result);
@@ -84,7 +85,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const body = (req.body ?? {}) as { reason?: unknown; approve_escalation?: unknown };
       const result = db.transaction(() => {
-        const requeued = requeueImprovement(db, req.params.id, { actor, reason: String(body.reason ?? ''), approveEscalation: body.approve_escalation === true });
+        const requeued = requeueImprovement(db, param(req, 'id'), { actor, reason: String(body.reason ?? ''), approveEscalation: body.approve_escalation === true });
         return { ...requeued, goalCreated: requeued.created && goals.generateImprovement(requeued.id) === 1 };
       })();
       res.status(result.created ? 201 : 200).json(result);
@@ -110,7 +111,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const label = (req.body ?? {}).label;
       if (label !== 'ok' && label !== 'wrong') throw createError(400, "label must be 'ok' or 'wrong'", 'VALIDATION_ERROR');
-      labelPrescreen(db, req.params.id, label, actor);
+      labelPrescreen(db, param(req, 'id'), label, actor);
       res.status(204).end();
     } catch (error) {
       next(error instanceof Error && error.message === 'LABEL_NO_PRESCREEN_REJECTION' ? createError(404, 'No pre-screen rejection for this proposal', error.message) : error);
@@ -125,7 +126,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       const { verdict, note } = req.body ?? {};
       if (verdict !== 'correct' && verdict !== 'wrong' && verdict !== 'unclear') throw createError(400, "verdict must be 'correct', 'wrong' or 'unclear'", 'VALIDATION_ERROR');
       if (note !== undefined && typeof note !== 'string') throw createError(400, 'note must be a string', 'VALIDATION_ERROR');
-      adjudicateAttribution(db, req.params.runId, verdict, actor, note ?? '');
+      adjudicateAttribution(db, param(req, 'runId'), verdict, actor, note ?? '');
       res.status(204).end();
     } catch (error) {
       next(error instanceof Error && error.message === 'ATTRIBUTION_AUDIT_NOT_SAMPLED' ? createError(404, "Run is not in this week's attribution audit sample", error.message) : error);
@@ -194,7 +195,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const reason = (req.body ?? {}).reason;
       if (reason !== undefined && typeof reason !== 'string') throw createError(400, 'reason must be a string', 'VALIDATION_ERROR');
-      dismissRequeue(db, req.params.id, actor, reason ?? '');
+      dismissRequeue(db, param(req, 'id'), actor, reason ?? '');
       res.status(204).end();
     } catch (error) {
       next(error instanceof Error && error.message === 'DISMISS_NOT_A_REQUEUE_CANDIDATE' ? createError(404, 'Not a requeue candidate', error.message) : error);
@@ -213,7 +214,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       const theirs = target?.role ? ROLE_PERMISSIONS[target.role as UserRole] ?? [] : [];
       const missing = theirs.filter((p) => !mine.includes(p));
       if (missing.length) throw createError(403, `Cannot map to a user with permissions you do not hold: ${missing.join(', ')}`, 'TELEGRAM_MAPPING_ESCALATION');
-      setTelegramIdentity(db, req.params.telegramId, body.user_id.trim(), actor, typeof body.note === 'string' ? body.note : undefined);
+      setTelegramIdentity(db, param(req, 'telegramId'), body.user_id.trim(), actor, typeof body.note === 'string' ? body.note : undefined);
       res.status(204).end();
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
@@ -224,7 +225,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
     try {
       const actor = req.user?.sub || req.user?.email;
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
-      setTelegramIdentity(db, req.params.telegramId, null, actor);
+      setTelegramIdentity(db, param(req, 'telegramId'), null, actor);
       res.status(204).end();
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
@@ -233,7 +234,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
   });
 
   router.post('/proposals/:id/reject', requirePermission('write:governance'), (req, res, next) => {
-    try { res.json({ proposal: improvements.rejectImprovement(req.params.id) }); }
+    try { res.json({ proposal: improvements.rejectImprovement(param(req, 'id')) }); }
     catch (error) { next(mapImprovementError(error)); }
   });
 

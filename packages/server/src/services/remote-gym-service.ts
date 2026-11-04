@@ -20,6 +20,7 @@ import { remoteGymCap } from './stall-watch';
 import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
 import { TG_CAPABILITY, TG_GENERATION, TG_ID, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
+import { gatePolicyClaim, gatePolicyResult, type GatePolicyClaim } from './gym-gate-policy';
 import { PROCEDURE_ID, procedureSelectorMode, recordProcedureSelection } from './procedure-selector';
 import { PL_ID, PL_LOOP, PL_MUTANT_TIERS, PL_REQUIRED_CAPABILITIES, PL_SPECIES, applyPl001Lifecycle, claimPl001, freezePl001, lastPlFreezeRefusal, pl001On, plClaimMeta,
   plClaims24h, plManifest, plResult, plStartCondition, plState, plTaskKeys, plVoid, recordPl001, recordPlFreezeRefusal, type PlClaimMeta, type PlManifest } from './pl-001';
@@ -159,11 +160,16 @@ export class GymRunSettledError extends Error {
  */
 function settleLostRuns(db: Database, runs: Array<{ id: string; tg: string | null; pl?: string | null }>, reason: string, now: string): string[] {
   const settle = db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
-      metadata = json_set(metadata, '$.gym_result', json_object('status', 'discarded', 'reason', ?))
+      metadata = json_set(metadata, '$.gym_result', json(?))
       WHERE id = ? AND status = 'running' AND json_extract(metadata, '$.gym_result') IS NULL`);
+  const claimPolicy = db.prepare("SELECT json_extract(metadata, '$.gym.gate_policy') AS p FROM loop_runs WHERE id = ?");
   const settled: string[] = [];
   for (const r of runs) {
-    if (!settle.run(now, reason, r.id).changes) continue;
+    // gate-policy binding: a bound (non-TG/PL) claim keeps its result-side binding on a server-generated discard too
+    let claim: GatePolicyClaim | undefined;
+    if (!r.tg && !r.pl) { try { claim = JSON.parse((claimPolicy.get(r.id) as { p: string | null } | undefined)?.p ?? 'null') ?? undefined; } catch { /* unreadable: unbound */ } }
+    const bound = gatePolicyResult(claim, now, undefined);
+    if (!settle.run(now, JSON.stringify({ status: 'discarded', reason, ...(bound ? { gate_policy: bound } : {}) }), r.id).changes) continue;
     settled.push(r.id);
     if (r.tg) { try { recordTg001(db, r.tg, r.id, { status: 'discarded', reason }, now); } catch { /* bookkeeping */ } }
     // PL-001: a lost report is an infra discard of the arm (re-served, or INFRA_CENSORED after the permitted retries)
@@ -309,6 +315,8 @@ export class RemoteGymService {
     const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
     const gates = gymProdGatesEnabled() && (opts.capabilities ?? []).map(String).includes(PROD_GATES_CAPABILITY) ? prodGatesConfig() : null;
     const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}), ...(pl ? { pl: plClaimMeta(pl) } : {}) };
+    // gate-policy binding (gym-gate-policy): non-TG/PL attempts only — a TG-001 / PL-001 run's metadata stays exactly as before
+    if (!tg && !pl) Object.assign(gymMeta, { gate_policy: gatePolicyClaim(this.db, { gates: gates ?? prodGatesConfig(), gated: !!gates, attemptId: runId, claimedAt: now.toISOString(), task: String(task.commit), species: key }) });
     // B27 isolation by provenance: a TG-001 run is not an 'evolution-gym' run, so no gym statistic, breaker, IRT, hack rate,
     // graded pool, trial deciding set or estimator (all of which select loop_name = 'evolution-gym') can count it
     this.db.prepare('INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, ?, \'closed\', \'running\', ?, ?, ?, ?)')
@@ -365,7 +373,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string }; pl?: PlClaimMeta } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string }; pl?: PlClaimMeta; gate_policy?: GatePolicyClaim } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw this.settled(runId);
     // TG-001 generations: a result for a run claimed under another generation (e.g. before a restore) is never accepted
@@ -433,10 +441,12 @@ export class RemoteGymService {
       }
       // P0-12: every recorded success / quarantine carries the server-side hash of the diff it rests on
       if (!diff_ref && canonical && (status === 'success' || status === 'quarantined')) diff_ref = `sha256:${prepareGymDiff(diffText).sha256}`;
+      // gate-policy binding: a no-op for TG-001 / PL-001 runs and for runs claimed before the binding existed (never retrospective)
+      const boundResult = gym.tg || gym.pl ? undefined : gatePolicyResult(gym.gate_policy, now, prod_gates); const policyResult = boundResult ? { gate_policy: boundResult } : {};
       const settled = this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ? AND status = 'running'")
         .run(now, JSON.stringify({ status, reason, tokens, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
           ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
-          ...(plRec?.fire_check ? { fire_check: plRec.fire_check } : fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : plVoided ? { void: plVoided } : {}) }), runId).changes;
+          ...(plRec?.fire_check ? { fire_check: plRec.fire_check } : fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : plVoided ? { void: plVoided } : {}), ...policyResult }), runId).changes;
       if (!settled) throw new GymRunSettledError(null); // settled since the read above: the outcome is rolled back
       if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }
       if (gym.pl?.attempt_id && plRec) { try { recordPl001(this.db, gym.pl.attempt_id, { ...plRec, at: now }); } catch { /* experiment bookkeeping never breaks the report */ } }

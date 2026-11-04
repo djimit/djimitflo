@@ -19,6 +19,7 @@ import { BoardHandoffService } from '../services/board-handoff-service';
 import { SkillArtifactEvolutionService, verifiedDeliveredOutcomeSql } from '../services/skill-artifact-evolution-service';
 import { SkillLoaderService } from '../services/skill-loader-service';
 import { OpenMythosEvalService } from '../services/openmythos-eval-service';
+import { param } from './params';
 
 function boundedLimit(value: unknown, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -76,7 +77,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   router.get('/plans/:id', requirePermission('read:evidence'), (req, res) => {
-    const plan = decomposer.getPlan(req.params.id);
+    const plan = decomposer.getPlan(param(req, 'id'));
     if (!plan) {
       res.status(404).json({ error: { message: 'Plan not found', code: 'NOT_FOUND' } });
       return;
@@ -229,7 +230,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.post('/intelligence/outcome-learning/capabilities/:id/release', requirePermission('write:capability'), (req, res, next) => {
     try {
-      new OutcomeLearningService(db).releaseContainment(req.params.id, req.body || {});
+      new OutcomeLearningService(db).releaseContainment(param(req, 'id'), req.body || {});
       res.json({ released: true, capability_id: req.params.id });
     } catch (error) {
       const code = error instanceof Error ? error.message : 'OUTCOME_CONTAINMENT_RELEASE_FAILED';
@@ -282,7 +283,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.post('/intelligence/capabilities/:id/evaluate', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const result = intelligence.evaluateCapability(req.params.id);
+      const result = intelligence.evaluateCapability(param(req, 'id'));
       res.json(result);
     } catch (err: any) {
       if (err.message?.startsWith('SWARM_CAPABILITY_')) {
@@ -304,7 +305,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
       const mayApprove = Boolean(actor && role && ROLE_PERMISSIONS[role]?.includes('approve:task'));
       const requestedRef = typeof body.human_approval_ref === 'string' ? body.human_approval_ref.trim() : '';
       const human_approval_ref = mayApprove && requestedRef ? `operator:${actor}` : undefined;
-      res.json(intelligence.promoteCapability(req.params.id, { ...body, human_approval_ref } as Parameters<typeof intelligence.promoteCapability>[1]));
+      res.json(intelligence.promoteCapability(param(req, 'id'), { ...body, human_approval_ref } as Parameters<typeof intelligence.promoteCapability>[1]));
     } catch (err: any) {
       if (err.message?.startsWith('CAPABILITY_') || err.message?.startsWith('SKILL_EVOLUTION_') || err.message === 'SWARM_CAPABILITY_NOT_FOUND') {
         next(createError(409, err.message, err.message.split(':')[0]));
