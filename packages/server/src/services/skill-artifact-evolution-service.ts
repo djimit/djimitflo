@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import type { SkillLoaderService } from './skill-loader-service';
+import { invalidateSkillArtifactLoaders, skillArtifactEvolutionEnabled, type SkillLoaderService } from './skill-loader-service';
 import type { OpenMythosEvalService, EvalRunResult } from './openmythos-eval-service';
 import { OpenMythosEvalService as OpenMythosEvalServiceImpl } from './openmythos-eval-service';
 import { COMPLETED_UNVERIFIED_REF, DELIVERED_ATTRIBUTION_SQL } from './skill-evolution-engine';
@@ -12,6 +12,11 @@ import { COMPLETED_UNVERIFIED_REF, DELIVERED_ATTRIBUTION_SQL } from './skill-evo
 export const verifiedDeliveredOutcomeSql = (): string => `success = 1 AND ${DELIVERED_ATTRIBUTION_SQL}
   AND evidence_refs_json NOT LIKE '%"${COMPLETED_UNVERIFIED_REF}"%'`; // a function: the import cycle via swarm-intelligence-service
 
+
+/** SKILL_ARTIFACT_EVOLUTION_MODE=off (the default) refuses every evolution step. */
+function requireArtifactEvolution(): void {
+  if (!skillArtifactEvolutionEnabled()) throw new Error('SKILL_EVOLUTION_DISABLED');
+}
 
 type Candidate = {
   id: string; skill_id: string; version: string; content_hash: string; source_package_hash: string;
@@ -29,6 +34,7 @@ export class SkillArtifactEvolutionService {
     loader: SkillLoaderService; skillId: string; baselineHash: string;
     find: string; replace: string; actor: string; sourceTaskId: string;
   }): Candidate {
+    requireArtifactEvolution();
     const skill = input.loader.getSkill(input.skillId);
     if (!skill || !input.actor.trim()) throw new Error('SKILL_EVOLUTION_SKILL_OR_ACTOR_REQUIRED');
     if (skill.contentHash !== input.baselineHash) throw new Error('SKILL_EVOLUTION_BASELINE_HASH_MISMATCH');
@@ -92,6 +98,7 @@ export class SkillArtifactEvolutionService {
 
   async compare(candidateId: string, loader: SkillLoaderService, evals: OpenMythosEvalService,
     input: { model: string; caseIds: string[]; actor: string }): Promise<Record<string, unknown>> {
+    requireArtifactEvolution();
     const candidate = this.getCandidate(candidateId);
     const baseline = loader.getSkill(candidate.skill_id);
     if (!baseline || baseline.contentHash !== candidate.parent_hash) throw new Error('SKILL_EVOLUTION_BASELINE_CHANGED');
@@ -159,19 +166,27 @@ export class SkillArtifactEvolutionService {
   }
 
   activate(candidateId: string): void {
+    requireArtifactEvolution();
     const candidate = this.getCandidate(candidateId);
     if (candidate.lifecycle !== 'candidate') throw new Error('SKILL_EVOLUTION_CANDIDATE_NOT_ACTIVEABLE');
     this.requireCandidateComparison(candidateId);
     const activate = this.db.transaction(() => {
+      // The comparison was made against parent_hash; a different artifact activated since (a sibling candidate, a
+      // rollback) makes that comparison stale, so it never supersedes it. Checked inside the activation transaction.
+      const active = this.db.prepare("SELECT content_hash FROM skill_artifact_versions WHERE skill_id = ? AND lifecycle = 'active'")
+        .get(candidate.skill_id) as { content_hash: string } | undefined;
+      if ((active?.content_hash ?? candidate.source_package_hash) !== candidate.parent_hash) throw new Error('SKILL_EVOLUTION_STALE_PARENT');
       this.db.prepare("UPDATE skill_artifact_versions SET lifecycle = 'approved' WHERE skill_id = ? AND lifecycle = 'active'").run(candidate.skill_id);
       const result = this.db.prepare("UPDATE skill_artifact_versions SET lifecycle = 'active', activated_at = ? WHERE candidate_id = ? AND lifecycle = 'candidate'")
         .run(new Date().toISOString(), candidateId);
       if (result.changes !== 1) throw new Error('SKILL_EVOLUTION_CANDIDATE_NOT_FOUND');
     });
     activate();
+    invalidateSkillArtifactLoaders();
   }
 
   rollback(candidateId: string): Record<string, unknown> {
+    requireArtifactEvolution();
     const candidate = this.getCandidate(candidateId);
     if (candidate.lifecycle !== 'active') throw new Error('SKILL_EVOLUTION_VERSION_NOT_ACTIVE');
     const restore = this.db.prepare("SELECT * FROM skill_artifact_versions WHERE skill_id = ? AND content_hash = ? AND lifecycle = 'approved'")
@@ -182,6 +197,7 @@ export class SkillArtifactEvolutionService {
       this.db.prepare("UPDATE skill_artifact_versions SET lifecycle = 'active', activated_at = ? WHERE skill_id = ? AND content_hash = ?")
         .run(new Date().toISOString(), candidate.skill_id, candidate.parent_hash);
     })();
+    invalidateSkillArtifactLoaders();
     return { skill_id: candidate.skill_id, active_version: restore.version, active_hash: restore.content_hash,
       revoked_version: candidate.version, external_effects_reversed: false };
   }

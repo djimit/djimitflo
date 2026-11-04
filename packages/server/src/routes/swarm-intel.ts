@@ -2,7 +2,8 @@
  * Swarm Intelligence routes — task decomposition, knowledge sharing, skill evolution.
  */
 
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -17,7 +18,7 @@ import { OutcomeLearningService } from '../services/outcome-learning-service';
 import { ReviewerIndependenceService } from '../services/reviewer-independence-service';
 import { BoardHandoffService } from '../services/board-handoff-service';
 import { SkillArtifactEvolutionService, verifiedDeliveredOutcomeSql } from '../services/skill-artifact-evolution-service';
-import { SkillLoaderService } from '../services/skill-loader-service';
+import { SkillLoaderService, skillArtifactEvolutionEnabled } from '../services/skill-loader-service';
 import { OpenMythosEvalService } from '../services/openmythos-eval-service';
 import { param } from './params';
 
@@ -47,8 +48,13 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   const skillArtifacts = new SkillArtifactEvolutionService(db);
   const skillLoader = new SkillLoaderService(db);
   const skillEvaluator = new OpenMythosEvalService(db);
+  // per-route limiter CodeQL can see; /api also caps 300/min
+  const skillEvolutionLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
+  // SKILL_ARTIFACT_EVOLUTION_MODE=off (default): the skill artifact evolution routes answer disabled before any DB access
+  const skillEvolutionGate: RequestHandler = (_req, _res, next) => next(skillArtifactEvolutionEnabled() ? undefined
+    : createError(409, 'Skill artifact evolution is disabled (SKILL_ARTIFACT_EVOLUTION_MODE=off)', 'SKILL_ARTIFACT_EVOLUTION_DISABLED'));
 
-  router.get('/intelligence/skills/inventory', requirePermission('read:evidence'), (_req, res) => {
+  router.get('/intelligence/skills/inventory', skillEvolutionLimiter, requirePermission('read:evidence'), skillEvolutionGate, (_req, res) => {
     skillLoader.loadSkills();
     const skills = skillLoader.listSkills().map((skill) => ({
       id: skill.id, version: skill.version, content_hash: skill.contentHash,
@@ -315,7 +321,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
-  router.post('/intelligence/skills/candidates', requirePermission('write:skills'), requirePermission('write:capability'), (req, res, next) => {
+  router.post('/intelligence/skills/candidates', skillEvolutionLimiter, requirePermission('write:skills'), requirePermission('write:capability'), skillEvolutionGate, (req, res, next) => {
     try {
       const body = req.body || {};
       if (typeof body.skill_id !== 'string' || typeof body.baseline_hash !== 'string'
@@ -347,12 +353,12 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
-  router.get('/intelligence/skills/candidates/:id', requirePermission('read:evidence'), (req, res, next) => {
+  router.get('/intelligence/skills/candidates/:id', skillEvolutionLimiter, requirePermission('read:evidence'), skillEvolutionGate, (req, res, next) => {
     try { res.json(skillArtifacts.getCandidateById(param(req, 'id'))); }
     catch (err: any) { next(createError(404, err.message || 'SKILL_EVOLUTION_CANDIDATE_NOT_FOUND', 'NOT_FOUND')); }
   });
 
-  router.post('/intelligence/skills/candidates/:id/compare', requirePermission('write:governance'), async (req, res, next) => {
+  router.post('/intelligence/skills/candidates/:id/compare', skillEvolutionLimiter, requirePermission('write:governance'), skillEvolutionGate, async (req, res, next) => {
     try {
       const body = req.body || {};
       if (typeof body.model !== 'string' || !body.model.trim() || !Array.isArray(body.case_ids)
@@ -372,7 +378,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
-  router.post('/intelligence/skills/candidates/:id/rollback', requirePermission('write:capability'), (req, res, next) => {
+  router.post('/intelligence/skills/candidates/:id/rollback', skillEvolutionLimiter, requirePermission('write:capability'), skillEvolutionGate, (req, res, next) => {
     try {
       const candidate = skillArtifacts.getCandidateById(param(req, 'id')) as { capability_id?: string | null };
       const result = skillArtifacts.rollback(param(req, 'id'));

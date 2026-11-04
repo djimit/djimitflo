@@ -52,6 +52,19 @@ export function configuredSkillsDir(env: NodeJS.ProcessEnv = process.env): strin
   return env.DJIMITFLO_SKILLS_DIR?.trim() || null;
 }
 
+/**
+ * SKILL_ARTIFACT_EVOLUTION_MODE=off|on (default off). Off: the evolution routes answer disabled and the loader ignores
+ * `skill_artifact_versions` rows, so skills load exactly as from their SKILL.md package. On: an active artifact row
+ * replaces the package instructions (SkillArtifactEvolutionService).
+ */
+export const skillArtifactEvolutionEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.SKILL_ARTIFACT_EVOLUTION_MODE === 'on';
+
+// Bumped when the active skill artifact changes (activate / rollback); every loader reloads on its next read, so long-lived
+// loaders (ExecutionEngine, GovernanceGuard) never keep serving a superseded version.
+// ponytail: process-local — the promote routes and the execution engine share one server process; a second writer process needs a DB-held generation.
+let artifactGeneration = 0;
+export function invalidateSkillArtifactLoaders(): void { artifactGeneration++; }
+
 function configuredAllowlist(): Set<string> | null {
   const value = process.env.DJIMITFLO_SKILL_ALLOWLIST?.trim();
   return value ? new Set(value.split(',').map((id) => id.trim()).filter(Boolean)) : null;
@@ -60,6 +73,7 @@ function configuredAllowlist(): Set<string> | null {
 export class SkillLoaderService {
   private skills: Map<string, SkillDefinition> = new Map();
   private rejectedSkills: RejectedSkill[] = [];
+  private loadedGeneration = -1;
 
   constructor(private db: Database, private skillsDir: string | null = configuredSkillsDir(), private allowedSkillIds = configuredAllowlist(), private selectedDirectory?: string) {
     this.ensureTables();
@@ -72,6 +86,7 @@ export class SkillLoaderService {
   loadSkills(): SkillDefinition[] {
     const loaded: SkillDefinition[] = [];
     const workflowOwners = new Map<string, string>();
+    this.loadedGeneration = artifactGeneration;
     this.skills.clear();
     this.rejectedSkills = [];
 
@@ -80,6 +95,9 @@ export class SkillLoaderService {
     }
 
     const skillsDir = this.skillsDir;
+    const artifactEvolution = skillArtifactEvolutionEnabled();
+    const artifactTable = artifactEvolution
+      && this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_artifact_versions'").get();
     const entries = readdirSync(skillsDir, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -96,11 +114,11 @@ export class SkillLoaderService {
         const manifestContent = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : null;
         const manifest = manifestContent ? this.parseFlatYaml(manifestContent) : {};
         let skill = this.parseSkillMd(content, entry.name, manifest, manifestContent);
-        const artifactTable = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_artifact_versions'").get();
-        if (artifactTable) {
-          const active = this.db.prepare(`SELECT version, content_hash, source_package_hash, instructions
+        // off: the package skill exactly as loaded before artifact evolution existed (no artifact lookup, no extra field)
+        if (artifactEvolution) {
+          const active = artifactTable ? this.db.prepare(`SELECT version, content_hash, source_package_hash, instructions
             FROM skill_artifact_versions WHERE skill_id = ? AND lifecycle = 'active'`).get(skill.id) as
-            { version: string; content_hash: string; source_package_hash: string; instructions: string } | undefined;
+            { version: string; content_hash: string; source_package_hash: string; instructions: string } | undefined : undefined;
           if (active) {
             if (active.source_package_hash !== skill.contentHash) {
               this.rejectedSkills.push({ id: skill.id, errors: ['active skill artifact base package changed; revalidation required'] });
@@ -112,8 +130,6 @@ export class SkillLoaderService {
           } else {
             skill.sourcePackageHash = skill.contentHash;
           }
-        } else {
-          skill.sourcePackageHash = skill.contentHash;
         }
         if (this.allowedSkillIds && !this.allowedSkillIds.has(entry.name) && !this.allowedSkillIds.has(skill.id)) continue;
         const errors = this.validateSkill(skill);
@@ -138,6 +154,7 @@ export class SkillLoaderService {
    * Get a skill by ID.
    */
   getSkill(id: string): SkillDefinition | null {
+    this.refreshIfStale();
     return this.skills.get(id) || null;
   }
 
@@ -145,10 +162,12 @@ export class SkillLoaderService {
    * List all loaded skills.
    */
   listSkills(): SkillDefinition[] {
+    this.refreshIfStale();
     return Array.from(this.skills.values());
   }
 
   listRejectedSkills(): RejectedSkill[] {
+    this.refreshIfStale();
     return this.rejectedSkills;
   }
 
@@ -156,6 +175,7 @@ export class SkillLoaderService {
    * Enable/disable a skill.
    */
   setSkillEnabled(id: string, enabled: boolean): void {
+    this.refreshIfStale();
     const skill = this.skills.get(id);
     if (skill) skill.enabled = enabled;
   }
@@ -164,6 +184,7 @@ export class SkillLoaderService {
    * Assign a skill to an agent.
    */
   assignSkillToAgent(agentId: string, skillId: string): AgentSkillAssignment {
+    this.refreshIfStale();
     if (!this.skills.has(skillId)) throw new Error(`SKILL_NOT_ADMITTED: ${skillId}`);
     const agent = this.db.prepare('SELECT id FROM agents WHERE id = ?').get(agentId);
     if (!agent) throw new Error(`AGENT_NOT_FOUND: ${agentId}`);
@@ -194,6 +215,7 @@ export class SkillLoaderService {
    * Get skills assigned to an agent.
    */
   getAgentSkills(agentId: string): SkillDefinition[] {
+    this.refreshIfStale();
     const rows = this.db.prepare(`
       SELECT skill_id FROM agent_skills WHERE agent_id = ? AND enabled = 1
     `).all(agentId) as Array<{ skill_id: string }>;
@@ -207,6 +229,7 @@ export class SkillLoaderService {
    * Find skills matching a trigger.
    */
   findSkillsByTrigger(trigger: string): SkillDefinition[] {
+    this.refreshIfStale();
     const normalized = trigger.trim().toLowerCase();
     return Array.from(this.skills.values()).filter(
       (skill) => skill.enabled && skill.triggers.some((t) => t.trim().toLowerCase() === normalized)
@@ -223,6 +246,7 @@ export class SkillLoaderService {
     rejectedSkills: number;
     skillLoading: 'DISABLED_BY_POLICY' | 'ENABLED';
   } {
+    this.refreshIfStale();
     const assigned = (this.db.prepare('SELECT COUNT(*) as c FROM agent_skills WHERE enabled = 1').get() as any)?.c || 0;
 
     return {
@@ -235,6 +259,10 @@ export class SkillLoaderService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private refreshIfStale(): void {
+    if (this.loadedGeneration !== artifactGeneration) this.loadSkills();
+  }
 
   private parseSkillMd(
     content: string,
