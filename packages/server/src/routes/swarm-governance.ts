@@ -19,6 +19,7 @@ import { SwarmStatusService } from '../services/swarm-status-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { CsSkillSwarmHarnessService } from '../services/cs-skill-swarm-harness-service';
 import type { WebSocketService } from '../services/websocket-service';
+import { param } from './params';
 
 function boundedLimit(value: unknown, maximum = 500): number | undefined {
   if (value === undefined) return undefined;
@@ -122,11 +123,11 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.get('/proof-runs/:id', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(proofRuns.get(req.params.id)); } catch (error) { next(mapProofRunError(error)); }
+    try { res.json(proofRuns.get(param(req, 'id'))); } catch (error) { next(mapProofRunError(error)); }
   });
 
   router.post('/proof-runs/:id/rollback', requirePermission('write:governance'), (req, res, next) => {
-    try { const summary = proofRuns.rollback(req.params.id); emitProofRunUpdated(wsService, summary); res.json(summary); } catch (error) { next(mapProofRunError(error)); }
+    try { const summary = proofRuns.rollback(param(req, 'id')); emitProofRunUpdated(wsService, summary); res.json(summary); } catch (error) { next(mapProofRunError(error)); }
   });
 
   // Evolution
@@ -153,7 +154,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.get('/assurance/traces/:traceId', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(assurance.getTrace(req.params.traceId)); } catch (error) { next(mapAssuranceError(error)); }
+    try { res.json(assurance.getTrace(param(req, 'traceId'))); } catch (error) { next(mapAssuranceError(error)); }
   });
 
   router.post('/assurance/checkpoints', requirePermission('write:swarm_action'), (req, res, next) => {
@@ -161,7 +162,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.post('/assurance/checkpoints/:id/branch', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(assurance.branchCheckpoint(req.params.id, req.body || {})); } catch (error) { next(mapAssuranceError(error)); }
+    try { res.status(201).json(assurance.branchCheckpoint(param(req, 'id'), req.body || {})); } catch (error) { next(mapAssuranceError(error)); }
   });
 
   router.post('/assurance/evals/run', requirePermission('write:swarm_action'), (req, res, next) => {
@@ -197,8 +198,8 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
     try {
       const actor = req.user?.sub || req.user?.email;
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
-      const out = memoryCandidates.reject(req.params.id, actor, String(req.body?.reason ?? ''));
-      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_rejected', resource_type: 'memory_candidate', resource_id: req.params.id,
+      const out = memoryCandidates.reject(param(req, 'id'), actor, String(req.body?.reason ?? ''));
+      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_rejected', resource_type: 'memory_candidate', resource_id: param(req, 'id'),
         user_id: actor, risk_level: RiskLevel.MEDIUM, metadata: { reason: String(req.body?.reason ?? '').slice(0, 300) } });
       res.json(out);
     } catch (error) { next(mapMemoryCandidateError(error)); }
@@ -207,7 +208,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   router.post('/memory/candidates/:id/promote', requirePermission('approve:task'), (req, res, next) => {
     try {
       const approvedBy = req.user?.sub || req.user?.email;
-      const out = memoryCandidates.promote(req.params.id, {
+      const out = memoryCandidates.promote(param(req, 'id'), {
         sinks: req.body?.sinks,
         human_approved: req.body?.human_approved === true && Boolean(approvedBy),
         approved_by: req.body?.human_approved === true ? approvedBy : undefined,
@@ -215,7 +216,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
         // P0-9: the human gate is satisfied only by the authenticated user id, never by a body or machine string
         approver_user_id: req.body?.human_approved === true ? req.user?.sub : undefined,
       });
-      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_promoted', resource_type: 'memory_candidate', resource_id: req.params.id,
+      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_promoted', resource_type: 'memory_candidate', resource_id: param(req, 'id'),
         user_id: approvedBy, risk_level: RiskLevel.MEDIUM, metadata: { human_approved: req.body?.human_approved === true, sinks: req.body?.sinks ?? null } });
       res.json(out);
     } catch (error) { next(mapMemoryCandidateError(error)); }

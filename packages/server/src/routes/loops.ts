@@ -9,6 +9,7 @@ import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { dependencyLaneQueue, reenableDependencyLane } from '../services/dependency-lane';
 import { autoMergeEvidence, reEnableClass } from '../services/loop-auto-merge-state';
 import type { ExecutionEngine } from '../execution/execution-engine';
+import { param } from './params';
 
 function mapLoopServiceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -160,7 +161,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.get('/runs/:id', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(loopService.getLoopRun(req.params.id));
+      res.json(loopService.getLoopRun(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -172,7 +173,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.get('/runs/:id/review-bundle', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(loopService.getReviewBundle(req.params.id));
+      res.json(loopService.getReviewBundle(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -185,7 +186,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   // Gym run panel (read-only): the skill outcome record() wrote for this run — duration and the counted verdict live only there
   router.get('/runs/:id/gym-outcome', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json(queries.getGymSkillOutcome(req.params.id));
+      res.json(queries.getGymSkillOutcome(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -224,7 +225,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/step', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(loopService.stepLoopRun(req.params.id));
+      res.json(loopService.stepLoopRun(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -236,7 +237,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/continue', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.status(201).json(loopService.continueLoopRun(req.params.id, req.body || {}));
+      res.status(201).json(loopService.continueLoopRun(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -248,7 +249,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/retry', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.status(201).json(loopService.retryLoopRun(req.params.id, req.body || {}));
+      res.status(201).json(loopService.retryLoopRun(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -260,7 +261,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/split', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.status(201).json(loopService.splitLoopFinding(req.params.id, req.body || {}));
+      res.status(201).json(loopService.splitLoopFinding(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -272,7 +273,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/verify', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(loopService.verifyLoopRun(req.params.id));
+      res.json(loopService.verifyLoopRun(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -284,7 +285,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/execute-maker', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(await loopService.executeMaker(req.params.id, req.body || {}));
+      res.json(await loopService.executeMaker(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -296,7 +297,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/execute-worker', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(await loopService.executeWorker(req.params.id, req.body || {}));
+      res.json(await loopService.executeWorker(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -308,7 +309,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/execute-checker', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(await loopService.executeChecker(req.params.id, req.body || {}));
+      res.json(await loopService.executeChecker(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -322,7 +323,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.post('/runs/:id/checker-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
       if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
-      res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
+      res.json(loopService.submitCheckerVerdict(param(req, 'id'), req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -336,7 +337,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.post('/runs/:id/security-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
       if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
-      res.json(loopService.submitSecurityVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
+      res.json(loopService.submitSecurityVerdict(param(req, 'id'), req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -348,7 +349,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/run-checks', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(loopService.runDeterministicChecks(req.params.id, req.body || {}));
+      res.json(loopService.runDeterministicChecks(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -362,7 +363,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     try {
       const actor = req.user?.sub || req.user?.email;
       const requestedRef = typeof req.body?.human_approval_ref === 'string' ? req.body.human_approval_ref.trim() : '';
-      res.json(loopService.completeLoopRun(req.params.id, {
+      res.json(loopService.completeLoopRun(param(req, 'id'), {
         human_approval_ref: actor && requestedRef ? `operator:${actor}` : undefined,
       }));
     } catch (error) {
@@ -376,7 +377,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/stop', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(await loopService.stopLoopRun(req.params.id));
+      res.json(await loopService.stopLoopRun(param(req, 'id')));
     } catch (error) {
       try {
         mapLoopServiceError(error);

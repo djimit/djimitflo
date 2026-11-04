@@ -11,6 +11,7 @@ import { AuditService } from '../services/audit-service';
 import type { WebSocketService } from '../services/websocket-service';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import type { AuthMiddleware } from '../middleware/auth';
+import { param } from './params';
 
 function parseApproval(approval: any, db?: Database) {
   return {
@@ -159,7 +160,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
   // PATCH /api/approvals/:id - Backward-compatible approve or deny
   router.patch('/:id', requirePermission('approve:task'), async (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const { approved, reason } = req.body;
       const user = getUser(req);
 
@@ -196,7 +197,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
     try {
       const user = getUser(req);
 
-      const approval = loadApprovalOr404(req.params.id, res);
+      const approval = loadApprovalOr404(param(req, 'id'), res);
       if (!approval) return;
 
       if (!canAccessApprovalTask(user, approval)) {
@@ -211,7 +212,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       const decidedBy = user?.sub || 'system';
 
       try {
-        await executionEngine.handleApprovalDecision(req.params.id, true, decidedBy, req.body.reason);
+        await executionEngine.handleApprovalDecision(param(req, 'id'), true, decidedBy, req.body.reason);
       } catch (error) {
         if (sendDecisionError(error, res)) return;
         throw error;
@@ -229,7 +230,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
     try {
       const user = getUser(req);
 
-      const approval = loadApprovalOr404(req.params.id, res);
+      const approval = loadApprovalOr404(param(req, 'id'), res);
       if (!approval) return;
 
       if (!canAccessApprovalTask(user, approval)) {
@@ -244,7 +245,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       const decidedBy = user?.sub || 'system';
 
       try {
-        await executionEngine.handleApprovalDecision(req.params.id, false, decidedBy, req.body.reason);
+        await executionEngine.handleApprovalDecision(param(req, 'id'), false, decidedBy, req.body.reason);
       } catch (error) {
         if (sendDecisionError(error, res)) return;
         throw error;
@@ -259,7 +260,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
   // POST /api/approvals/:id/cancel
   router.post('/:id/cancel', requirePermission('approve:task'), (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = param(req, 'id');
       const user = getUser(req);
 
       const approval = loadApprovalOr404(id, res);

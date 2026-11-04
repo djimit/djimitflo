@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { approvalMessage, buildDigest, inQuietHours, maybeSendDigest, pushApproval, setPushSender } from '../services/operator-push';
+import { approvalMessage, buildDigest, inQuietHours, maybeSendDigest, pushApproval, pushPendingApprovals, setPushSender } from '../services/operator-push';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import { SECRET_PATTERNS } from '../services/secret-patterns';
 import { listSchedulers, markRun, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
@@ -37,6 +37,49 @@ it('UX-12: with the flag on, one message per approval, none on duplicates, the h
   expect(inQuietHours('22-7', new Date('2026-10-06T06:59:00Z'))).toBe(true);
   expect(inQuietHours('22-7', new Date('2026-10-06T07:00:00Z'))).toBe(false);
   expect(inQuietHours('', NOON)).toBe(false);
+});
+
+it('retries a failed approval delivery and only deduplicates a delivered one', async () => {
+  const env = { TELEGRAM_PUSH_ENABLED: 'true' };
+  sender.requestApproval.mockRejectedValueOnce(new Error('telegram unavailable'));
+  expect(await pushApproval(db, approval('retry-a1'), env, NOON)).toBe('failed');
+  expect(db.prepare('SELECT status,attempts,last_error FROM telegram_push_log WHERE approval_id=?').get('retry-a1')).toEqual({
+    status: 'failed', attempts: 1, last_error: 'TELEGRAM_DELIVERY_FAILED',
+  });
+  expect(await pushApproval(db, approval('retry-a1'), env, NOON)).toBe('sent');
+  expect(await pushApproval(db, approval('retry-a1'), env, NOON)).toBe('duplicate');
+  expect(db.prepare('SELECT status,attempts,last_error FROM telegram_push_log WHERE approval_id=?').get('retry-a1')).toEqual({
+    status: 'delivered', attempts: 2, last_error: null,
+  });
+});
+
+it('upgrades the existing delivery logs without losing delivered dedupe rows', async () => {
+  db.exec(`CREATE TABLE telegram_push_log (approval_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL);
+    CREATE TABLE operator_digest_log (day TEXT PRIMARY KEY, sent_at TEXT NOT NULL);`);
+  db.prepare("INSERT INTO telegram_push_log VALUES ('legacy-a1','2026-10-05T12:00:00Z')").run();
+  expect(await pushApproval(db, approval('legacy-a1'), { TELEGRAM_PUSH_ENABLED: 'true' }, NOON)).toBe('duplicate');
+  expect(db.prepare('SELECT status,attempts,last_error FROM telegram_push_log WHERE approval_id=?').get('legacy-a1')).toEqual({
+    status: 'delivered', attempts: 1, last_error: null,
+  });
+});
+
+it('periodically retries failed and stale pending approval deliveries', async () => {
+  const env = { TELEGRAM_PUSH_ENABLED: 'true' };
+  db.pragma('foreign_keys = OFF');
+  const insert = db.prepare(`INSERT INTO approvals (id, task_id, title, risk_level, status, request_type, request_message, requested_by, request_data, created_at, updated_at)
+    VALUES (?, ?, ?, 'low', 'pending', 'shell_command', 'fixture', 'fixture', '{}', ?, ?)`);
+  insert.run('failed-a1', 'task-failed-a1', 'failed', '2026-10-06T10:00:00Z', '2026-10-06T10:00:00Z');
+  insert.run('stale-a2', 'task-stale-a2', 'stale', '2026-10-06T10:00:00Z', '2026-10-06T10:00:00Z');
+  insert.run('fresh-a3', 'task-fresh-a3', 'fresh', '2026-10-06T10:00:00Z', '2026-10-06T10:00:00Z');
+  expect(await pushApproval(db, { id: 'failed-a1', title: 'failed' }, env, NOON)).toBe('sent');
+  db.prepare("UPDATE telegram_push_log SET status='failed' WHERE approval_id='failed-a1'").run();
+  expect(await pushApproval(db, { id: 'stale-a2', title: 'stale' }, env, NOON)).toBe('sent');
+  db.prepare("UPDATE telegram_push_log SET status='pending',sent_at='2026-10-06T11:00:00Z' WHERE approval_id='stale-a2'").run();
+  expect(await pushApproval(db, { id: 'fresh-a3', title: 'fresh' }, env, NOON)).toBe('sent');
+  db.prepare("UPDATE telegram_push_log SET status='pending',sent_at='2026-10-06T11:55:00Z' WHERE approval_id='fresh-a3'").run();
+  sent.length = 0;
+  expect(await pushPendingApprovals(db, env, NOON)).toBe(2);
+  expect(sent.map((item) => item.id)).toEqual(['failed-a1', 'stale-a2']);
 });
 
 it('UX-12: the message carries lane, scope, risk and id, and no secret pattern', () => {
@@ -96,6 +139,58 @@ it('UX-13: the digest reports a seeded day and says so honestly on an empty one;
   expect(await maybeSendDigest(db, env, new Date('2026-10-06T07:10:00Z'))).toBe(true);
   expect(await maybeSendDigest(db, env, new Date('2026-10-06T07:40:00Z'))).toBe(false);
   expect(alerts).toHaveLength(1);
+});
+
+it('retries a failed daily digest instead of recording false delivery', async () => {
+  const env = { OPERATOR_DIGEST_ENABLED: 'true', OPERATOR_DIGEST_HOUR: '7' };
+  sender.broadcastAlert.mockRejectedValueOnce(new Error('telegram unavailable'));
+  const now = new Date('2026-10-06T07:10:00Z');
+  expect(await maybeSendDigest(db, env, now)).toBe(false);
+  expect(db.prepare('SELECT status,attempts FROM operator_digest_log WHERE day=?').get('2026-10-06')).toEqual({ status: 'failed', attempts: 1 });
+  expect(await maybeSendDigest(db, env, now)).toBe(true);
+  expect(db.prepare('SELECT status,attempts FROM operator_digest_log WHERE day=?').get('2026-10-06')).toEqual({ status: 'delivered', attempts: 2 });
+});
+
+it('a digest that failed late in its hour is retried on the next tick outside the hour; a day never attempted is not', async () => {
+  const env = { OPERATOR_DIGEST_ENABLED: 'true', OPERATOR_DIGEST_HOUR: '7' };
+  sender.broadcastAlert.mockRejectedValueOnce(new Error('telegram unavailable'));
+  expect(await maybeSendDigest(db, env, new Date('2026-10-06T07:50:00Z'))).toBe(false);
+  expect(await maybeSendDigest(db, env, new Date('2026-10-06T08:05:00Z'))).toBe(true);
+  expect(db.prepare('SELECT status,attempts FROM operator_digest_log WHERE day=?').get('2026-10-06')).toEqual({ status: 'delivered', attempts: 2 });
+  expect(await maybeSendDigest(db, env, new Date('2026-10-06T09:05:00Z'))).toBe(false);
+  // a stale pending row (process died mid-send) is retried outside the hour too
+  db.prepare("INSERT INTO operator_digest_log (day, sent_at, status, attempts) VALUES ('2026-10-07', '2026-10-07T07:55:00Z', 'pending', 1)").run();
+  expect(await maybeSendDigest(db, env, new Date('2026-10-07T08:20:00Z'))).toBe(true);
+  // no row for the day: the first send still waits for the hour
+  expect(await maybeSendDigest(db, env, new Date('2026-10-08T08:05:00Z'))).toBe(false);
+  expect(alerts).toHaveLength(2);
+});
+
+it('per-recipient delivery: a retry reaches only the recipient that failed, never re-sending to one that already got it', async () => {
+  const b = new TelegramBotService(db, { request: vi.fn() } as never);
+  b.configure({ botToken: 'test-bot-token', allowedUsers: [111, 222] });
+  const got: Array<[number, string]> = []; let down = true;
+  vi.spyOn(b, 'sendMessage').mockImplementation(async (chat: number, text: string) => { if (chat === 222 && down) throw new Error('TELEGRAM_DELIVERY_FAILED'); got.push([chat, text.slice(0, 12)]); });
+  setPushSender(b);
+  const env = { TELEGRAM_PUSH_ENABLED: 'true', OPERATOR_DIGEST_ENABLED: 'true', OPERATOR_DIGEST_HOUR: '7' };
+  expect(await pushApproval(db, approval('multi-a1'), env, NOON)).toBe('failed');
+  expect(await pushApproval(db, approval('multi-a1'), env, NOON)).toBe('failed');
+  const day = new Date('2026-10-06T07:10:00Z');
+  expect(await maybeSendDigest(db, env, day)).toBe(false);
+  expect(await maybeSendDigest(db, env, day)).toBe(false);
+  expect(got.map(([chat]) => chat)).toEqual([111, 111]);
+  down = false;
+  expect(await pushApproval(db, approval('multi-a1'), env, NOON)).toBe('sent');
+  expect(await maybeSendDigest(db, env, day)).toBe(true);
+  expect(got.map(([chat]) => chat)).toEqual([111, 111, 222, 222]);
+  expect(db.prepare('SELECT status,attempts FROM telegram_push_log WHERE approval_id=?').get('multi-a1')).toEqual({ status: 'delivered', attempts: 3 });
+  // a recipient that is down does not stop later recipients from getting the message
+  const c = new TelegramBotService(db, { request: vi.fn() } as never);
+  c.configure({ botToken: 'test-bot-token', allowedUsers: [111, 222] });
+  const reached: number[] = [];
+  vi.spyOn(c, 'sendMessage').mockImplementation(async (chat: number) => { if (chat === 111) throw new Error('TELEGRAM_DELIVERY_FAILED'); reached.push(chat); });
+  await expect(c.broadcastAlert('x')).rejects.toThrow('TELEGRAM_DELIVERY_FAILED');
+  expect(reached).toEqual([222]);
 });
 
 it('digest: schedulers off by their flag are named as such; only an armed scheduler that stopped ticking reads as a problem', () => {
