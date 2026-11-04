@@ -82,8 +82,8 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
   { name: 'anthropic', model: 'claude-sonnet-4-20250514', baseUrl: 'https://api.anthropic.com/v1', apiKeyEnv: 'ANTHROPIC_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'creative'], costPerMtok: 3.0, avgLatencyMs: 2000, status: 'unknown', lastHealthCheck: '' },
   { name: 'openai', model: 'gpt-4o', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'chat', 'creative'], costPerMtok: 2.5, avgLatencyMs: 1500, status: 'unknown', lastHealthCheck: '' },
   { name: 'google', model: 'gemini-2.5-pro', baseUrl: 'https://generativelanguage.googleapis.com/v1', apiKeyEnv: 'GOOGLE_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'creative'], costPerMtok: 1.25, avgLatencyMs: 1800, status: 'unknown', lastHealthCheck: '' },
-  { name: 'ollama', model: 'qwen2.5:14b-instruct-q4_K_M', baseUrl: process.env.OLLAMA_URL || 'http://192.168.1.28:11434', apiKeyEnv: '', capabilities: ['coding', 'analysis', 'reasoning', 'chat'], costPerMtok: 0, avgLatencyMs: 3000, status: 'unknown', lastHealthCheck: '' },
-  { name: 'litellm', model: 'workstation-litellm/coding', baseUrl: process.env.LITELLM_URL || 'http://192.168.1.28:4000/v1', apiKeyEnv: 'LITELLM_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'chat', 'creative', 'embedding'], costPerMtok: 1.0, avgLatencyMs: 1200, status: 'unknown', lastHealthCheck: '' },
+  { name: 'ollama', model: 'qwen2.5:14b-instruct-q4_K_M', baseUrl: process.env.OLLAMA_URL || '', apiKeyEnv: '', capabilities: ['coding', 'analysis', 'reasoning', 'chat'], costPerMtok: 0, avgLatencyMs: 3000, status: 'unknown', lastHealthCheck: '' },
+  { name: 'litellm', model: 'workstation-litellm/coding', baseUrl: process.env.LITELLM_URL || '', apiKeyEnv: 'LITELLM_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'chat', 'creative', 'embedding'], costPerMtok: 1.0, avgLatencyMs: 1200, status: 'unknown', lastHealthCheck: '' },
 ];
 
 function sampleGamma(shape: number): number {
@@ -195,7 +195,8 @@ export class LlmRouterService {
   async refreshProviderHealth(): Promise<Array<ProviderConfig & { available: boolean }>> {
     await Promise.all(Array.from(this.providers.values()).map(async (provider) => {
       const apiKey = provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : undefined;
-      if (provider.apiKeyEnv && !apiKey) { provider.status = 'offline'; provider.lastHealthCheck = new Date().toISOString(); return; }
+      // M2d: no base URL (OLLAMA_URL / LITELLM_URL unset) = provider unavailable, never a workstation default
+      if (!provider.baseUrl || (provider.apiKeyEnv && !apiKey)) { provider.status = 'offline'; provider.lastHealthCheck = new Date().toISOString(); return; }
       const paths: Record<LlmProvider, string> = { anthropic: '/models', openai: '/models', google: '/models', ollama: '/api/tags', litellm: '/models' };
       const headers: Record<string, string> = {};
       if (apiKey) headers.Authorization = 'Bearer ' + apiKey;

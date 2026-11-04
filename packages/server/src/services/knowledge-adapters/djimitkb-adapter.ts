@@ -8,10 +8,11 @@ export class DjimitKBAdapter implements KnowledgeSourceAdapter {
   private lastRequest = 0;
 
   constructor() {
-    this.baseUrl = process.env.DJIMITKB_URL || 'http://192.168.1.28:8007';
+    this.baseUrl = process.env.DJIMITKB_URL || ''; // unset = adapter returns nothing (M2d)
   }
 
   async search(query: string, limit: number = 5): Promise<KnowledgeResult[]> {
+    if (!this.baseUrl) return [];
     await this.enforceRateLimit();
 
     try {

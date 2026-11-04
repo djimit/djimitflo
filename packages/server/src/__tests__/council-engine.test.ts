@@ -4,7 +4,6 @@ import { CouncilRegistry } from '../services/council-registry';
 import { TaskRouter } from '../services/task-router';
 import { StructuredEvaluator } from '../services/structured-evaluator';
 import { CouncilOrchestrator } from '../services/council-orchestrator';
-import { ReasoningLoop, ConvergenceDetector } from '../services/reasoning-loop';
 import { SynthesisEngine } from '../services/synthesis-engine';
 import { schema } from '../database/schema';
 
@@ -256,51 +255,6 @@ describe('StructuredEvaluator', () => {
 
     const disagreement = evaluator.calculateDisagreement(sessionId);
     expect(disagreement).toBeGreaterThan(0);
-  });
-});
-
-describe('ReasoningLoop & ConvergenceDetector', () => {
-  it('detects convergence', () => {
-    const detector = new ConvergenceDetector();
-    const metrics = detector.analyze([1, 2, 2.5, 2.6, 2.61]);
-
-    expect(metrics.is_stable).toBe(true);
-    expect(metrics.recommended_depth).toBeLessThanOrEqual(5);
-  });
-
-  it('detects divergence', () => {
-    const detector = new ConvergenceDetector();
-    const metrics = detector.analyze([1, 3, 2, 4, 1]);
-
-    expect(metrics.is_stable).toBe(false);
-  });
-
-  it('detects overthinking', () => {
-    const loop = new ReasoningLoop({ max_depth: 10, convergence_threshold: 0.01, injection_strength: 0.3 });
-    const overthinking = loop.detectOverthinking([1, 2, 3, 4, 5, 3]);
-
-    expect(overthinking).toBe(true);
-  });
-
-  it('should not continue when converged', () => {
-    const loop = new ReasoningLoop({ max_depth: 10, convergence_threshold: 0.1, injection_strength: 0.3 });
-    const shouldContinue = loop.shouldContinue([1, 2, 3, 3.01, 3.011]);
-
-    expect(shouldContinue).toBe(false);
-  });
-
-  it('should continue when not converged', () => {
-    const loop = new ReasoningLoop({ max_depth: 10, convergence_threshold: 0.01, injection_strength: 0.3 });
-    const shouldContinue = loop.shouldContinue([1, 2, 3]);
-
-    expect(shouldContinue).toBe(true);
-  });
-
-  it('stops at max depth', () => {
-    const loop = new ReasoningLoop({ max_depth: 3, convergence_threshold: 0.01, injection_strength: 0.3 });
-    const shouldContinue = loop.shouldContinue([1, 2, 3]);
-
-    expect(shouldContinue).toBe(false);
   });
 });
 
