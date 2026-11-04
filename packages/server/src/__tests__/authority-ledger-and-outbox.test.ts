@@ -85,6 +85,58 @@ describe('event outbox', () => {
     expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer tok' });
     expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({ event_type: 'djimitflo.x', source: 'djimitflo', k: 1 });
   });
+  it('keeps persisted event identity authoritative across retries despite payload collisions', async () => {
+    process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
+    enqueueEvent(db, { type: 'djimitflo.goal.created', aggregateId: 'goal-1', correlationId: 'task-1', payload: {
+      event_id: 'forged', event_type: 'approval.granted', source: 'external', occurred_at: 'forged',
+      aggregate_id: 'other', correlation_id: 'other', dedupe_key: 'shared', title: 'Preserved data',
+    } });
+    const row = rows('SELECT * FROM event_outbox')[0];
+    const fetchFn = vi.fn().mockRejectedValueOnce(new Error('lost response')).mockResolvedValueOnce({ ok: true });
+    await new EventOutboxService(db, fetchFn).publishPending();
+    await new EventOutboxService(db, fetchFn).publishPending();
+    for (const [, init] of fetchFn.mock.calls) expect(JSON.parse(init.body)).toMatchObject({
+      event_id: `djimitflo:${row.event_id}`, event_type: row.event_type, source: 'djimitflo',
+      occurred_at: row.created_at, aggregate_id: 'goal-1', correlation_id: 'task-1',
+      dedupe_key: `djimitflo:${row.event_id}`, title: 'Preserved data',
+    });
+  });
+  it.each([
+    { source: 'roborev' }, { work_item_source: 'roborev' },
+  ])('preserves legacy and current work-item origins outside the canonical envelope: %j', async (payload) => {
+    process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
+    enqueueEvent(db, { type: 'djimitflo.work_item.created', aggregateId: 'work-1', payload });
+    const fetchFn = vi.fn().mockResolvedValue({ ok: true });
+    await new EventOutboxService(db, fetchFn).publishPending();
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toMatchObject({ source: 'djimitflo', work_item_source: 'roborev' });
+  });
+  it('does not drain persisted events when publishing is disabled', async () => {
+    process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
+    enqueueEvent(db, { type: 'djimitflo.x', aggregateId: 'a' });
+    process.env.EVENT_PUBLISH_ENABLED = 'false';
+    const fetchFn = vi.fn().mockResolvedValue({ ok: true });
+    expect(await new EventOutboxService(db, fetchFn).publishPending()).toMatchObject({ status: 'DISABLED', attempted: 0 });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(rows('SELECT status, attempts FROM event_outbox')).toEqual([{ status: 'pending', attempts: 0 }]);
+  });
+  it('honors disablement before sending the next queued event without resetting attempts', async () => {
+    process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
+    enqueueEvent(db, { type: 'djimitflo.x', aggregateId: 'a' });
+    enqueueEvent(db, { type: 'djimitflo.x', aggregateId: 'b' });
+    const fetchFn = vi.fn().mockImplementation(async () => {
+      process.env.EVENT_PUBLISH_ENABLED = 'false';
+      return { ok: true };
+    });
+    const svc = new EventOutboxService(db, fetchFn);
+    expect(await svc.publishPending()).toEqual({ status: 'DISABLED', attempted: 1, published: 1, failed: 0 });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(rows('SELECT status, attempts FROM event_outbox ORDER BY rowid')).toEqual([
+      { status: 'published', attempts: 1 }, { status: 'pending', attempts: 0 },
+    ]);
+    process.env.EVENT_PUBLISH_ENABLED = 'true';
+    expect(await svc.publishPending()).toMatchObject({ attempted: 1, published: 1 });
+    expect(rows('SELECT attempts FROM event_outbox')).toEqual([{ attempts: 1 }, { attempts: 1 }]);
+  });
   it('bridges goal lifecycle events from the in-process bus', () => {
     const off = bridgeGoalEvents(db);
     swarmEventBus.emit('convergence', { daemon: 'goal_completed', goal_id: 'g1', run_id: 'r1' });

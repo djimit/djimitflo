@@ -1446,7 +1446,7 @@ export class ExecutionEngine {
   /**
    * A skill outcome is a verification verdict, not a process exit. A completed process counts as success only with a
    * passed independent verification (taskVerification); without one it is `outcome_class:completed_unverified`, which
-   * skill fitness leaves out. The runtime is its own `runtime:<kind>` ref (skill_outcomes has no runtime column) and
+   * skill fitness leaves out. Runtime and executable identity are stored explicitly as well as in evidence refs;
    * `model` is the model or null; unknown token usage stays null. The loop daemon's outcomes are a separate path.
    */
   private recordSkillOutcome(
@@ -1459,16 +1459,26 @@ export class ExecutionEngine {
     const task = this.getTask(taskId);
     // Workflow success is not independent evidence that each component improved the result.
     if (task.metadata?.skill_execution && !task.metadata.skillId) return;
-    const loader = this.skillLoaderForTask(task);
+    const recorded = this.db.prepare(`SELECT details FROM execution_evidence WHERE task_id = ? AND source = 'system'
+      AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt' ORDER BY captured_at DESC, rowid DESC LIMIT 1`)
+      .get(taskId) as { details: string } | undefined;
+    let receipt: Record<string, unknown> | null = null;
+    try { receipt = recorded ? JSON.parse(recorded.details) : null; } catch { /* legacy malformed evidence stays unpinned */ }
     const explicitSkillId = typeof task.metadata?.skillId === 'string'
       ? task.metadata.skillId.trim()
       : '';
-    let skill: SkillDefinition | null = explicitSkillId
-      ? loader.getSkill(explicitSkillId)
-      : null;
+    // Attribute the bytes handed to the runtime, not a package reloaded after execution.
+    const pinned = receipt && typeof receipt.skill_id === 'string' && typeof receipt.skill_version === 'string'
+      && typeof receipt.skill_content_hash === 'string' && /^[a-f0-9]{64}$/.test(receipt.skill_content_hash)
+      && (!explicitSkillId || receipt.skill_id === explicitSkillId)
+      && receipt.executor_kind === session?.executorKind
+      ? { id: receipt.skill_id, version: receipt.skill_version, contentHash: receipt.skill_content_hash } : null;
+    const loader = pinned ? null : this.skillLoaderForTask(task);
+    let skill: Pick<SkillDefinition, 'id' | 'version' | 'contentHash'> | null = pinned
+      ?? (explicitSkillId ? loader!.getSkill(explicitSkillId) : null);
 
-    if (!explicitSkillId && task.agent_id) {
-      const assigned = loader.getAgentSkills(task.agent_id);
+    if (!pinned && !explicitSkillId && task.agent_id) {
+      const assigned = loader!.getAgentSkills(task.agent_id);
       if (assigned.length === 1) skill = assigned[0];
       if (assigned.length > 1) {
         this.evidenceService.captureEvidence({
@@ -1506,6 +1516,9 @@ export class ExecutionEngine {
       agentId: task.agent_id || undefined,
       skillVersion: skill.version,
       skillContentHash: skill.contentHash,
+      ...(session?.executorKind ? { runtime: session.executorKind } : {}),
+      ...(pinned && typeof receipt?.capability_id === 'string' ? { capabilityId: receipt.capability_id } : {}),
+      ...(pinned && typeof receipt?.skill_package_hash === 'string' ? { artifactDigest: receipt.skill_package_hash } : {}),
       ...(model ? { model } : {}),
       success: verification === 'passed',
       tokensUsed,
@@ -1549,6 +1562,8 @@ export class ExecutionEngine {
       throw new Error('SKILL_EVALUATION_PACKAGE_MISMATCH');
     }
     const packageHash = pkg?.contentHash ?? null;
+    const selections = Array.isArray(task.metadata?.skill_package_receipts) ? task.metadata.skill_package_receipts as Array<Record<string, unknown>> : [];
+    const selected = selections.find((item) => item.content_hash === packageHash && typeof item.capability_id === 'string');
     this.evidenceService.captureEvidence({
       task_id: task.id,
       evidence_type: EvidenceType.EXECUTION_SUMMARY,
@@ -1562,6 +1577,7 @@ export class ExecutionEngine {
         skill_version: skill.version,
         skill_content_hash: skill.contentHash,
         skill_package_hash: packageHash,
+        capability_id: selected?.capability_id ?? null,
         executor_kind: executorKind,
         delivery_state: delivered ? 'delivered' : 'assigned',
         delivery_path: delivered ? 'task.description' : null,
@@ -1574,7 +1590,7 @@ export class ExecutionEngine {
   }
 
   /** Outcome refs: 'delivered' needs this task's latest receipt for the same skill content; anything else is unverified. */
-  private skillDeliveryRefs(taskId: string, skill: SkillDefinition): string[] {
+  private skillDeliveryRefs(taskId: string, skill: Pick<SkillDefinition, 'id' | 'contentHash'>): string[] {
     const row = this.db.prepare(`SELECT details FROM execution_evidence WHERE task_id = ?
       AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt' ORDER BY captured_at DESC, rowid DESC LIMIT 1`)
       .get(taskId) as { details: string | null } | undefined;

@@ -21,7 +21,7 @@ const push = (sha = commit) => Buffer.from(JSON.stringify({ repository: { full_n
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'scan-trigger-test-')); db = new Database(':memory:'); db.exec(schema); runMigrations(db);
   db.prepare('INSERT INTO users(id,email,password_hash,role,is_active) VALUES(?,?,?,?,1)').run(actor, 'fixture@test', 'not-a-login', 'maker');
-  db.exec('CREATE TABLE github_webhook_deliveries(id TEXT PRIMARY KEY,event TEXT,source_ref TEXT,payload_sha256 TEXT,result_json TEXT)');
+  db.exec("CREATE TABLE github_webhook_deliveries(id TEXT PRIMARY KEY,event TEXT NOT NULL,source_ref TEXT,payload_sha256 TEXT,result_json TEXT,created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   const path = join(dir, 'policy.json'); writeFileSync(path, JSON.stringify({ principalId: actor, repositories: [{ repositoryId, branch: 'main', intervalMinutes: 60 }], maxPerDay: 2 }), { mode: 0o600 });
   vi.stubEnv('DJIMITSEC_SCAN_TRIGGER_CONFIG', path); vi.stubEnv('DJIMITSEC_SCAN_TRIGGERS', 'execute'); vi.stubEnv('DJIMITSEC_SCAN_MODE', 'execute');
   engine = new ExecutionEngine(db); vi.spyOn(engine, 'executeTask').mockResolvedValue({ status: 'started' }); service = new DjimitSecTriggerService(db, engine);
@@ -48,6 +48,8 @@ it('refuses forks, unselected branches, bad revisions and inactive or privileged
 it('uses the exact-byte HMAC gate and preserves existing PR intake alongside the additional scan', async () => {
   vi.stubEnv('GITHUB_WEBHOOK_SECRET', 'fixture-hmac-only');
   const review = vi.spyOn(GithubPrReviewService.prototype, 'startReview').mockReturnValue({ status: 'pending' });
+  // This test isolates scan intake; the mocked dispatch has no durable review row. Recovery is covered by webhook tests.
+  vi.spyOn(GithubPrReviewService.prototype, 'resumeUnstartedReview').mockReturnValue({ status: 'held' });
   writeFileSync(join(dir, 'README.md'), 'Fixture only'); vi.stubEnv('GITHUB_REPOSITORY_PATHS', JSON.stringify({ [repositoryId]: dir }));
   const app = express(); app.use('/github/webhook', createGitHubWebhookRoutes(db, () => service)); app.use(errorHandler);
   const body = push().toString(), sign = (s: string) => `sha256=${createHmac('sha256', 'fixture-hmac-only').update(s).digest('hex')}`;

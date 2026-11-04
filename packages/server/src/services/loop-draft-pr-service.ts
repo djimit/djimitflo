@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { createHash, randomUUID } from 'crypto';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
@@ -11,6 +12,14 @@ import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './
 import { guardTick, markRun } from './scheduler-registry';
 import { issueRefsLine } from './work-item-outcome-sync';
 import { onDraftPrOpened } from './capability-factory';
+
+interface DraftPublication {
+  makerId: string; repo: string; branch: string; base: string; worktree: string;
+  parentHead: string; head?: string; files: string[]; digest: string;
+  owner: string; leaseUntil: number; phase: 'prepared' | 'committed' | 'submitting';
+}
+
+type PublishedDraft = { html_url: string; draft: boolean; state: string; body: string; head: { ref: string; sha: string; repo: { full_name: string } }; base: { ref: string; repo: { full_name: string } } };
 
 /**
  * G4: a verified loop run becomes a *draft* PR. Before this, ready_for_human_merge output stayed in a VPS worktree
@@ -31,7 +40,7 @@ export class LoopDraftPrService {
     if (!run || !['ready_for_human_merge', 'completed'].includes(run.status)) return null;
     // B2 (17-10): the PR goes to the repo of the goal's proposal (`repo:<slug>`, else the primary repo) — never blindly to
     // GITHUB_REPOSITORY. A proposal for a repo that is not registered (or the flag is off) gets no PR.
-    const meta = JSON.parse(run.metadata || '{}') as { pr_url?: string };
+    const meta = JSON.parse(run.metadata || '{}') as { pr_url?: string; draft_publication?: DraftPublication };
     if (meta.pr_url) return meta.pr_url; // once per run
     const goalSlug = goalRepoSlug(this.db, run.goal_id);
     if (goalSlug && goalSlug.toLowerCase() !== primary.toLowerCase() && !extraRepoBySlug(goalSlug, this.env)) return fail(`repo_not_registered: ${goalSlug}`);
@@ -41,13 +50,15 @@ export class LoopDraftPrService {
       AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(runId) as { id: string; worktree_path: string | null; branch_name: string | null } | undefined;
     if (!maker?.worktree_path || !maker.branch_name || !fs.existsSync(maker.worktree_path)) return fail('no completed maker worktree');
     const wt = maker.worktree_path;
-    const git = (...args: string[]) => execFileSync('git', ['-C', wt, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    const git = (...args: string[]) => execFileSync('git', ['-C', wt, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 }).trim();
 
     // B2: the worktree's push remote must be that same repo; when they differ nothing is pushed and no PR is opened.
     let remoteSlug: string | null = null;
     try { remoteSlug = slugFromRemote(git('remote', 'get-url', this.env.LOOP_DRAFT_PR_REMOTE || 'origin')); } catch { /* no such remote: the push below fails as before */ }
     if (remoteSlug && remoteSlug.toLowerCase() !== repo.toLowerCase()) return fail(`repo_mismatch: worktree ${remoteSlug} ≠ goal ${repo}`);
 
+    let publication: DraftPublication | undefined;
+    const owner = randomUUID();
     try {
       // PRC-1: a retry after a failed push/POST finds the work already committed on HEAD (this run's loop commit): it
       // republishes that commit and never commits the work a second time.
@@ -56,9 +67,10 @@ export class LoopDraftPrService {
       // Only the maker's real files: never node_modules symlinks from `npm ci`, never lockfile install noise.
       const tracked = (committed ? git('diff', '--name-only', 'HEAD~1', 'HEAD') : git('diff', '--name-only', '--', '.')).split('\n').filter(Boolean);
       const untracked = committed ? [] : git('ls-files', '--others', '--exclude-standard', '--', '.').split('\n').filter(Boolean);
-      const files = [...tracked, ...untracked].filter((f) => !f.split('/').includes('node_modules')
+      const discoveredFiles = [...tracked, ...untracked].filter((f) => !f.split('/').includes('node_modules')
         && !(f.endsWith('package-lock.json') && !tracked.includes(path.join(path.dirname(f), 'package.json').replace(/^\.\//, '')))
         && !fs.lstatSync(path.join(wt, f), { throwIfNoEntry: false })?.isSymbolicLink());
+      const files = meta.draft_publication?.files ?? discoveredFiles;
       if (files.length === 0) return fail('no changes in the maker worktree');
 
       // Batch-8 evidence freshness: did anything the checks READ (not edit) change on main since the base commit?
@@ -87,6 +99,7 @@ export class LoopDraftPrService {
       }
 
       // RX-6: arrival throttle. A queue nobody drains censors merge survival (closed-unmerged never fires).
+      let publicationThrottled = false;
       const mode = this.env.LOOP_DRAFT_PR_THROTTLE_MODE;
       if (mode === 'shadow' || mode === 'enforce') {
         const cap = Math.max(0, Number(this.env.LOOP_DRAFT_PR_MAX_OPEN ?? 5) || 0);
@@ -94,60 +107,170 @@ export class LoopDraftPrService {
         if (open !== null && open >= cap) {
           events.recordEvent(runId, mode === 'enforce' ? 'draft_pr_throttled' : 'draft_pr_throttle_shadow', 'info',
             `${open} open loop drafts ≥ cap ${cap}${mode === 'enforce' ? ': draft PR not opened' : ' (shadow: opened anyway)'}`, { open, cap, mode });
-          if (mode === 'enforce') return null;
+          if (mode === 'enforce') {
+            if (!meta.draft_publication && !committed) return null;
+            publicationThrottled = true; // An already-created draft may be the item that fills the cap.
+          }
         }
       }
 
       const proposal = run.goal_id ? this.db.prepare('SELECT si.id, si.title FROM goals g JOIN self_improvements si ON si.id = g.improvement_id WHERE g.id = ?').get(run.goal_id) as { id: string; title: string } | undefined : undefined;
       const title = `loop: ${proposal?.title ?? `run ${runId.slice(0, 8)}`}`.slice(0, 120);
-      if (!committed) {
-        git('add', '--', ...files);
-        execFileSync('git', ['-C', wt, '-c', 'user.name=djimitflo-loop', '-c', 'user.email=loop@djimitflo.invalid', 'commit', '-q', '-m', `${title}\n\nLoop run ${runId}, maker lease ${maker.id}.`], { stdio: 'ignore' });
+      // Claim a persisted checkpoint before committing or publishing. A second process cannot own it concurrently.
+      const base = this.env.LOOP_DRAFT_PR_BASE || 'main';
+      const current = () => this.publicationAuthorized(runId, maker.id, wt, maker.branch_name!, repo, primary);
+      publication = this.db.transaction(() => {
+        if (!current()) throw new Error('publication_authority_changed');
+        const latest = JSON.parse((this.db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(runId) as { metadata: string }).metadata || '{}');
+        if (latest.pr_url) throw new Error('publication_already_completed');
+        const previous = latest.draft_publication as DraftPublication | undefined;
+        if (previous && (previous.makerId !== maker.id || previous.repo !== repo || previous.branch !== maker.branch_name
+          || previous.base !== base || previous.worktree !== wt)) throw new Error('publication_checkpoint_scope_changed');
+        if (previous && previous.leaseUntil > Date.now()) throw new Error('publication_owned');
+        const checkpoint: DraftPublication = previous ?? {
+          makerId: maker.id, repo, branch: maker.branch_name!, base, worktree: wt,
+          parentHead: git('rev-parse', committed ? 'HEAD^' : 'HEAD'), files, digest: this.publicationDigest(wt, files), phase: 'prepared', owner, leaseUntil: 0,
+        };
+        checkpoint.owner = owner; checkpoint.leaseUntil = Date.now() + 300_000;
+        this.writePublication(runId, checkpoint, true);
+        return checkpoint;
+      }).immediate();
+      const guard = () => {
+        if (!current()) throw new Error('publication_authority_changed');
+        const checkpoint = JSON.parse((this.db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(runId) as { metadata: string }).metadata || '{}').draft_publication as DraftPublication | undefined;
+        if (checkpoint?.owner !== owner || checkpoint.leaseUntil <= Date.now()) throw new Error('publication_lease_lost');
+        if (this.publicationDigest(wt, publication!.files) !== publication!.digest) throw new Error('publication_artifact_changed');
+      };
+      guard();
+      const commitMessage = `${title}\n\nLoop run ${runId}, maker lease ${maker.id}.`;
+      const head = git('rev-parse', 'HEAD');
+      if (!publication.head) {
+        if (head === publication.parentHead) {
+          git('add', '--', ...publication.files);
+          execFileSync('git', ['-C', wt, '-c', 'user.name=djimitflo-loop', '-c', 'user.email=loop@djimitflo.invalid', 'commit', '-q', '-m', commitMessage, '--only', '--', ...publication.files], { stdio: 'ignore', timeout: 60_000 });
+        } else if (git('rev-parse', 'HEAD^') !== publication.parentHead || git('log', '-1', '--format=%B') !== commitMessage) {
+          throw new Error('publication_head_changed');
+        }
+        guard();
+        publication.head = git('rev-parse', 'HEAD'); publication.phase = 'committed';
+        this.writePublication(runId, publication);
+      } else if (head !== publication.head) throw new Error('publication_head_changed');
+      const verifiedHead = publication.head;
+      const committedFiles = git('diff-tree', '--no-commit-id', '--name-only', '-r', verifiedHead).split('\n').filter(Boolean).sort();
+      if (JSON.stringify(committedFiles) !== JSON.stringify([...publication.files].sort())
+        || git('diff', 'HEAD', '--', ...publication.files)) throw new Error('publication_commit_artifact_mismatch');
+      // A retry reconciles the previous external effect before attempting another POST.
+      if (meta.draft_publication || committed) {
+        const reconciled = await this.reconcilePublication(publication, runId, token);
+        guard();
+        if (reconciled) {
+          this.completePublication(runId, publication, reconciled, events, true);
+          return reconciled;
+        }
       }
-      // P0-6: the commit of the checked worktree is the verified head; auto-merge only ever merges this sha.
-      const verifiedHead = git('rev-parse', 'HEAD');
-      // Token only as a one-off header: never written to the remote URL or git config.
+      if (publicationThrottled) return null;
+      guard();
       const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
-      execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'push', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `HEAD:refs/heads/${maker.branch_name}`], { stdio: 'ignore' });
+      const remoteHead = execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'ls-remote', '--heads', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `refs/heads/${maker.branch_name}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 }).trim().split(/\s+/)[0];
+      if (remoteHead && remoteHead !== verifiedHead) throw new Error('publication_remote_head_changed');
+      guard();
+      execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'push', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `${verifiedHead}:refs/heads/${maker.branch_name}`], { stdio: 'ignore', timeout: 60_000 });
 
       const verdicts = (this.db.prepare(`SELECT role, json_extract(metadata, '$.verdict') AS verdict FROM worker_leases WHERE loop_run_id = ? AND role IN ('checker', 'security_checker') AND status = 'completed'`).all(runId) as Array<{ role: string; verdict: string | null }>)
         .map((l) => `- ${l.role}: ${l.verdict ?? 'n/a'}`).join('\n');
       let body = `Opened by the djimitflo loop for run \`${runId}\`${proposal ? ` (proposal \`${proposal.id}\`)` : ''}.\n\nReviewer verdicts:\n${verdicts || '- none recorded'}\n\nFiles: ${files.map((f) => `\`${f}\``).join(', ')}\n\nDraft: a human reviews and merges.`;
       if (this.env.LOOP_PR_BODY_V2 === 'true') { let numstat = ''; try { numstat = git('diff', '--numstat', 'HEAD~1', 'HEAD'); } catch { /* no parent: diff stat omitted */ } body = this.bodyV2(runId, maker.id, body, numstat); }
-      body += issueRefsLine(this.db, run.goal_id, this.env); // PRC-3: `Refs owner/repo#N` for a GitHub-issue work item
-      // PRC-1: never a second PR for one branch — a retry looks up the PR an earlier attempt may have opened before it
-      // POSTs, and a 422 (a PR for this head exists) adopts that PR instead of failing. Only an OPEN PR is adopted; a
-      // branch whose only PR is closed (rejected, or merged elsewhere) gets no new PR: draft_pr_failed closed_pr_exists.
-      const found = committed ? await this.existingPr(repo, maker.branch_name, token) : null;
-      if (found === 'closed') return fail('closed_pr_exists');
-      let pr = found;
-      let adopted = pr !== null;
-      if (!pr) {
-        const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, head: maker.branch_name, base: this.env.LOOP_DRAFT_PR_BASE || 'main', draft: true, body }),
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (res.ok) { const j = (await res.json()) as { html_url?: string; number?: number }; pr = { url: String(j.html_url ?? ''), number: Number(j.number) || null }; }
-        else if (res.status === 422) {
-          const existing = await this.existingPr(repo, maker.branch_name, token);
-          if (existing === 'closed') return fail('closed_pr_exists');
-          pr = existing; adopted = pr !== null;
-        }
-        if (!pr) return fail(`GitHub ${res.status}`);
-      }
-      this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_number', ?, '$.pr_head_branch', ?) WHERE id = ?`)
-        .run(pr.number ?? (Number(/\/pull\/(\d+)/.exec(pr.url)?.[1]) || null), maker.branch_name, runId);
-      if (adopted) events.recordEvent(runId, 'draft_pr_adopted', 'info', `Existing PR adopted: ${pr.url}`, { pr_url: pr.url });
-      const prUrl = pr.url;
-      this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_url', ?, '$.verified_head_sha', ?) WHERE id = ?`).run(prUrl, verifiedHead, runId);
-      events.recordEvent(runId, 'draft_pr_opened', 'info', `Draft PR opened: ${prUrl}`, { pr_url: prUrl, files });
-      onDraftPrOpened(this.db, runId, prUrl, this.env); // OMEGA slice 3 (CAPABILITY_LIFECYCLE_V2): a factory run's candidate; never throws
+      body += issueRefsLine(this.db, run.goal_id, this.env);
+      guard();
+      publication.phase = 'submitting'; this.writePublication(runId, publication);
+      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, head: maker.branch_name, base: this.env.LOOP_DRAFT_PR_BASE || 'main', draft: true, body }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const prUrl = res.ok ? this.validatePublishedDraft(await res.json() as PublishedDraft, publication, runId)
+        : res.status === 422 ? await this.reconcilePublication(publication, runId, token) : null;
+      guard();
+      if (!prUrl) return fail(`GitHub ${res.status}`);
+      this.completePublication(runId, publication, prUrl, events, res.status === 422);
       return prUrl;
     } catch (error) {
       return fail(error instanceof Error ? error.message.replace(/basic [A-Za-z0-9+/=]+/g, 'basic ***').slice(0, 200) : String(error));
+    } finally {
+      if (publication) this.db.prepare(`UPDATE loop_runs SET metadata = json_set(metadata, '$.draft_publication.leaseUntil', 0)
+        WHERE id = ? AND json_extract(metadata, '$.draft_publication.owner') = ?`).run(runId, owner);
     }
+  }
+
+  private publicationDigest(worktree: string, files: string[]): string {
+    const hash = createHash('sha256');
+    for (const file of [...files].sort()) {
+      const full = path.resolve(worktree, file);
+      if (!full.startsWith(path.resolve(worktree) + path.sep)) throw new Error('publication_path_outside_worktree');
+      const stat = fs.lstatSync(full, { throwIfNoEntry: false });
+      if (stat?.isSymbolicLink() || stat?.isDirectory()) throw new Error('publication_invalid_file');
+      hash.update(JSON.stringify([file, stat?.mode ?? null]));
+      hash.update(stat ? fs.readFileSync(full) : '<deleted>');
+    }
+    return hash.digest('hex');
+  }
+
+  private publicationAuthorized(runId: string, makerId: string, worktree: string, branch: string, repo: string, primary: string): boolean {
+    const run = this.db.prepare('SELECT status, goal_id, metadata FROM loop_runs WHERE id = ?').get(runId) as { status: string; goal_id: string | null; metadata: string } | undefined;
+    if (!run || !['ready_for_human_merge', 'completed'].includes(run.status) || JSON.parse(run.metadata || '{}').operator_paused) return false;
+    const goal = run.goal_id ? this.db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(run.goal_id) as { status: string; metadata: string } | undefined : undefined;
+    if (goal && (['cancelled', 'archived'].includes(goal.status) || JSON.parse(goal.metadata || '{}').operator_paused)) return false;
+    if ((goalRepoSlug(this.db, run.goal_id) ?? primary) !== repo) return false;
+    const lease = this.db.prepare(`SELECT id, worktree_path, branch_name FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
+      AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`)
+      .get(runId) as { id: string; worktree_path: string; branch_name: string } | undefined;
+    return lease?.id === makerId && lease.worktree_path === worktree && lease.branch_name === branch;
+  }
+
+  private writePublication(runId: string, checkpoint: DraftPublication, acquiring = false): void {
+    const result = this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.draft_publication', json(?))
+      WHERE id = ? AND (? OR (json_extract(metadata, '$.draft_publication.owner') = ?
+        AND json_extract(metadata, '$.draft_publication.leaseUntil') > ?))`)
+      .run(JSON.stringify(checkpoint), runId, acquiring ? 1 : 0, checkpoint.owner, Date.now());
+    if (result.changes !== 1) throw new Error('publication_lease_lost');
+  }
+
+  private completePublication(runId: string, checkpoint: DraftPublication, prUrl: string, events: LoopEventService, adopted = false): void {
+    this.db.transaction(() => {
+      if (!this.publicationAuthorized(runId, checkpoint.makerId, checkpoint.worktree, checkpoint.branch, checkpoint.repo, this.env.GITHUB_REPOSITORY!)) {
+        throw new Error('publication_authority_changed');
+      }
+      const result = this.db.prepare(`UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_url', ?, '$.verified_head_sha', ?, '$.pr_number', ?, '$.pr_head_branch', ?)
+        WHERE id = ? AND json_extract(metadata, '$.draft_publication.owner') = ?
+        AND json_extract(metadata, '$.draft_publication.leaseUntil') > ?`)
+        .run(prUrl, checkpoint.head!, Number(/\/pull\/(\d+)$/.exec(prUrl)?.[1]) || null, checkpoint.branch, runId, checkpoint.owner, Date.now());
+      if (result.changes !== 1) throw new Error('publication_lease_lost');
+      if (adopted) events.recordEvent(runId, 'draft_pr_adopted', 'info', `Existing PR adopted: ${prUrl}`, { pr_url: prUrl });
+      events.recordEvent(runId, 'draft_pr_opened', 'info', `Draft PR opened: ${prUrl}`, { pr_url: prUrl, files: checkpoint.files });
+    }).immediate();
+    onDraftPrOpened(this.db, runId, prUrl, this.env);
+  }
+
+  private async reconcilePublication(checkpoint: DraftPublication, runId: string, token: string): Promise<string | null> {
+    const query = new URLSearchParams({ state: 'all', head: `${checkpoint.repo.split('/')[0]}:${checkpoint.branch}`, base: checkpoint.base, per_page: '100' });
+    const response = await this.fetchImpl(`https://api.github.com/repos/${checkpoint.repo}/pulls?${query}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`publication_reconciliation_failed: ${response.status}`);
+    const rows = await response.json() as PublishedDraft[];
+    if (!Array.isArray(rows) || rows.length > 1) throw new Error('publication_reconciliation_ambiguous');
+    if (!rows.length) return null;
+    if (rows[0].state === 'closed') throw new Error('closed_pr_exists');
+    return this.validatePublishedDraft(rows[0], checkpoint, runId);
+  }
+
+  private validatePublishedDraft(pr: PublishedDraft, checkpoint: DraftPublication, runId: string): string {
+    if (!pr || !pr.draft || pr.state !== 'open' || pr.head?.ref !== checkpoint.branch || pr.head?.sha !== checkpoint.head
+      || pr.head?.repo?.full_name !== checkpoint.repo || pr.base?.repo?.full_name !== checkpoint.repo || pr.base?.ref !== checkpoint.base
+      || !pr.body?.includes(`Opened by the djimitflo loop for run \`${runId}\``)
+      || !pr.html_url?.startsWith(`https://github.com/${checkpoint.repo}/pull/`)) throw new Error('publication_reconciliation_mismatch');
+    return pr.html_url;
   }
 
   /**
@@ -178,26 +301,6 @@ export class LoopDraftPrService {
     const base = this.env.DJIMITFLO_PUBLIC_URL;
     if (base && /^https:\/\//.test(base)) lines.push(`Run: ${base.replace(/\/+$/, '')}/goals-loops?run=${encodeURIComponent(runId)}`);
     return redactSecrets(`${v1}\n\n${lines.join('\n')}`).redacted;
-  }
-
-  /**
-   * PRC-1: the open PR whose head is `branch` in `repo` (newest first); 'closed' when the branch has PRs but none is open;
-   * null when it has none or the list is unreadable.
-   */
-  private async existingPr(repo: string, branch: string, token: string): Promise<{ url: string; number: number | null } | 'closed' | null> {
-    try {
-      const head = encodeURIComponent(`${repo.split('/')[0]}:${branch}`);
-      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls?head=${head}&state=all&per_page=10`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!res.ok) return null;
-      const pulls = (await res.json()) as Array<{ html_url?: string; number?: number; state?: string }>;
-      const listed = Array.isArray(pulls) ? pulls.filter((p) => typeof p.html_url === 'string' && p.html_url) : [];
-      const open = listed.find((p) => p.state === 'open');
-      if (open) return { url: String(open.html_url), number: Number(open.number) || null };
-      return listed.length ? 'closed' : null;
-    } catch { return null; }
   }
 
   /** Open PRs titled 'loop:' (one list call, first 100). null on any error: the throttle fails open. */
