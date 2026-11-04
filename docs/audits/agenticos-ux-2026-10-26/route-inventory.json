@@ -1,0 +1,923 @@
+{
+  "source_sha": "38be63d520bb5fef89be99458cf3b562098224c3",
+  "method": "App.tsx static routing declarations and Layout.tsx visible navigation declarations, not a crawl. Permission/feature visibility and real user interactions unverified. API extraction is direct-page-only and is not a complete dependency graph.",
+  "routes": [
+    {
+      "route": "/login",
+      "component": "LoginPage",
+      "source": "packages/dashboard/src/pages/LoginPage.tsx",
+      "app_line": 90,
+      "navigation": "contextual / not in sidebar",
+      "label": "LoginPage",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/",
+      "component": "OperatorCockpitPage",
+      "source": "packages/dashboard/src/pages/OperatorCockpitPage.tsx",
+      "app_line": 100,
+      "navigation": "Operate",
+      "label": "Cockpit",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getEfficiency",
+        "getOperatorCockpit",
+        "getOperatorDigest",
+        "getServiceMap"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/dashboard",
+      "component": "DashboardPage",
+      "source": "packages/dashboard/src/pages/DashboardPage.tsx",
+      "app_line": 101,
+      "navigation": "Lab",
+      "label": "Activity overview",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getAgents",
+        "getTasks"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/tasks",
+      "component": "TasksPage",
+      "source": "packages/dashboard/src/pages/TasksPage.tsx",
+      "app_line": 102,
+      "navigation": "Operate",
+      "label": "Tasks",
+      "redirect": null,
+      "api_calls_in_page": [
+        "createTask",
+        "getRepositories",
+        "getRuntimeContracts"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/tasks/:taskId",
+      "component": "TaskDetailPage",
+      "source": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+      "app_line": 103,
+      "navigation": "contextual / not in sidebar",
+      "label": "TaskDetailPage",
+      "redirect": null,
+      "api_calls_in_page": [
+        "cancelTask",
+        "executeTask",
+        "exportTask",
+        "getApprovals",
+        "getExecutionEvents",
+        "getRuntimeContracts",
+        "getTask"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/agents",
+      "component": "AgentsPage",
+      "source": "packages/dashboard/src/pages/AgentsPage.tsx",
+      "app_line": 104,
+      "navigation": "Fleet",
+      "label": "Agents",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getAgents",
+        "getRuntimeGovernanceAgent",
+        "releaseRuntimeGovernanceAgent"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/agents/:agentId",
+      "component": "AgentsPage",
+      "source": "packages/dashboard/src/pages/AgentsPage.tsx",
+      "app_line": 105,
+      "navigation": "contextual / not in sidebar",
+      "label": "AgentsPage",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getAgents",
+        "getRuntimeGovernanceAgent",
+        "releaseRuntimeGovernanceAgent"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/catalog",
+      "component": "AgentCatalogPage",
+      "source": "packages/dashboard/src/pages/AgentCatalogPage.tsx",
+      "app_line": 106,
+      "navigation": "Lab",
+      "label": "Agent Catalog",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/swarm",
+      "component": "SwarmOverviewPage",
+      "source": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+      "app_line": 107,
+      "navigation": "Lab",
+      "label": "Swarm",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getAgents",
+        "getSwarmCapabilities",
+        "getSwarmStatus",
+        "getTasks"
+      ],
+      "literal_request_paths_in_page": [
+        "/discussions?limit=10",
+        "/learning?limit=5",
+        "/swarms/usage-window?days=7"
+      ],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/approvals",
+      "component": "Navigate",
+      "source": null,
+      "app_line": 108,
+      "navigation": "contextual / not in sidebar",
+      "label": "Navigate",
+      "redirect": "/decisions#approvals",
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/policies",
+      "component": "PolicyCenterPage",
+      "source": "packages/dashboard/src/pages/PolicyCenterPage.tsx",
+      "app_line": 109,
+      "navigation": "Govern",
+      "label": "Policies",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getPolicies",
+        "updatePolicy"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/governance",
+      "component": "GovernanceHubPage",
+      "source": "packages/dashboard/src/pages/GovernanceHubPage.tsx",
+      "app_line": 110,
+      "navigation": "Govern",
+      "label": "Governance & Assurance",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/compliance",
+      "component": "Navigate",
+      "source": null,
+      "app_line": 111,
+      "navigation": "contextual / not in sidebar",
+      "label": "Navigate",
+      "redirect": "/governance?tab=assurance",
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/mcp-permissions",
+      "component": "MCPPermissionsPage",
+      "source": "packages/dashboard/src/pages/MCPPermissionsPage.tsx",
+      "app_line": 112,
+      "navigation": "Govern",
+      "label": "MCP Permissions",
+      "redirect": null,
+      "api_calls_in_page": [
+        "createMCPServer",
+        "getMCPPermissions",
+        "getMCPServers",
+        "refreshMCPServers"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/observability",
+      "component": "ObservabilityPage",
+      "source": "packages/dashboard/src/pages/ObservabilityPage.tsx",
+      "app_line": 113,
+      "navigation": "Improve",
+      "label": "Observability",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getObservabilityMetrics"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/tasks/:taskId/review",
+      "component": "ReviewPage",
+      "source": "packages/dashboard/src/pages/ReviewPage.tsx",
+      "app_line": 114,
+      "navigation": "contextual / not in sidebar",
+      "label": "ReviewPage",
+      "redirect": null,
+      "api_calls_in_page": [
+        "exportTask",
+        "getExecutionReview",
+        "getTaskDiff",
+        "getTaskSnapshots"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/audit",
+      "component": "AuditHubPage",
+      "source": "packages/dashboard/src/pages/AuditHubPage.tsx",
+      "app_line": 115,
+      "navigation": "Govern",
+      "label": "Audit",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/audit/logs",
+      "component": "Navigate",
+      "source": null,
+      "app_line": 116,
+      "navigation": "contextual / not in sidebar",
+      "label": "Navigate",
+      "redirect": "/audit?tab=logs",
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/cockpit",
+      "component": "Navigate",
+      "source": null,
+      "app_line": 117,
+      "navigation": "contextual / not in sidebar",
+      "label": "Navigate",
+      "redirect": "/",
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/decisions",
+      "component": "DecisionsInboxPage",
+      "source": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+      "app_line": 118,
+      "navigation": "Operate",
+      "label": "Decisions",
+      "redirect": null,
+      "api_calls_in_page": [
+        "adjudicateAttribution",
+        "dismissRequeue",
+        "getDecisionsInbox",
+        "getDependencyLane",
+        "getDraftPrs",
+        "labelPrescreen",
+        "promoteMemoryCandidate",
+        "rejectMemoryCandidate",
+        "removeTelegramIdentity",
+        "requeueProposal",
+        "setTelegramIdentity"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/configuration",
+      "component": "ConfigurationPage",
+      "source": "packages/dashboard/src/pages/ConfigurationPage.tsx",
+      "app_line": 119,
+      "navigation": "Govern",
+      "label": "Configuration",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getRuntimeConfig"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/fleet",
+      "component": "FleetHostsPage",
+      "source": "packages/dashboard/src/pages/FleetHostsPage.tsx",
+      "app_line": 120,
+      "navigation": "Fleet",
+      "label": "Fleet hosts",
+      "redirect": null,
+      "api_calls_in_page": [
+        "approveFleetCommand",
+        "denyFleetCommand",
+        "getFleetHosts",
+        "requestFleetCommand"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/improvement-funnel",
+      "component": "ImprovementFunnelPage",
+      "source": "packages/dashboard/src/pages/ImprovementFunnelPage.tsx",
+      "app_line": 121,
+      "navigation": "Improve",
+      "label": "Improvement funnel",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getImprovementFunnel",
+        "getPanelCalibration"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/authority",
+      "component": "AuthorityTracePage",
+      "source": "packages/dashboard/src/pages/AuthorityTracePage.tsx",
+      "app_line": 122,
+      "navigation": "Govern",
+      "label": "Authority ledger",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getAuthorityEvents",
+        "getAuthorityStats"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/usage",
+      "component": "UsagePage",
+      "source": "packages/dashboard/src/pages/UsagePage.tsx",
+      "app_line": 123,
+      "navigation": "Improve",
+      "label": "Usage",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getUsageAccounts",
+        "getUsageTokens",
+        "postUsageSnapshot"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/repositories",
+      "component": "RepositoriesPage",
+      "source": "packages/dashboard/src/pages/RepositoriesPage.tsx",
+      "app_line": 124,
+      "navigation": "Operate",
+      "label": "Repositories",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getRepositories",
+        "rescanRepository",
+        "scanRepository"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/repositories/:id",
+      "component": "RepositoryDetailPage",
+      "source": "packages/dashboard/src/pages/RepositoryDetailPage.tsx",
+      "app_line": 125,
+      "navigation": "contextual / not in sidebar",
+      "label": "RepositoryDetailPage",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getRepository",
+        "getRepositoryAgentsMd",
+        "getRepositoryHealth"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/goals-loops",
+      "component": "GoalsLoopsPage",
+      "source": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+      "app_line": 126,
+      "navigation": "Operate",
+      "label": "Goals & Loops",
+      "redirect": null,
+      "api_calls_in_page": [
+        "completeLoopRun",
+        "continueLoopRun",
+        "createGoal",
+        "executeChecker",
+        "executeWorker",
+        "getGoals",
+        "getLoopCatalog",
+        "getLoopReviewBundle",
+        "getLoopRuns",
+        "request",
+        "retryLoopRun",
+        "splitLoopFinding",
+        "startLoop",
+        "stepLoopRun",
+        "stopLoopRun",
+        "submitCheckerVerdict",
+        "submitSecurityVerdict",
+        "verifyLoopRun"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/fleet-cockpit",
+      "component": "FleetCockpitPage",
+      "source": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+      "app_line": 127,
+      "navigation": "Lab",
+      "label": "Fleet Cockpit",
+      "redirect": null,
+      "api_calls_in_page": [
+        "drainWorkerPool",
+        "getRuntimeContracts",
+        "getSwarmStatus",
+        "planWorkerPool",
+        "runSchedulerTick",
+        "startNextWorker",
+        "stopWorkerLease"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/swarm-resources",
+      "component": "SwarmResourcesPage",
+      "source": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+      "app_line": 128,
+      "navigation": "Lab",
+      "label": "Swarm Resources",
+      "redirect": null,
+      "api_calls_in_page": [
+        "convertWorkItemToGoal",
+        "getAssuranceSummary",
+        "getMemoryCandidates",
+        "getRsiSafetyStatus",
+        "getSpecialistCatalog",
+        "getSpecialistPanels",
+        "getSwarmStatus",
+        "getWorkItems",
+        "projectSpecialistPanelToBacklog",
+        "promoteMemoryCandidate",
+        "runAssuranceEval",
+        "runSchedulerTick",
+        "setRsiSafetyEnabled",
+        "submitSpecialistReview",
+        "updateWorkItem"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/swarm-mission-control",
+      "component": "SwarmMissionControlPage",
+      "source": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+      "app_line": 129,
+      "navigation": "Lab",
+      "label": "Swarm Mission Control",
+      "redirect": null,
+      "api_calls_in_page": [
+        "applyGoalBatch",
+        "closeLoopLearning",
+        "createProofRun",
+        "getKnowledgeRuntime",
+        "getSwarmCapabilities",
+        "getSwarmClaims",
+        "getSwarmMissionControl",
+        "planCapacityV2",
+        "planWorkerPool",
+        "previewGoalBatch",
+        "rollbackProofRun",
+        "syncKnowledgeRuntime"
+      ],
+      "literal_request_paths_in_page": [
+        "/knowledge/events?limit=20",
+        "/swarms/intelligence/missions/execution?limit=20",
+        "/swarms/learning-curve"
+      ],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/interaction-board",
+      "component": "InteractionBoardPage",
+      "source": "packages/dashboard/src/pages/InteractionBoardPage.tsx",
+      "app_line": 130,
+      "navigation": "Lab",
+      "label": "Interaction Board",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getAgentInteractions",
+        "getSwarmMissionControl"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/agent-commons",
+      "component": "AgentCommonsPage",
+      "source": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+      "app_line": 131,
+      "navigation": "Knowledge",
+      "label": "Agent Commons",
+      "redirect": null,
+      "api_calls_in_page": [
+        "castLure",
+        "createJoinInvite",
+        "decideJoinRequest",
+        "getAgentReputation",
+        "getJoinRequests",
+        "getLures",
+        "getSocialCommons",
+        "startSocialRound"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/evolution",
+      "component": "EvolutionPage",
+      "source": "packages/dashboard/src/pages/EvolutionPage.tsx",
+      "app_line": 132,
+      "navigation": "Improve",
+      "label": "Evolution",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getEvolutionEvidence"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/knowledge",
+      "component": "KnowledgePage",
+      "source": "packages/dashboard/src/pages/KnowledgePage.tsx",
+      "app_line": 133,
+      "navigation": "Knowledge",
+      "label": "Knowledge",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getKnowledgeOverview",
+        "getSkillCards"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/frontier-experts",
+      "component": "FrontierExpertsPage",
+      "source": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+      "app_line": 134,
+      "navigation": "Knowledge",
+      "label": "Frontier Experts",
+      "redirect": null,
+      "api_calls_in_page": [
+        "conveneExpertCouncil",
+        "deprecateExpert",
+        "getExpert",
+        "getExpertDedupe",
+        "getExpertSwarmRuns",
+        "listExperts",
+        "resolveExperts",
+        "reviewExpertCapability",
+        "transitionExpert"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/frontier-experts/:expertId",
+      "component": "FrontierExpertsPage",
+      "source": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+      "app_line": 135,
+      "navigation": "contextual / not in sidebar",
+      "label": "FrontierExpertsPage",
+      "redirect": null,
+      "api_calls_in_page": [
+        "conveneExpertCouncil",
+        "deprecateExpert",
+        "getExpert",
+        "getExpertDedupe",
+        "getExpertSwarmRuns",
+        "listExperts",
+        "resolveExperts",
+        "reviewExpertCapability",
+        "transitionExpert"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/swarm-mission-control/proof-runs/:proofRunId",
+      "component": "ProofRunDetailPage",
+      "source": "packages/dashboard/src/pages/ProofRunDetailPage.tsx",
+      "app_line": 136,
+      "navigation": "contextual / not in sidebar",
+      "label": "ProofRunDetailPage",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getProofRun",
+        "rollbackProofRun"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/swarm-mission-control/missions/:missionId",
+      "component": "MissionDetailPage",
+      "source": "packages/dashboard/src/pages/MissionDetailPage.tsx",
+      "app_line": 137,
+      "navigation": "contextual / not in sidebar",
+      "label": "MissionDetailPage",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source reviewed; no browser evidence",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/economy",
+      "component": "EconomyPage",
+      "source": "packages/dashboard/src/pages/EconomyPage.tsx",
+      "app_line": 138,
+      "navigation": "Lab",
+      "label": "Economy",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [
+        "/swarms/economy"
+      ],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/pipeline-builder",
+      "component": "PipelineBuilderPage",
+      "source": "packages/dashboard/src/pages/PipelineBuilderPage.tsx",
+      "app_line": 139,
+      "navigation": "Lab",
+      "label": "Pipeline drafts",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/federation",
+      "component": "FederationPage",
+      "source": "packages/dashboard/src/pages/FederationPage.tsx",
+      "app_line": 140,
+      "navigation": "Lab",
+      "label": "Federation",
+      "redirect": null,
+      "api_calls_in_page": [
+        "request"
+      ],
+      "literal_request_paths_in_page": [
+        "/federation/capabilities",
+        "/federation/peers",
+        "/federation/register"
+      ],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/agi-reasoning",
+      "component": "AgiReasoningPage",
+      "source": "packages/dashboard/src/pages/AgiReasoningPage.tsx",
+      "app_line": 141,
+      "navigation": "Lab",
+      "label": "Goal reasoning",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [
+        "/agi/reason"
+      ],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/consensus-debates",
+      "component": "ConsensusDebatePage",
+      "source": "packages/dashboard/src/pages/ConsensusDebatePage.tsx",
+      "app_line": 142,
+      "navigation": "Lab",
+      "label": "Consensus debates",
+      "redirect": null,
+      "api_calls_in_page": [
+        "post"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/predictive-analytics",
+      "component": "PredictiveAnalyticsPage",
+      "source": "packages/dashboard/src/pages/PredictiveAnalyticsPage.tsx",
+      "app_line": 143,
+      "navigation": "Lab",
+      "label": "Predictive analytics",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [
+        "/intelligence/predict"
+      ],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/self-healing",
+      "component": "SelfHealingPage",
+      "source": "packages/dashboard/src/pages/SelfHealingPage.tsx",
+      "app_line": 144,
+      "navigation": "Lab",
+      "label": "Health checks",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [
+        "/intelligence/health"
+      ],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/cognitive",
+      "component": "CognitiveRuntimePage",
+      "source": "packages/dashboard/src/pages/CognitiveRuntimePage.tsx",
+      "app_line": 145,
+      "navigation": "Lab",
+      "label": "Cognitive",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getBestStrategy",
+        "getCognitiveMetaLearning",
+        "getCognitiveStats"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/self-driving",
+      "component": "SelfDrivingDashboard",
+      "source": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+      "app_line": 146,
+      "navigation": "Lab",
+      "label": "Self-Driving",
+      "redirect": null,
+      "api_calls_in_page": [
+        "getCognitiveStats",
+        "getComplianceStatus",
+        "getMemoryStats",
+        "getMetaStats",
+        "getMetaTuningHistory"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "/explainers",
+      "component": "ExplainerFleetPage",
+      "source": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+      "app_line": 147,
+      "navigation": "Lab",
+      "label": "Repository explainers",
+      "redirect": null,
+      "api_calls_in_page": [
+        "post"
+      ],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    },
+    {
+      "route": "*",
+      "component": "NotFoundPage",
+      "source": "packages/dashboard/src/pages/NotFoundPage.tsx",
+      "app_line": 148,
+      "navigation": "contextual / not in sidebar",
+      "label": "NotFoundPage",
+      "redirect": null,
+      "api_calls_in_page": [],
+      "literal_request_paths_in_page": [],
+      "api_index_limit": "Static extraction of direct page calls only; dynamic URLs and child component calls need inspection.",
+      "coverage": "source indexed only; not functionally verified",
+      "production_ui": "NOT_TESTABLE - browser unavailable"
+    }
+  ]
+}

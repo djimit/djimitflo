@@ -13,7 +13,11 @@ export function TabbedPage({ tabs, param = 'tab' }: { tabs: TabSpec[]; param?: s
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tabId = (id: string) => `tab-${param}-${id}`;
   const panelId = (id: string) => `panel-${param}-${id}`;
-  const select = (id: string) => setParams({ [param]: id }, { replace: false });
+  const select = (id: string) => {
+    const next = new URLSearchParams(params);
+    next.set(param, id);
+    setParams(next, { replace: false });
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     const i = tabs.findIndex((tab) => tab.id === active.id);
     const next = { ArrowRight: (i + 1) % tabs.length, ArrowLeft: (i - 1 + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];

@@ -1,0 +1,23 @@
+{
+  "baseline": {
+    "numTotalTests": 26,
+    "numPassedTests": 20,
+    "numFailedTests": 6,
+    "success": false,
+    "failed_tests": [
+      "TabbedPage keeps repeated entity filters across click, keyboard selection and browser history",
+      "renders agent interests and live proposal status without claiming proven learning",
+      "does not report absent execution or health readings as measured zero",
+      "reports a failed core source even when optional evidence has not settled",
+      "does not let an obsolete request overwrite a newer refresh",
+      "refresh retries all seven read sources and clears recovered source errors"
+    ]
+  },
+  "patch": {
+    "numTotalTests": 26,
+    "numPassedTests": 26,
+    "numFailedTests": 0,
+    "success": true,
+    "failed_tests": []
+  }
+}

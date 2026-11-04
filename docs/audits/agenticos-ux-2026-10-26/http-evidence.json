@@ -1,0 +1,22 @@
+{
+  "url": "https://djimitflo.agentical.nl/",
+  "final_url": "https://djimitflo.agentical.nl/",
+  "http_status": 200,
+  "title": [
+    "Djimitflo - Agent Orchestration Control Plane"
+  ],
+  "script_assets": [
+    "/assets/index-cHEjgtuZ.js"
+  ],
+  "html_sha256": "b867672a3ccea19a298f33b122694462f3030462025db754f9f1b9370845f9ce",
+  "limit": "HTTP document retrieval only; no rendering, authentication or functional proof.",
+  "entry_asset_sha256": "10db0ec6dbfd8a5147098c1b44551344affc35c7443245e6b1d86f5f68c4b77d",
+  "entry_asset_bytes": 362878,
+  "entry_route_literals": {
+    "swarm-mission-control/missions/:missionId": true,
+    "agent-commons": true,
+    "knowledge": true,
+    "configuration": true
+  },
+  "asset_limit": "String presence in downloaded JS supports deployment-surface observation, not source SHA, authentication, rendering or functional correctness."
+}
