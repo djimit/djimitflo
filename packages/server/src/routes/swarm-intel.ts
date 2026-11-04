@@ -348,7 +348,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   router.get('/intelligence/skills/candidates/:id', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(skillArtifacts.getCandidateById(req.params.id)); }
+    try { res.json(skillArtifacts.getCandidateById(param(req, 'id'))); }
     catch (err: any) { next(createError(404, err.message || 'SKILL_EVOLUTION_CANDIDATE_NOT_FOUND', 'NOT_FOUND')); }
   });
 
@@ -363,7 +363,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
       }
       const actor = String((req as any).user?.sub || '').trim();
       if (!actor) throw createError(401, 'Authenticated actor identity is required', 'ACTOR_ID_REQUIRED');
-      const result = await skillArtifacts.compare(req.params.id, skillLoader, skillEvaluator,
+      const result = await skillArtifacts.compare(param(req, 'id'), skillLoader, skillEvaluator,
         { model: body.model, caseIds: body.case_ids, actor });
       res.status(201).json(result);
     } catch (err: any) {
@@ -374,8 +374,8 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.post('/intelligence/skills/candidates/:id/rollback', requirePermission('write:capability'), (req, res, next) => {
     try {
-      const candidate = skillArtifacts.getCandidateById(req.params.id) as { capability_id?: string | null };
-      const result = skillArtifacts.rollback(req.params.id);
+      const candidate = skillArtifacts.getCandidateById(param(req, 'id')) as { capability_id?: string | null };
+      const result = skillArtifacts.rollback(param(req, 'id'));
       if (candidate.capability_id) db.prepare("UPDATE swarm_capabilities SET status = 'deprecated', updated_at = ? WHERE id = ?")
         .run(new Date().toISOString(), candidate.capability_id);
       skillLoader.loadSkills();
