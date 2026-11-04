@@ -74,24 +74,31 @@ export class EventOutboxService {
 
   private async drain(limit: number): Promise<PublishResult> {
     const bus = process.env.DJIMIT_EVENT_BUS_URL?.replace(/\/$/, '');
-    if (!bus) return { attempted: 0, published: 0, failed: 0, status: 'DISABLED' };
+    if (!eventPublishEnabled() || !bus) return { attempted: 0, published: 0, failed: 0, status: 'DISABLED' };
     const stream = process.env.DJIMIT_EVENT_STREAM || 'djimit.events';
     const rows = this.db.prepare(`SELECT event_id, event_type, aggregate_id, correlation_id, payload_json, created_at FROM event_outbox
       WHERE status IN ('pending', 'failed') AND attempts < 10 ORDER BY created_at ASC LIMIT ?`).all(Math.max(1, Math.min(limit, 500))) as Array<{
       event_id: string; event_type: string; aggregate_id: string; correlation_id: string; payload_json: string; created_at: string }>;
     let attempted = 0; let published = 0; let failed = 0;
     for (const row of rows) {
+      if (!eventPublishEnabled()) return { attempted, published, failed, status: 'DISABLED' };
       const claim = this.db.prepare(`UPDATE event_outbox SET attempts = attempts + 1
         WHERE event_id = ? AND status IN ('pending', 'failed') AND attempts < 10`).run(row.event_id);
       if (claim.changes === 0) continue; // published or exhausted since the select
       attempted++;
       try {
+        const payload = JSON.parse(row.payload_json || '{}');
+        const workItemSource = row.event_type === 'djimitflo.work_item.created'
+          ? payload.work_item_source ?? payload.source : undefined;
         const response = await this.fetchFn(`${bus}/events/${encodeURIComponent(stream)}`, {
           method: 'POST', signal: AbortSignal.timeout(10_000),
           headers: { 'Content-Type': 'application/json', ...fleetBusAuthHeaders() },
           body: JSON.stringify({
+            ...payload,
+            ...(typeof workItemSource === 'string' ? { work_item_source: workItemSource } : {}),
+            // Payload is context, not authority over the persisted envelope or retry identity.
             event_id: `djimitflo:${row.event_id}`, event_type: row.event_type, source: 'djimitflo', occurred_at: row.created_at,
-            aggregate_id: row.aggregate_id, correlation_id: row.correlation_id, dedupe_key: `djimitflo:${row.event_id}`, ...JSON.parse(row.payload_json || '{}'),
+            aggregate_id: row.aggregate_id, correlation_id: row.correlation_id, dedupe_key: `djimitflo:${row.event_id}`,
           }),
         });
         if (!response.ok) throw new Error(`event bus returned ${response.status}`);

@@ -23,3 +23,24 @@ it('is off without a deny list', () => {
   expect(installOutboundGuard({})).toBe(false);
   expect(isDenied('http://x/', deniedHosts({}))).toBeNull();
 });
+
+it('M2d: a bare denied name also matches its MagicDNS / domain names, and a denied domain its subdomains', () => {
+  const denied = deniedHosts({ OUTBOUND_DENY_HOSTS: 'workstation, gpu.tail1234.ts.net, 100.81.133.48' });
+  expect(isDenied('http://workstation.tail1234.ts.net:4000/v1', denied)).toBe('workstation.tail1234.ts.net');
+  expect(isDenied('http://WORKSTATION.lan/', denied)).toBe('workstation.lan');
+  expect(isDenied('http://gpu.tail1234.ts.net/', denied)).toBe('gpu.tail1234.ts.net');
+  expect(isDenied('http://ollama.gpu.tail1234.ts.net/', denied)).toBe('ollama.gpu.tail1234.ts.net');
+  expect(isDenied('http://notworkstation.tail1234.ts.net/', denied)).toBeNull();
+  expect(isDenied('http://agenticservices.tail1234.ts.net/', denied)).toBeNull();
+  expect(isDenied('http://tail1234.ts.net/', denied)).toBeNull();
+  expect(isDenied('http://1100.81.133.48/', denied)).toBeNull();
+});
+
+it('review #1094: trailing-dot DNS names are normalized on both sides (exact and subdomain)', () => {
+  const denied = deniedHosts({ OUTBOUND_DENY_HOSTS: 'gpu.tail1234.ts.net, WORKSTATION., 100.81.133.48' });
+  expect(isDenied('http://gpu.tail1234.ts.net./', denied)).toBe('gpu.tail1234.ts.net');
+  expect(isDenied('http://ollama.gpu.tail1234.ts.net.:11434/', denied)).toBe('ollama.gpu.tail1234.ts.net');
+  expect(isDenied('http://workstation/', denied)).toBe('workstation');
+  expect(isDenied('http://workstation.tail1234.ts.net./', denied)).toBe('workstation.tail1234.ts.net');
+  expect(isDenied('http://agenticservices.tail1234.ts.net./', denied)).toBeNull();
+});

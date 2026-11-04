@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
@@ -7,6 +7,15 @@ import { createTestDb } from './helpers/test-db';
 
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+
+// Configuration unit tests must not start a workstation provider or its MCP processes.
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return { ...actual, execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
+    if (args[0] === 'opencode') throw Object.assign(new Error('ENOENT: isolated CLI'), { code: 'ENOENT' });
+    return actual.execFileSync(...args);
+  } };
+});
 
 let db: Database.Database;
 let intel: SwarmIntelligenceService;

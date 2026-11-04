@@ -197,10 +197,12 @@ describe('learning flywheel smoke', () => {
     });
     expect(closed.status).toBe(201);
     const closure = await closed.json() as any;
+    // M1: the loop-learning closure is retired — no eval, reflection or memory candidate is written
     expect(closure).toMatchObject({
-      status: 'closed',
+      status: 'blocked',
+      blocked_reasons: ['loop_learning_closure_retired'],
       loop_run_id: loopRunId,
-      memory_candidate: { promotion_status: 'proposed' },
+      memory_candidate: null,
     });
     expect(db.prepare("SELECT COUNT(*) as count FROM memory_candidates WHERE status = 'promoted'").get()).toMatchObject({ count: 0 });
   }, 30000);

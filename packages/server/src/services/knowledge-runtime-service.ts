@@ -7,7 +7,7 @@ import { AgentAssuranceService, type EvalRunRecord, type ReflectionCandidateReco
 import { LoopService } from './loop-service';
 import { LoopVerificationService } from './loop-verification-service';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
-import { WorkItemService, type WorkItemRecord } from './work-item-service';
+import type { WorkItemRecord } from './work-item-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action';
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
@@ -80,12 +80,10 @@ interface ParsedOkfFile {
 export class KnowledgeRuntimeService {
   private assurance: AgentAssuranceService;
   private memory: MemoryCandidateService;
-  private workItems: WorkItemService;
 
   constructor(private db: Database) {
     this.assurance = new AgentAssuranceService(db);
     this.memory = new MemoryCandidateService(db);
-    this.workItems = new WorkItemService(db);
   }
 
   static resolveCanonicalOkfBase(options: { allowMissing?: boolean } = {}): string {
@@ -249,85 +247,11 @@ export class KnowledgeRuntimeService {
         skill_improvement_work_item: null,
       };
     }
-    const previous = this.latestEval('loop-learning', 'loop', loopRunId);
-    const evalRun = this.assurance.runEval({
-      suite_name: 'loop-learning',
-      target_type: 'loop',
-      target_ref: loopRunId,
-      metadata: { closure_pipeline: true, loop_run_id: loopRunId, work_item_id: input.work_item_id || null, evidence_counts: evidenceCounts },
-    });
-    const previousScore = previous?.score ?? null;
-    const scoreDelta = previousScore === null ? null : Number((evalRun.score - previousScore).toFixed(4));
-    const improved = scoreDelta !== null && scoreDelta > 0;
-    const regressed = scoreDelta !== null && scoreDelta < 0;
-    const lesson = `Loop ${loopRunId} closed with score ${evalRun.score.toFixed(2)}${scoreDelta === null ? ' as baseline' : ` (${scoreDelta >= 0 ? '+' : ''}${scoreDelta.toFixed(2)} vs previous)`}; preserve checker evidence, gates and runtime artifacts for the next run.`;
-
-    const reflection = this.assurance.createReflection({
-      source_type: 'loop',
-      source_ref: loopRunId,
-      lesson,
-      evidence_refs: [`loop:${loopRunId}`, `eval:${evalRun.id}`],
-      metadata: { loop_run_id: loopRunId, eval_run_id: evalRun.id, previous_score: previousScore, score_delta: scoreDelta },
-    });
-    const memoryCandidate = this.memory.create({
-      title: `Loop learning ${loopRunId.slice(0, 8)}`,
-      content: lesson,
-      memory_type: 'operational_memory',
-      source_ref: `loop:${loopRunId}`,
-      metadata: {
-        loop_run_id: loopRunId,
-        eval_run_id: evalRun.id,
-        reflection_id: reflection.id,
-        promote_memory_requested: Boolean(input.promote_memory),
-      },
-    });
-
-    const followUp = regressed ? this.workItems.createIfMissingBySourceRef({
-      title: `Repair loop learning regression ${loopRunId.slice(0, 8)}`,
-      description: `Loop learning score regressed by ${scoreDelta}. Inspect eval ${evalRun.id} and preserve missing evidence before the next run.`,
-      source: 'loop_learning_closure',
-      source_ref: `regression:${evalRun.id}`,
-      risk_class: 'low',
-      value_score: 80,
-      confidence: 0.82,
-      status: 'candidate',
-      recommended_loop: 'repo-maintenance-loop',
-      metadata: { loop_run_id: loopRunId, eval_run_id: evalRun.id, previous_score: previousScore, score: evalRun.score },
-    }).work_item : null;
-
-    const skillImprovement = improved ? this.workItems.createIfMissingBySourceRef({
-      title: `Promote repeatable skill from loop ${loopRunId.slice(0, 8)}`,
-      description: `Loop learning improved by ${scoreDelta}. Extract the repeatable procedure into an OKF skill candidate after review.`,
-      source: 'loop_learning_closure',
-      source_ref: `skill-improvement:${evalRun.id}`,
-      risk_class: 'low',
-      value_score: 70,
-      confidence: 0.75,
-      status: 'candidate',
-      recommended_loop: 'skill-quality-loop',
-      metadata: { loop_run_id: loopRunId, eval_run_id: evalRun.id, reflection_id: reflection.id },
-    }).work_item : null;
-
-    this.db.prepare(`
-      INSERT INTO loop_learning_closures (
-        loop_run_id, eval_run_id, reflection_id, memory_candidate_id, previous_score, score_delta
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(loopRunId, evalRun.id, reflection.id, memoryCandidate.id, previousScore, scoreDelta);
-    this.bindImprovementEvaluation(loopRunId, evalRun.id, reflection.id);
-
-    return {
-      action: 'closed_loop_learning',
-      loop_run_id: loopRunId,
-      status: 'closed',
-      blocked_reasons: [],
-      eval_run: evalRun,
-      previous_score: previousScore,
-      score_delta: scoreDelta,
-      reflection,
-      memory_candidate: memoryCandidate,
-      follow_up_work_item: followUp,
-      skill_improvement_work_item: skillImprovement,
-    };
+    // M1 (29-10): the loop-learning closure is retired. Its eval passed 74/74 (scores 0.90–1.00: the suite re-scores the same
+    // gates this function already requires, so it cannot fail), its reflection/memory lesson only restated that score, and its
+    // follow-up / skill-improvement work items were never consumed (58 open, 0 consumed in 14 d). Stored closures above are
+    // still replayed and revalidated; nothing new is written.
+    return this.emptyClosure(loopRunId, ['loop_learning_closure_retired']);
   }
 
   private bindImprovementEvaluation(loopRunId: string, evalId: string, reflectionId: string): void {
@@ -611,28 +535,11 @@ export class KnowledgeRuntimeService {
     };
   }
 
-  private latestEval(suiteName: string, targetType: string, targetRef: string): { id: string; score: number } | null {
-    const row = this.db.prepare(`
-      SELECT eval.id, eval.score
-      FROM agent_eval_runs eval
-      LEFT JOIN loop_runs current_run ON current_run.id = ?
-      LEFT JOIN loop_runs previous_run ON previous_run.id = eval.target_ref
-      WHERE eval.suite_name = ? AND eval.target_type = ?
-        AND eval.target_ref != ?
-        AND current_run.loop_name IS NOT NULL
-        AND previous_run.loop_name = current_run.loop_name
-        AND COALESCE(previous_run.repository_path, '') = COALESCE(current_run.repository_path, '')
-      ORDER BY eval.created_at DESC
-      LIMIT 1
-    `).get(targetRef, suiteName, targetType, targetRef) as { id: string; score: number } | undefined;
-    return row || null;
-  }
-
   private nextSafeActions(status: KnowledgeRuntimeHealth['validate_okf']['status'], drift: KnowledgeRuntimeHealth['drift'], blockedReasons: string[]): string[] {
     if (blockedReasons.includes('KNOWLEDGE_RUNTIME_OKF_BASE_MISSING')) return ['Set OKF_BASE or restore repo knowledge symlink'];
     if (status === 'fail') return ['Fix OKF validation before applying capability sync'];
     if (drift.missing_registry_entries.length > 0 || drift.stale_registry_entries.length > 0) return ['Run capability sync dry-run', 'Apply capability sync after review'];
-    return ['Close completed loops through learning closure', 'Promote approved memory candidates', 'Reindex projections dry-run'];
+    return ['Promote approved memory candidates', 'Reindex projections dry-run'];
   }
 
   private count(query: string, params: unknown[] = []): number {

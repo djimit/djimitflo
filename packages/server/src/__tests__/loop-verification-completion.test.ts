@@ -35,7 +35,7 @@ beforeEach(() => {
       loops.insertWorkerLease({ id, loopRunId: 'run', role, runtime: 'manual', findingId: 'finding',
         worktreePath: role === 'maker' ? worktree : null, branchName: null, now: new Date().toISOString(),
         metadata: role === 'maker' ? { assignment_file: assignment, diff_lines: 0, diff_max_lines: 20,
-          deterministic_checks: [{ name: 'fixture', status: 'pass' }] } : { maker_lease_id: `maker-${index}` } });
+          required_deterministic_checks: ['fixture'], deterministic_checks: [{ name: 'fixture', status: 'pass' }] } : { maker_lease_id: `maker-${index}` } });
       loops.updateWorkerLeaseStatus(id, 'completed', role === 'maker' ? {} : { verdict: 'accepted', manual_review_attestation: { reviewer: 'test-operator', reviewer_type: 'human', reviewer_user_id: 'user-op', reason: 'fixture manual review' } });
     }
   }
@@ -59,6 +59,37 @@ it('does not certify vacuously when no maker is completed', () => {
   loops.updateWorkerLeaseStatus('maker-1', 'prepared', {});
   loops.updateWorkerLeaseStatus('maker-2', 'prepared', {});
   expect(loops.certifyLoopRun('run').certified).toBe(false);
+});
+
+it('does not treat skipped deterministic checks as verified work', () => {
+  loops.updateWorkerLeaseStatus('maker-1', 'completed', {
+    deterministic_checks: [{ name: 'test', status: 'skipped' }],
+  });
+  const result = loops.certifyLoopRun('run');
+  expect(result.certified).toBe(false);
+  expect(result.gates.find(gate => gate.name === 'tests_lint_typecheck')?.status).toBe('fail');
+});
+
+it('does not certify when a required deterministic check is missing', () => {
+  loops.updateWorkerLeaseStatus('maker-1', 'completed', {
+    required_deterministic_checks: ['test', 'lint'],
+    deterministic_checks: [{ name: 'test', status: 'pass' }],
+  });
+  const result = loops.certifyLoopRun('run');
+  expect(result.certified).toBe(false);
+  expect(result.gates.find(gate => gate.name === 'tests_lint_typecheck')?.status).toBe('fail');
+});
+
+it('keeps appended evidence checks under the B1 rule once every required script passed', () => {
+  for (const id of ['maker-1', 'maker-2']) loops.updateWorkerLeaseStatus(id, 'completed', {
+    required_deterministic_checks: ['fixture'],
+    deterministic_checks: [{ name: 'fixture', status: 'pass' }, { name: 'test:assertion-strength', status: 'skipped' }],
+  });
+  expect(loops.certifyLoopRun('run').gates.find(gate => gate.name === 'tests_lint_typecheck')?.status).toBe('pass');
+  loops.updateWorkerLeaseStatus('maker-1', 'completed', {
+    deterministic_checks: [{ name: 'fixture', status: 'pass' }, { name: 'fixture', status: 'pass' }],
+  });
+  expect(loops.certifyLoopRun('run').gates.find(gate => gate.name === 'tests_lint_typecheck')?.status).toBe('fail');
 });
 
 it('requires at least one non-superseded maker', () => {

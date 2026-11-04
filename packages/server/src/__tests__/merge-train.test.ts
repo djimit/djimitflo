@@ -210,18 +210,27 @@ it('patch-id alone is not proof: a merged PR whose change is not fully on main f
 it('two workers claiming the same intent: only one acts', async () => {
   const { dir, diff } = mainRepo(false);
   const ledger = path.join(tmp('mt-led-'), 'l'); const own = tmp('mt-2w-'); const merges = path.join(own, 'merges'); const state = path.join(own, 'state');
-  // realistic GitHub: after the merge the PR reads MERGED; the first worker holds its claim for ~3 s
+  const bDone = path.join(own, 'b-done'); const claims = path.join(path.dirname(ledger), 'merge-train.claims');
+  // Deterministic overlap (CI 2026-11-04: on a loaded runner B reached claim() only after A had released it, saw MERGED and
+  // exited 0 — correct, but it never exercised the collision): A holds its claim inside update-branch until B has exited.
   const env = { ...process.env, MT_LEDGER: ledger, MT_BASE: 'main', MT_FETCH: 'true', MT_PR_DIFF: `cat ${diff}`,
     MT_PR_VIEW: `if [ -f ${state} ]; then echo MERGED aaaa1111 false; else echo OPEN aaaa1111 false; fi`,
-    MT_UPDATE: 'sleep 1; echo up-to-date', MT_CHECKS: 'echo pass', MT_SLEEP: 'sleep 1', MT_MERGE: `echo x >> ${merges}; git apply ${diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash; touch ${state}` };
+    MT_UPDATE: `for i in $(seq 1 200); do [ -f ${bDone} ] && break; sleep 0.1; done; echo up-to-date`, MT_CHECKS: 'echo pass', MT_SLEEP: 'true',
+    MT_MERGE: `echo x >> ${merges}; git apply ${diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash; touch ${state}` };
   const { spawn } = await import('child_process');
   const go = () => new Promise<{ code: number | null; out: string }>((resolve) => {
     const c = spawn('bash', [script, 'run', path.join(dir, '..', `log-${Math.random()}`), '778'], { cwd: dir, env });
     let out = ''; c.stdout.on('data', (d) => { out += d; }); c.on('close', (code) => resolve({ code, out }));
   });
-  const [a, b] = await Promise.all([go(), go()]);
-  expect([a.code, b.code].sort()).toEqual([0, 6]);
-  expect(`${a.out}${b.out}`).toContain('CLAIMED by another worker');
+  const a = go();
+  for (let i = 0; i < 200 && !(fs.existsSync(claims) && fs.readdirSync(claims).length > 0); i++) await new Promise((r) => setTimeout(r, 50));
+  expect(fs.readdirSync(claims)).toHaveLength(1); // A holds the claim
+  const b = await go();
+  fs.writeFileSync(bDone, '');
+  const ra = await a;
+  expect(b.code).toBe(6);
+  expect(b.out).toContain('CLAIMED by another worker');
+  expect(ra.code).toBe(0);
   expect(fs.readFileSync(merges, 'utf8').split('\n').filter(Boolean)).toHaveLength(1);
 }, 30_000);
 

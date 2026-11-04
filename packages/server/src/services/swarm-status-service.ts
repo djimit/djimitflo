@@ -1,10 +1,11 @@
 import os from 'os';
+import { createError } from '../middleware/error-handler';
 import { realRunSql, syntheticRunSql } from './synthetic-runs';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
-import { LoopService, type LoopName, type WorkerLeaseRecord } from './loop-service';
+import { LoopService, type LoopName, type LoopRunRecord, type WorkerLeaseRecord } from './loop-service';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { messageBus, type SwarmMessage } from './message_bus';
@@ -1415,12 +1416,16 @@ export class SwarmStatusService {
       }
 
       try {
+        const goal = this.loops.getGoal(item.parent_goal_id);
+        if (['cancelled', 'completed', 'failed'].includes(goal.status)) throw createError(409, 'LOOP_GOAL_NOT_CONTINUABLE', 'LOOP_GOAL_NOT_CONTINUABLE');
         const run = this.loops.startLoop({
           goal_id: item.parent_goal_id,
           loop_name: this.loopNameForWorkItem(item),
           repository_path: repositoryPath,
+          // This admitted work item already supplies an objective; an empty repository scan is not completion.
+          objective_mode: true,
         });
-        this.ensureWorkItemFinding(run.id, item);
+        this.ensureWorkItemFinding(run, item);
         const continued = this.loops.continueLoopRun(run.id, {
           max_assignments: maxAssignments,
           runtime,
@@ -1452,7 +1457,8 @@ export class SwarmStatusService {
     return prepared;
   }
 
-  private ensureWorkItemFinding(loopRunId: string, item: WorkItemRecord): void {
+  private ensureWorkItemFinding(initialRun: LoopRunRecord, item: WorkItemRecord): void {
+    const loopRunId = initialRun.id;
     const row = this.db.prepare('SELECT findings_json, plan_json FROM loop_runs WHERE id = ?').get(loopRunId) as any | undefined;
     if (!row) return;
 
@@ -1462,23 +1468,26 @@ export class SwarmStatusService {
       return;
     }
 
+    const objective = initialRun.metadata.objective_mode ? findings.find((finding) => finding.metadata?.objective_mode
+      && finding.metadata.goal_id === initialRun.goal_id) : undefined;
     const finding = {
       id: syntheticFindingId,
       type: 'work_item_assignment',
       severity: item.risk_class === 'low' ? 'info' : 'warning',
-      file: String(item.metadata.file || 'WORK_ITEM'),
+      file: String(item.metadata.file || objective?.file || 'WORK_ITEM'),
       line: item.metadata.line || null,
       message: item.title,
       evidence: item.source_ref ? `${item.source}:${item.source_ref}` : item.source,
       suggested_fix: item.description,
       metadata: {
+        ...objective?.metadata,
         work_item_id: item.id,
         source: item.source,
         source_ref: item.source_ref,
         direct_assignment: true,
       },
     };
-    const nextFindings = [finding, ...findings];
+    const nextFindings = [finding, ...findings.filter((candidate) => candidate !== objective)];
     const plan = JSON.parse(row.plan_json || '{}') as Record<string, unknown>;
     const nextPlan = {
       ...plan,
@@ -1486,11 +1495,13 @@ export class SwarmStatusService {
       work_item_id: item.id,
     };
 
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET findings_json = ?, plan_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(JSON.stringify(nextFindings), JSON.stringify(nextPlan), new Date().toISOString(), loopRunId);
+    // Attach provenance only to this fresh, unchanged and never-leased planning run.
+    const result = this.db.prepare(`
+      UPDATE loop_runs SET findings_json = ?, plan_json = ?, updated_at = ?
+      WHERE id = ? AND status = 'planning' AND updated_at = ?
+        AND NOT EXISTS (SELECT 1 FROM worker_leases WHERE loop_run_id = ?)
+    `).run(JSON.stringify(nextFindings), JSON.stringify(nextPlan), new Date().toISOString(), loopRunId, initialRun.updated_at, loopRunId);
+    if (result.changes !== 1) throw createError(409, 'WORK_ITEM_PLANNING_STATE_CHANGED', 'WORK_ITEM_PLANNING_STATE_CHANGED');
   }
 
   private requestedWorkItemIds(input: unknown): string[] {

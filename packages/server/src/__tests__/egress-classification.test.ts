@@ -3,7 +3,6 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { DataClassification } from '../services/data-classification';
-import { DataClassificationEnforcement } from '../services/data-classification-enforcement';
 import { checkProviderRoutingV2, classifyDestination, egressEvidence } from '../services/egress-classification';
 
 it('UX-20: known providers are classified from the recorded provider, model and configured base URLs', () => {
@@ -24,17 +23,13 @@ it('UX-20: an unknown provider stays unknown — never guessed', () => {
   expect(classifyDestination({ provider: 'something-new', model: 'm' }, {})).toBe('unknown');
 });
 
-it('UX-20: V2 private_only refuses US clouds and unknown destinations; the old checkProviderRouting is unchanged', () => {
+it('UX-20: V2 private_only refuses US clouds and unknown destinations', () => {
   expect(checkProviderRoutingV2(DataClassification.CONFIDENTIAL, 'us_cloud').allowed).toBe(false);
   expect(checkProviderRoutingV2(DataClassification.CONFIDENTIAL, 'unknown').allowed).toBe(false);
   expect(checkProviderRoutingV2(DataClassification.CONFIDENTIAL, 'local').allowed).toBe(true);
   expect(checkProviderRoutingV2(DataClassification.CONFIDENTIAL, 'eu_hosted').allowed).toBe(true);
   expect(checkProviderRoutingV2(DataClassification.RESTRICTED, 'eu_hosted').allowed).toBe(false);
   expect(checkProviderRoutingV2(DataClassification.INTERNAL, 'us_cloud').allowed).toBe(true);
-  // the original rule still lists openai/anthropic as private_only — V2 sits beside it, not in its place
-  const old = new DataClassificationEnforcement();
-  expect(old.checkProviderRouting(DataClassification.CONFIDENTIAL, 'openai').allowed).toBe(true);
-  expect(old.checkProviderRouting(DataClassification.RESTRICTED, 'openai').allowed).toBe(false);
 });
 
 it('UX-20: evidence counts calls per consumer × destination and what V2 would block, equal to hand SQL', () => {

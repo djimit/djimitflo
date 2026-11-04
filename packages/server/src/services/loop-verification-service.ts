@@ -383,9 +383,18 @@ export class LoopVerificationService {
     if (!Array.isArray(checks) || checks.length === 0) return false;
     // B1 (17-10): zero executed checks cannot verify a run — at least one check really ran and passed (all-skipped used to pass)
     if (!checks.some((check) => (check as { status?: unknown }).status === 'pass')) return false;
-    return checks.every((check) => {
+    if (!checks.every((check) => {
       const status = (check as { status?: unknown }).status;
       return status === 'pass' || status === 'skipped';
+    })) return false;
+    // Every requested script ran exactly once and passed; appended evidence checks (FBPA, assertion strength, …) keep the
+    // rule above. A lease recorded before required_deterministic_checks existed keeps the B1 rule alone.
+    const required = lease.metadata?.required_deterministic_checks;
+    if (required === undefined) return true;
+    if (!Array.isArray(required) || required.length === 0 || new Set(required).size !== required.length) return false;
+    return required.every((name) => {
+      const runs = checks.filter((check) => (check as { name?: unknown }).name === name);
+      return typeof name === 'string' && runs.length === 1 && (runs[0] as { status?: unknown }).status === 'pass';
     });
   }
 }

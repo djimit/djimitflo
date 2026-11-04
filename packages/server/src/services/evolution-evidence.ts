@@ -131,11 +131,16 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
   { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
+  // M2c (29-10): decision-changing flags that were read but unregistered (E-A28)
+  { name: 'FRONTIER_UNITS_REQUIRE_RELEVANCE', acting: true }, { name: 'ORACLE_LANES_SKIP_PANEL', acting: true }, { name: 'LOOP_AUTO_APPROVE_MUTATION_GAP', acting: true },
+  { name: 'APPROVAL_INHERIT_ENABLED', acting: true }, { name: 'LOOP_REVIEWER_APPROVAL_INHERIT', acting: true }, { name: 'KB_CONTEXT_ENABLED', acting: true },
+  { name: 'COMMONS_THREAD_GATE_ENABLED', acting: true }, { name: 'LOOP_SKILL_CARDS_ENABLED', acting: true }, { name: 'LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED', acting: true },
   { name: 'FLEET_REPAIR_MODE', acting: false },
   { name: 'CONTENT_DRAFTS_MODE', acting: true },
   { name: 'CAPABILITY_FACTORY_MODE', acting: true },
   { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
   { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
+  { name: 'SKILL_ARTIFACT_EVOLUTION_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */

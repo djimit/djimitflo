@@ -37,7 +37,7 @@ export function resetLlmBreaker(): void { downUntil.clear(); }
 export function isLlmEndpointDown(id: string, now = Date.now()): boolean { return (downUntil.get(id) ?? 0) > now; }
 
 export function llmEndpoints(primaryOllamaUrl: string, env: NodeJS.ProcessEnv = process.env): LlmEndpoint[] {
-  const endpoints: LlmEndpoint[] = [{ id: `ollama:${primaryOllamaUrl}`, kind: 'ollama', baseUrl: primaryOllamaUrl }];
+  const endpoints: LlmEndpoint[] = primaryOllamaUrl ? [{ id: `ollama:${primaryOllamaUrl}`, kind: 'ollama', baseUrl: primaryOllamaUrl }] : [];
   const second = env.OLLAMA_FALLBACK_URL?.trim();
   if (second && second !== primaryOllamaUrl) endpoints.push({ id: `ollama:${second}`, kind: 'ollama', baseUrl: second, model: env.OLLAMA_FALLBACK_MODEL?.trim() || undefined });
   for (const n of ['', '2']) {
@@ -96,6 +96,7 @@ export async function generateText(
   options: GenerateOptions,
   deps: { endpoints: LlmEndpoint[]; fetchFn?: typeof fetch; now?: () => number },
 ): Promise<string> {
+  if (!deps.endpoints.length) throw new Error('no LLM endpoint configured (OLLAMA_URL unset)');
   const now = deps.now ?? Date.now;
   const fetchFn = deps.fetchFn ?? fetch;
   const ordered = [...deps.endpoints].sort((a, b) => Number(isLlmEndpointDown(a.id, now())) - Number(isLlmEndpointDown(b.id, now())));
