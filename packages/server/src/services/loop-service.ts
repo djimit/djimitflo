@@ -1138,6 +1138,10 @@ export class LoopService {
     }
 
     const scripts = input.scripts || ['test', 'lint', 'type-check'];
+    // an empty set is allowed (callers settle a lease without checks); it can never verify a run (leaseChecksPassed, B1)
+    if (!Array.isArray(scripts) || new Set(scripts).size !== scripts.length || scripts.some((name) => typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9:._-]*$/.test(name))) {
+      throw new Error('DETERMINISTIC_CHECK_SET_INVALID');
+    }
     const packageScripts = this.readNearestPackageScripts(makerLease.worktree_path);
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const outputDir = path.join(this.evidenceRoot, run.id, 'checks', makerLease.id);
@@ -1222,6 +1226,7 @@ export class LoopService {
     // prod 2026-10-01..07: 21 doc-drift makers failed here with no reason ('unspecified: caller supplied no reason')
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
+      required_deterministic_checks: scripts,
       checks_completed_at: new Date().toISOString(),
       ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.reason ? `(${check.reason})` : check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}`,
         failure: checksFailureHint(checks) } : {}),

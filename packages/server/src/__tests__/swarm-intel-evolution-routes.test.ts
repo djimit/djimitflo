@@ -1,13 +1,18 @@
 import express from 'express';
 import request from 'supertest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSwarmIntelRoutes } from '../routes/swarm-intel';
 import { errorHandler } from '../middleware/error-handler';
 import { createTestDb } from './helpers/test-db';
 
 describe('swarm intelligence plan and evolution contracts', () => {
   const dbs: ReturnType<typeof createTestDb>[] = [];
-  afterEach(() => { for (const db of dbs.splice(0)) db.close(); });
+  const previousMode = process.env.SKILL_ARTIFACT_EVOLUTION_MODE;
+  afterEach(() => {
+    for (const db of dbs.splice(0)) db.close();
+    if (previousMode === undefined) delete process.env.SKILL_ARTIFACT_EVOLUTION_MODE;
+    else process.env.SKILL_ARTIFACT_EVOLUTION_MODE = previousMode;
+  });
 
   function app() {
     const db = createTestDb();
@@ -85,5 +90,46 @@ describe('swarm intelligence plan and evolution contracts', () => {
     expect(stats.body.totalGenomes).toBeGreaterThanOrEqual(3);
     // a manually reported outcome carries no skill delivery receipt (INT-004): stored and counted, never skill fitness
     expect(stats.body).toMatchObject({ avgFitness: null, topSkill: null });
+  });
+
+  it('exposes skill evolution inventory and validates candidate contracts before runtime use', async () => {
+    process.env.SKILL_ARTIFACT_EVOLUTION_MODE = 'on';
+    const instance = app();
+    const inventory = await request(instance).get('/intelligence/skills/inventory');
+    expect(inventory.status).toBe(200);
+    expect(inventory.body.skills).toEqual(expect.any(Array));
+
+    const missingCandidateFields = await request(instance).post('/intelligence/skills/candidates').send({ skill_id: 'unknown' });
+    expect(missingCandidateFields.status).toBe(400);
+    expect(missingCandidateFields.body.error.code).toBe('VALIDATION_ERROR');
+
+    const badComparison = await request(instance).post('/intelligence/skills/candidates/missing/compare').send({ model: 'm', case_ids: [] });
+    expect(badComparison.status).toBe(400);
+  });
+
+  it('answers every skill artifact evolution route as disabled without touching the DB while SKILL_ARTIFACT_EVOLUTION_MODE is off', async () => {
+    delete process.env.SKILL_ARTIFACT_EVOLUTION_MODE;
+    const instance = app();
+    const prepare = vi.spyOn(dbs[0], 'prepare');
+    const responses = [
+      await request(instance).get('/intelligence/skills/inventory'),
+      await request(instance).post('/intelligence/skills/candidates').send({ skill_id: 'unknown' }),
+      await request(instance).get('/intelligence/skills/candidates/missing'),
+      await request(instance).post('/intelligence/skills/candidates/missing/compare').send({ model: 'm', case_ids: ['a'] }),
+      await request(instance).post('/intelligence/skills/candidates/missing/rollback'),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe('SKILL_ARTIFACT_EVOLUTION_DISABLED');
+    }
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('rate-limits the skill artifact evolution routes per router (30/min)', async () => {
+    const instance = app();
+    const statuses: number[] = [];
+    for (let i = 0; i < 31; i++) statuses.push((await request(instance).get('/intelligence/skills/inventory')).status);
+    expect(statuses.slice(0, 30).every((status) => status !== 429)).toBe(true);
+    expect(statuses[30]).toBe(429);
   });
 });
