@@ -270,3 +270,14 @@ delete the old one), and restart nothing. Revocation: delete the host's line.
 - S3 step 4: extend `FLEET_EVENT_SIGNATURES` to `roborev.*` and `outcome.*` before they create work.
 - The registry's memory and context API had no callers in 30 days. Removing it is smaller than guarding it.
 - Put `/srv/event-bus` and `/srv/agent-registry` under version control. From now on, `infra/` is the source to install from.
+
+### Outbox envelope identity and source labels
+
+Outgoing outbox `source` is the canonical publisher `djimitflo`; domain payloads
+cannot override event type, event ID, correlation, timestamp or deduplication key.
+For `djimitflo.work_item.created`, use `work_item_source` for the originating work
+system. The publisher translates legacy queued `payload.source` into that field;
+new producers persist it explicitly. Consumers selecting the old envelope source
+must migrate their selector. External consumer compatibility has not been verified.
+`EVENT_PUBLISH_ENABLED=false` also stops queued delivery before the next send;
+a request already in flight may finish. Attempts and pending rows are retained.
