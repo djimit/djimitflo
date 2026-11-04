@@ -1743,7 +1743,8 @@ export class ExecutionEngine {
    * One human approval per loop run (opt-in: LOOP_REVIEWER_APPROVAL_INHERIT=true). The maker is the mutating worker and
    * keeps its own approval; the checker / security checker of the SAME run are read-only by contract (the run fails
    * their read_only gate otherwise), so a human-approved, unexpired maker approval of that run also covers them.
-   * Never inherits for makers, across runs, from a system/auto decision, or after the maker approval expired.
+   * Never inherits for makers, across runs, from a system, auto, autonomy: or inherit: decision (approval-inheritance.ts uses the
+   * same machine prefixes), or after the maker approval expired.
    */
   private reviewerInheritsRunApproval(taskId: string): boolean {
     if (process.env.LOOP_REVIEWER_APPROVAL_INHERIT !== 'true') return false;
@@ -1762,6 +1763,7 @@ export class ExecutionEngine {
     const grant = this.db.prepare(`
       SELECT a.id FROM approvals a JOIN tasks t ON t.id = a.task_id
       WHERE a.status = 'approved' AND a.decided_by IS NOT NULL AND a.decided_by NOT IN ('system', 'auto')
+        AND a.decided_by NOT LIKE 'autonomy:%' AND a.decided_by NOT LIKE 'inherit:%'
         AND a.expires_at IS NOT NULL AND a.expires_at > ?
         AND json_valid(COALESCE(t.metadata, '{}')) = 1 AND json_extract(t.metadata, '$.loop_run_id') = ?
         AND json_valid(COALESCE(t.tags, '[]')) = 1 AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE value = 'maker')
