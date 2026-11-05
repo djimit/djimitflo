@@ -35,8 +35,9 @@ for i in range(len(comps), -1, -1):
     if st.st_mode & 0o022: sys.exit(f"{p} is writable by group or others")
 PY
 }
-sha="${1:-}"
-[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "usage: $0 <40-char-sha> [--apply]" >&2; exit 2; }
+sha="${1:-}"; mode="${2:-}"
+# exactly <sha> [--apply]: an unknown or extra argument fails (AGENTS.md "Host scripts and skills")
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]] && [ $# -le 2 ] && [[ -z "$mode" || "$mode" == --apply ]] || { echo "usage: $0 <40-char-sha> [--apply]" >&2; exit 2; }
 sha256_file() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
 curl -fsS "https://raw.githubusercontent.com/$REPO_SLUG/$sha/scripts/deploy-vps.sh" -o "$tmp"
@@ -48,7 +49,7 @@ if [ -f "$INSTALLED" ]; then
 else
   echo "# no installed copy yet at $INSTALLED"
 fi
-if [ "${2:-}" != "--apply" ]; then echo "# dry run — review the diff above, then rerun with --apply to install scripts/deploy-vps.sh of $sha (sha256 $hash)"; exit 0; fi
+if [ "$mode" != "--apply" ]; then echo "# dry run — review the diff above, then rerun with --apply to install scripts/deploy-vps.sh of $sha (sha256 $hash)"; exit 0; fi
 # checked before it is created or touched (a link or foreign dir is never chmod-ed), and again after
 untrusted() { echo "$INSTALL_DIR is not trusted — make it and every dir above it root:root, not group/other-writable, no symlinks (chown root:root, chmod 0755)" >&2; exit 1; }
 if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then trusted_dir "$INSTALL_DIR" || untrusted; else trusted_dir "$(dirname "$INSTALL_DIR")" || untrusted; mkdir -m 0755 "$INSTALL_DIR"; fi

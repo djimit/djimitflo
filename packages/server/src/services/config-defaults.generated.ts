@@ -77,6 +77,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   JEV_CHALLENGER_MODEL: 'unset = off (e.g. `jev-1.14.0` = shadow)',
   KB_CONTEXT_ENABLED: 'off',
   KNOWLEDGE_GAP_MODE: 'off (`shadow`)',
+  LANE_POLICY_MODE: 'off (`shadow`)',
   LOOP_AUTO_APPROVE_TEST_GAP: 'off',
   LOOP_AUTO_DRAFT_PR_ENABLED: 'off',
   LOOP_AUTO_MERGE_MAX_PER_DAY: '10 (rolling 24 h; counts `would_merge` in shadow)',

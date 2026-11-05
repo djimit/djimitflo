@@ -20,7 +20,8 @@ STATE="${WIKI_EMITTER_STATE:-$HOME/.local/state/wiki-delta-emitter/last-commit}"
 CURL_BIN="${CURL_BIN:-curl}"
 TOKEN_FILE="${DJIMIT_FLEET_BUS_TOKEN_FILE:-$HOME/.djimit/fleet-bus.token}"
 DRY_RUN=false
-[ "${1:-}" = "--dry-run" ] && DRY_RUN=true
+# an unknown argument fails instead of falling through to a real publish (AGENTS.md "Host scripts and skills")
+case "$*" in "") ;; --dry-run) DRY_RUN=true ;; *) echo "usage: $0 [--dry-run] (unknown argument: $*)" >&2; exit 2 ;; esac
 
 head="$(git -C "$WIKI_DIR" rev-parse HEAD)"
 mkdir -p "$(dirname "$STATE")"

@@ -10,6 +10,7 @@ import { ledgerTotals } from './model-call-ledger';
 import { commonsYield, oracleAgreement } from './honest-numbers';
 import { banditOpe } from './bandit-propensity';
 import { egressEvidence } from './egress-classification';
+import { lanePolicyEvidence } from './lane-policy';
 import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
@@ -115,6 +116,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
+  { name: 'LANE_POLICY_MODE', acting: false },
   { name: 'KNOWLEDGE_GAP_MODE', acting: false },
   { name: 'EVOLUTION_FEEDBACK_MODE', acting: false },
   { name: 'COMMONS_EVIDENCE_ROOM_MODE', acting: false },
@@ -530,6 +532,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     maker_tokens: makerTokenAccountingEvidence(db, since),
     // K3 (NE_GENERATOR_CHECK_MODE, shadow): generated proposals / mutants / units naming a negative-evidence entry, and matched proposals that later verified
     negative_evidence: negativeEvidenceEvidence(db, since, env),
+    // LANE_POLICY_MODE (shadow): would_allow / would_deny of maker/reviewer runtime dispatches per data class
+    lane_policy: lanePolicyEvidence(db, since, env),
     // K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps by source, recurrences, oldest age; insufficient while off
     knowledge_gaps: knowledgeGapEvidence(db, env, now),
     // JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev — agreement and accuracy vs ground truth; null below 20 pairs

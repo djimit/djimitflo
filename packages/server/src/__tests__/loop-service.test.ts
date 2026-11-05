@@ -1549,6 +1549,43 @@ describe('doc-drift-and-small-fix-loop', () => {
     });
     // reviewer-independence identity is stamped at dispatch, without touching metadata.model (2026-10-01)
     expect(executed.lease.metadata).toMatchObject({ provider: expect.any(String), model_family: expect.any(String), prompt_hash: expect.stringMatching(/^[0-9a-f]{16}$/) });
+    // LANE_POLICY_MODE unset (off): nothing is evaluated or recorded at dispatch
+    expect(db.prepare("SELECT COUNT(*) AS n FROM judgments WHERE judgment = 'lane_policy'").get()).toEqual({ n: 0 });
+  });
+
+  it('LANE_POLICY_MODE=shadow records a lane_policy judgment at dispatch and never changes the chosen runtime', async () => {
+    const previous = { mode: process.env.LANE_POLICY_MODE, repo: process.env.GITHUB_REPOSITORY };
+    process.env.LANE_POLICY_MODE = 'shadow';
+    process.env.GITHUB_REPOSITORY = 'acme/private-repo'; // no repo default → confidential (fail-closed)
+    try {
+      installFakeOpencode([
+        'const fs = require("fs");',
+        'const path = require("path");',
+        'const dir = process.argv[process.argv.indexOf("--dir") + 1] || ".";',
+        'const readme = path.join(dir, "README.md");',
+        'fs.writeFileSync(readme, fs.readFileSync(readme, "utf8").replace("TODO: document setup", "Setup complete by OpenCode."));',
+        'console.log(JSON.stringify({ type: "text", part: { type: "text", text: "setup documented." } }));',
+      ]);
+      fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+      execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+      execFileSync('git', ['commit', '-m', 'Initial test repo'], { cwd: tempDir, stdio: 'ignore' });
+      const run = await (await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repository_path: tempDir }) })).json() as any;
+      const continued = await (await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ max_assignments: 1, runtime: 'opencode' }) })).json() as any;
+      const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+      const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-worker`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000, diff_max_lines: 20 }) });
+      expect(executeResponse.status).toBe(200);
+      const executed = await executeResponse.json() as any;
+      expect(executed.lease.runtime).toBe('opencode'); // shadow: the would-deny decision does not reroute or block
+      const rows = db.prepare("SELECT subject_id, mode, decision, answers_json FROM judgments WHERE judgment = 'lane_policy'").all() as any[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ subject_id: maker.id, mode: 'shadow', decision: 'would_deny' });
+      expect(JSON.parse(rows[0].answers_json)).toMatchObject({ input_class: 'confidential', class_source: 'fail_closed', runtime: 'opencode', role: 'maker', policy_hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    } finally {
+      for (const [k, v] of [['LANE_POLICY_MODE', previous.mode], ['GITHUB_REPOSITORY', previous.repo]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
   });
 
   it('blocks new worker leasing when the wall-clock loop budget is exhausted', async () => {
