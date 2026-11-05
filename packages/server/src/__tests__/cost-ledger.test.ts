@@ -278,4 +278,8 @@ describe('re-20261105 E9: unknown is not zero', () => {
     const byRow = usageEvents(db, SINCE, UNTIL).events.filter((e) => e.source === 'llm_model_calls').map((e) => e.tokens_reconciled).sort();
     expect(byRow).toEqual([1050, null, null]);
   });
+  it('a worker row (recordWorkerCall) keeps its total-only report: tokens_in = total, tokens_out = null', () => {
+    call('gym', 4000, null, { purpose: 'gym:evolution-gym', provider: 'local' });
+    expect(usageEvents(db, SINCE, UNTIL).events.filter((e) => e.source === 'llm_model_calls').map((e) => e.tokens_reconciled)).toEqual([4000]);
+  });
 });
