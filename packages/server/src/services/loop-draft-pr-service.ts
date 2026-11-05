@@ -318,7 +318,7 @@ export class LoopDraftPrService {
 }
 
 /**
- * PRC-1 retry sweep. LOOP_DRAFT_PR_RETRY: off (default) | shadow (records `draft_pr_retry_shadow`, calls nothing) | on;
+ * PRC-1 retry sweep. LOOP_DRAFT_PR_RETRY: off (default) | shadow (records `draft_pr_retry_shadow` once per run and failure count, calls nothing) | on;
  * needs LOOP_AUTO_DRAFT_PR_ENABLED. A certified run (completed / ready_for_human_merge, the statuses openForRun accepts)
  * created in the last 14 days, without pr_url, whose draft PR failed 1–2 times (`draft_pr_failed`) gets openForRun again —
  * at most 5 per tick, so the 3rd failure ends it. A run never attempted (0 failures) or held on purpose (throttle,
@@ -341,7 +341,9 @@ export async function retryFailedDraftPrs(db: Database, fetchImpl: typeof fetch 
     .all(new Date(now - 14 * 86_400_000).toISOString(), DRAFT_PR_MAX_FAILURES) as Array<{ id: string; failures: number }>;
   const events = new LoopEventService(db);
   if (mode === 'shadow') {
-    for (const r of rows) events.recordEvent(r.id, 'draft_pr_retry_shadow', 'info', `would retry the draft PR (${r.failures} failed attempt(s))`, { failures: r.failures });
+    // re-20261105 A M4 (245 events on 1 run in 2.6 d): once per (run, failed-attempt count), not once per tick
+    const seen = db.prepare("SELECT 1 FROM loop_events WHERE loop_run_id = ? AND event_type = 'draft_pr_retry_shadow' AND json_extract(metadata, '$.failures') = ? LIMIT 1");
+    for (const r of rows) if (!seen.get(r.id, r.failures)) events.recordEvent(r.id, 'draft_pr_retry_shadow', 'info', `would retry the draft PR (${r.failures} failed attempt(s))`, { failures: r.failures });
     return { retried: 0, opened: 0 };
   }
   const svc = new LoopDraftPrService(db, fetchImpl, env);

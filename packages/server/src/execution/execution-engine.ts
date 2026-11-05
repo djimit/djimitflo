@@ -89,6 +89,15 @@ const reportedTokens = (tokens: number | null | undefined): number | null =>
 
 const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i;
 
+/**
+ * Rule approvers whose maker approval a bound reviewer lease of the same run may inherit (exact match; never `inherit:*`,
+ * `system`, `auto` or another `autonomy:*`). Both approve only an oracle-lane / test-gap maker on its deterministic one-file
+ * scope, and the reviewer is read-only by contract.
+ * ponytail: a fixed list, not a registry — prod 14 d: 232 of 240 reviewer inheritances came from these two, so excluding
+ * them stalls every oracle-lane reviewer. Upgrade trigger: a third rule approver whose reviewers need to inherit.
+ */
+export const REVIEWER_INHERITABLE_AUTONOMY_APPROVERS: readonly string[] = ['autonomy:oracle-lane-v1', 'autonomy:test-gap-rule-v1'];
+
 export class ExecutionEngine {
   private db: Database;
   private wsService: WebSocketService;
@@ -1740,10 +1749,12 @@ export class ExecutionEngine {
   }
 
   /**
-   * One human approval per loop run (opt-in: LOOP_REVIEWER_APPROVAL_INHERIT=true). The maker is the mutating worker and
+   * One maker approval per loop run (opt-in: LOOP_REVIEWER_APPROVAL_INHERIT=true). The maker is the mutating worker and
    * keeps its own approval; the checker / security checker of the SAME run are read-only by contract (the run fails
-   * their read_only gate otherwise), so a human-approved, unexpired maker approval of that run also covers them.
-   * Never inherits for makers, across runs, from a system/auto decision, or after the maker approval expired.
+   * their read_only gate otherwise), so an approved, unexpired maker approval of that run also covers its bound reviewer
+   * leases when it was decided by a human OR by exactly one of REVIEWER_INHERITABLE_AUTONOMY_APPROVERS. Never inherits
+   * for makers, across runs, from an `inherit:*`, `system` or `auto` decision or any other `autonomy:*` approver, or after
+   * the maker approval expired.
    */
   private reviewerInheritsRunApproval(taskId: string): boolean {
     if (process.env.LOOP_REVIEWER_APPROVAL_INHERIT !== 'true') return false;
@@ -1762,11 +1773,13 @@ export class ExecutionEngine {
     const grant = this.db.prepare(`
       SELECT a.id FROM approvals a JOIN tasks t ON t.id = a.task_id
       WHERE a.status = 'approved' AND a.decided_by IS NOT NULL AND a.decided_by NOT IN ('system', 'auto')
+        AND a.decided_by NOT LIKE 'inherit:%'
+        AND (a.decided_by NOT LIKE 'autonomy:%' OR a.decided_by IN (${REVIEWER_INHERITABLE_AUTONOMY_APPROVERS.map(() => '?').join(', ')}))
         AND a.expires_at IS NOT NULL AND a.expires_at > ?
         AND json_valid(COALESCE(t.metadata, '{}')) = 1 AND json_extract(t.metadata, '$.loop_run_id') = ?
         AND json_valid(COALESCE(t.tags, '[]')) = 1 AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE value = 'maker')
       ORDER BY a.created_at DESC LIMIT 1
-    `).get(new Date().toISOString(), runId) as { id: string } | undefined;
+    `).get(...REVIEWER_INHERITABLE_AUTONOMY_APPROVERS, new Date().toISOString(), runId) as { id: string } | undefined;
     if (!grant) return false;
     try {
       this.auditService.record({

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # merge-train.sh — idempotent merge train for djimitflo PRs (runbook: docs/runbooks/merge-train.md).
 #
-#   merge-train.sh run [--mark-ready] [--assertions F] LOG PR[@HEADSHA]...   apply: one PR after another (mutates GitHub)
-#   merge-train.sh --dry-run [--assertions F] [--out F]                      read-only plan of every open loop PR
+#   merge-train.sh run [--mark-ready] [--assertions F] [--value-signals F] [--include-low-value] LOG PR[@HEADSHA]...   apply (mutates GitHub)
+#   merge-train.sh --dry-run [--assertions F] [--value-signals F] [--include-low-value] [--out F]   read-only plan of every open loop PR
 #   merge-train.sh rebase BRANCH OWN_N [PR]   rebuild BRANCH on main keeping its OWN_N top commits (stacked PRs)
 #
 # Incident #778 (2026-10-11): a queued `git rebase --onto origin/main HEAD~3 | tail -1 && git push -f` hit a
@@ -11,6 +11,11 @@
 #  - live state (PR + main) is re-read before every action; the queue, the ledger and a patch-id are never proof alone:
 #    SATISFIED requires the PR's net diff to be present on current main (reverse-applies, forward does not) and every
 #    file the PR adds to exist there; anything else is FAIL_CLOSED.
+#  - value (re-20261105 B1: 25 exports PRs went past the auto-merge value gate through this train, 14 fail its rule): an
+#    exports-lane loop PR whose value signal is not `pass` is SKIPPED (run) / POLICY_BLOCKED value_signal_<s> (dry-run) unless
+#    --include-low-value; the skipped list is printed. Signal and lane = the gate's own rule (loop-auto-merge-state
+#    autoMergeValueSignal, oracleLane) from --value-signals F (`node dist/scripts/pr-value-signals.js --db …` on the prod DB)
+#    or the --assertions entry; lane falls back to the exports proposal title; no entry = signal missing (never a pass).
 #  - each merge intent (key = sha256(repo|pr|patch-id)) is claimed atomically (mkdir) and moves through
 #    CLAIMED → RUNNING → MERGED | SATISFIED | FAIL_CLOSED | ESCALATED | SUPERSEDED | HOLD | CANCELLED in the ledger; a live
 #    claim held by another worker makes this worker exit without acting; a stale claim (dead pid or older than
@@ -39,6 +44,9 @@ CI_TIMEOUT="${MT_CI_TIMEOUT_S:-3600}"; CI_POLL="${MT_CI_POLL_S:-45}"
 SETTLE="${MT_HEAD_SETTLE_S:-30}"; SETTLE_POLL="${MT_HEAD_SETTLE_POLL_S:-5}"
 GH_TIMEOUT="${MT_GH_TIMEOUT_S:-60}"
 ASSERTIONS="${MT_ASSERTIONS:-}"
+VALUE_SIGNALS="${MT_VALUE_SIGNALS:-}"
+INCLUDE_LOW_VALUE=0
+EXPORTS_TITLE='^loop: Test untested exports of '           # test-gap-source-service.ts: the #exports proposal title, loop-prefixed
 TEST_ONLY_DIFF_MAX=400                                     # loop-worker-executor-service.ts TEST_ONLY_DIFF_MAX
 MARK_READY=0
 READONLY=0
@@ -70,7 +78,7 @@ mutating() { if [ "$READONLY" = 1 ]; then echo "REFUSED (read-only mode): $1" >&
 
 probe() { local name="$1"; shift; local override="MT_$name"; if [ -n "${!override:-}" ]; then ( eval "${!override}" ); else "$@"; fi; }   # override runs in a subshell, like the real command
 # probe positional args keep the shape `<cmd> pr <verb> N --flag VALUE`: $4 = PR number, $6 = the sha
-pr_view()   { probe PR_VIEW ghx pr view "$1" --repo "$REPO_SLUG" --json state,headRefOid,isDraft -q '"\(.state) \(.headRefOid) \(.isDraft)"'; }
+pr_view()   { probe PR_VIEW ghx pr view "$1" --repo "$REPO_SLUG" --json state,headRefOid,isDraft,title -q '"\(.state) \(.headRefOid) \(.isDraft) \(.title)"'; }
 pr_diff()   { probe PR_DIFF ghx pr diff "$1" --repo "$REPO_SLUG"; }
 pr_checks() { probe CHECKS mt_gh pr checks-at "$1" --sha "$2"; }
 pr_ready()  { mutating "pr ready $1" || return 99; probe READY ghx pr ready "$1" --repo "$REPO_SLUG"; }
@@ -171,6 +179,18 @@ checks_verdict() {   # → {verdict: green|pending|red, red, pending, missing, r
     + (if ($reqbad | length) > 0 then {reason: ("required_not_success:" + ([$reqbad[] | "\(.n)=\(.c)"] | join(",")))} else {} end) end'
 }
 
+# --- value (the auto-merge value gate's rule for the exports lane) -----------------------------------------------------
+# value_of N TITLE → "<lane> <signal>": lane from --value-signals / --assertions (the DB's oracleLane; the signals file wins),
+# else `exports` when the title is the exports proposal title, else `unknown`; signal pass | low | missing (absent = missing)
+value_of() {
+  local n="$1" title="${2:-}" f files=() e='{}'
+  for f in "$ASSERTIONS" "$VALUE_SIGNALS"; do [ -n "$f" ] && files+=("$f"); done
+  if [ ${#files[@]} -gt 0 ]; then e="$(jq -cs --arg n "$n" 'map(.prs[$n] // {}) | add' "${files[@]}" 2>/dev/null)" || e='{}'; fi
+  jq -r --arg t "$title" --arg re "$EXPORTS_TITLE" '"\(.lane // (if ($t | test($re)) then "exports" else "unknown" end)) \(.value_signal // "missing")"' <<<"$e"
+}
+value_blocked() { [ "$INCLUDE_LOW_VALUE" != 1 ] && [ "$1" = exports ] && [ "$2" != pass ]; }   # value_blocked LANE SIGNAL
+check_signals_file() { [ -z "$VALUE_SIGNALS" ] || jq -e '.prs | type == "object"' "$VALUE_SIGNALS" >/dev/null 2>&1 || { echo "value signals file must be {\"prs\": {\"<n>\": {\"lane\": …, \"value_signal\": …}}} (dist/scripts/pr-value-signals.js)" >&2; exit 64; }; }
+
 # --- eligibility (mirrors the #754 shadow: loop-auto-merge.ts runAutoMergeTick, applied to the CURRENT head) ---------
 audit_sample() { local h; h="$(printf 'loop-auto-merge:%s' "$1" | sha256 | cut -c1-8)"; [ $(( 16#$h % 100 )) -lt 10 ]; }
 classify_pr() {   # classify_pr N → one JSON object; never READY on missing data
@@ -191,10 +211,12 @@ classify_pr() {   # classify_pr N → one JSON object; never READY on missing da
   entry=null
   if [ -n "$ASSERTIONS" ]; then entry="$(jq -c --arg n "$n" '.prs[$n] // null' "$ASSERTIONS")"; fi
   local audit=false; audit_sample "$n" && audit=true
+  local vlane vsig; read -r vlane vsig <<<"$(value_of "$n" "$(jq -r '.title // ""' <<<"$pr" 2>/dev/null)")"
+  local vblock=""; if value_blocked "$vlane" "$vsig"; then vblock="value_signal_$vsig"; fi
   printf '%s' "$pr" > "$d/pr.json"; printf '%s' "$files" > "$d/files.json"; printf '%s' "$reviews" > "$d/reviews.json"
   jq -cn --slurpfile p "$d/pr.json" --slurpfile f "$d/files.json" --slurpfile rv "$d/reviews.json" --argjson ci "$ci" \
     --argjson e "$entry" --argjson audit "$audit" --arg repo "$REPO_SLUG" --arg base "$BASE_BRANCH" --arg n "$n" \
-    --argjson limit "$TEST_ONLY_DIFF_MAX" --arg assertions_given "${ASSERTIONS:+1}" '
+    --argjson limit "$TEST_ONLY_DIFF_MAX" --arg assertions_given "${ASSERTIONS:+1}" --arg vlane "$vlane" --arg vsig "$vsig" --arg vblock "$vblock" '
     $p[0] as $pr | $f[0] as $files | $rv[0] as $reviews |
     def B(rank; cat; code): {rank: rank, cat: cat, code: code};
     def testfile: test("(^|/)__tests__/|\\.(test|spec)\\.[cm]?[jt]sx?$");
@@ -215,6 +237,7 @@ classify_pr() {   # classify_pr N → one JSON object; never READY on missing da
         (([$files[] | (.additions // 0) + (.deletions // 0)] | add) as $d | (if $e != null and (($e.diff_max // 0) > 0) then $e.diff_max else $limit end) as $lim
           | if $d > $lim then B(2; "POLICY_BLOCKED"; "diff_over_limit:\($d)>\($lim)") else empty end)
        else empty end),
+      (if $vblock != "" then B(2; "POLICY_BLOCKED"; $vblock) else empty end),
       (if $reviews != null then
         (reduce ($reviews[] | select(.state != null and .state != "COMMENTED" and .state != "PENDING")) as $r ({}; .[($r.user.login // "?")] = $r.state)
           | if ([.[]] | index("CHANGES_REQUESTED")) then B(2; "POLICY_BLOCKED"; "changes_requested") else empty end)
@@ -246,7 +269,7 @@ classify_pr() {   # classify_pr N → one JSON object; never READY on missing da
       mergeable: (if $pr == null then null else $pr.mergeable end), mergeable_state: ($pr.mergeable_state // null), labels: $labels,
       files: (if $files == null then null else [$files[].filename] end),
       diff_lines: (if $files == null then null else ([$files[] | (.additions // 0) + (.deletions // 0)] | add // 0) end),
-      ci_current_head: $ci, assertion: $e, audit_sample: $audit,
+      ci_current_head: $ci, assertion: $e, audit_sample: $audit, lane: $vlane, value_signal: $vsig,
       primary: $primary, blockers: [$blockers[].code], unknowns: $unknowns,
       secondary: ([$blockers[].code | select(. != $primary_code)] + $unknowns + [(if $pr.draft == true then "draft:mark_ready_required" else empty end), (if $ms == "behind" then "behind_main:update_branch_and_ci_on_new_head_required" else empty end)]),
       transitions: (if $primary != "READY" then [] else
@@ -302,10 +325,10 @@ on_signal() {   # cancellation: durable record, claim released, no further actio
   exit 143
 }
 
-live() {   # live PR → L_STATE L_HEAD L_DRAFT; 1 when GitHub could not be read (timeout, network, garbage)
-  local out; L_STATE=""; L_HEAD=""; L_DRAFT=""
+live() {   # live PR → L_STATE L_HEAD L_DRAFT L_TITLE; 1 when GitHub could not be read (timeout, network, garbage)
+  local out; L_STATE=""; L_HEAD=""; L_DRAFT=""; L_TITLE=""
   out="$(pr_view "$1" 2>/dev/null)" || return 1
-  read -r L_STATE L_HEAD L_DRAFT _ <<<"$out" || true
+  read -r L_STATE L_HEAD L_DRAFT L_TITLE <<<"$out" || true
   case "$L_STATE" in OPEN|MERGED|CLOSED) ;; *) return 1 ;; esac
   [ -n "$L_HEAD" ] || return 1
   case "$L_DRAFT" in true|false) return 0 ;; *) return 1 ;; esac
@@ -316,18 +339,27 @@ run_train() {
   while [ $# -gt 0 ]; do case "$1" in
     --mark-ready) MARK_READY=1; shift ;;
     --assertions) ASSERTIONS="$2"; shift 2 ;;
+    --value-signals) VALUE_SIGNALS="$2"; shift 2 ;;
+    --include-low-value) INCLUDE_LOW_VALUE=1; shift ;;
     --) shift; break ;;
     -*) echo "unknown flag $1" >&2; exit 64 ;;
     *) break ;;
   esac; done
-  log="${1:?usage: run [--mark-ready] [--assertions F] LOG PR...}"; shift
+  log="${1:?usage: run [--mark-ready] [--assertions F] [--value-signals F] [--include-low-value] LOG PR...}"; shift
+  check_signals_file
   mkdir -p "$CLAIMS"; touch "$LEDGER"
   say() { echo "$(date +%H:%M) $*" >> "$log"; echo "$*"; }
+  local skipped=() vlane vsig
   trap 'on_signal TERM' TERM; trap 'on_signal INT' INT
   for spec in "$@"; do
     local pr="${spec%@*}" want=""; [ "$spec" != "$pr" ] && want="${spec#*@}"
     live "$pr" || { hold "$pr" "" "PR head unavailable before diff download"; exit 7; }
     local diff_head="$L_HEAD"
+    read -r vlane vsig <<<"$(value_of "$pr" "$L_TITLE")"
+    if value_blocked "$vlane" "$vsig"; then
+      say "#$pr SKIPPED (exports lane, value signal $vsig — the auto-merge value gate's rule; --include-low-value merges it)"
+      record skipped_low_value "$pr" "$diff_head" "" "lane=$vlane signal=$vsig"; skipped+=("#$pr($vsig)"); continue
+    fi
     local p; p="$(mktemp)"
     pr_diff "$pr" > "$p" || { rm -f "$p"; hold "$pr" "$diff_head" "diff download failed — partial patch is not evidence"; exit 7; }
     local pid; pid="$(git patch-id --stable < "$p" | cut -d' ' -f1)"
@@ -339,6 +371,7 @@ run_train() {
     act_on "$pr" "$want" "$p" "$key" "$diff_head" || { local rc=$?; release "$key"; CUR_KEY=""; exit $rc; }
     release "$key"; CUR_KEY=""; rm -f "$p"
   done
+  if [ ${#skipped[@]} -gt 0 ]; then say "SKIPPED low/missing value (exports lane): ${skipped[*]} — rerun with --include-low-value to merge them"; fi
   say "TRAIN DONE"
 }
 
@@ -482,10 +515,13 @@ dry_run() {
   local out=""
   while [ $# -gt 0 ]; do case "$1" in
     --assertions) ASSERTIONS="$2"; shift 2 ;;
+    --value-signals) VALUE_SIGNALS="$2"; shift 2 ;;
+    --include-low-value) INCLUDE_LOW_VALUE=1; shift ;;
     --out) out="$2"; shift 2 ;;
     *) echo "unknown argument $1" >&2; exit 64 ;;
   esac; done
   if [ -n "$ASSERTIONS" ]; then jq -e '.prs | type == "object"' "$ASSERTIONS" >/dev/null || { echo "assertions file must be {\"prs\": {\"<n>\": {...}}}" >&2; exit 64; }; fi
+  check_signals_file
   : > "$GH_CALL_LOG"
   local main; main="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH" -q .commit.sha 2>/dev/null || echo unknown)"
   local list="[]" page batch
@@ -516,6 +552,7 @@ dry_run() {
      open_prs_total: $open_total, loop_prs: ($prs | length),
      counts: (reduce $cats[] as $c ({}; .[$c] = ([$prs[] | select(.primary == $c)] | length))),
      ready: [$prs[] | select(.primary == "READY") | .number],
+     skipped_low_value: [$prs[] | select(.blockers | any(startswith("value_signal_"))) | .number],
      apply_transitions: [$prs[] | select(.primary == "READY") | {number, head_sha, transitions}],
      note: "READY = eligible now on the current head; an apply run must re-validate on the post-update head (update-branch → CI on the new sha → policy + mergeability re-read → merge sha-pinned)",
      prs: $prs}' "$rows")"
@@ -526,6 +563,7 @@ dry_run() {
     jq -r '"loop PRs: \(.loop_prs) of \(.open_prs_total) open · " + ([.counts | to_entries[] | "\(.key)=\(.value)"] | join(" "))' <<<"$plan"
     jq -r '"READY: " + (if (.ready | length) == 0 then "none" else (.ready | map("#\(.)") | join(" ")) end)' <<<"$plan"
     jq -r '.apply_transitions[] | "  #\(.number) @\(.head_sha[0:8]): \(.transitions | join(" → "))"' <<<"$plan"
+    jq -r 'if (.skipped_low_value | length) > 0 then "SKIPPED low/missing value (exports lane): " + ([.prs[] | select(.blockers | any(startswith("value_signal_"))) | "#\(.number)(\(.value_signal))"] | join(" ")) + " — --include-low-value lifts it" else empty end' <<<"$plan"
   } >&"$([ -n "$out" ] && echo 1 || echo 2)"
 }
 
@@ -580,7 +618,7 @@ main() {
     run|apply) run_train "$@" ;;
     --dry-run|plan) dry_run "$@" ;;
     rebase) rebase_onto_main "$@" ;;
-    *) echo "usage: merge-train.sh run [--mark-ready] [--assertions F] LOG PR[@HEAD]... | --dry-run [--assertions F] [--out F] | rebase BRANCH OWN_N [PR]" >&2; exit 64 ;;
+    *) echo "usage: merge-train.sh run [--mark-ready] [--assertions F] [--value-signals F] [--include-low-value] LOG PR[@HEAD]... | --dry-run [--assertions F] [--value-signals F] [--include-low-value] [--out F] | rebase BRANCH OWN_N [PR]" >&2; exit 64 ;;
   esac
 }
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi

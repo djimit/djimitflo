@@ -5,7 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { gradedContestMode, gradedFitnessMode, gradedRefs, leaseGradedRefs, parseGraded, recordMakerGraded, type KillRunner } from '../services/graded-fitness';
+import { GRADED_MUTANTS_V2, gradedContestMode, gradedFitnessMode, gradedMutants, gradedRefs, leaseGradedRefs, parseGraded, recordMakerGraded, type KillRunner } from '../services/graded-fitness';
+import { autoMergeValueSignal } from '../services/loop-auto-merge-state';
+import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
+import { WRITE_TEST_MUTANTS } from '../services/gym-failure-tasks';
 
 const TARGET = 'packages/server/src/services/widget.ts';
 const TEST = 'packages/server/src/__tests__/widget.test.ts';
@@ -131,4 +134,32 @@ it('SI-A prod (shadow): a mutation-gap maker is graded from its own test:mutatio
   expect(meta('m-1').graded).toBeUndefined();
   recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' } });
   expect(leaseGradedRefs(meta('m-1'))).toEqual(['graded:0.000', 'graded_kind:mutation_score', 'graded_lane:mutation']);
+});
+
+// re-20261105 B7: with 3 seeded mutants "1 of 3" (0.333) passes the value gate's 0.2 and the graded contest ties 3/3.
+// GRADED_FITNESS_MUTANTS_V2=on (default off) grades a production test-gap / exports maker against 6; the gym's write_test
+// tasks (served to scripts/gym-worker.mjs, which accepts at most 5) keep WRITE_TEST_MUTANTS = 3.
+it('B7 flag: GRADED_FITNESS_MUTANTS_V2 off (default, 3 = WRITE_TEST_MUTANTS) | on (6), registered as an acting flag', () => {
+  expect(WRITE_TEST_MUTANTS).toBe(3);
+  expect(GRADED_MUTANTS_V2).toBe(6);
+  expect([gradedMutants({}), gradedMutants({ GRADED_FITNESS_MUTANTS_V2: 'on' }), gradedMutants({ GRADED_FITNESS_MUTANTS_V2: ' ON ' }), gradedMutants({ GRADED_FITNESS_MUTANTS_V2: '6' })]).toEqual([3, 6, 6, 3]);
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'GRADED_FITNESS_MUTANTS_V2', acting: true });
+});
+
+it('B7: on, a test that kills 1 seeded mutant scores 1/6 (low for the value gate); off (default) the same test scores 1/3 (pass)', () => {
+  const BIG = `${SOURCE}export const d = (x: number) => x < 5 || x >= 9;\nexport const e = (x: number) => x - 1 >= 0 && x !== 7;\n`;
+  fs.writeFileSync(path.join(wt, TARGET), BIG);
+  // green on the real target; red on the first mutant it is run against only
+  const killsOne = (): KillRunner => { let seen = 0; return (cwd) => { const c = fs.readFileSync(path.join(cwd, '..', '..', TARGET), 'utf8'); if (c === BIG) return 'pass'; seen++; return seen === 1 ? 'fail' : 'pass'; }; };
+  seed(['test-gap:widget#exports'], [TEST]);
+  recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow', GRADED_FITNESS_MUTANTS_V2: 'on' }, run: killsOne() });
+  const on = meta('m-1').graded;
+  expect(on).toMatchObject({ kind: 'mutant_kill', lane: 'exports', killed: 1, total: 6, score: 0.167 });
+  expect(autoMergeValueSignal([], on)).toBe('low');
+  expect(fs.readFileSync(path.join(wt, TARGET), 'utf8')).toBe(BIG);
+  db.prepare("UPDATE worker_leases SET metadata = json_remove(metadata, '$.graded') WHERE id = 'm-1'").run();
+  recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' }, run: killsOne() });
+  const off = meta('m-1').graded;
+  expect(off).toMatchObject({ killed: 1, total: 3, score: 0.333 });
+  expect(autoMergeValueSignal([], off)).toBe('pass');
 });

@@ -497,11 +497,11 @@ describe('--dry-run (read-only plan)', () => {
     fs.writeFileSync(file, JSON.stringify({ source: 'test fixture', prs }));
     return file;
   };
-  const dry = (extra: Record<string, string> = {}) => {
+  const dry = (extra: Record<string, string> = {}, args: string[] = []) => {
     const gh = stubGh(fixtures());
     const out = path.join(tmp('mtc-out-'), 'plan.json'); const touched = path.join(tmp('mtc-t-'), 'mutated');
     const refused = path.join(tmp('mtc-r-'), 'refused');
-    const r = spawnSync('bash', [script, '--dry-run', '--assertions', assertions(), '--out', out], { cwd: tmp('mtc-cwd-'), encoding: 'utf8', timeout: 60_000,
+    const r = spawnSync('bash', [script, '--dry-run', '--assertions', assertions(), '--out', out, ...args], { cwd: tmp('mtc-cwd-'), encoding: 'utf8', timeout: 60_000,
       env: { ...process.env, PATH: gh.PATH, MERGE_TRAIN_REPO: 'o/r', MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REFUSED_LOG: refused,
         // even with every mutating probe overridden, the dry-run path never reaches them
         MT_MERGE: `touch ${touched}`, MT_UPDATE: `touch ${touched}`, MT_READY: `touch ${touched}`, MT_PUSH: `touch ${touched}`, ...extra } });
@@ -523,6 +523,24 @@ describe('--dry-run (read-only plan)', () => {
     const missing = (r.plan.prs as Array<{ number: number; secondary: string[]; blockers: string[] }>).find((p) => p.number === MISSING)!;
     expect(missing.blockers.join(' ')).toContain('security-scan');
     expect(r.out).toContain('READY');
+  });
+
+  // re-20261105 B1: the plan applies the auto-merge value gate's rule to exports-lane PRs (lane + signal from --value-signals,
+  // the file dist/scripts/pr-value-signals.js writes); --include-low-value lifts it. Other lanes are not gated here.
+  it('B1: an exports-lane PR with a low value signal is POLICY_BLOCKED value_signal_low and listed; --include-low-value lifts it', () => {
+    const signals = path.join(tmp('mtc-vs-'), 'signals.json');
+    fs.writeFileSync(signals, JSON.stringify({ source: 'fixture', prs: { [READY2]: { lane: 'exports', value_signal: 'low' }, [READY]: { lane: 'test-gap', value_signal: 'low' } } }));
+    const r = dry({}, ['--value-signals', signals]);
+    expect(r.status).toBe(0);
+    const p = (n: number) => (r.plan.prs as Array<{ number: number; primary: string; blockers: string[]; lane: string; value_signal: string }>).find((x) => x.number === n)!;
+    expect(p(READY2)).toMatchObject({ primary: 'POLICY_BLOCKED', lane: 'exports', value_signal: 'low' });
+    expect(p(READY2).blockers).toContain('value_signal_low');
+    expect(p(READY)).toMatchObject({ primary: 'READY', lane: 'test-gap' });
+    expect(r.plan.skipped_low_value).toEqual([READY2]);
+    expect(r.out).toContain(`SKIPPED low/missing value (exports lane): #${READY2}(low)`);
+    const lifted = dry({}, ['--value-signals', signals, '--include-low-value']);
+    expect(lifted.plan.ready).toEqual([READY, READY2].sort((a, b) => a - b));
+    expect(lifted.plan.skipped_low_value).toEqual([]);
   });
 
   it('is read-only by construction: zero mutating gh invocations, no mutating probe reached, no ledger write', () => {

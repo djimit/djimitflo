@@ -317,6 +317,36 @@
         "ts-build-error-repair-v1"
       ],
       "reopen_condition": "A new pre-registered procedure (new lines and digest) and arm, evaluated on a fresh frozen task set disjoint from the PL-001 manifest, with its own frozen decision rule reaching SUPPORTED. This reopens procedure delivery for that procedure only; ts-build-error-repair-v1 stays retired."
+    },
+    {
+      "id": "NE-017",
+      "title": "Orca (stablyai/orca) as DjimitFlo runtime substrate",
+      "hypothesis": "Running DjimitFlo makers and reviewers through Orca (its CLI, the headless `orca serve` daemon or the desktop app's agent terminals) instead of DjimitFlo's own executors closes a DjimitFlo execution gap (isolation, placement, leases, cancellation or recovery) at an acceptable integration and trust cost.",
+      "verdict": "REJECT",
+      "decided_on": "2026-11-04",
+      "conditions": "Three reviews of stablyai/orca: the 2026-10-24 assimilation review at 976fa11e (PR #1002, docs/research/orca), the 2026-10-25 delta review 976fa11e -> 92fd257b (docs/audits/djimitflo-aios-l4/README.md) and the 2026-11-04 substrate review (operator decision). Source read only; nothing installed, built or run. Decision on fit, topology and trust, not on a measured effect.",
+      "result": "2026-10-24: of 13 candidate mechanisms only process-group termination was adopted, adapted in-house as ORCA-PG behind RUNTIME_PROCESS_GROUP_KILL; everything else REUSE_EXISTING or REJECT. 2026-10-25 delta review: no new adoption candidate (scheduler load scope, setsid sweep and Codex app-server approvals noted as DjimitFlo backlog items, not Orca adoption). 2026-11-04: no Orca binary on any DjimitFlo host; the CLI ships with the Electron desktop app or as the headless `orca serve`; Orca workers are agent CLIs in Orca PTY terminals; remote placement is desktop-driven (the desktop pushes to SSH hosts), which conflicts with the pull-only fleet rule that the VPS never calls the workstation; Orca has no sandbox, so S0 maker isolation stays unsolved. DjimitFlo already has leases with fencing (#947, #1088), the executor abstraction with runtime admission (execution/runtime-admission.ts), approvals, the audit hash chain and the outbound guard.",
+      "why": "Orca is a human-steered desktop orchestrator. Every control-plane property it would bring already exists in DjimitFlo, its placement model contradicts the pull-only topology, and the one gap it might be expected to close (maker isolation) it does not close. Adoption would add an Electron-coupled runtime with no measured benefit.",
+      "evidence": [
+        "PR #1002 (docs/research/orca/ORCA-ADOPTION-DECISION.md, EVALUATION-REPORT.md, ORCA-FORENSICS.md)",
+        "docs/audits/djimitflo-aios-l4/README.md (Orca delta review 976fa11e -> 92fd257b, 2026-10-25)",
+        "docs/research/negative-evidence/NE-017-orca-runtime-substrate.md (2026-11-04 substrate review, operator decision)",
+        "PRs #947 and #1088 (lease fencing and remote maker identity)"
+      ],
+      "allowed_follow_up": "Individual Orca mechanisms may still be adapted in-house, without Orca code or a dependency, when a verified DjimitFlo defect needs them (precedent: ORCA-PG). Orca's MIT source remains a normal reference to read.",
+      "forbidden_reuse": [
+        "adding Orca (the stablyai/orca CLI, orcad, `orca serve` or the desktop app) as a dependency, executor or runtime for makers or reviewers",
+        "letting the VPS or an Orca desktop push work to the workstation (breaks the pull-only fleet rule)",
+        "citing Orca as a solution for S0 maker isolation"
+      ],
+      "forbidden_code_patterns": [
+        "stablyai/orca",
+        "orca serve"
+      ],
+      "match_terms": [
+        "stablyai/orca"
+      ],
+      "reopen_condition": "Both: (a) a measured DjimitFlo gap that only Orca closes, and (b) Orca running inside the workstation pull worker behind remote_maker_jobs, at a pinned version with a contract snapshot. Permits a bounded, flagged evaluation, not adoption."
     }
   ]
 }

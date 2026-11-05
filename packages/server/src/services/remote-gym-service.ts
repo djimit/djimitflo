@@ -103,11 +103,12 @@ export function sanitizeProdGates(value: unknown): Record<string, string> | unde
 
 /**
  * SI-A gym graded score (GRADED_FITNESS_MODE=shadow): write_test = served mutants the test killed / served mutants, counted
- * here from the keys this server handed out; repair = the worker's per-test share (tests_green) or its 1/0 (binary); a
+ * here from the keys this server handed out (no list reported = null, unknown); repair = the worker's per-test share (tests_green) or its 1/0 (binary); a
  * missing or invalid worker value falls back to binary from the verdict (an older worker).
  */
-export function gymGraded(gym: { kind?: string; mutant_keys?: string[] }, result: RemoteGymResult, killed?: string[]): { graded: number; graded_kind: GradedKind } {
-  if (gym.kind === 'write_test' && gym.mutant_keys?.length) return { graded: roundGraded((killed?.length ?? 0) / gym.mutant_keys.length), graded_kind: 'mutant_kill' };
+export function gymGraded(gym: { kind?: string; mutant_keys?: string[] }, result: RemoteGymResult, killed?: string[]): { graded: number; graded_kind: GradedKind } | null {
+  // re-20261105 E9: no killed_mutants list from the worker = the kill share is unknown (null), never 0
+  if (gym.kind === 'write_test' && gym.mutant_keys?.length) return killed === undefined ? null : { graded: roundGraded(killed.length / gym.mutant_keys.length), graded_kind: 'mutant_kill' };
   const g = Number(result.graded);
   if ((result.graded_kind === 'tests_green' || result.graded_kind === 'binary') && typeof result.graded === 'number' && g >= 0 && g <= 1) return { graded: roundGraded(g), graded_kind: result.graded_kind };
   return { graded: result.status === 'success' ? 1 : 0, graded_kind: 'binary' };

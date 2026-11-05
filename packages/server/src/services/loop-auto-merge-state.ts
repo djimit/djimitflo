@@ -90,6 +90,26 @@ export function autoMergeValueSignal(checks: unknown, graded: unknown): 'pass' |
   return fbpa === 'fail' || share !== null ? 'low' : 'missing';
 }
 
+/**
+ * re-20261105 B3: the value gate's 0.2 at maker time passes 12/20 exports PRs that are < 0.2 at settlement. The settled value
+ * revokes the lane's class: when >= SETTLEMENT_REVOKE_SHARE of the last SETTLEMENT_REVOKE_WINDOW settled PRs of a
+ * SETTLEMENT_REVOKE_LANES lane (latest settlement_execution row with a fresh-mutant kill share, newest merge first) kill <
+ * SETTLEMENT_REVOKE_KILL_BELOW. Fewer settled = insufficient, never a revocation. One judgment per window (its newest PR):
+ * LOOP_AUTO_MERGE_SETTLEMENT_REVOKE = off (default: nothing) | shadow (judgment would_revoke | keep | insufficient; nothing
+ * changes) | on (revoke: the lane's PRs become 'revoked_hold' until the operator re-enable; the same window never re-revokes).
+ */
+export type SettlementRevokeMode = 'off' | 'shadow' | 'on';
+export const autoMergeSettlementRevoke = (env: NodeJS.ProcessEnv = process.env): SettlementRevokeMode => {
+  const v = String(env.LOOP_AUTO_MERGE_SETTLEMENT_REVOKE ?? '').trim().toLowerCase();
+  return v === 'shadow' || v === 'on' ? v : 'off';
+};
+export const SETTLEMENT_REVOKE_JUDGMENT = 'auto_merge_settlement_revoke';
+export const SETTLEMENT_REVOKE_LANES = ['exports'] as const;
+export const SETTLEMENT_REVOKE_WINDOW = 20;
+export const SETTLEMENT_REVOKE_SHARE = 0.5;
+/** = settlement-execution SETTLEMENT_VALUE_THRESHOLD (not imported: that module pulls in the worktree / runner stack) */
+export const SETTLEMENT_REVOKE_KILL_BELOW = 0.2;
+
 /** At most this many re-checks per tick (each is a handful of GitHub calls). */
 export const RECHECK_PER_TICK = 5;
 
@@ -126,6 +146,34 @@ const write = (db: Database, s: ClassState, now: Date): void => {
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(KEY, JSON.stringify(s), now.toISOString());
 };
 
+/** B3: lanes whose class the settled value revoked (system_state, one key). Missing = none; unreadable fails closed: every lane ('*'). */
+export interface LaneRevocation { reason: string; revoked_at: string; basis: string }
+const LANE_KEY = 'loop_auto_merge_lanes_revoked';
+export function readLaneRevocations(db: Database): Record<string, LaneRevocation> {
+  let row: { value: string } | undefined;
+  try { row = db.prepare('SELECT value FROM system_state WHERE key = ?').get(LANE_KEY) as { value: string } | undefined; } catch { return {}; }
+  if (!row) return {};
+  try {
+    const v = JSON.parse(row.value) as Record<string, LaneRevocation>;
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+  } catch { /* fall through */ }
+  return { '*': { reason: 'lane revocation state unreadable', revoked_at: '', basis: '' } };
+}
+/** Revoke one lane's class (system actor, audited). Returns false when that lane was already revoked. */
+export function revokeLane(db: Database, lane: string, reason: string, basis: string, now = new Date()): boolean {
+  const before = readLaneRevocations(db);
+  if (before[lane]) return false;
+  const after = { ...before, [lane]: { reason: reason.slice(0, 300), revoked_at: now.toISOString(), basis } };
+  ensure(db);
+  db.prepare(`INSERT INTO system_state (key, value, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(LANE_KEY, JSON.stringify(after), now.toISOString());
+  try {
+    new AuditService(db).record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'loop_auto_merge_lane_revoked', resource_type: 'loop_auto_merge_class', resource_id: `${KEY}:${lane}`,
+      risk_level: RiskLevel.HIGH, before: { lanes: before }, after: { lanes: after }, metadata: { lane, reason, basis } });
+  } catch { /* the revoked state is persisted either way */ }
+  return true;
+}
+
 /** Revoke the class (system actor). Returns false when it was already revoked (the first reason is kept). */
 export function revokeClass(db: Database, reason: string, prUrl: string, now = new Date()): boolean {
   const before = readClassState(db);
@@ -139,14 +187,19 @@ export function revokeClass(db: Database, reason: string, prUrl: string, now = n
   return true;
 }
 
-/** Operator re-enable (manage:config at the route). Throws AUTO_MERGE_NOT_REVOKED when there is nothing to re-enable. */
+/**
+ * Operator re-enable (manage:config at the route): the class and every revoked lane (B3). Throws AUTO_MERGE_NOT_REVOKED when
+ * there is nothing to re-enable.
+ */
 export function reEnableClass(db: Database, actor: string, reason: string, now = new Date()): ClassState {
   const before = readClassState(db);
-  if (before.state !== 'revoked') throw new Error('AUTO_MERGE_NOT_REVOKED');
+  const lanes = readLaneRevocations(db);
+  if (before.state !== 'revoked' && !Object.keys(lanes).length) throw new Error('AUTO_MERGE_NOT_REVOKED');
   const after: ClassState = { state: 'active', re_enabled_by: actor, re_enabled_at: now.toISOString(), re_enable_reason: reason.slice(0, 500) };
   new AuditService(db).record({ event_type: AuditEventType.CONFIG_CHANGED, user_id: actor, action: 'loop_auto_merge_re_enabled', resource_type: 'loop_auto_merge_class',
-    resource_id: KEY, risk_level: RiskLevel.HIGH, before: { ...before }, after: { ...after }, metadata: { reason: after.re_enable_reason } });
+    resource_id: KEY, risk_level: RiskLevel.HIGH, before: { ...before, ...(Object.keys(lanes).length ? { lanes_revoked: lanes } : {}) }, after: { ...after }, metadata: { reason: after.re_enable_reason } });
   write(db, after, now);
+  db.prepare('DELETE FROM system_state WHERE key = ?').run(LANE_KEY);
   return after;
 }
 
@@ -159,6 +212,10 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
       json_extract(metadata, '$.auto_merge.rechecked_at') AS rechecked_at, json_extract(metadata, '$.auto_merge.would_block_value') AS would_block
       FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') IS NOT NULL`).all() as typeof rows;
   } catch { /* loop_runs absent */ }
+  let revokeRows: Array<{ lane: string; mode: string; decision: string; at: string; answers: string | null }> = [];
+  try { revokeRows = db.prepare('SELECT subject_id AS lane, mode, decision, created_at AS at, answers_json AS answers FROM judgments WHERE judgment = ? ORDER BY created_at, rowid').all(SETTLEMENT_REVOKE_JUDGMENT) as typeof revokeRows; } catch { /* judgments absent */ }
+  const lastRevoke = new Map<string, (typeof revokeRows)[number]>();
+  for (const r of revokeRows) lastRevoke.set(r.lane, r);
   let replay: Array<{ decision: string; n: number }> = [];
   try { replay = db.prepare('SELECT decision, COUNT(*) AS n FROM judgments WHERE judgment = ? GROUP BY decision').all(VALUE_GATE_REPLAY_JUDGMENT) as typeof replay; } catch { /* judgments absent */ }
   const replayed = (d: string) => replay.find((r) => r.decision === d)?.n ?? 0;
@@ -188,6 +245,14 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
       would_block: { value_signal_missing: rows.filter((r) => r.would_block === 'value_signal_missing').length, value_signal_low: rows.filter((r) => r.would_block === 'value_signal_low').length },
       // C4: the operator-run replay of the rule on past auto-merges (shadow judgments, replay: true); n 0 = not run
       replay: { n: replay.reduce((a, r) => a + r.n, 0), pass: replayed('pass'), low: replayed('low'), missing: replayed('missing') } },
+    // B3: the settled-value revocation per lane — mode, rule, revoked lanes and the latest judgment per lane (shadow: would_revoke only)
+    settlement_revoke: { mode: autoMergeSettlementRevoke(env), lanes: [...SETTLEMENT_REVOKE_LANES], window: SETTLEMENT_REVOKE_WINDOW, share_min: SETTLEMENT_REVOKE_SHARE,
+      kill_below: SETTLEMENT_REVOKE_KILL_BELOW, lanes_revoked: readLaneRevocations(db),
+      last: [...lastRevoke.values()].map((r) => {
+        let a: { n?: number; below?: number; share_below?: number; kill_share_now_median?: number | null } = {};
+        try { a = JSON.parse(r.answers || '{}'); } catch { /* unreadable */ }
+        return { lane: r.lane, mode: r.mode, decision: r.decision, at: r.at, n: a.n ?? null, below: a.below ?? null, share_below: a.share_below ?? null, kill_share_now_median: a.kill_share_now_median ?? null };
+      }) },
     recheck: {
       enabled: autoMergeRecheck(env), window_hours: autoMergeRecheckHours(env), per_tick: RECHECK_PER_TICK,
       ineligible_by_class: { permanent: ineligible.length - transient, transient },

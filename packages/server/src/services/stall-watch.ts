@@ -10,6 +10,8 @@ import { panelInferenceStatus } from './ollama-outage-fallback';
 import { experimentsReport } from './experiment-registry';
 import { hostTokenStalls, hostTokenWatchMode } from './host-token-watch';
 import { gapLaneResults } from './test-gap-source-service';
+import { fleetDrift } from '../utils/fleet-drift';
+import { MIN_HOST_AGENT_VERSION } from '../routes/host-agent';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -76,6 +78,16 @@ export const ZERO_VERIFIED_WINDOW_H = 72;
 export const NO_ORACLE_WORK_H = 12;
 /** deploy:behind_main: hours a held-back main sha (`waiting` deploy event) may wait */
 export const DEPLOY_BEHIND_MAIN_H = 2;
+/** judgments: a judgment with at least this many verdicts in the window and more than this share of errors */
+export const JUDGMENT_MIN_N = 10;
+export const JUDGMENT_ERROR_SHARE = 0.3;
+/** zero_success:llm streak (re-20261105 N8: a hard 404 took 19.3 h, the 24 h window held the last success): this many of a
+ *  consumer's most recent calls in the window all failed */
+export const ZERO_SUCCESS_LLM_STREAK = 5;
+/** fleet_drift: hours a fleet service may differ from main (first seen by the stall watch) before it is a stall */
+export const FLEET_DRIFT_STALL_H = 24;
+/** fleet:agent_outdated: hosts that polled within this many days */
+export const FLEET_AGENT_ACTIVE_DAYS = 7;
 export type ValueAnomalyMode = 'off' | 'shadow' | 'on';
 export function valueAnomalyMode(env: NodeJS.ProcessEnv = process.env): ValueAnomalyMode {
   const v = (env.VALUE_ANOMALY_ALARM || '').trim().toLowerCase();
@@ -135,9 +147,17 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   // 2. a judgment failing more than 30 % of the time in the last 6 h (e.g. provider 429s). `<judgment>@local` (T1, the
   // workstation) and `<judgment>@<model>` (JEV-114 challenger) rows are shadow experiments, not production signals: their errors
   // show in the cockpit, not as stalls.
+  // re-20261105 §1g: a low-volume judgment (checker_second_opinion, ~3/day) never reaches n ≥ 10 in 6 h, so a second rule
+  // reads 24 h (n ≥ 10, same share) for the judgments the 6 h rule could not evaluate
   run('judgments', true, () => {
-    for (const j of all<{ judgment: string; errors: number; n: number }>("SELECT judgment, SUM(decision = 'error') AS errors, COUNT(*) AS n FROM judgments WHERE created_at >= ? AND instr(judgment, '@') = 0 GROUP BY judgment HAVING n >= 10", ago(now, 6))) {
-      if (j.errors / j.n > 0.3) out.push({ subsystem: `judgment:${j.judgment}`, since: ago(now, 6), detail: `${j.errors}/${j.n} verdicts were errors in 6 h` });
+    const q = "SELECT judgment, SUM(decision = 'error') AS errors, COUNT(*) AS n FROM judgments WHERE created_at >= ? AND instr(judgment, '@') = 0 GROUP BY judgment";
+    const recent = new Map(all<{ judgment: string; errors: number; n: number }>(q, ago(now, 6)).map((j) => [j.judgment, j]));
+    for (const j of recent.values()) {
+      if (j.n >= JUDGMENT_MIN_N && j.errors / j.n > JUDGMENT_ERROR_SHARE) out.push({ subsystem: `judgment:${j.judgment}`, since: ago(now, 6), detail: `${j.errors}/${j.n} verdicts were errors in 6 h` });
+    }
+    for (const j of all<{ judgment: string; errors: number; n: number }>(q, ago(now, 24))) {
+      if ((recent.get(j.judgment)?.n ?? 0) >= JUDGMENT_MIN_N) continue; // the 6 h rule judged it
+      if (j.n >= JUDGMENT_MIN_N && j.errors / j.n > JUDGMENT_ERROR_SHARE) out.push({ subsystem: `judgment:${j.judgment}`, since: ago(now, 24), detail: `${j.errors}/${j.n} verdicts were errors in 24 h (low volume: < ${JUDGMENT_MIN_N} in 6 h)` });
     }
   });
   // 3. proposals waiting for a panel while no panel verdict came in 12 h
@@ -225,11 +245,34 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     const last = mine[mine.length - 1];
     if (last?.event === 'done' && Date.parse(last.at) < now - 40 * 60_000) out.push({ subsystem: 'deploy', since: last.at, detail: `build ${commit!.slice(0, 8)} deployed but no post-deploy verdict within 40 min — functional readiness unproven` });
     // re-20261030 §2b (be57e146 waited ~16 h unseen): auto-deploy.sh writes `waiting` once per main sha it holds back (CI not
-    // green, settling); that sha still not deployed, not running and not superseded after 2 h is main behind prod
-    const w = events.map((e, i) => [e, i] as const).filter(([e]) => e.event === 'waiting').pop();
+    // green, settling). re-20261105 §2a (11-02: 2/4 clears false): anchored on the FIRST `waiting` after the last
+    // `deploying`/`done` — a newer main sha starting to wait does not reset the clock; prod is behind until a deploy starts or
+    // prod runs one of the held-back shas (a manual deploy)
+    let anchor = -1; events.forEach((e, i) => { if (e.event === 'deploying' || e.event === 'done') anchor = i; });
+    const held = events.slice(anchor + 1).filter((e) => e.event === 'waiting');
     const same = (a?: string, b?: string) => Boolean(a && b && (a.startsWith(b) || b.startsWith(a)));
-    if (w && !same(commit, w[0].sha) && !events.slice(w[1] + 1).some((e) => same(e.sha, w[0].sha) || e.event === 'deploying') && Date.parse(w[0].at) < now - DEPLOY_BEHIND_MAIN_H * 3_600_000) {
-      out.push({ subsystem: 'deploy:behind_main', since: w[0].at, detail: `main ${w[0].sha.slice(0, 8)} not deployed > ${DEPLOY_BEHIND_MAIN_H} h after auto-deploy first held it back at ${w[0].at} (${w[0].detail || 'no reason'}); prod runs ${commit!.slice(0, 8)}`.slice(0, 500) });
+    const first = held[0]; const newest = held[held.length - 1];
+    if (first && !held.some((e) => same(commit, e.sha)) && Date.parse(first.at) < now - DEPLOY_BEHIND_MAIN_H * 3_600_000) {
+      out.push({ subsystem: 'deploy:behind_main', since: first.at, detail: `main ${first.sha.slice(0, 8)} not deployed > ${DEPLOY_BEHIND_MAIN_H} h after auto-deploy first held it back at ${first.at} (${first.detail || 'no reason'})${newest !== first ? `; newest held-back main ${newest.sha.slice(0, 8)} (${held.length} waiting)` : ''}; prod runs ${commit!.slice(0, 8)}`.slice(0, 500) });
+    }
+  });
+  // 9b. re-20261105 §3: /health.fleet_drift showed event-bus + agent-registry ≠ main and nothing alarmed. The drift record
+  // has no onset, so the stall watch records one (recordFleetDrift, `fleet_drift` judgment rows); a service whose drift was
+  // first seen > 24 h ago is a stall. An unknown record (absent, stale, another commit) is not_applicable, never "no drift".
+  const drift = fleetDrift(env.FLEET_DRIFT_PATH || '/data/fleet-drift.json', env, now);
+  run('fleet_drift', drift !== null, () => {
+    for (const svc of drift!) {
+      const onset = fleetDriftOnset(db, svc);
+      if (onset && Date.parse(onset) < now - FLEET_DRIFT_STALL_H * 3_600_000) out.push({ subsystem: `fleet_drift:${svc}`, since: onset,
+        detail: `fleet service ${svc} deployed source differs from main at the running commit for > ${FLEET_DRIFT_STALL_H} h (first seen ${onset}); redeploy it from main (scripts/auto-deploy.sh logs the drift)` });
+    }
+  });
+  // 9c. a live host agent older than the server's minimum (MIN_HOST_AGENT_VERSION, routes/host-agent.ts): it polls fine but
+  // lacks what newer server code expects of it
+  run('fleet_agents', true, () => {
+    for (const h of all<{ host: string; last_seen: string; agent_version: string | null }>('SELECT host, last_seen, agent_version FROM fleet_hosts WHERE last_seen >= ? ORDER BY host', ago(now, FLEET_AGENT_ACTIVE_DAYS * 24))) {
+      if (Number(h.agent_version || NaN) >= Number(MIN_HOST_AGENT_VERSION)) continue;
+      out.push({ subsystem: `fleet:agent_outdated:${h.host}`, since: h.last_seen, detail: `host ${h.host} polls with agent version ${h.agent_version || '(none)'} < ${MIN_HOST_AGENT_VERSION}; reinstall scripts/djimit-host-agent.py from main on the host` });
     }
   });
   // OLLAMA_AUTO_FAILOVER: Ollama Cloud answered with its usage limit; opencode leases run on claude until the 30-min probe succeeds
@@ -287,6 +330,15 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     for (const c of all<{ consumer: string; n: number; first: string }>(`SELECT consumer, COUNT(*) AS n, MIN(created_at) AS first FROM llm_model_calls
         WHERE shadow = 0 AND created_at >= ? GROUP BY consumer HAVING n >= ? AND SUM(ok = 1) = 0`, since, ZERO_SUCCESS_MIN_ATTEMPTS)) {
       vaSink.push({ subsystem: `zero_success:llm:${c.consumer}`, since: c.first, detail: `0/${c.n} model calls of purpose ${c.consumer} succeeded in ${VALUE_ANOMALY_WINDOW_H} h` });
+    }
+    // the last ZERO_SUCCESS_LLM_STREAK calls (in the window) all failed; since = the first failure after the last success
+    for (const c of all<{ consumer: string; first: string | null }>(`SELECT consumer, (SELECT MIN(f.created_at) FROM llm_model_calls f WHERE f.consumer = s.consumer AND f.shadow = 0
+          AND f.created_at > COALESCE((SELECT MAX(o.created_at) FROM llm_model_calls o WHERE o.consumer = s.consumer AND o.shadow = 0 AND o.ok = 1), '')) AS first
+        FROM (SELECT consumer, ok, ROW_NUMBER() OVER (PARTITION BY consumer ORDER BY created_at DESC, id DESC) AS rn FROM llm_model_calls WHERE shadow = 0 AND created_at >= ?) s
+        WHERE rn <= ? GROUP BY consumer HAVING COUNT(*) = ? AND SUM(ok = 1) = 0`, since, ZERO_SUCCESS_LLM_STREAK, ZERO_SUCCESS_LLM_STREAK)) {
+      const subsystem = `zero_success:llm:${c.consumer}`;
+      if (vaSink.some((x) => x.subsystem === subsystem)) continue; // the 24 h rule raised it
+      vaSink.push({ subsystem, since: c.first, detail: `the last ${ZERO_SUCCESS_LLM_STREAK} model calls of purpose ${c.consumer} all failed; failing since ${c.first ?? 'unknown'} (first failure after the last success)` });
     }
   });
   // B-intelligence candidate 3 (remote maker 0/19 verified in 7 d while every lease 'completed'): a maker species that finishes
@@ -398,9 +450,36 @@ function unpushedOpenStalls(db: Database, stalls: Stall[], fresh: Stall[]): Stal
   } catch { return []; }
 }
 
+/** The time the stall watch first saw `svc` drifting in its current episode (its latest `fleet_drift` row is 'drift'), else null. */
+function fleetDriftOnset(db: Database, svc: string): string | null {
+  const r = db.prepare("SELECT decision, created_at FROM judgments WHERE judgment = 'fleet_drift' AND subject_id = ? ORDER BY rowid DESC LIMIT 1").get(svc) as { decision: string; created_at: string } | undefined;
+  return r?.decision === 'drift' ? r.created_at : null;
+}
+
+/**
+ * fleet_drift onset (the drift record is a snapshot): one `fleet_drift` judgment row per transition — 'drift' when a service is
+ * first seen differing from main, 'match' when it no longer does. An unknown record (null) changes nothing. Fail-soft.
+ */
+export function recordFleetDrift(db: Database, drift: string[] | null, now = Date.now()): void {
+  if (drift === null) return;
+  try {
+    const latest = db.prepare(`SELECT subject_id, decision FROM judgments j WHERE judgment = 'fleet_drift' AND rowid = (SELECT MAX(rowid) FROM judgments
+        WHERE judgment = 'fleet_drift' AND subject_id = j.subject_id)`).all() as Array<{ subject_id: string; decision: string }>;
+    const drifting = new Set(latest.filter((r) => r.decision === 'drift').map((r) => r.subject_id));
+    const insert = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+      VALUES (?, 'fleet_drift', 'fleet_service', ?, '', 'annotation', ?, ?, ?)`);
+    const at = new Date(now).toISOString();
+    db.transaction(() => {
+      for (const svc of drift) if (!drifting.has(svc)) insert.run(randomUUID(), svc, 'drift', 'deployed source differs from main at the running commit', at);
+      for (const svc of drifting) if (!drift.includes(svc)) insert.run(randomUUID(), svc, 'match', 'deployed source matches main again', at);
+    })();
+  } catch { /* judgments table absent */ }
+}
+
 /** One stall-watch tick: detect, log every stall, persist the new ones and hand each new one to `notify` (the operator push),
  *  then hand on again each open stall whose push was dropped earlier (C5), until one is sent. */
 export async function stallWatchTick(db: Database, notify?: (s: Stall) => Promise<unknown>, now = Date.now(), env: NodeJS.ProcessEnv = process.env): Promise<Stall[]> {
+  recordFleetDrift(db, fleetDrift(env.FLEET_DRIFT_PATH || '/data/fleet-drift.json', env, now), now);
   const { stalls, detectors } = detectStallsWithHealth(db, now, env);
   for (const s of stalls) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`);
   const fresh = recordStallTransitions(db, stalls, new Date(now), new Set(detectors.filter((d) => d.status === 'error').map((d) => d.name)));
