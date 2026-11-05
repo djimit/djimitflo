@@ -6,7 +6,7 @@ import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenExpiresAt, spawnToke
 import { recordHostTokenOk, recordHostTokenRejection } from '../services/host-token-watch';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
 import { ingestKbPages, kbPendingSafety, releaseKbPage } from '../services/kb-corpus';
-import { claimCommittee, recordCommittee } from '../services/committee-swarm';
+import { claimCommittee, committeeEnabled, recordCommittee } from '../services/committee-swarm';
 
 /**
  * Plan I1: a compute host pulls evolution-gym work. claim/result authenticate with a host-scoped token
@@ -60,6 +60,15 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
 
   // AR-W: committee swarms — the workstation pulls a proposal question with the active members and returns their forecasts
   router.post('/committee/claim', (req, res) => {
+    // re-20261105 A M8: the lane off (COMMITTEE_SWARM_ENABLED not true) answers 204 with no DB work — the token is still
+    // checked (HMAC only, nothing recorded); the host's gym-worker reads the empty body as "no job"
+    if (!committeeEnabled()) {
+      const h = String(req.get('X-Gym-Host') || '');
+      let rejected = true;
+      try { rejected = !h || spawnTokenRejection(resolveSpawnTokenSecret(), String(req.get('X-Gym-Worker-Token') || ''), h, REMOTE_GYM_SCOPE) !== null; } catch { /* no secret: refuse */ }
+      if (rejected) { res.status(401).json({ error: { code: 'GYM_WORKER_TOKEN_INVALID', message: 'Gym worker token is invalid, expired, or scoped to another host' } }); return; }
+      res.status(204).end(); return;
+    }
     const h = host(req, res); if (!h) return;
     claimCommittee(db, h).then((job) => res.json({ job })).catch((error) => fail(res, error));
   });
