@@ -185,7 +185,7 @@ export const experimentDefs = (): ExperimentDef[] => [
 ];
 
 /** G1.5 'power left': n so far vs target per arm, days to stop_by and the n each arm reaches by then at its last-14-day accrual.
- *  null = unknown (no stop date, no target, a status that cannot window, or < 1 day of accrual) — never 0 */
+ *  null = unknown (no stop date, no target, a status that cannot window, or < 1 day of accrual) — never 0 — or decided (a verdict) */
 export interface ExperimentPower {
   n_so_far: number | null; target_per_arm: number | null; days_to_stop: number | null;
   accrual_window_days: number | null; accrual_per_day: Record<string, number> | null;
@@ -226,9 +226,12 @@ export function recordTreatmentEnvBoundaries(db: Database, env: NodeJS.ProcessEn
 }
 
 const DAY = 86_400_000;
-function powerLeft(d: Omit<ExperimentDef, 'status'>, n: Record<string, number> | null, recent: Record<string, number> | null, windowDays: number, now: number): ExperimentPower {
+function powerLeft(d: Omit<ExperimentDef, 'status'>, n: Record<string, number> | null, recent: Record<string, number> | null, windowDays: number, now: number,
+  verdict: string | null = null): ExperimentPower {
   const ns = n ? Object.values(n) : [];
   const n_so_far = ns.length ? Math.min(...ns) : null;
+  // re-20261105 B6: a decided experiment has no power left — no days to stop, no accrual, no projection (n so far and target stay)
+  if (verdict !== null) return { n_so_far, target_per_arm: d.target_n, days_to_stop: null, accrual_window_days: null, accrual_per_day: null, projected_min_arm_n: null, projected_reaches_target: null };
   const days_to_stop = d.stop_by === null ? null : +((Date.parse(d.stop_by) - now) / DAY).toFixed(1);
   const rates = recent && n && windowDays >= 1 ? Object.fromEntries(Object.entries(recent).map(([a, k]) => [a, +(k / windowDays).toFixed(3)])) : null;
   const projected = rates && n && days_to_stop !== null
@@ -266,7 +269,7 @@ export function experimentsReport(db: Database, env: NodeJS.ProcessEnv = process
     const overdue = s.verdict === null && (past || reached);
     const overdue_reason = !overdue ? null : past ? `past stop_by ${d.stop_by} without a verdict (n per arm ${JSON.stringify(s.n_per_arm)})`
       : `every arm reached target ${d.target_n} without a verdict`;
-    const power = powerLeft(d, s.n_per_arm, recent, (now - Date.parse(recentSince)) / DAY, now);
+    const power = powerLeft(d, s.n_per_arm, recent, (now - Date.parse(recentSince)) / DAY, now, s.verdict);
     const period_boundaries = boundaries.filter((b) => b.experiment_id === d.id).map((b) => ({ at: b.at, env: b.env_name, from: b.previous, to: b.current }));
     return { ...d, ...s, min_arm_n, overdue, overdue_reason, power, period_boundaries, ...(error ? { error } : {}) };
   });
