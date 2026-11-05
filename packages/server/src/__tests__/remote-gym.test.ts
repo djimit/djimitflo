@@ -210,7 +210,11 @@ it('SI-A gym (GRADED_FITNESS_MODE=shadow): write_test outcomes carry graded = ki
   expect(refs('w1')).toEqual(expect.arrayContaining(['gym:fail', 'graded:0.667', 'graded_kind:mutant_kill']));
   run('w2', wt);
   svc.record('w2', 'workstation', { status: 'failure', reason: 'tests still red' });
-  expect(refs('w2')).toEqual(expect.arrayContaining(['graded:0.000', 'graded_kind:mutant_kill']));
+  // re-20261105 E9: no killed_mutants list = the kill share is unknown, so no graded score (was graded 0)
+  expect(refs('w2').some((r) => r.startsWith('graded'))).toBe(false);
+  run('w3', wt);
+  svc.record('w3', 'workstation', { status: 'failure', reason: 'tests still red', killed_mutants: [] });
+  expect(refs('w3')).toEqual(expect.arrayContaining(['graded:0.000', 'graded_kind:mutant_kill'])); // a reported empty list is a real 0
   // repair (mined / mutant): the worker's per-test share
   run('r1', { commit: 'mut:abc:packages/server/src/services/x.ts:2:7' });
   svc.record('r1', 'workstation', { status: 'failure', reason: 'tests still red', graded: 0.5, graded_kind: 'tests_green' });

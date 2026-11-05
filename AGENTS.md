@@ -77,6 +77,15 @@ Agents do not modify these without an explicit operator OK in the task or plan. 
 - Workspace doctrine: `SOUL.md`, `USER.md`. Generated files (`TOOLS.md`, `HEARTBEAT.md`, `openwiki/`): change the source.
 - Anything a maker/checker/panel sees while an experiment runs (assignments, `LOOP_WORK.md`, prompts, examples, memory rules).
 
+## Host scripts and skills
+
+- A script that mutates a host or remote (ssh writes, systemctl, docker, crontab, installs, `gh api -X`, `git push`) is a dry
+  run by default that prints each command and its target, acts only with `--apply`, and fails on an unknown flag.
+  `scripts/host-scripts-dry-run.test.mjs` enforces it; a new mutating script goes in its checked or exempt list.
+- External/community skills are never installed globally (`~/.claude/skills`, `~/.agents/skills`, `~/.gemini/**`, other
+  agents' skill dirs) nor by a tool that symlinks into other agents' dirs: only per project, after review, pinned to a
+  tag/sha with a content hash.
+
 ## Definition of done
 
 A change is complete when all of these hold, with the output read, not assumed:

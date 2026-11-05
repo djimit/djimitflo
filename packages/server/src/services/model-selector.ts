@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { modelPrice } from './loop-budget-service';
+import { egressClassColumn } from './egress-classification';
 
 /**
  * MS-1 (operator 2026-10-05: "model choice by cost should be Djimitflo's own behaviour"). Ollama Cloud usage was dominated
@@ -37,6 +38,8 @@ export interface ModelCall {
   attempts?: number | null;
   /** B29: what the call is for (default `<consumer>:<taskKind>`) and the experiment arm(s) it ran in (e.g. 'ACE-001:01,STE-001:1') */
   purpose?: string | null; experimentId?: string | null;
+  /** re-20261105 C4: where the payload came from when the caller knows it ('kb_page', 'maker_diff:<owner/repo>', a subject type) */
+  dataSource?: string | null;
 }
 
 /**
@@ -75,12 +78,15 @@ const int = (v: number | null | undefined): number | null => (typeof v === 'numb
 export function recordModelCall(db: Database, c: ModelCall, at = new Date()): void {
   try {
     const cost = callCost({ model: c.model, provider: c.provider, tokensIn: int(c.tokensIn), tokensOut: int(c.tokensOut) });
+    // re-20261105 C4: the egress judgment column is written only in shadow, so flag off = the exact INSERT as before
+    const egress = egressClassColumn(c);
     db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, provider, tokens_in, tokens_out, task_kind, run_id, status, attempts,
-        purpose, experiment_id, cost_basis, list_price_cost, marginal_cost, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        purpose, experiment_id, cost_basis, list_price_cost, marginal_cost, created_at${egress ? ', egress_class' : ''})
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${egress ? ', ?' : ''})`)
       .run(c.consumer, c.model, c.ok ? 1 : 0, Math.round(c.latencyMs), c.outChars, c.shadow, c.agree === null ? null : c.agree ? 1 : 0,
         c.provider ?? null, int(c.tokensIn), int(c.tokensOut), c.taskKind ?? null, c.runId ?? null, c.status ?? null, int(c.attempts),
-        c.purpose ?? (c.taskKind ? `${c.consumer}:${c.taskKind}` : c.consumer), c.experimentId ?? null, cost.cost_basis, cost.list_price_cost, cost.marginal_cost, at.toISOString());
+        c.purpose ?? (c.taskKind ? `${c.consumer}:${c.taskKind}` : c.consumer), c.experimentId ?? null, cost.cost_basis, cost.list_price_cost, cost.marginal_cost, at.toISOString(),
+        ...(egress ? [egress] : []));
   } catch { /* the ledger never breaks the call it measures */ }
 }
 

@@ -90,6 +90,27 @@ it('a cause that recurs at the same gate becomes one engineering-rule memory can
   expect(svc.consolidate()).toBe(0); // not again within the window
 });
 
+it('re-20261105 A M1: a rule the template dedup already knows is no new rule — consolidate counts 0 and the verdict is INCONCLUSIVE', async () => {
+  for (const id of ['k1', 'k2']) {
+    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES (?, 'doc-drift-and-small-fix-loop', 'closed', 'blocked', ?, ?, ?)`)
+      .run(id, JSON.stringify([{ name: 'checker_verdict', status: 'fail' }]), now(), now());
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'failure_cause', 'loop_run', ?, 'h', 'shadow', 'yes', 'cause=environment_noise conf=0.80 platform_fault=0.90', ?)`)
+      .run(`jk-${id}`, id, now());
+  }
+  const svc = new DreamStateService(db);
+  expect(svc.consolidate()).toBe(1); // the first rule is new
+  // the window check is keyed on source_ref; an older rule (> 7 d) is found only by the template dedup
+  db.prepare("UPDATE memory_candidates SET created_at = '2026-01-01T00:00:00.000Z', source_ref = 'dream:cause:old'").run();
+  const before = (db.prepare('SELECT COUNT(*) AS n FROM memory_candidates').get() as { n: number }).n;
+  process.env.MEMORY_TEMPLATE_DEDUP_MODE = 'enforce'; process.env.TYPESAFE_FAILURE_CAUSE_MODE = 'shadow';
+  try {
+    expect(svc.consolidate()).toBe(0); // create() returned the existing match: nothing was created
+    expect((db.prepare('SELECT COUNT(*) AS n FROM memory_candidates').get() as { n: number }).n).toBe(before);
+    expect(await svc.replay()).toMatchObject({ verdict: 'INCONCLUSIVE', consolidated: 0 });
+    expect(svc.ledger(1)[0]).toMatchObject({ verdict: 'INCONCLUSIVE', consolidated: 0, reason: expect.stringMatching(/rule already known/) });
+  } finally { delete process.env.MEMORY_TEMPLATE_DEDUP_MODE; }
+});
+
 it('with DREAM_STATE_PROPOSALS_ENABLED a recurring platform cause also yields one grounded fix proposal', () => {
   process.env.DREAM_STATE_PROPOSALS_ENABLED = 'true';
   try {

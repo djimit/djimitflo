@@ -117,14 +117,15 @@ describe('deploy:behind_main: the newest main sha has waited > 2 h (be57e146)', 
     expect(report(T('2026-10-30T16:30:00Z'), env).stalls.find((x) => x.subsystem === 'deploy:behind_main')?.since).toBe('2026-10-30T00:46:00Z');
   });
 
-  it('clears when that sha deploys, when it runs (a manual deploy), or when main moves on and waits afresh', () => {
+  it('clears when that sha deploys or when it runs (a manual deploy); main moving on and waiting afresh does not clear it', () => {
     const f = file(); const later = T('2026-10-30T16:30:00Z');
     write(f, ...history, waiting, { at: '2026-10-30T16:00:00Z', event: 'deploying', sha: MAIN });
     expect(names(later, { DJIMITFLO_BUILD_COMMIT: RUNNING, DEPLOY_LOG_PATH: f })).not.toContain('deploy:behind_main');
     write(f, ...history, waiting);
     expect(names(later, { DJIMITFLO_BUILD_COMMIT: MAIN.slice(0, 12), DEPLOY_LOG_PATH: f })).not.toContain('deploy:behind_main');
+    // re-20261105 §2a (11-02: 2/4 clears false): a newer waiting sha keeps the stall, anchored on the first held-back sha
     write(f, ...history, waiting, { at: '2026-10-30T15:30:00Z', event: 'waiting', sha: 'c'.repeat(40), detail: 'main is 3 min old, settling until 20' });
-    expect(names(later, { DJIMITFLO_BUILD_COMMIT: RUNNING, DEPLOY_LOG_PATH: f })).not.toContain('deploy:behind_main');
+    expect(report(later, { DJIMITFLO_BUILD_COMMIT: RUNNING, DEPLOY_LOG_PATH: f }).stalls.find((x) => x.subsystem === 'deploy:behind_main')?.since).toBe('2026-10-30T00:46:00Z');
   });
 });
 

@@ -301,3 +301,70 @@ it('11-10 #778 regression: the merge lands but branch cleanup fails — MERGED f
   expect(fs.readFileSync(path.join(own, 'merges'), 'utf8').trim().split('\n')).toEqual(['778', '779']);
   expect(fs.readFileSync(path.join(own, 'updates'), 'utf8').trim().split('\n')).toEqual(['778', '779']); // never on a merged PR
 });
+
+// re-20261105 B1: 25 exports PRs went past the auto-merge value gate through this train (14 fail the gate's own rule). An
+// exports-lane loop PR whose value signal (the gate's autoMergeValueSignal, exported by dist/scripts/pr-value-signals.js) is
+// low or missing is skipped unless --include-low-value; the skipped list is printed. Lane = the signals file (the DB's
+// oracleLane), else the exports proposal title; other lanes are not gated here.
+function valueTrain(args: string[], titles: Record<string, string>, signals?: Record<string, unknown>) {
+  const dir = tmp('mt-val-'); const own = tmp('mt-vo-');
+  git(dir, 'init -q -b main');
+  const nums = Object.keys(titles);
+  for (const n of nums) write(dir, `f${n}.txt`, 'old\n');
+  commit(dir, 'base');
+  for (const n of nums) {
+    git(dir, `checkout -q -b pr${n} main`); write(dir, `f${n}.txt`, `new ${n}\n`); commit(dir, n);
+    fs.writeFileSync(path.join(own, `pr${n}.diff`), sh(dir, `git diff main pr${n}`).stdout); git(dir, 'checkout -q main');
+    fs.writeFileSync(path.join(own, `title${n}`), titles[n]);
+  }
+  const file = path.join(own, 'signals.json');
+  if (signals) fs.writeFileSync(file, JSON.stringify({ source: 'pr-value-signals fixture', prs: signals }));
+  const ledger = path.join(own, 'ledger');
+  const r = runScript(dir, ['run', ...(signals ? ['--value-signals', file] : []), ...args, path.join(own, 'log'), ...nums], {
+    MT_LEDGER: ledger, MT_BASE: 'main', MT_FETCH: 'true', MT_CHECKS: 'echo pass', MT_SLEEP: 'true', MT_UPDATE: 'echo up-to-date',
+    MT_PR_DIFF: `cat ${own}/pr$4.diff`,
+    // gh pr view … -q '"\(.state) \(.headRefOid) \(.isDraft) \(.title)"': the title rides along with the live state
+    MT_PR_VIEW: `if [ -f ${own}/merged$4 ]; then s=MERGED; else s=OPEN; fi; echo "$s h$4 false $(cat ${own}/title$4)"`,
+    MT_MERGE: `echo $4 >> ${own}/merges; git apply ${own}/pr$4.diff && git add -A && git -c user.email=t@t -c user.name=t commit -q -m sq$4; touch ${own}/merged$4`,
+  });
+  const merges = fs.existsSync(path.join(own, 'merges')) ? fs.readFileSync(path.join(own, 'merges'), 'utf8').trim().split('\n') : [];
+  return { ...r, merges, ledger: fs.readFileSync(ledger, 'utf8') };
+}
+const EXPORTS_TITLE = (n: string) => `loop: Test untested exports of services/s${n}.ts`;
+
+it('B1: an exports-lane loop PR with a low or missing value signal is SKIPPED and listed; a pass one and other lanes merge', () => {
+  const r = valueTrain([], { 801: EXPORTS_TITLE('801'), 802: EXPORTS_TITLE('802'), 803: EXPORTS_TITLE('803'), 804: 'loop: Add unit tests for services/t.ts', 805: 'fix: human change' },
+    { 801: { lane: 'exports', value_signal: 'low' }, 802: { lane: 'exports', value_signal: 'pass' }, 804: { lane: 'test-gap', value_signal: 'low' } });
+  expect(r.status).toBe(0);
+  expect(r.merges).toEqual(['802', '804', '805']); // 803: exports by title, not in the file → missing → skipped
+  expect(r.out).toContain('#801 SKIPPED (exports lane, value signal low');
+  expect(r.out).toContain('#803 SKIPPED (exports lane, value signal missing');
+  expect(r.out).toMatch(/SKIPPED low\/missing value \(exports lane\): #801\(low\) #803\(missing\) — rerun with --include-low-value/);
+  expect(r.out).toContain('TRAIN DONE');
+  expect(r.ledger).toMatch(/"event":"skipped_low_value","pr":"801".*"detail":"lane=exports signal=low"/);
+  expect(r.ledger).not.toMatch(/"event":"claimed","pr":"80[13]"/); // nothing was claimed or done for a skipped PR
+});
+
+it('B1: without a signals file every exports-lane loop PR is missing (unknown is never a pass); --include-low-value merges them', () => {
+  const titles = { 811: EXPORTS_TITLE('811'), 812: 'loop: Raise the mutation score of services/m.ts' };
+  const skipped = valueTrain([], titles);
+  expect(skipped.status).toBe(0);
+  expect(skipped.merges).toEqual(['812']);
+  expect(skipped.out).toContain('#811 SKIPPED (exports lane, value signal missing');
+  const included = valueTrain(['--include-low-value'], titles);
+  expect(included.status).toBe(0);
+  expect(included.merges).toEqual(['811', '812']);
+  expect(included.out).not.toContain('SKIPPED');
+});
+
+it('B1: the signals file decides the lane over the title, and an unreadable signals file is refused before anything runs', () => {
+  // the DB says test-gap although the title reads like exports: not gated; the DB says exports for a plain title: gated
+  const r = valueTrain([], { 821: EXPORTS_TITLE('821'), 822: 'loop: Add unit tests for services/u.ts' },
+    { 821: { lane: 'test-gap', value_signal: 'low' }, 822: { lane: 'exports', value_signal: 'missing' } });
+  expect(r.merges).toEqual(['821']);
+  expect(r.out).toContain('#822 SKIPPED (exports lane, value signal missing');
+  const own = tmp('mt-bad-'); const bad = path.join(own, 'bad.json'); fs.writeFileSync(bad, '{"not":"prs"}');
+  const refused = runScript(own, ['run', '--value-signals', bad, path.join(own, 'log'), '1'], { MT_LEDGER: path.join(own, 'l'), MT_PR_VIEW: 'echo OPEN h false x' });
+  expect(refused.status).toBe(64);
+  expect(refused.out).toContain('value signals file must be {"prs"');
+});

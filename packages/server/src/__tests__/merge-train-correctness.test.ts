@@ -497,11 +497,11 @@ describe('--dry-run (read-only plan)', () => {
     fs.writeFileSync(file, JSON.stringify({ source: 'test fixture', prs }));
     return file;
   };
-  const dry = (extra: Record<string, string> = {}) => {
+  const dry = (extra: Record<string, string> = {}, args: string[] = []) => {
     const gh = stubGh(fixtures());
     const out = path.join(tmp('mtc-out-'), 'plan.json'); const touched = path.join(tmp('mtc-t-'), 'mutated');
     const refused = path.join(tmp('mtc-r-'), 'refused');
-    const r = spawnSync('bash', [script, '--dry-run', '--assertions', assertions(), '--out', out], { cwd: tmp('mtc-cwd-'), encoding: 'utf8', timeout: 60_000,
+    const r = spawnSync('bash', [script, '--dry-run', '--assertions', assertions(), '--out', out, ...args], { cwd: tmp('mtc-cwd-'), encoding: 'utf8', timeout: 60_000,
       env: { ...process.env, PATH: gh.PATH, MERGE_TRAIN_REPO: 'o/r', MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REFUSED_LOG: refused,
         // even with every mutating probe overridden, the dry-run path never reaches them
         MT_MERGE: `touch ${touched}`, MT_UPDATE: `touch ${touched}`, MT_READY: `touch ${touched}`, MT_PUSH: `touch ${touched}`, ...extra } });
@@ -523,6 +523,24 @@ describe('--dry-run (read-only plan)', () => {
     const missing = (r.plan.prs as Array<{ number: number; secondary: string[]; blockers: string[] }>).find((p) => p.number === MISSING)!;
     expect(missing.blockers.join(' ')).toContain('security-scan');
     expect(r.out).toContain('READY');
+  });
+
+  // re-20261105 B1: the plan applies the auto-merge value gate's rule to exports-lane PRs (lane + signal from --value-signals,
+  // the file dist/scripts/pr-value-signals.js writes); --include-low-value lifts it. Other lanes are not gated here.
+  it('B1: an exports-lane PR with a low value signal is POLICY_BLOCKED value_signal_low and listed; --include-low-value lifts it', () => {
+    const signals = path.join(tmp('mtc-vs-'), 'signals.json');
+    fs.writeFileSync(signals, JSON.stringify({ source: 'fixture', prs: { [READY2]: { lane: 'exports', value_signal: 'low' }, [READY]: { lane: 'test-gap', value_signal: 'low' } } }));
+    const r = dry({}, ['--value-signals', signals]);
+    expect(r.status).toBe(0);
+    const p = (n: number) => (r.plan.prs as Array<{ number: number; primary: string; blockers: string[]; lane: string; value_signal: string }>).find((x) => x.number === n)!;
+    expect(p(READY2)).toMatchObject({ primary: 'POLICY_BLOCKED', lane: 'exports', value_signal: 'low' });
+    expect(p(READY2).blockers).toContain('value_signal_low');
+    expect(p(READY)).toMatchObject({ primary: 'READY', lane: 'test-gap' });
+    expect(r.plan.skipped_low_value).toEqual([READY2]);
+    expect(r.out).toContain(`SKIPPED low/missing value (exports lane): #${READY2}(low)`);
+    const lifted = dry({}, ['--value-signals', signals, '--include-low-value']);
+    expect(lifted.plan.ready).toEqual([READY, READY2].sort((a, b) => a - b));
+    expect(lifted.plan.skipped_low_value).toEqual([]);
   });
 
   it('is read-only by construction: zero mutating gh invocations, no mutating probe reached, no ledger write', () => {
@@ -550,5 +568,47 @@ describe('--dry-run (read-only plan)', () => {
     expect(new Set(rcs)).toEqual(new Set(['rc=99']));
     expect(r.stdout).toContain('"ok":1');
     expect(lines(gh.log)).toEqual(['api repos/o/r/x']);
+  });
+});
+
+// re-20261105 E10 / C10: an agent-run merge must be distinguishable from a human one (merged_by is `djimit` for all). The
+// REST merge carries GitHub's own default squash body plus `merged-via: <script> (<actor>) <ISO ts>`; the title stays default.
+describe('merged-via attribution on the squash commit', () => {
+  const TRAILER = /merged-via: merge-train\.sh \(agent, operator instruction\) \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ/;
+  const landing = (s: Sim, body: string) => stubGh({}, `case "$*" in
+  *graphql*viewerMergeBodyText*) ${body} ;;
+  *"-X PUT repos/djimit/djimitflo/pulls/778/merge"*) cd ${s.dir} && git apply ${s.diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash && echo MERGED > ${s.S}/state; echo '{"merged":true}'; exit 0 ;;
+esac`);
+  it('merge-train run: the merge request keeps the default squash body and appends the merged-via trailer', () => {
+    const s = sim({ behind: false, ciNew: 'pass' });
+    const gh = landing(s, `echo 'Loop run r1, maker lease m1.'; exit 0`);
+    const r = train(s, ['778'], [], { PATH: gh.PATH, MT_MERGE: '' });
+    expect(r.status).toBe(0);
+    expect(r.out).toContain('#778 MERGED');
+    const log = read(gh.log);
+    const merge = log.slice(log.indexOf('-X PUT repos/djimit/djimitflo/pulls/778/merge'));
+    expect(merge).toMatch(/-f sha=aaaa1111 -f commit_message=Loop run r1, maker lease m1\.\n\nmerged-via: /);
+    expect(merge).toMatch(TRAILER);
+    expect(log).toMatch(/api graphql .*-F n=778/); // the body GitHub would have written, read for exactly this PR
+  });
+  it('an unreadable default body still merges, with the trailer alone (attribution is never dropped)', () => {
+    const s = sim({ behind: false, ciNew: 'pass' });
+    const gh = landing(s, `echo 'gh: HTTP 502' >&2; exit 1`);
+    const r = train(s, ['778'], [], { PATH: gh.PATH, MT_MERGE: '' });
+    expect(r.status).toBe(0);
+    expect(read(gh.log)).toMatch(new RegExp(`-f commit_message=${TRAILER.source}`));
+  });
+  it('MT_MERGED_VIA_ACTOR names who ran the script; dependabot-merge.sh attributes itself as a workflow', () => {
+    const R = 'repos/djimitflo-test/r';
+    const protection = { contexts: ['build'], checks: [{ context: 'build', app_id: 15368 }] };
+    const gh = stubGh({ [`${R}/pulls/504`]: { number: 504, head: { sha: 'dep1' } },
+      [`${R}/commits/dep1/check-runs?per_page=100`]: { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success', app: { id: 15368 } }] },
+      [`${R}/commits/dep1/status`]: { state: 'pending', statuses: [] }, [`${R}/branches/main/protection/required_status_checks`]: protection },
+    `case "$*" in *graphql*) echo 'Bumps x from 1 to 2.'; exit 0 ;; *"-X PUT"*/pulls/504/merge*) echo '{"merged":true}'; exit 0 ;; esac`);
+    const dm = path.resolve(__dirname, '../../../../scripts/dependabot-merge.sh');
+    const out = spawnSync('bash', [dm, '504', 'dep1'], { encoding: 'utf8', env: { ...process.env, PATH: gh.PATH, MERGE_TRAIN_REPO: 'djimitflo-test/r',
+      MT_LEDGER: path.join(tmp('dm-led-'), 'l'), MT_REQUIRED_CHECKS: '', DM_TRIES: '1', DM_POLL_S: '0' } });
+    expect(`${out.stdout}${out.stderr}`).toContain('#504 merged at dep1');
+    expect(read(gh.log)).toMatch(/-f sha=dep1 -f commit_message=Bumps x from 1 to 2\.\n\nmerged-via: dependabot-merge\.sh \(workflow, operator policy\) \d{4}-/);
   });
 });

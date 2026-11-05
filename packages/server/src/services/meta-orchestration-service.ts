@@ -407,6 +407,8 @@ export class MetaOrchestrationService {
   // ─── Auto-Tuning Loop ─────────────────────────────────────────────
 
   async runAutoTuning(): Promise<{ evaluated: number; applied: number }> {
+    // re-20261105 B9: a floor above the reachable cap can never apply nor be consumed — skip tune(), no log row per tick
+    if (!this.tuningState().active) return { evaluated: 0, applied: 0 };
 
     // A freshly provisioned database may not have cognitive episodes yet.
     // Treat that as an empty learning window instead of leaking SQLite's

@@ -17,6 +17,7 @@ import type { LoopService } from './loop-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
+import { makerDiffSource } from './egress-classification';
 import { withoutHiddenChecks } from './fail-before-pass-after';
 import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
 import { SUBSCRIPTION_ENV_MARKER } from '../execution/executors/subscription-env';
@@ -34,6 +35,7 @@ import { asgMode } from './asg/mode';
 import { recordWorkerCall } from './model-call-ledger';
 import { buildExecutorEnv } from '../execution/executors/executor-env';
 import { makerUidSeparationMode, probeMakerContext, uidSeparationRefusal } from '../execution/executors/maker-uid-separation';
+import { recordLanePolicyShadow } from './lane-policy';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -759,8 +761,10 @@ export class LoopWorkerExecutorService {
       now,
       factoryGoal?.owner_user_id ?? null,
     );
-    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId,
-      ...leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt) });
+    const identity = leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt);
+    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId, ...identity });
+    // LANE_POLICY_MODE (default off): shadow records one lane_policy judgment for this dispatch; the runtime is never changed
+    recordLanePolicyShadow(this.db, run, lease, runtime, identity.model_id);
 
     const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(
       taskId, runtime as ExecutorKind, undefined, { riskAssessmentText },
@@ -884,7 +888,7 @@ export class LoopWorkerExecutorService {
       try { const f = JSON.parse(task)?.finding; if (f?.message) task = [f.message, f.suggested_fix].filter(Boolean).join('\n'); } catch { /* raw packet text */ }
       const diff = maker.worktree_path ? this.loopService.workingTreeDiff(maker.worktree_path) : '';
       const state = checkerSecondOpinionState(task, diff, withoutHiddenChecks(maker.metadata.deterministic_checks || []));
-      await runJudgment(this.db, checkerSecondOpinion, { type: 'worker_lease', id: checker.id }, state, undefined, { checkerVerdict, loopRunId: run.id });
+      await runJudgment(this.db, checkerSecondOpinion, { type: 'worker_lease', id: checker.id }, state, undefined, { checkerVerdict, loopRunId: run.id, dataSource: makerDiffSource(this.db, run.goal_id) });
     } catch { /* shadow judgment must never affect the loop */ }
   }
 

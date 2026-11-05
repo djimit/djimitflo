@@ -271,3 +271,15 @@ describe('property: every usage event is counted at most once per aggregation sc
     for (const s of c.scopes) expect(s.successful_only.cloud_tokens).toBeLessThanOrEqual(s.numerator.cloud_tokens.value ?? 0);
   });
 });
+
+describe('re-20261105 E9: unknown is not zero', () => {
+  it('a model call with one-sided tokens has no reconciled total (unknown), not the known side alone', () => {
+    call('panel', 1200, null); call('panel', null, 80); call('panel', 1000, 50);
+    const byRow = usageEvents(db, SINCE, UNTIL).events.filter((e) => e.source === 'llm_model_calls').map((e) => e.tokens_reconciled).sort();
+    expect(byRow).toEqual([1050, null, null]);
+  });
+  it('a worker row (recordWorkerCall) keeps its total-only report: tokens_in = total, tokens_out = null', () => {
+    call('gym', 4000, null, { purpose: 'gym:evolution-gym', provider: 'local' });
+    expect(usageEvents(db, SINCE, UNTIL).events.filter((e) => e.source === 'llm_model_calls').map((e) => e.tokens_reconciled)).toEqual([4000]);
+  });
+});
