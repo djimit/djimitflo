@@ -32,6 +32,8 @@ import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-
 import { asgAfterMaker, asgBeforeMaker, type AsgMakerOutcome } from './asg/oracle-lane';
 import { asgMode } from './asg/mode';
 import { recordWorkerCall } from './model-call-ledger';
+import { buildExecutorEnv } from '../execution/executors/executor-env';
+import { makerUidSeparationMode, probeMakerContext, uidSeparationRefusal } from '../execution/executors/maker-uid-separation';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -278,6 +280,21 @@ export class LoopWorkerExecutorService {
       });
       this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted', failure: { stage: 'prepare' } });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
+    }
+
+    // MAKER_UID_SEPARATION (S0 step 1, default off): shadow records what this maker's process context can reach; on refuses
+    // an in-container maker that is not separated from the DB and the server env (fail closed). Remote makers never spawn here.
+    const uidSeparation = makerUidSeparationMode();
+    if (uidSeparation !== 'off' && makerLease.runtime !== 'remote') {
+      const probe = await probeMakerContext({ mode: uidSeparation, cwd: makerLease.worktree_path, env: buildExecutorEnv(undefined, makerLease.runtime) });
+      const refusal = uidSeparationRefusal(probe);
+      this.loopService.patchWorkerLeaseMetadata(makerLease.id, { uid_separation: { ...probe, refused: refusal !== null } });
+      if (refusal) {
+        this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { failure_reason: refusal, failed_at: new Date().toISOString(), failure: { stage: 'prepare' } });
+        this.loopService.recordLoopEvent(run.id, 'maker_uid_separation_refused', 'warning', `Maker lease ${makerLease.id} not started: ${refusal} (MAKER_UID_SEPARATION=on).`,
+          { lease_id: makerLease.id, reason: refusal, uid: probe.uid });
+        throw new Error('MAKER_UID_SEPARATION_REFUSED');
+      }
     }
 
     // a deploy between preparing and running (e.g. a maker waiting for its approval) leaves the worktree unlinked
