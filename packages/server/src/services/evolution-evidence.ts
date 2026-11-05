@@ -141,6 +141,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
   { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
   { name: 'SKILL_ARTIFACT_EVOLUTION_MODE', acting: true },
+  { name: 'FLEET_SHELL_ENABLED', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
