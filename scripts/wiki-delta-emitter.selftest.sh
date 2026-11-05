@@ -20,6 +20,8 @@ export WIKI_DIR="$TMP/wiki" WIKI_EMITTER_STATE="$TMP/state" CURL_BIN="$TMP/fakec
 
 echo two > wiki/b.md && echo changed > wiki/a.md && echo note > README.txt && git add -A && git commit -q -m two
 "$DIR/wiki-delta-emitter.sh" --dry-run > "$TMP/dry.json"
+! "$DIR/wiki-delta-emitter.sh" --dryrun 2>/dev/null || fail "an unknown flag must exit non-zero"
+[ ! -e "$TMP/body.json" ] || fail "an unknown flag must not post"
 [ ! -e "$TMP/body.json" ] || fail "dry run must not post"
 "$DIR/wiki-delta-emitter.sh" | grep -q "published wiki.page.changed for 2 page" || fail "expected 2 changed pages (txt ignored)"
 python3 - "$TMP/body.json" <<'PY'

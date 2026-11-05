@@ -182,3 +182,16 @@ it('legacy recovery never imports a changed worktree as the previously published
   expect(await new LoopDraftPrService(db, f as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
   expect(f).not.toHaveBeenCalled(); expect(meta().pr_url).toBeUndefined();
 });
+
+// re-20261105 A M4: the shadow sweep wrote one draft_pr_retry_shadow event per 15-min tick (245 events on 1 run in 2.6 d).
+it('PRC-1: shadow records draft_pr_retry_shadow once per (run, failed-attempt count), not per tick', async () => {
+  failEvent();
+  const f = github({ post: { status: 201, json: { html_url: 'https://github.com/o/r/pull/46', number: 46 } } });
+  const shadow = env({ LOOP_DRAFT_PR_RETRY: 'shadow' });
+  for (let tick = 0; tick < 4; tick++) await retryFailedDraftPrs(db, f as unknown as typeof fetch, shadow);
+  expect(count('draft_pr_retry_shadow')).toBe(1);
+  failEvent(); // a second failed attempt: the shadow would retry again, recorded once more
+  for (let tick = 0; tick < 4; tick++) await retryFailedDraftPrs(db, f as unknown as typeof fetch, shadow);
+  expect(count('draft_pr_retry_shadow')).toBe(2);
+  expect(f).not.toHaveBeenCalled();
+});
