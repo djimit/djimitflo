@@ -8,7 +8,8 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { ORACLE_TEST_FILES, runAutoMergeTick } from '../services/loop-auto-merge';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
-import { autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, revokeClass, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
+import { autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, readLaneRevocations, reEnableClass, revokeClass,
+  SETTLEMENT_REVOKE_JUDGMENT, SETTLEMENT_REVOKE_WINDOW, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { buildDigest, setPushSender } from '../services/operator-push';
 import { createAuthMiddleware } from '../middleware/auth';
@@ -908,4 +909,115 @@ it('UXE-00a: an ordinary dashboard or server test file is not an oracle file —
   expect(isAuditSample(722) || isAuditSample(723)).toBe(false);
   expect(decision(722)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
   expect(decision(723)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
+});
+
+// ── re-20261105 B3: the value gate's 0.2 at maker time passes 12/20 exports PRs that are < 0.2 at settlement. Revoke the
+// exports test-only class when >= 50 % of the last 20 SETTLED exports loop PRs have settlement kill_now < 0.2.
+// LOOP_AUTO_MERGE_SETTLEMENT_REVOKE = off (default) | shadow (judgment would_revoke, nothing changes) | on (the lane is revoked).
+let settledSeq = 0;
+/** One settled loop PR of a lane: a merged run (older than the tick's 60-d candidate window) + its settlement_execution row. */
+function seedSettled(evidence: string[], killNow: number | null, day: number) {
+  const i = ++settledSeq; const id = `settled-${i}`; const mergedAt = new Date(Date.UTC(2026, 8, 1) + day * 86_400_000).toISOString();
+  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, evidence_refs_json) VALUES (?, 'test', 't', 'd', 'r', 'test-gap', 'verified', ?)`).run(`si-${id}`, JSON.stringify(evidence));
+  db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', '{}', ?, datetime('now'), datetime('now'))").run(`g-${id}`, `si-${id}`);
+  db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json, metadata, created_at, updated_at) VALUES (?, ?, 'test-gap', 'closed', 'completed', '[]', ?, '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')`)
+    .run(id, `g-${id}`, JSON.stringify({ pr_url: `https://github.com/o/r/pull/${5000 + i}`, pr_outcome: { state: 'merged', merged_at: mergedAt } }));
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at) VALUES (?, 'settlement_execution', 'loop_pr', ?, 'h', 'shadow', ?, 'r', ?, ?)`)
+    .run(`se-${id}`, id, killNow === null ? 'fail' : 'pass', JSON.stringify({ merged_at: mergedAt, kill_share_now: killNow }), mergedAt);
+  return id;
+}
+/** 20 exports settlements on consecutive days, the newest `low` of them below 0.2 (0.0), the rest at 0.667. */
+const seedExportsWindow = (low: number, startDay = 100) => Array.from({ length: SETTLEMENT_REVOKE_WINDOW }, (_, k) => seedSettled(EXPORTS_EV, k >= SETTLEMENT_REVOKE_WINDOW - low ? 0 : 0.667, startDay + k));
+const revokeJudgments = () => db.prepare('SELECT mode, decision, subject_id, answers_json FROM judgments WHERE judgment = ? ORDER BY created_at, rowid').all(SETTLEMENT_REVOKE_JUDGMENT) as Array<{ mode: string; decision: string; subject_id: string; answers_json: string }>;
+const tick = (mode: string, revoke: string, at = NOW) => runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env(mode, revoke ? { LOOP_AUTO_MERGE_SETTLEMENT_REVOKE: revoke } : {}), at);
+
+it('B3 flag: LOOP_AUTO_MERGE_SETTLEMENT_REVOKE off (default) | shadow | on, registered as an acting evolution flag; window 20', () => {
+  expect(autoMergeSettlementRevoke({})).toBe('off');
+  expect(autoMergeSettlementRevoke({ LOOP_AUTO_MERGE_SETTLEMENT_REVOKE: ' Shadow ' })).toBe('shadow');
+  expect(autoMergeSettlementRevoke({ LOOP_AUTO_MERGE_SETTLEMENT_REVOKE: 'on' })).toBe('on');
+  expect(autoMergeSettlementRevoke({ LOOP_AUTO_MERGE_SETTLEMENT_REVOKE: 'act' })).toBe('off');
+  expect(SETTLEMENT_REVOKE_WINDOW).toBe(20);
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true });
+});
+
+it('B3 off (default): no judgment, no lane revocation, even with every settled exports PR below 0.2', async () => {
+  seedExportsWindow(20);
+  await tick('act', '');
+  expect(revokeJudgments()).toEqual([]);
+  expect(readLaneRevocations(db)).toEqual({});
+});
+
+it('B3 shadow: 10/20 settled exports PRs below 0.2 is a would_revoke judgment; nothing is revoked and an exports PR still merges', async () => {
+  seedExportsWindow(10);
+  seedPr(700, { draft: false, evidence: EXPORTS_EV, graded: KILL(0.667) });
+  await tick('act', 'shadow');
+  const j = revokeJudgments();
+  expect(j.map((x) => [x.mode, x.decision, x.subject_id])).toEqual([['shadow', 'would_revoke', 'exports']]);
+  const a = JSON.parse(j[0].answers_json);
+  expect(a).toMatchObject({ lane: 'exports', n: 20, below: 10, share_below: 0.5, window: 20, share_min: 0.5, kill_below: 0.2 });
+  expect(a.kill_share_now_median).toBeCloseTo(0.333, 2);
+  expect(a.run_ids).toHaveLength(20);
+  expect(readLaneRevocations(db)).toEqual({});
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).decision).toBe('merged');
+  // the same window is judged once: the next tick writes nothing new
+  await tick('act', 'shadow', new Date(NOW.getTime() + 900_000));
+  expect(revokeJudgments()).toHaveLength(1);
+});
+
+it('B3 on: 10/20 below revokes the exports lane (audited) — exports PRs are held, other lanes still merge; 9/20 below keeps it', async () => {
+  seedExportsWindow(9);
+  await tick('act', 'on');
+  expect(revokeJudgments().map((x) => x.decision)).toEqual(['keep']);
+  expect(readLaneRevocations(db)).toEqual({});
+  // one more settled low exports PR moves the window: the newest 20 now hold 10 below (the oldest pass dropped out)
+  seedSettled(EXPORTS_EV, 0, 50); // older than the window: never counted
+  seedSettled(EXPORTS_EV, 0.1, 200);
+  seedPr(700, { draft: false, evidence: EXPORTS_EV, graded: KILL(0.667) });
+  seedPr(702, { draft: false, evidence: TEST_GAP_EV, graded: KILL(0.667) });
+  const r = await tick('act', 'on', new Date(NOW.getTime() + 900_000));
+  expect(r.revoked).toBe(true);
+  expect(revokeJudgments().map((x) => [x.mode, x.decision])).toEqual([['on', 'keep'], ['on', 'revoke']]);
+  expect(readLaneRevocations(db).exports.reason).toMatch(/10\/20 settled exports PRs kill < 0.2 fresh mutants/);
+  expect(db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action = 'loop_auto_merge_lane_revoked'").get()).toEqual({ n: 1 });
+  expect(decision(700)).toMatchObject({ decision: 'revoked_hold' });
+  expect(decision(700).reason).toMatch(/^lane exports revoked/);
+  expect(decision(702).decision).toBe('merged');
+  expect(readClassState(db).state).toBe('active'); // the class of the other lanes is untouched
+  expect(autoMergeEvidence(db, env('act', { LOOP_AUTO_MERGE_SETTLEMENT_REVOKE: 'on' })).settlement_revoke).toMatchObject({ mode: 'on', lanes: ['exports'], window: 20,
+    lanes_revoked: { exports: { reason: expect.stringMatching(/settlement value/) } }, last: [{ lane: 'exports', decision: 'revoke', n: 20, below: 10 }] });
+});
+
+it('B3 falsifier side: a lane whose settled kill median is >= 0.33 is never revoked', async () => {
+  seedExportsWindow(9); // 11/20 at 0.667: median 0.667
+  await tick('act', 'on');
+  expect(JSON.parse(revokeJudgments()[0].answers_json)).toMatchObject({ below: 9, kill_share_now_median: 0.667 });
+  expect(readLaneRevocations(db)).toEqual({});
+});
+
+it('B3: fewer than 20 settled exports PRs with a kill share is insufficient, never a revocation; failed tests (no kill share) are not counted', async () => {
+  for (let k = 0; k < SETTLEMENT_REVOKE_WINDOW - 1; k++) seedSettled(EXPORTS_EV, 0, 100 + k);
+  seedSettled(EXPORTS_EV, null, 130); // tests failed at settlement: no kill share now (the settlement_value rule)
+  seedSettled(TEST_GAP_EV, 0, 131); // another lane: not in the exports window
+  await tick('act', 'on');
+  expect(revokeJudgments().map((x) => x.decision)).toEqual(['insufficient']);
+  expect(JSON.parse(revokeJudgments()[0].answers_json)).toMatchObject({ n: 19, below: 19 });
+  expect(readLaneRevocations(db)).toEqual({});
+});
+
+it('B3 re-enable: the operator re-enable clears a lane revocation (audited); the same window never re-revokes, a new settlement re-judges', async () => {
+  seedExportsWindow(12);
+  await tick('act', 'on');
+  expect(readLaneRevocations(db).exports).toBeDefined();
+  expect(readClassState(db).state).toBe('active');
+  const after = reEnableClass(db, 'admin', 'reviewed the exports settlement value');
+  expect(after.state).toBe('active');
+  expect(readLaneRevocations(db)).toEqual({});
+  expect(db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action = 'loop_auto_merge_re_enabled'").get()).toEqual({ n: 1 });
+  expect(() => reEnableClass(db, 'admin', 'again')).toThrow('AUTO_MERGE_NOT_REVOKED');
+  await tick('act', 'on', new Date(NOW.getTime() + 900_000));
+  expect(readLaneRevocations(db)).toEqual({}); // same basis: judged already
+  seedSettled(EXPORTS_EV, 0, 300);
+  await tick('act', 'on', new Date(NOW.getTime() + 1_800_000));
+  expect(readLaneRevocations(db).exports).toBeDefined();
 });

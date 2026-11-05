@@ -268,3 +268,32 @@ it('A18: toggling LOOP_MEMORY_RULES_ENABLED between boots records a period bound
   expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'false' }, t('29'))).toEqual([
     { experiment_id: 'ACE-001', env_name: 'ACE_001_MODE', previous: 'on', current: null, at: '2026-10-29T06:00:00.000Z' }]);
 });
+
+it('re-20261105 E14 / A M3: oracle-population changes (value gate, content safety, KB context, factory, lane caps) and the PL-001 tier probe write a boundary', () => {
+  const ORACLE = ['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2'];
+  const changes: Array<[string, string, string, string[]]> = [
+    ['LOOP_AUTO_MERGE_VALUE_GATE', 'shadow', 'on', ORACLE], ['LOOP_AUTO_MERGE_VALUE_GATE_LANES', '', 'exports', ORACLE],
+    ['CONTENT_SAFETY_MODEL', 'nvidia/nemoguard', 'meta/llama-guard-4-12b', ORACLE], ['CONTENT_SAFETY_IGNORE_CATEGORIES', '', 'S14', ORACLE],
+    ['KB_CONTEXT_ENABLED', 'false', 'true', ORACLE], ['CAPABILITY_FACTORY_MODE', 'off', 'on', ORACLE],
+    ['MUTATION_GAP_MAX_PER_DAY', '2', '4', ORACLE], ['TEST_GAP_MAX_PER_DAY', '2', '3', ORACLE],
+    ['GYM_TIER_PROBE_ENABLED', 'true', 'false', ['PL-001']],
+  ];
+  let day = 1;
+  const boot = (env: NodeJS.ProcessEnv) => recordTreatmentEnvBoundaries(db, env, Date.parse(`2026-11-${String(day++).padStart(2, '0')}T00:00:00Z`));
+  for (const [name, before, after, ids] of changes) {
+    boot({ [name]: before }); // baseline (first sight of the name is never a change)
+    expect(boot({ [name]: after }).map((r) => [r.experiment_id, r.env_name, r.previous, r.current]), name).toEqual(ids.map((id) => [id, name, before, after]));
+    boot({}); // reset to unset for the next name
+  }
+});
+
+it('re-20261105 B6: an experiment with a verdict projects no power left (PL-001 showed "7.3 pairs/day, projected 102" after NOT_SUPPORTED)', () => {
+  const start = '2026-09-18T12:00:00.000Z';
+  const def: ExperimentDef = { id: 'V', flag: 'V', protocol: 'p.md', started_at: start, target_n: 40, stop_by: '2026-10-28T12:00:00.000Z', stop_note: '', stop_source: 's', population: 'gym_tasks',
+    status: (_db, _env, now, since) => ({ n_per_arm: { a: since === start ? 30 : Math.round((now - Date.parse(since)) / 86_400_000) }, verdict: 'NOT_SUPPORTED' }) };
+  expect(experimentsReport(db, {}, NOW, [def]).experiments[0].power).toEqual({ n_so_far: 30, target_per_arm: 40, days_to_stop: null, accrual_window_days: null,
+    accrual_per_day: null, projected_min_arm_n: null, projected_reaches_target: null });
+  // the same experiment still collecting keeps its projection
+  const open = experimentsReport(db, {}, NOW, [{ ...def, status: (d, e, n, s) => ({ ...def.status(d, e, n, s), verdict: null }) }]).experiments[0].power;
+  expect(open.projected_min_arm_n).toBeGreaterThan(30);
+});

@@ -8,7 +8,19 @@ scripts/merge-train.sh --dry-run --assertions verdicts.json --out plan.json   # 
 scripts/merge-train.sh run LOG 778 779@<headsha> 780                         # apply: one PR after another; stops at the first failure
 scripts/merge-train.sh run --mark-ready --assertions verdicts.json LOG 737   # apply incl. draft→ready for READY loop PRs
 scripts/merge-train.sh rebase <branch> <own_n> [<pr>]                        # rebuild a stacked PR on main keeping its own top commits
+scripts/merge-train.sh run --value-signals signals.json LOG 1157 1158        # exports-lane PRs with a low/missing value signal are skipped
 ```
+
+**Value (re-20261105 B1).** The auto-merge value gate binds auto-merge only; 25 exports PRs went past it through this train
+(14 fail its rule). Both `run` and `--dry-run` therefore apply the gate's rule to **exports-lane** loop PRs: a value signal
+other than `pass` is SKIPPED (`run`: `#N SKIPPED (exports lane, value signal low|missing …)`, ledger `skipped_low_value`,
+nothing claimed; the list is printed before `TRAIN DONE`) or `POLICY_BLOCKED value_signal_<s>` (dry-run, listed in
+`skipped_low_value`). `--include-low-value` lifts it. The signal and the lane are the gate's own (`autoMergeValueSignal` on the
+deciding maker lease, `oracleLane`), read from the prod DB once:
+`docker exec djimitflo-live node dist/scripts/pr-value-signals.js --db /data/djimitflo.sqlite > signals.json` (read-only;
+`{"prs": {"<n>": {"lane", "value_signal", "run_id"}}}`), or from `lane` / `value_signal` in an `--assertions` entry. A PR not in
+the file is exports when its title is the exports proposal title (`loop: Test untested exports of …`) and its signal is
+`missing` — unknown is never a pass, so without a file every exports PR is skipped. Other lanes are not gated here.
 
 Exit codes: 0 done · 2 conflict · 3 FAIL_CLOSED · 4 ESCALATE / not merged · 5 SUPERSEDED · 6 claimed by another worker ·
 7 HOLD (CI timeout, GitHub unreadable, draft without evidence/flag, policy changed) · 8 ledger write failed (nothing further
@@ -33,7 +45,11 @@ the exact sha — `skipped`, `neutral`, `cancelled`, `stale` is red (`required_n
    every poll (moved → SUPERSEDED, an obsolete sha's CI is never used); red → FAIL_CLOSED; TIMEOUT → HOLD, never approved.
 5. Re-read state, head, draft, main (moved → redo the attempt) and the policy verdict (changed → HOLD).
 6. `PUT pulls/{n}/merge` with `merge_method=squash` and `sha=<head>` (GitHub refuses any other head); the outcome is read from
-   live state. No auto-merge, no branch deletion.
+   live state. No auto-merge, no branch deletion. The squash commit gets GitHub's own default squash body (GraphQL
+   `viewerMergeBodyText`) plus `merged-via: merge-train.sh (agent, operator instruction) <ISO ts>` (re-20261105 E10: `merged_by`
+   is `djimit` for agent and human alike); `MT_MERGED_VIA_ACTOR` overrides the actor, `dependabot-merge.sh` writes
+   `(workflow, operator policy)`. The operator digest counts merges on main per class (`merge-attribution.ts`: auto-merge /
+   agent script / human UI; human UI = no trailer and no auto-merge or dependency-lane record).
 
 Every mutation is preceded by a ledger entry (`ready_intent`, `update_intent`, `merge_intent`); a failed ledger write exits 8
 before the mutation. SIGTERM/SIGINT records `cancelled` and releases the claim.

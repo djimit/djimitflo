@@ -41,6 +41,30 @@ echo "$remote" | grep -q 'rolling back' || fail "rollback missing"
 echo "$remote" | grep -q 'timeout "${DEPLOY_BUILD_TIMEOUT_S:-1200}" docker build --network host' || fail "docker build is not time-bounded"
 if ( main not-a-sha ) >/dev/null 2>&1; then fail "invalid sha accepted"; fi
 
+# --- strict arguments: only `<sha>`, `<sha> --apply`, `<sha> --apply --local`. Anything else exits 2 before any step
+# (`<sha> --apply --lcoal` used to do a real remote deploy). Run as a process with ssh/docker/git/curl/bash stubbed on
+# PATH: every stub records its call and swallows stdin, so a refused form must leave the log empty.
+ARGS_BIN="$TMP/args-bin"; mkdir -p "$ARGS_BIN"; CALLS="$TMP/args-calls.log"; REAL_BASH="$(command -v bash)"
+for c in ssh scp docker git curl bash; do printf '#!/bin/sh\necho "%s $*" >> "%s"\ncat >/dev/null\nexit 0\n' "$c" "$CALLS" > "$ARGS_BIN/$c"; chmod +x "$ARGS_BIN/$c"; done
+run_args() { : > "$CALLS"; RC=0; OUT="$(DEPLOY_ROOT=/srv/djimitflo PATH="$ARGS_BIN:$PATH" "$REAL_BASH" "$SCRIPT_DIR/deploy-vps.sh" "$@" 2>&1 </dev/null)" || RC=$?; }
+S40=cccccccccccccccccccccccccccccccccccccccc
+for bad in "" "$S40 --apply --lcoal" "$S40 --apply --local extra" "$S40 --lcoal" "$S40 --local" "$S40 --local --apply" \
+           "$S40 --apply extra" "$S40 --dry-run" "--apply $S40" "$S40 $S40"; do
+  # shellcheck disable=SC2086 # word-split on purpose: each case is an argv
+  run_args $bad
+  [ "$RC" = 2 ] && echo "$OUT" | grep -q '^usage: ' && [ ! -s "$CALLS" ] || fail "args '$bad' not refused with exit 2 before any step (rc $RC, calls: $(cat "$CALLS")): $OUT"
+done
+run_args "$S40" ""
+[ "$RC" = 2 ] && [ ! -s "$CALLS" ] || fail "an empty 2nd argument was not refused (rc $RC)"
+run_args "$S40"
+[ "$RC" = 0 ] && echo "$OUT" | grep -q '^# dry run' && [ ! -s "$CALLS" ] || fail "<sha> alone is not a side-effect-free dry run (rc $RC, calls: $(cat "$CALLS"))"
+run_args "$S40" --apply
+[ "$RC" = 0 ] && [ "$(wc -l < "$CALLS" | tr -d ' ')" = 1 ] && grep -q "^ssh .* bash -s -- /srv/djimitflo $S40 " "$CALLS" \
+  || fail "<sha> --apply no longer pipes the remote script to ssh (rc $RC, calls: $(cat "$CALLS")): $OUT"
+run_args "$S40" --apply --local
+[ "$RC" = 0 ] && [ "$(wc -l < "$CALLS" | tr -d ' ')" = 1 ] && grep -q "^bash -s -- /srv/djimitflo $S40 " "$CALLS" \
+  || fail "<sha> --apply --local no longer runs the remote script locally (rc $RC, calls: $(cat "$CALLS")): $OUT"
+
 # --- build receipt (forensic 2026-10-26 ROOT-001): one immutable receipt per image, verified before and after the switch
 SRC="$TMP/src"; mkdir -p "$SRC"; RCPT="$TMP/receipts"
 printf 'ARG NODE_IMAGE=node:22-bookworm-slim\nFROM ${NODE_IMAGE} AS builder\nRUN npm ci\n' > "$SRC/Dockerfile"

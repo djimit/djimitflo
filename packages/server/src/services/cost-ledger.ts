@@ -101,6 +101,8 @@ function usdOf(t: TokenSplit | null, p: PriceEntry | null): number | null {
 export interface UsageOptions { now?: number; prices?: readonly PriceEntry[]; /** v1 source: count the maker ledger mirror as its own event (reproduces the double count) */ includeMakerMirror?: boolean }
 
 /** Every usage event created in [since, until), with its owner and outcome fields, plus the mirror rows left out. */
+/** consumers whose llm_model_calls rows come from recordWorkerCall (model-call-ledger.ts) */
+const WORKER_CALL_CONSUMERS = new Set(['maker', 'checker', 'gym']);
 export function usageEvents(db: Database, since: string, until: string, opts: UsageOptions = {}): { events: UsageEvent[]; mirrors: Mirror[] } {
   const now = opts.now ?? Date.now(); const prices = opts.prices ?? PRICE_LIST;
   const runProposal = new Map(safeAll<{ id: string; p: string | null }>(db, 'SELECT r.id, g.improvement_id AS p FROM loop_runs r LEFT JOIN goals g ON g.id = r.goal_id').map((r) => [r.id, r.p]));
@@ -175,7 +177,11 @@ export function usageEvents(db: Database, since: string, until: string, opts: Us
     if (c.consumer === 'jev' && known) { mirror('consumer = jev with tokens mirrors the judgments rows of that System One call', 'judgment', tokens); continue; }
     if (String(c.purpose ?? '').startsWith('transport:')) { mirror('purpose transport:* is the transport row of a caller that records its own row (onUsage)', 'model_call', tokens); continue; }
     if (c.attempts === 0) { mirror('attempts = 0: never sent (breaker_open / queue_full)', 'model_call', tokens); continue; }
-    const t: TokenSplit | null = known ? { input: c.tin, output: c.tout, other: 0, total: tokens } : null;
+    // re-20261105 E9: one side missing = the total is unknown (UNKNOWN basis), not the known side alone. Exception: a worker row
+    // (recordWorkerCall: maker / checker / gym) stores a runtime's total-only report as tokens_in = total, tokens_out = null.
+    // ponytail: a worker row with a real input-only split reads as a total too; split the column if such runtimes appear.
+    const complete = c.tin !== null && (c.tout !== null || WORKER_CALL_CONSUMERS.has(c.consumer));
+    const t: TokenSplit | null = complete ? { input: c.tin, output: c.tout, other: 0, total: tokens } : null;
     const rowId = String(c.id);
     events.push({ id: eventId('llm_model_calls', rowId, 'tokens'), source: 'llm_model_calls', row_id: rowId, field: 'tokens', at: c.at, consumer: `llm:${c.consumer}`,
       role: c.consumer === 'maker' ? 'maker' : 'server_llm', owner: { kind: 'model_call', id: rowId }, shared: null,

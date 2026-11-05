@@ -159,6 +159,12 @@ RUN mkdir -p /app/packages/knowledge/skills /app/packages/knowledge/context /app
     /app/packages/reports/validation /app/packages/reports /data/backups && \
     chown -R djimitflo:djimitflo /app /data
 
+# MAKER_UID_SEPARATION (S0): reserve uid/gid 1002 `maker` — no home, no shell, not in the djimitflo group. Nothing runs as
+# it yet (flag off/shadow); the run-as-maker follow-up (docs/design/maker-uid-separation.md) does. Placed after the heavy
+# layers so it invalidates no cached install step.
+RUN groupadd -g 1002 maker && \
+    useradd -u 1002 -g maker -M -d /nonexistent -s /usr/sbin/nologin maker
+
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3001

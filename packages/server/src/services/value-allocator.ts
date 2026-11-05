@@ -133,12 +133,28 @@ export const GATE_READ_JUDGMENTS: Record<string, (row: JudgmentRow, env: NodeJS.
   // AUTHZ-F2: expert-source-units ingestDiscovery/rejudgeOne create an expert unit (a promotion, DI-001 B) only on a jev 'yes' /
   // open_problem|lane_technique verdict under FRONTIER_UNITS_REQUIRE_RELEVANCE — every row then decides unit creation, whatever
   // its 'shadow' label. A promotion-bearing jev decision: the operator classifies it against the jev rule before any reopen.
-  discovery_relevance: (_r, env) => env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true',
-  // needs-grounding-triage-service: moves/archives proposals on the latest (shadow) verdict when enabled
-  reflection_triage: (_r, env) => env.NEEDS_GROUNDING_TRIAGE_ENABLED === 'true',
+  // re-20261105 E8: the same shadow rows also drive the arena fleet-source gate (knowledge-overview → fleetSourceGate), scout-term
+  // fitness (interest-feedback), the maker-genome mutation prompt (dream-evolution), technique-card fetch order and committee
+  // member prompts — each behind its own flag (shadow-judgment-readers.test.ts lists the readers)
+  discovery_relevance: (_r, env) => ['FRONTIER_UNITS_REQUIRE_RELEVANCE', 'ARENA_GATE_ENABLED', 'FEEDBACK_INTERESTS_ENABLED', 'DREAM_EVOLUTION_ENABLED',
+    'FRONTIER_TECHNIQUE_CARDS_ENABLED', 'COMMITTEE_SWARM_ENABLED'].some((f) => env[f] === 'true'),
+  // needs-grounding-triage-service: moves/archives proposals on the latest (shadow) verdict; commons-grounding skips topics on it
+  reflection_triage: (_r, env) => env.NEEDS_GROUNDING_TRIAGE_ENABLED === 'true' || env.COMMONS_AGENDA_GROUNDING === 'true',
+  // re-20261105 E8: loop-daemon J5 auto-approves a test-gap maker on rule-v1's 'yes', recorded mode='shadow'
+  auto_approve_shadow: (_r, env) => env.LOOP_AUTO_APPROVE_TEST_GAP === 'true',
+  // committee-swarm arenaGate: a resident with no shadow forecast in 7 d, or worse than the base rate, stops being scheduled
+  'forecast:resident:*': (_r, env) => env.ARENA_GATE_ENABLED === 'true',
+  // interest-feedback: KB retrieval hits (shadow) seed the interest terms published to the scouts
+  kb_retrieval: (_r, env) => env.FEEDBACK_INTERESTS_ENABLED === 'true',
+  // agent-communication pickFailureTopic (Commons agenda) and commons-evidence-pack (discovery_relevance prompt / Commons questions)
+  failure_cause: (_r, env) => env.COMMONS_AGENDA_FROM_FAILURES === 'true' || env.COMMONS_EVIDENCE_PACK_ENABLED === 'true'
+    || env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true',
 };
+/** The registry predicate for a judgment; `forecast:resident:<agent>` resolves to its `forecast:resident:*` entry. */
+export const gateReadPredicate = (judgment: string): ((row: JudgmentRow, env: NodeJS.ProcessEnv) => boolean) | undefined =>
+  GATE_READ_JUDGMENTS[judgment] ?? (judgment.includes(':') ? GATE_READ_JUDGMENTS[judgment.replace(/:[^:]*$/, ':*')] : undefined);
 const gateReads = (judgment: string, row: JudgmentRow, env: NodeJS.ProcessEnv): boolean =>
-  !judgment.includes('@') && Boolean(GATE_READ_JUDGMENTS[judgment]?.(row, env));
+  !judgment.includes('@') && Boolean(gateReadPredicate(judgment)?.(row, env));
 /**
  * Judgments a learner (not a gate) reads: consumed, never decision-consumed, no hard floor. Verified in code 2026-10-20.
  */

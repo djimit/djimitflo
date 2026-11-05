@@ -12,6 +12,7 @@
 #   scripts/deploy-vps.sh <40-char-sha>                # dry run
 #   scripts/deploy-vps.sh <40-char-sha> --apply        # deploy
 #   scripts/deploy-vps.sh <40-char-sha> --apply --local  # deploy from the VPS itself (scripts/auto-deploy.sh)
+# Any other argument list (unknown flag, other order, extra argument) exits 2 before any step.
 # Overrides (env): DEPLOY_HOST (root@100.86.47.122) DEPLOY_PORT (22122)
 #   DEPLOY_KEY (~/.ssh/id_ed25519_vps) DEPLOY_ROOT (/srv/djimitflo) DEPLOY_REPO_URL
 #
@@ -251,15 +252,22 @@ REMOTE
 }
 
 main() {
-  local sha="${1:-}" apply=false
-  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "usage: $0 <40-char-sha> [--apply]" >&2; exit 2; }
-  [ "${2:-}" = "--apply" ] && apply=true
+  # Exactly the three documented forms; anything else (an unknown or misspelt flag, another order, an extra argument) exits 2
+  # before any step: `<sha> --apply --lcoal` used to fall through to a real remote deploy.
+  local sha="${1:-}" apply=false local_run=false
+  case "$#:${2:-}:${3:-}" in
+    1::) ;;
+    2:--apply:) apply=true ;;
+    3:--apply:--local) apply=true; local_run=true ;;
+    *) sha="" ;;
+  esac
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "usage: $0 <40-char-sha> [--apply [--local]] (got: $*)" >&2; exit 2; }
   if ! $apply; then
     echo "# dry run — would run on ${DEPLOY_HOST}:${DEPLOY_PORT} (root ${DEPLOY_ROOT}, sha ${sha}); use --apply"
     remote_script
     return 0
   fi
-  if [ "${3:-}" = "--local" ]; then
+  if $local_run; then
     remote_script | bash -s -- "$DEPLOY_ROOT" "$sha" "$DEPLOY_REPO_URL"
     return
   fi

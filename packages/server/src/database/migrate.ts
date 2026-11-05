@@ -1448,6 +1448,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // B29: purpose, experiment arm and cost of every model call (marginal 0 only for a known flat subscription / local / free tier)
   addMissingColumns(db, 'llm_model_calls', [{ name: 'purpose', definition: 'TEXT' }, { name: 'experiment_id', definition: 'TEXT' },
     { name: 'cost_basis', definition: 'TEXT' }, { name: 'list_price_cost', definition: 'REAL' }, { name: 'marginal_cost', definition: 'REAL' }]);
+  // re-20261105 C4: EGRESS_CLASS_MODE=shadow egress judgment per call (JSON: host, dest, data, source, would_deny); never blocks
+  addMissingColumns(db, 'llm_model_calls', [{ name: 'egress_class', definition: 'TEXT' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
   // Holdout epoch 1: calibration rows never decide; one provenance row per manifest-frozen epoch (holdout-manifest.ts)
   for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);

@@ -10,7 +10,8 @@ import { AuditService } from './audit-service';
  * - diagnostics: a fixed set of read-only names the agent maps to its own commands (no operator text reaches a shell)
  * - shell: any command, executed by the agent as root (sudo -n), only after a human with approve:task approved exactly that
  *   text: the approval is bound to the command's sha256 and must be picked up within 15 minutes; poll() re-checks both, and
- *   the agent refuses shell unless its host opted in (DJIMIT_AGENT_ALLOW_SHELL=1)
+ *   the agent refuses shell unless its host opted in (DJIMIT_AGENT_ALLOW_SHELL=1); the server hands out no shell row at all
+ *   unless FLEET_SHELL_ENABLED=1 is set in its own env (default off)
  * Output is capped (64 KiB) and passed through the same secret scrubber as judgments before it is stored.
  */
 export const DIAGNOSTICS = ['ping', 'uptime', 'disk', 'failed-services', 'top'] as const;
@@ -89,6 +90,8 @@ export class FleetCommands {
   private refusal(c: FleetCommand, nowMs: number): string | null {
     if (sha256(c.command) !== c.command_sha256) return 'command_sha_mismatch';
     if (c.kind === 'diagnostic' && (DIAGNOSTICS as readonly string[]).includes(c.command)) return null;
+    // Server kill switch: read from process env only, so no DB row, audit row or approval can turn shell delivery on.
+    if (process.env.FLEET_SHELL_ENABLED !== '1') return 'shell_disabled_on_server';
     const expires = Date.parse(c.expires_at ?? ''), approvedAt = Date.parse(c.approved_at ?? '');
     if (!(expires > nowMs) || expires - approvedAt > APPROVAL_WINDOW_MS) return 'shell_expiry_missing_or_invalid';
     const recorded = c.approved_by && Number.isFinite(approvedAt) && this.db.prepare(`SELECT 1 FROM audit_events WHERE action = 'fleet_command_approved' AND resource_type = 'fleet_command'

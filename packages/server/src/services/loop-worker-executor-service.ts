@@ -17,6 +17,7 @@ import type { LoopService } from './loop-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
+import { makerDiffSource } from './egress-classification';
 import { withoutHiddenChecks } from './fail-before-pass-after';
 import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
 import { SUBSCRIPTION_ENV_MARKER } from '../execution/executors/subscription-env';
@@ -32,6 +33,9 @@ import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-
 import { asgAfterMaker, asgBeforeMaker, type AsgMakerOutcome } from './asg/oracle-lane';
 import { asgMode } from './asg/mode';
 import { recordWorkerCall } from './model-call-ledger';
+import { buildExecutorEnv } from '../execution/executors/executor-env';
+import { makerUidSeparationMode, probeMakerContext, uidSeparationRefusal } from '../execution/executors/maker-uid-separation';
+import { recordLanePolicyShadow } from './lane-policy';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -278,6 +282,21 @@ export class LoopWorkerExecutorService {
       });
       this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted', failure: { stage: 'prepare' } });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
+    }
+
+    // MAKER_UID_SEPARATION (S0 step 1, default off): shadow records what this maker's process context can reach; on refuses
+    // an in-container maker that is not separated from the DB and the server env (fail closed). Remote makers never spawn here.
+    const uidSeparation = makerUidSeparationMode();
+    if (uidSeparation !== 'off' && makerLease.runtime !== 'remote') {
+      const probe = await probeMakerContext({ mode: uidSeparation, cwd: makerLease.worktree_path, env: buildExecutorEnv(undefined, makerLease.runtime) });
+      const refusal = uidSeparationRefusal(probe);
+      this.loopService.patchWorkerLeaseMetadata(makerLease.id, { uid_separation: { ...probe, refused: refusal !== null } });
+      if (refusal) {
+        this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { failure_reason: refusal, failed_at: new Date().toISOString(), failure: { stage: 'prepare' } });
+        this.loopService.recordLoopEvent(run.id, 'maker_uid_separation_refused', 'warning', `Maker lease ${makerLease.id} not started: ${refusal} (MAKER_UID_SEPARATION=on).`,
+          { lease_id: makerLease.id, reason: refusal, uid: probe.uid });
+        throw new Error('MAKER_UID_SEPARATION_REFUSED');
+      }
     }
 
     // a deploy between preparing and running (e.g. a maker waiting for its approval) leaves the worktree unlinked
@@ -742,8 +761,10 @@ export class LoopWorkerExecutorService {
       now,
       factoryGoal?.owner_user_id ?? null,
     );
-    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId,
-      ...leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt) });
+    const identity = leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt);
+    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId, ...identity });
+    // LANE_POLICY_MODE (default off): shadow records one lane_policy judgment for this dispatch; the runtime is never changed
+    recordLanePolicyShadow(this.db, run, lease, runtime, identity.model_id);
 
     const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(
       taskId, runtime as ExecutorKind, undefined, { riskAssessmentText },
@@ -867,7 +888,7 @@ export class LoopWorkerExecutorService {
       try { const f = JSON.parse(task)?.finding; if (f?.message) task = [f.message, f.suggested_fix].filter(Boolean).join('\n'); } catch { /* raw packet text */ }
       const diff = maker.worktree_path ? this.loopService.workingTreeDiff(maker.worktree_path) : '';
       const state = checkerSecondOpinionState(task, diff, withoutHiddenChecks(maker.metadata.deterministic_checks || []));
-      await runJudgment(this.db, checkerSecondOpinion, { type: 'worker_lease', id: checker.id }, state, undefined, { checkerVerdict, loopRunId: run.id });
+      await runJudgment(this.db, checkerSecondOpinion, { type: 'worker_lease', id: checker.id }, state, undefined, { checkerVerdict, loopRunId: run.id, dataSource: makerDiffSource(this.db, run.goal_id) });
     } catch { /* shadow judgment must never affect the loop */ }
   }
 
