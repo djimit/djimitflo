@@ -10,6 +10,9 @@ import { recordPowerSample, resourceLedgerEnabled } from '../services/resource-l
 import { hourBucket, recordPolicyViolation } from '../services/policy-violations';
 
 export const HOST_AGENT_SCOPE = 'host-agent';
+/** The oldest scripts/djimit-host-agent.py VERSION the server expects on /poll; a live host below it is the stall
+ *  `fleet:agent_outdated:<host>` (stall-watch.ts). Raise it together with VERSION when the server starts relying on a newer agent. */
+export const MIN_HOST_AGENT_VERSION = '3';
 const limiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
 
 const fail = (res: any, error: unknown) => {
