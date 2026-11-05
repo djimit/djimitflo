@@ -13,11 +13,12 @@ import { dimsMatch } from './embedding-dims';
  */
 export const proposalDedupeEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.PROPOSAL_DEDUPE_MODE === 'shadow' && Boolean(env.NVIDIA_API_KEY);
 
-export async function embed(text: string, fetchFn: typeof fetch = fetch, inputType: 'passage' | 'query' = 'passage'): Promise<Float32Array | null> {
+/** `source` (re-20261105 C4): where the text came from (e.g. 'kb_page') for the egress shadow judgment on the ledger row. */
+export async function embed(text: string, fetchFn: typeof fetch = fetch, inputType: 'passage' | 'query' = 'passage', source?: string): Promise<Float32Array | null> {
   // UX-18: one ledger row per embedding call (consumer 'embeddings'); sizes only
   const t0 = Date.now(); const model = process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b';
   const ledger = (ok: boolean, status: string) => recordLlmCall({ consumer: 'embeddings', model, provider: 'nvidia', ok, latencyMs: Date.now() - t0, outChars: 0,
-    tokensIn: Math.ceil(Math.min(text.length, 8_000) / 4), taskKind: inputType, status });
+    tokensIn: Math.ceil(Math.min(text.length, 8_000) / 4), taskKind: inputType, status, dataSource: source });
   try {
     const res = await nvidiaFetch(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/embeddings`, {
       method: 'POST', signal: AbortSignal.timeout(60_000),

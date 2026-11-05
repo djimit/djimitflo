@@ -61,6 +61,21 @@ and still lists `openai` and `anthropic` under `private_only`:
 
 The evidence section's `would_block_v2` counts, per data class, how many calls of the last 7 days V2 would have refused.
 
+## Per-call shadow judgment (`EGRESS_CLASS_MODE=shadow`, re-20261105 E7)
+
+Default off. In shadow, every `llm_model_calls` row (written by `recordModelCall`, the one ledger of every server-side model
+call) carries `egress_class` = `{host, dest, data, source, would_deny}`:
+- `host` / `dest`: the destination resolved as above;
+- `source` / `data`: the payload source where the caller knows it — `kb_page` (KB ingest content safety and embedding) is
+  confidential (the operator's private wiki; `kb_pages` has no public-source marker), `maker_diff:<owner/repo>` (jev second
+  opinion, maker and checker rows) is public for `djimit/djimitflo` and confidential for any other repo, a content-safety
+  subject type keeps the consumer's assumed class; no source = the consumer's assumed class;
+- `would_deny`: confidential or restricted data to any non-local destination (stricter than V2: EU-hosted is not local).
+
+Nothing reads it on a request path; no call is blocked, rerouted or changed, and any other flag value (also `enforce`) is
+off. The evidence section `egress.shadow` counts judged and unjudged calls and `would_deny` per consumer × destination ×
+data class.
+
 ## Open questions for the operator
 
 1. **Jurisdiction per provider:** confirm or correct each row above. In particular jev (`api.typesafe.ai`): where is it

@@ -44,6 +44,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   EFFORT_LAMBDA_KWH: '0 (cost per kWh of a local/remote run, ~0.3 kW × mean duration; 0 = GPU slack)',
   EFFORT_LAMBDA_TOK: '0.41 (verified changes per M cloud tokens; used only when the last 7 days have no verified change or no cloud maker tok…',
   EFFORT_SIBLING_RANDOMISE: 'off',
+  EGRESS_CLASS_MODE: 'off (`shadow`)',
   EVOLUTION_ESTIMATORS_ENABLED: 'off (on: once per UTC day writes delays, discriminability, trial blindness, gym pass rate per tier, model ok rates and …',
   EVOLUTION_FEEDBACK_MODE: 'off (`shadow`, `on`)',
   EVOLUTION_GYM_REMOTE_MAX_PER_DAY: '24',

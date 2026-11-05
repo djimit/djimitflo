@@ -95,7 +95,7 @@ mt_gh() {   # mt_gh pr <verb> N --flag VALUE: REST calls that gh has no pinned-s
   local verb="$2" n="$3" v="${5:-}"
   case "$verb" in
     update-branch) ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/update-branch" -f "expected_head_sha=$v" ;;
-    merge-at)      ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/merge" -f merge_method=squash -f "sha=$v" ;;
+    merge-at)      ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/merge" -f merge_method=squash -f "sha=$v" -f "commit_message=$(merge_message "$n")" ;;
     checks-at)     checks_verdict "$v" | jq -r 'if .verdict == "green" then "pass" elif .verdict == "red" then "fail red:\(.red|join(","))\(if .reason then " " + .reason else "" end)"
                      else "pending missing:\(.missing|join(",")) pending:\(.pending|join(","))\(if .reason then " " + .reason else "" end)" end' ;;
     *) echo "mt_gh: unknown verb $verb" >&2; return 64 ;;
@@ -103,6 +103,20 @@ mt_gh() {   # mt_gh pr <verb> N --flag VALUE: REST calls that gh has no pinned-s
 }
 
 now() { date -u +%FT%TZ; }
+
+# --- merge attribution (re-20261105 E10/C10): merged_by is `djimit` for agent and human alike, so every merge this script
+# makes says so in its squash commit: GitHub's own default squash body (what a UI merge writes; the title stays default)
+# plus `merged-via: <script> (<actor>) <ISO ts>`. A body that cannot be read leaves the trailer alone — never no trailer.
+# MT_MERGED_VIA_ACTOR: who ran it (default `agent, operator instruction`; dependabot-merge.sh: `workflow, operator policy`).
+MERGED_VIA_SCRIPT="$(basename "$0")"   # sourced by dependabot-merge.sh: $0 is that script
+merge_body_default() {
+  ghx api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){viewerMergeBodyText(mergeType:SQUASH)}}}' \
+    -f "o=${REPO_SLUG%%/*}" -f "r=${REPO_SLUG#*/}" -F "n=$1" -q .data.repository.pullRequest.viewerMergeBodyText
+}
+merge_message() {
+  local body; body="$(probe MERGE_BODY merge_body_default "$1" 2>/dev/null)" || body=""
+  printf '%s%smerged-via: %s (%s) %s' "$body" "${body:+$'\n\n'}" "$MERGED_VIA_SCRIPT" "${MT_MERGED_VIA_ACTOR:-agent, operator instruction}" "$(now)"
+}
 record() {
   printf '{"at":"%s","event":"%s","pr":"%s","head":"%s","key":"%s","detail":"%s"}\n' "$(now)" "$1" "$2" "${3:-}" "${4:-}" \
     "$(printf '%s' "${5:-}" | tr -d '"\\' | tr '\n' ' ' | head -c 200)" >> "$LEDGER" 2>/dev/null \

@@ -70,7 +70,7 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
       createHash('sha256').update(text).digest('hex').slice(0, 16), mode, decision, reason, Date.now() - started, model, new Date().toISOString());
     // UX-18: one ledger row per recorded verdict (consumer 'content_safety'); sizes only, never the text
     recordModelCall(db, { consumer: 'content_safety', model, provider: 'nvidia', ok: decision !== 'error', latencyMs: Date.now() - started, outChars: 0, shadow: 0, agree: null,
-      tokensIn: Math.ceil(Math.min(text.length, 4_000) / 4), taskKind: 'safety', status: reason.slice(0, 80) });
+      tokensIn: Math.ceil(Math.min(text.length, 4_000) / 4), taskKind: 'safety', status: reason.slice(0, 80), dataSource: subject.type });
   };
   try {
     const res = await nvidiaFetch(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/chat/completions`, {
