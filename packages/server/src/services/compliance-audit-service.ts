@@ -104,6 +104,7 @@ export class ComplianceAuditService {
     const evidenceJson = JSON.stringify(this.sortKeysDeep(evidence));
 
     const event = input.event;
+    // resource_id keeps '' (not NULL): the compliance_audit_log view maps NULL to resource_type, which would no longer match the hash
     const sequence = ((this.db.prepare('SELECT MAX(chain_sequence) AS value FROM audit_events').get() as any)?.value || 0) + 1;
     this.db.prepare(`
       INSERT INTO audit_events (
@@ -115,7 +116,7 @@ export class ComplianceAuditService {
       entry.id, event?.eventType || `compliance.${entry.action}`, entry.timestamp,
       event?.userId || entry.actor, event?.agentId || null, event?.taskId || null,
       event?.executionEventId || null, entry.action, event?.resourceType || 'compliance',
-      entry.resource || null, event?.riskLevel || 'medium',
+      entry.resource ?? null, event?.riskLevel || 'medium',
       event?.before ? JSON.stringify(event.before) : null,
       event?.after ? JSON.stringify(event.after) : null,
       event?.ipAddress || null, event?.userAgent || null, evidenceJson, entry.outcome,

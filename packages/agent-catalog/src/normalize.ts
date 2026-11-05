@@ -15,9 +15,10 @@ function divisionFromPath(sourcePath: string): string {
   const parts = String(sourcePath || '').split('/').filter(Boolean);
   return parts[0] || 'unknown';
 }
-function slug(s: string): string {
-  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+/** Input is bounded before the regex chain; runs are already collapsed to one '-', so the trim needs no quantifier. */
+export function slug(s: string): string {
+  return String(s || '').slice(0, 256).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 export function hashProfile(profile: Profile): string {
