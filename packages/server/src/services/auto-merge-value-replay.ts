@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { autoMergeValueSignal, VALUE_GATE_REPLAY_JUDGMENT } from './loop-auto-merge-state';
+import { autoMergeValueSignal, VALUE_GATE_REPLAY_JUDGMENT, VALUE_KILL_SHARE_MIN } from './loop-auto-merge-state';
+import { parsePrUrl } from './repo-registry';
 import { runLanes } from './settlement-execution';
 
 export { VALUE_GATE_REPLAY_JUDGMENT };
@@ -62,4 +63,28 @@ export function replayAutoMergeValueGate(db: Database, opts: { apply?: boolean; 
   const would_block = totals.low + totals.missing;
   return { applied: !!opts.apply, decisions: rows.length, totals, by_lane, would_block, would_block_share: rows.length ? +(would_block / rows.length).toFixed(3) : null,
     written, already_recorded: opts.apply ? rows.length - written : 0, rows };
+}
+
+/**
+ * re-20261105 B1: the merge train's input (scripts/merge-train.sh --value-signals F). For every loop PR of `repo` (any auto-merge
+ * decision, or none) the gate's own rule on the deciding maker lease (latest completed, not superseded — what the tick reads):
+ * lane (settlement runLanes / oracleLane) and value_signal pass | low | missing. The newest run per PR number decides. Read-only.
+ * CLI: node dist/scripts/pr-value-signals.js --db <path> [--repo owner/name].
+ */
+export function prValueSignals(db: Database, repo: string, now = new Date()) {
+  const runs = db.prepare(`SELECT r.id, json_extract(r.metadata, '$.pr_url') AS url,
+      (SELECT json_extract(l.metadata, '$.deterministic_checks') FROM worker_leases l WHERE l.loop_run_id = r.id AND l.role = 'maker' AND l.status = 'completed'
+        AND json_extract(l.metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY l.updated_at DESC LIMIT 1) AS checks,
+      (SELECT json_extract(l.metadata, '$.graded') FROM worker_leases l WHERE l.loop_run_id = r.id AND l.role = 'maker' AND l.status = 'completed'
+        AND json_extract(l.metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY l.updated_at DESC LIMIT 1) AS graded
+    FROM loop_runs r WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL ORDER BY r.created_at, r.id`).all() as Array<{ id: string; url: string; checks: string | null; graded: string | null }>;
+  const lanes = runLanes(db);
+  const prs: Record<string, { lane: string; value_signal: Signal; run_id: string }> = {};
+  for (const r of runs) {
+    const ref = parsePrUrl(r.url);
+    if (!ref || ref.slug.toLowerCase() !== repo.toLowerCase()) continue;
+    prs[String(ref.number)] = { lane: lanes.get(r.id) ?? 'other', value_signal: autoMergeValueSignal(parse(r.checks), parse(r.graded)), run_id: r.id };
+  }
+  return { source: 'dist/scripts/pr-value-signals.js (loop-auto-merge-state autoMergeValueSignal on the deciding maker lease)', repo, generated_at: now.toISOString(),
+    kill_share_min: VALUE_KILL_SHARE_MIN, prs };
 }

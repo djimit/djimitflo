@@ -47,7 +47,7 @@ import { learningLedger } from './learning-ledger';
 import { fleetSignatureEvidence } from './fleet-event-signatures';
 import { makerWarmDepsEvidence } from './maker-warm-deps';
 import { falsifierEvidence } from './commons-falsifier';
-import { runLanes, settlementExecutionEvidence, settlementValueEvidence, survivalByLane } from './settlement-execution';
+import { latestSettlements, runLanes, settlementExecutionEvidence, settlementValueEvidence, survivalByLane } from './settlement-execution';
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
@@ -77,7 +77,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
   { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
-  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
+  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
   { name: 'LOOP_PR_CI_WATCH', acting: false }, { name: 'LOOP_PR_CI_WATCH_MINUTES', acting: false },
   { name: 'WORK_ITEM_OUTCOME_SYNC', acting: true },
@@ -101,7 +101,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'OUTCOME_ATTRIBUTION_ENABLED', acting: true },
   { name: 'EFFORT_CONTROLLER_MODE', acting: false }, { name: 'EFFORT_LAMBDA_TOK', acting: false }, { name: 'EFFORT_LAMBDA_KWH', acting: false }, { name: 'EFFORT_EXPLORATION', acting: false },
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
-  { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
+  { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_FITNESS_MUTANTS_V2', acting: true }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
   { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true },
@@ -322,8 +322,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     const by_state = emptySettlementCounts(); const anomalies: Record<string, number> = {};
     for (const p of prs) { by_state[p.settlement.state]++; if (p.settlement.state === 'PIPELINE_ANOMALY') anomalies[p.settlement.reason] = (anomalies[p.settlement.reason] ?? 0) + 1; }
     const c = survivalCounts(prs.map((p) => p.settlement.state));
-    // U1: per lane, informative:false where 0 regressions at >= 30 settled (the label cannot fail there); report only
-    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, by_lane: survivalByLane(prs, lanes) };
+    // U1/C7: per lane, informative:null on test-only lanes (line retention cannot fail there — not a pass) with the settled
+    // value (tests pass at +14 d + fresh-mutant kill) next to it; false on another lane at 0 regressions in >= 30 settled; report only
+    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, by_lane: survivalByLane(prs, lanes, latestSettlements(db, lanes)) };
   })();
   const byRepo = extras.length ? extras.map((r) => {
     try { const c = survivalCounts(loopPrSettlements(db, now, r.slug, env).map((p) => p.settlement.state)); return { repo: r.slug, ...c }; } catch { return { repo: r.slug, survived: null, regressed: null, settled: null, rate: null }; }
