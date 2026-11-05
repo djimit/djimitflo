@@ -16,6 +16,8 @@ curl -s https://djimitflo.agentical.nl/health | jq .build   # commit_matches_bui
   runtime source, so `.git` stayed root-owned and every loop run failed with `WORKTREE_CREATE_FAILED ... cannot lock ref`.
 - GitHub "Push on main" does not deploy.
 - The script passes `VCS_REF`, `BUILD_SOURCE` and `BUILD_TIME`; `/health` reports them as `build.*`.
+- Every host-mutating operator script follows the same rule: dry run by default, `--apply` to act, unknown flag fails
+  (AGENTS.md "Host scripts and skills"; checked by `scripts/host-scripts-dry-run.test.mjs`).
 
 ## Flags (runtime.env)
 
