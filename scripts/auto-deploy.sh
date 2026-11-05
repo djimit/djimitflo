@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # auto-deploy.sh — runs ON the VPS (systemd timer, scripts/systemd/) and deploys main when it is safe (plan WS-J / J2).
 #
-# Deploys only when ALL hold: main differs from what runs; every required context of main's branch protection has a
-# success of its newest run on that commit (skipped/neutral/missing is not a pass) and no other check failed or runs;
+# Deploys only when ALL hold: main differs from what runs; every required context of main's branch protection (read live;
+# unreadable = waiting) has a success of its newest run on that commit (skipped/neutral/missing is not a pass) — other
+# checks do not gate, a failed or running one is only logged;
 # main has not moved for AUTO_DEPLOY_SETTLE_MIN minutes (a merge train becomes one deploy); no loop worker is running;
 # no kill switch file; the commit's scripts/deploy-vps.sh matches the host-installed copy. The deploy itself is that
 # host-installed copy of deploy-vps.sh (--local), with its health wait + rollback.
@@ -291,27 +292,35 @@ CHECKS="$(check_runs "$SHA")"
 # success/skipped/neutral set deployed, even with a required check absent). Mirrors loop-auto-merge.ts / merge-train.sh.
 REQUIRED="$(required_checks 2>/dev/null || true)"
 [ -n "$REQUIRED" ] || { log "required checks unavailable for main — not deploying $SHA"; waiting "$SHA" "required checks unavailable"; exit 0; }
-WHY="$(REQUIRED="$REQUIRED" node -e '
-  // checks that gate no code (the scheduled OpenWiki `update` job runs on main HEAD daily; prod 10-10 it held the deploy
-  // of #738-#744 for its whole run, and when it fails — as on 08-10 and 09-10 — it would block every deploy until main moved)
+# prod 2026-11-05: main 55ce5c2b waited ~10 h on "not_green:Dependabot" (GitHub's dynamic "Dependabot Updates" workflow
+# failed on the main head) while every required check was green. Only the required checks of main's branch protection
+# gate a deploy; any other check that is not green is logged as info. Two lines out: the reasons not to deploy, the info.
+GATE="$(REQUIRED="$REQUIRED" node -e '
+  // non-required checks to leave out of the info line too (default: the scheduled OpenWiki `update` job). Since only
+  // required checks gate, this no longer changes the decision; kept so existing host configs mean what they did.
   const ignore = new Set((process.env.AUTO_DEPLOY_IGNORE_CHECKS ?? "update").split(",").map((s) => s.trim()).filter(Boolean));
   // `context<TAB>app_id`: the required producer is part of the identity (a same-named run of another app never stands in)
   const required = process.env.REQUIRED.split("\n").filter((l) => l.trim()).map((l) => { const [context, app] = l.split("\t");
     return { context: context.trim(), app: /^\d+$/.test((app ?? "").trim()) ? Number(app) : null }; });
   const all = (JSON.parse(require("fs").readFileSync(0, "utf8")).check_runs || []).sort((a, b) => (a.id || 0) - (b.id || 0));
-  // the newest run per producer and name decides (a rerun replaces the run it re-ran)
+  const matches = (q, c) => c.name === q.context && (q.app === null || c.app?.id === q.app);
+  // the newest run decides (a rerun replaces the run it re-ran)
+  const of = (q) => all.filter((c) => matches(q, c)).at(-1);
+  const missing = required.filter((q) => !of(q)).map((q) => q.context);
+  const pending = required.filter((q) => of(q) && of(q).status !== "completed").map((q) => q.context);
+  const notSuccess = required.filter((q) => of(q) && of(q).status === "completed" && of(q).conclusion !== "success");
+  const why = [notSuccess.length ? "required_not_success:" + notSuccess.map((q) => q.context + "=" + of(q).conclusion).join(",") : "",
+    pending.length ? "required_pending:" + pending.join(",") : "", missing.length ? "required_missing:" + missing.join(",") : ""].filter(Boolean);
   const newest = new Map();
   for (const c of all) newest.set(`${c.app?.id ?? ""}\u0000${c.name}`, c);
-  const of = (q) => all.filter((c) => c.name === q.context && (q.app === null || c.app?.id === q.app)).at(-1);
-  const names = required.map((q) => q.context);
-  const r = [...newest.values()].filter((c) => !ignore.has(c.name) || names.includes(c.name));
-  const notSuccess = required.filter((q) => of(q) && of(q).status === "completed" && of(q).conclusion !== "success");
-  const missing = required.filter((q) => !of(q)).map((q) => q.context);
-  const bad = r.filter((c) => c.status !== "completed" || !["success", "skipped", "neutral"].includes(c.conclusion));
-  const why = [notSuccess.length ? "required_not_success:" + notSuccess.map((q) => q.context + "=" + of(q).conclusion).join(",") : "",
-    missing.length ? "required_missing:" + missing.join(",") : "", bad.length ? "not_green:" + bad.map((c) => c.name).join(",") : ""].filter(Boolean);
-  console.log(why.join(" "));
-  process.exit(why.length ? 1 : 0);' <<<"$CHECKS")" || { log "CI not green (yet) for $SHA: $WHY"; waiting "$SHA" "CI not green: $WHY"; exit 0; }
+  const info = [...newest.values()].filter((c) => !required.some((q) => matches(q, c)) && !ignore.has(c.name)
+    && (c.status !== "completed" || !["success", "skipped", "neutral"].includes(c.conclusion)))
+    .map((c) => `${c.name}=${c.status === "completed" ? c.conclusion : c.status}`);
+  console.log(why.join(" ")); console.log(info.join(","));
+  process.exit(why.length ? 1 : 0);' <<<"$CHECKS")" && GREEN=1 || GREEN=0
+WHY="${GATE%%$'\n'*}"; INFO="${GATE#*$'\n'}"; [ "$INFO" != "$GATE" ] || INFO=""
+[ -z "$INFO" ] || log "non-required checks not green (info, not gating): $INFO"
+[ "$GREEN" = 1 ] || { log "CI not green (yet) for $SHA: $WHY"; waiting "$SHA" "CI not green: $WHY"; exit 0; }
 
 AGE_MIN="$(commit_json "$SHA" | node -e 'const c=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log(Math.floor((Date.now()-Date.parse(c.commit.committer.date))/60000))')"
 [ "$AGE_MIN" -ge "$SETTLE_MIN" ] || { log "main is ${AGE_MIN} min old, settling until ${SETTLE_MIN}"; waiting "$SHA" "main is ${AGE_MIN} min old, settling until ${SETTLE_MIN}"; exit 0; }
