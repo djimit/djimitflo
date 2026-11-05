@@ -49,12 +49,15 @@ export interface ReplayResult { candidates: number; classified: number; consolid
  * The question it answers: did this pass produce a new, evidence-backed lesson?
  *   ACCEPT        a recurring cause was consolidated into a new engineering rule
  *   REJECT        failed runs were examined, nothing new came out (all uncertain, or no cause recurs yet)
- *   INCONCLUSIVE  nothing could be examined (no candidates, or the judge returned nothing)
+ *   INCONCLUSIVE  nothing could be examined (no candidates, or the judge returned nothing), or the recurring cause's rule is
+ *                 already known (memory_candidates gained no row)
  */
 export type DreamVerdict = 'ACCEPT' | 'REJECT' | 'INCONCLUSIVE';
 
-export function dreamVerdict(r: { candidates: number; classified: number; confident: number; consolidated: number }): { verdict: DreamVerdict; reason: string } {
+export function dreamVerdict(r: { candidates: number; classified: number; confident: number; consolidated: number; known?: number }): { verdict: DreamVerdict; reason: string } {
   if (r.consolidated > 0) return { verdict: 'ACCEPT', reason: `${r.consolidated} new engineering rule(s) from recurring causes` };
+  // re-20261105 A M1: a recurring cause whose rule exists (same source_ref in the window, or the template dedup returned a match)
+  if (r.known) return { verdict: 'INCONCLUSIVE', reason: `${r.known} recurring cause(s), rule already known` };
   if (r.candidates === 0) return { verdict: 'INCONCLUSIVE', reason: 'no new failed runs to examine' };
   if (r.classified === 0) return { verdict: 'INCONCLUSIVE', reason: `${r.candidates} candidate(s), but the judge returned nothing` };
   return { verdict: 'REJECT', reason: `${r.classified} examined, ${r.confident} confidently classified, no cause recurs enough for a new rule` };
@@ -140,8 +143,8 @@ export class DreamStateService {
       const j = await runJudgment(this.db, failureCause, { type: 'loop_run', id: p.id }, p.state);
       if (j) { classified += 1; if (j.decision !== 'uncertain') confident += 1; }
     }
-    const consolidated = this.consolidate();
-    const { verdict, reason } = dreamVerdict({ candidates: pending.length, classified, confident, consolidated });
+    const { created: consolidated, known } = this.consolidateCounts();
+    const { verdict, reason } = dreamVerdict({ candidates: pending.length, classified, confident, consolidated, known });
     this.db.prepare('INSERT INTO dream_ledger (created_at, verdict, reason, candidates, classified, confident, consolidated) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(new Date().toISOString(), verdict, reason, pending.length, classified, confident, consolidated);
     return { candidates: pending.length, classified, consolidated, verdict };
@@ -152,7 +155,10 @@ export class DreamStateService {
    * becomes one memory candidate (engineering_rule), at most once per 7 days per key. Candidates still go through the
    * normal review/promotion before any decision reads them (E8).
    */
-  consolidate(days = 7): number {
+  consolidate(days = 7): number { return this.consolidateCounts(days).created; }
+
+  /** created = rows memory_candidates actually gained; known = recurring causes whose rule already exists (not a new rule) */
+  consolidateCounts(days = 7): { created: number; known: number } {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const rows = this.db.prepare(`SELECT j.reason, r.gates_json, r.loop_name FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
       WHERE j.judgment = 'failure_cause' AND j.decision != 'uncertain' AND j.created_at >= ?`).all(since) as Array<{ reason: string | null; gates_json: string | null; loop_name: string }>;
@@ -170,12 +176,14 @@ export class DreamStateService {
     }
     const memory = new MemoryCandidateService(this.db);
     const improvements = dreamProposalsEnabled() ? new SelfImprovementService(this.db) : null;
-    let created = 0;
+    let created = 0; let known = 0;
+    const rowCount = () => (this.db.prepare('SELECT COUNT(*) AS n FROM memory_candidates').get() as { n: number }).n;
     for (const [key, g] of groups) {
       if (g.n < MIN_RECURRENCE) continue;
       const sourceRef = `dream:cause:${key}`;
-      if (this.db.prepare('SELECT 1 FROM memory_candidates WHERE source_ref = ? AND created_at >= ?').get(sourceRef, since)) continue;
+      if (this.db.prepare('SELECT 1 FROM memory_candidates WHERE source_ref = ? AND created_at >= ?').get(sourceRef, since)) { known += 1; continue; }
       try {
+        const before = rowCount();
         memory.create({
           title: `Recurring loop failure: ${g.cause} at ${g.gate}`.slice(0, 200),
           content: `In the last ${days} days ${g.n} ${g.loop} runs failed with cause "${g.cause}" at gate "${g.gate}"`
@@ -184,7 +192,8 @@ export class DreamStateService {
           memory_type: 'engineering_rule', source_ref: sourceRef,
           metadata: { origin: 'dream-state', cause: g.cause, gate: g.gate, occurrences: g.n, platform_fault_count: g.platform },
         });
-        created += 1;
+        // under MEMORY_TEMPLATE_DEDUP_MODE=enforce create() returns the existing match instead of inserting (prod 11-04: 20 ACCEPTs, 0 rows)
+        if (rowCount() > before) created += 1; else known += 1;
       } catch { /* e.g. secret detector: skip, never break the replay */ }
       // Step 4: a recurring *platform* cause with a known home becomes one grounded fix proposal (governed by the panel).
       const home = CAUSE_TARGETS[g.cause];
@@ -202,6 +211,6 @@ export class DreamStateService {
         } catch { /* never break the replay */ }
       }
     }
-    return created;
+    return { created, known };
   }
 }

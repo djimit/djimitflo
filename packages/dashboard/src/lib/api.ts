@@ -309,6 +309,11 @@ export interface EvolutionEvidence {
     by_entry: Array<{ entry_id: string; source: string; confidence: string; matches: number; subjects: number }> | null;
     proposals: { matched: number; verified: number; regressed: number; settled: number; verified_share: number | null } | null;
   };
+  /** LANE_POLICY_MODE (shadow): maker/reviewer runtime dispatches per data class (services/lane-policy.ts); by_class null = unknown */
+  lane_policy?: {
+    mode: 'off' | 'shadow'; policy_hash: string; note: string;
+    by_class: Array<{ data_class: string; would_allow: number; would_deny: number }> | null;
+  };
   /** K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps (services/knowledge-gaps.ts knowledgeGapEvidence); nulls while off */
   knowledge_gaps?: KnowledgeGapEvidence;
   /** JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev (services/jev-challenger.ts); rates null below min_n */

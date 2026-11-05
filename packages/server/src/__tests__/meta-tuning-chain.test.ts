@@ -131,3 +131,15 @@ it('a minimum confidence above the reachable cap turns tuning off: the stale act
   vi.stubEnv('META_TUNING_MIN_CONFIDENCE', '0.9');
   expect(meta.getActiveLoopTuning('doc-drift')).toMatchObject({ recommendedConcurrency: 3 });
 });
+
+// re-20261105 B9: with the floor above the reachable cap the tuner kept logging (146 meta_tuning_log rows since 10-30, applied
+// 0) for a tuning nothing could ever consume. tune() is skipped then: no log row, no evaluation.
+it('runAutoTuning is skipped while META_TUNING_MIN_CONFIDENCE exceeds the reachable confidence cap', async () => {
+  for (let i = 0; i < 20; i++) record(i);
+  vi.stubEnv('META_TUNING_MIN_CONFIDENCE', '0.95');
+  expect(await meta.runAutoTuning()).toEqual({ evaluated: 0, applied: 0 });
+  expect(db.prepare('SELECT COUNT(*) AS n FROM meta_tuning_log').get()).toEqual({ n: 0 });
+  vi.stubEnv('META_TUNING_MIN_CONFIDENCE', String(META_TUNING_MAX_CONFIDENCE)); // reachable again: tunes and logs
+  expect(await meta.runAutoTuning()).toEqual({ evaluated: 1, applied: 1 });
+  expect(db.prepare('SELECT COUNT(*) AS n FROM meta_tuning_log').get()).toEqual({ n: 1 });
+});

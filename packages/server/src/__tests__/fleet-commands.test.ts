@@ -8,11 +8,13 @@ import { runMigrations } from '../database/migrate';
 import { FleetCommands } from '../services/fleet-commands';
 import { createFleetHostRoutes, createHostAgentRoutes, HOST_AGENT_SCOPE } from '../routes/host-agent';
 import { mintSpawnToken, resolveSpawnTokenSecret } from '../services/spawn-token';
+import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 
 let db: Database.Database; let fleet: FleetCommands;
 const sha = (t: string) => createHash('sha256').update(t).digest('hex');
-beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); fleet = new FleetCommands(db); });
-afterEach(() => { db.close(); vi.useRealTimers(); });
+// The existing shell-delivery tests run with the server-side switch on; the env-only off path has its own test below.
+beforeEach(() => { vi.stubEnv('FLEET_SHELL_ENABLED', '1'); db = new Database(':memory:'); db.exec(schema); runMigrations(db); fleet = new FleetCommands(db); });
+afterEach(() => { db.close(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 it('runs diagnostics without approval and holds shell commands until a hash-bound human approval', () => {
   const ping = fleet.request('workstation', 'ping', 'op');
@@ -209,4 +211,29 @@ it('approve: expiry is measured from the same instant as approved_at (a clock ti
   const c = fleet.request('workstation', 'reboot', 'op');
   fleet.approve(c.id, 'dennis', sha('reboot'));
   expect(fleet.poll('workstation').map((x) => x.id)).toEqual([c.id]);
+});
+
+it('poll: shell is env-only — with FLEET_SHELL_ENABLED unset an approved + audited shell row is refused, diagnostics still flow', () => {
+  vi.stubEnv('FLEET_SHELL_ENABLED', '');
+  const approved = fleet.request('workstation', 'whoami', 'op');
+  fleet.approve(approved.id, 'dennis', sha('whoami')); // writes the queued row, a live expiry and the audit record
+  // a row that only claims approval (columns + an audit row written straight to the DB) is no better
+  const t = new Date().toISOString(), exp = new Date(Date.parse(t) + 5 * 60_000).toISOString();
+  db.prepare(`INSERT INTO fleet_commands (id, host, kind, command, command_sha256, status, requested_by, approved_by, approved_at, expires_at, created_at)
+    VALUES ('forged', 'workstation', 'shell', 'id -u', ?, 'queued', 'op', 'dennis', ?, ?, ?)`).run(sha('id -u'), t, exp, t);
+  db.prepare(`INSERT INTO audit_events (id, event_type, action, resource_type, resource_id, user_id, risk_level, metadata, timestamp)
+    VALUES ('forged-audit', 'approval_granted', 'fleet_command_approved', 'fleet_command', 'forged', 'dennis', 'critical', ?, ?)`)
+    .run(JSON.stringify({ command_sha256: sha('id -u') }), t);
+  const ping = fleet.request('workstation', 'ping', 'op');
+  expect(fleet.poll('workstation').map((c) => c.id)).toEqual([ping.id]);
+  for (const id of [approved.id, 'forged']) expect(fleet.get(id), id).toMatchObject({ status: 'refused', decided_reason: 'shell_disabled_on_server' });
+  for (const v of ['0', 'true', 'yes', ' 1']) { // only the exact value 1 opens it
+    vi.stubEnv('FLEET_SHELL_ENABLED', v);
+    const c = fleet.request('workstation', 'whoami', 'op'); fleet.approve(c.id, 'dennis', sha('whoami'));
+    expect(fleet.poll('workstation'), v).toEqual([]);
+  }
+  vi.stubEnv('FLEET_SHELL_ENABLED', '1');
+  const ok = fleet.request('workstation', 'whoami', 'op'); fleet.approve(ok.id, 'dennis', sha('whoami'));
+  expect(fleet.poll('workstation').map((c) => c.id)).toEqual([ok.id]);
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'FLEET_SHELL_ENABLED', acting: true });
 });

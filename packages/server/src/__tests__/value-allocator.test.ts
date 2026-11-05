@@ -190,6 +190,17 @@ describe('value allocator: value and class', () => {
     expect(r.hard_floor).toMatch(/gate/);
   });
 
+  it('re-20261105 E8: shadow rows that act (J5 auto-approve, arena gate on resident forecasts) are decision-consumed behind their flag', () => {
+    for (let i = 0; i < 3; i++) judgment('auto_approve_shadow', 'shadow', { subjectType: 'approval', model: null });
+    for (let i = 0; i < 3; i++) judgment('forecast:resident:hermes', 'shadow', { model: null });
+    const off = buildValueAllocation(db, NOW, {}, []);
+    expect(row(off, 'judgment:auto_approve_shadow').consumer_status).not.toBe('decision_consumed');
+    expect(row(off, 'judgment:forecast:resident:hermes').consumer_status).not.toBe('decision_consumed');
+    const on = buildValueAllocation(db, NOW, { LOOP_AUTO_APPROVE_TEST_GAP: 'true', ARENA_GATE_ENABLED: 'true' }, []);
+    expect(row(on, 'judgment:auto_approve_shadow').consumer_status).toBe('decision_consumed');
+    expect(row(on, 'judgment:forecast:resident:hermes').consumer_status).toBe('decision_consumed');
+  });
+
   it('an enforce-mode judgment is decision-consumed: VALUE_PROVEN and a hard floor', () => {
     for (let i = 0; i < 3; i++) judgment('proposal_prescreen', 'enforce', { tin: 400, tout: 30 });
     const r = row(buildValueAllocation(db, NOW, {}, []), 'judgment:proposal_prescreen');
