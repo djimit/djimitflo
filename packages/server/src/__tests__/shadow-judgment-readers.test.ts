@@ -65,6 +65,7 @@ const READERS: Record<string, Reader> = {
   'services/capability-factory.ts': { policy: 'non_shadow', why: "capability_request rows are the factory's own records, mode 'on'" },
   // ── measurement ──
   'services/lane-policy.ts': { policy: 'measurement', why: 'lane_policy shadow readout: counts its own rows for the evidence section, never feeds a decision (#1159)' },
+  'services/explainer-mermaid-service.ts': { policy: 'measurement', why: 'mermaid_validate shadow: reads its own rows for dedupe, the daily credit cap and the readout; never feeds a product decision (#1156)' },
   'services/judgment-service.ts': { policy: 'measurement', why: 'the runner: records verdicts, returns them to the callers listed here' },
   'services/autonomy-shadow-service.ts': { policy: 'measurement', why: "dedupe of its own auto_approve_shadow row (the verdict acts in loop-daemon, declared above); risk_atomic fire-and-forget" },
   'services/loop-worker-executor-service.ts': { policy: 'measurement', why: 'checker second opinion recorded, never a verdict' },

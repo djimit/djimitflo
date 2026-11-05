@@ -184,7 +184,7 @@ export class ExplainerGenerationService {
       scan,
       graph,
     });
-    const author = new ExplainerAuthorService();
+    const author = new ExplainerAuthorService({ db: this.db });
 
     let sections: AuthoredSection[] = [];
     let retries_used = 0;

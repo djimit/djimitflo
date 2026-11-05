@@ -1,0 +1,37 @@
+name: Mermaid docs (warn-only)
+
+# Validates ```mermaid blocks in changed docs via the hosted Mermaid API (beta, 1 credit per diagram, 500 credits/month;
+# scripts/mermaid-validate.mjs caps a run at 40 calls). NOT a required check: path-filtered and continue-on-error, so it
+# never blocks a merge. Without the MERMAID_API_KEY secret (forks, Dependabot) the script prints "skipped: no key".
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'openwiki/**/*.md'
+      - 'docs/**/*.md'
+
+permissions:
+  contents: read
+
+jobs:
+  mermaid-docs:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+
+      - name: Validate Mermaid blocks in changed docs
+        env:
+          MERMAID_API_KEY: ${{ secrets.MERMAID_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/mermaid-validate.mjs --base "$BASE_SHA"

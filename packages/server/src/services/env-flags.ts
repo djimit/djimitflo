@@ -108,6 +108,7 @@ export const NON_EVOLUTION_FLAGS: Readonly<Record<string, string>> = {
   LOOP_REVIEWER_RETRY_ENABLED: 'retry',
   MAKER_DEPS_001_MODE: 'experiment',
   MEMORY_CANDIDATE_REVIEW_ENABLED: 'scheduler',
+  MERMAID_VALIDATE_MODE: 'shadow',
   NEEDS_GROUNDING_TRIAGE_ENABLED: 'triage',
   OCR_SHADOW_REVIEW_MODE: 'shadow',
   OPENCODE_SKIP_PERMISSIONS: 'runtime',

@@ -31,6 +31,7 @@ import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 import { skillCardsView } from '../services/skill-distillation';
 import { evolutionFeedbackMode, latestEvolutionDigest } from '../services/evolution-feedback';
 import { advisoryExposureEvidence } from '../services/advisory-exposure';
+import { mermaidValidateEvidence } from '../services/explainer-mermaid-service';
 import { expertUnitDedupe } from '../services/expert-unit-dedupe';
 import { buildTrainingDataset, trainingDatasetMode, trainingDatasetSummary } from '../services/training-dataset';
 import { buildValueAllocation, latestValueAllocation, valueAllocatorMode } from '../services/value-allocator';
@@ -200,6 +201,12 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory, affected list, pending ids, bump proposals (read-only)
   router.get('/advisory-exposure', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(advisoryExposureEvidence(db));
+  });
+
+  // MERMAID_VALIDATE_MODE=shadow: heuristic vs Mermaid API verdicts on explainer diagrams — agree / pass-but-invalid /
+  // fail-but-valid / unavailable counts, 30 d (read-only; no key, no diagram code)
+  router.get('/mermaid-validate', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(mermaidValidateEvidence(db));
   });
 
   // K5: the newest stored evolution digest (EVOLUTION_FEEDBACK_MODE=shadow|on writes one per day; null before the first)
