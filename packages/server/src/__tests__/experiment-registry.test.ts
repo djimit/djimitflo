@@ -286,3 +286,14 @@ it('re-20261105 E14 / A M3: oracle-population changes (value gate, content safet
     boot({}); // reset to unset for the next name
   }
 });
+
+it('re-20261105 B6: an experiment with a verdict projects no power left (PL-001 showed "7.3 pairs/day, projected 102" after NOT_SUPPORTED)', () => {
+  const start = '2026-09-18T12:00:00.000Z';
+  const def: ExperimentDef = { id: 'V', flag: 'V', protocol: 'p.md', started_at: start, target_n: 40, stop_by: '2026-10-28T12:00:00.000Z', stop_note: '', stop_source: 's', population: 'gym_tasks',
+    status: (_db, _env, now, since) => ({ n_per_arm: { a: since === start ? 30 : Math.round((now - Date.parse(since)) / 86_400_000) }, verdict: 'NOT_SUPPORTED' }) };
+  expect(experimentsReport(db, {}, NOW, [def]).experiments[0].power).toEqual({ n_so_far: 30, target_per_arm: 40, days_to_stop: null, accrual_window_days: null,
+    accrual_per_day: null, projected_min_arm_n: null, projected_reaches_target: null });
+  // the same experiment still collecting keeps its projection
+  const open = experimentsReport(db, {}, NOW, [{ ...def, status: (d, e, n, s) => ({ ...def.status(d, e, n, s), verdict: null }) }]).experiments[0].power;
+  expect(open.projected_min_arm_n).toBeGreaterThan(30);
+});
