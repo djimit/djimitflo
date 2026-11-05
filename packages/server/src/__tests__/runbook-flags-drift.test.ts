@@ -69,3 +69,55 @@ it('review #1094: READ_SELECTOR_ENV is exactly the runtime/model selector names 
   }
   expect([...READ_SELECTOR_ENV]).toEqual([...new Set(reads)].sort());
 });
+
+// re-20261105 A §1 / E17 / SYNTHESIS P1-8: the name pattern above misses acting flags whose name has no flag shape
+// (PROPOSAL_GROUNDING_REQUIRED, SELF_IMPROVEMENT_GOAL_ON_APPROVE, LOOP_PR_BODY_V2, OPENMYTHOS_LEADERBOARD_PUBLIC) and the
+// judgment modes judgmentMode() builds at run time (TYPESAFE_KB_PASSAGE_RELEVANCE_MODE=enforce was armed in prod, unregistered).
+// So: every env read the server compares with an acting value, and every TYPESAFE_<judgment id>_MODE, is registered.
+const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+function serverSources(): Array<[string, string]> {
+  const root = path.resolve(__dirname, '..');
+  const out: Array<[string, string]> = [];
+  const walk = (dir: string): void => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') walk(p); continue; }
+      if (/\.tsx?$/.test(e.name) && !/\.(test|spec)\.|\.d\.ts$/.test(e.name)) out.push([path.relative(root, p), stripComments(fs.readFileSync(p, 'utf8'))]);
+    }
+  };
+  walk(root);
+  return out;
+}
+const ACTING = String.raw`['"](?:on|act|enforce|true|1)['"]`;
+const ENV_NAME = String.raw`\benv(?:\.([A-Z][A-Z0-9_]*)|\[\s*['"]([A-Z][A-Z0-9_]*)['"]\s*\])`;
+/** env.X === 'true' (also `?? 'off'`, `.trim()`, `.toLowerCase()`, !==) and the reversed 'true' === env.X */
+const ACTING_COMPARISONS = [
+  new RegExp(String.raw`${ENV_NAME}(?:\s*\?\?\s*['"][^'"]*['"])?\)?(?:\??\.(?:trim|toLowerCase)\(\))*\s*[!=]==?\s*${ACTING}`, 'g'),
+  new RegExp(String.raw`${ACTING}\s*[!=]==?\s*\(?${ENV_NAME}`, 'g'),
+];
+function actingEnvReads(): Map<string, string> {
+  const reads = new Map<string, string>();
+  for (const [file, src] of serverSources()) for (const re of ACTING_COMPARISONS) for (const m of src.matchAll(re)) {
+    const name = m[1] || m[2];
+    if (!reads.has(name)) reads.set(name, file);
+  }
+  return reads;
+}
+/** judgmentMode(id) reads TYPESAFE_<ID>_MODE: the ids of every JudgmentDef in the source */
+function judgmentModeFlags(): string[] {
+  const ids = new Set<string>();
+  for (const [, src] of serverSources()) for (const m of src.matchAll(/:\s*JudgmentDef\s*(?:=\s*)?\{[\s\S]{0,1000}?\bid:\s*'([a-z0-9_]+)'/g)) ids.add(m[1]);
+  return [...ids].map((id) => `TYPESAFE_${id.toUpperCase()}_MODE`).sort();
+}
+
+it('P1-8: every env read compared with an acting value, and every TYPESAFE_<judgment>_MODE, is in EVOLUTION_FLAGS or NON_EVOLUTION_FLAGS', async () => {
+  const { NON_EVOLUTION_FLAGS } = await import('../services/env-flags');
+  const registered = new Set([...EVOLUTION_FLAGS.map((f) => f.name), ...Object.keys(NON_EVOLUTION_FLAGS)]);
+  const acting = actingEnvReads();
+  expect(acting.size).toBeGreaterThan(100); // the scan sees the comparisons
+  const modes = judgmentModeFlags();
+  expect(modes).toEqual(expect.arrayContaining(['TYPESAFE_KB_PASSAGE_RELEVANCE_MODE', 'TYPESAFE_DECISION_CONTEXT_MODE', 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', 'TYPESAFE_DISCOVERY_RELEVANCE_MODE']));
+  const unregistered = [...[...acting].map(([n, f]) => `${n} (${f})`).filter((s) => !registered.has(s.split(' ')[0])),
+    ...modes.filter((n) => !registered.has(n)).map((n) => `${n} (judgmentMode)`)].sort();
+  expect(unregistered).toEqual([]);
+});
