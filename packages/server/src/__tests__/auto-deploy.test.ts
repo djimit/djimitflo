@@ -65,6 +65,35 @@ it('skip is not pass: every required context needs a success of its newest run o
   expect(unreadable).toContain('required checks unavailable'); expect(unreadable).not.toContain('DEPLOYED');
 });
 
+// prod 2026-11-05: main 55ce5c2b waited ~10 h on "not_green:Dependabot" — GitHub's dynamic "Dependabot Updates" workflow
+// failed on the main head while every required check of main's branch protection was green. Only required checks gate.
+it('gates on the required checks of main only: a failed non-required check is reported, not blocking', () => {
+  const r = (id: number, name: string, conclusion: string | null, status = 'completed', app = 15368) => ({ id, name, status, conclusion, app: { id: app } });
+  const checks = (runs: object[]) => ({ AD_CHECKS: `echo '${JSON.stringify({ check_runs: runs })}'` });
+  const req = { AD_REQUIRED: `printf 'build-and-test (22)\\t15368\\nsbom\\t15368\\n'` };
+  const green2 = [r(1, 'build-and-test (22)', 'success'), r(2, 'sbom', 'success')];
+  // (a) required all green + failed non-required Dependabot runs (in progress as well): deploys, the failure is logged as info
+  const dep = run({ ...req, ...checks([...green2, r(3, 'Dependabot', 'failure', 'completed', 29110), r(4, 'Dependabot Updates', 'failure', 'completed', 29110), r(5, 'CodeQL', null, 'in_progress')]) });
+  expect(dep).toContain('DEPLOYED');
+  expect(dep).toMatch(/non-required checks not green \(info, not gating\): .*Dependabot/);
+  expect(dep).not.toContain('CI not green');
+  // (b) a required check failed or still running: waiting, whatever the non-required checks say
+  const failed = run({ ...req, ...checks([r(1, 'build-and-test (22)', 'success'), r(2, 'sbom', 'failure'), r(3, 'Dependabot', 'failure', 'completed', 29110)]) });
+  expect(failed).toContain('required_not_success:sbom=failure'); expect(failed).not.toContain('DEPLOYED');
+  const pending = run({ ...req, ...checks([r(1, 'build-and-test (22)', 'success'), r(2, 'sbom', null, 'in_progress')]) });
+  expect(pending).toContain('required_pending:sbom'); expect(pending).not.toContain('DEPLOYED');
+  // (c) branch protection unreadable (fetch fails, or no required checks in it): fail closed, waiting with the reason
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-')); fs.mkdirSync(path.join(root, 'data'));
+  const unreadable = run({ AD_REQUIRED: 'false', ...checks(green2) }, root);
+  expect(unreadable).toContain('required checks unavailable'); expect(unreadable).not.toContain('DEPLOYED');
+  expect(fs.readFileSync(path.join(root, 'data', 'deploy-log.jsonl'), 'utf8')).toMatch(/"event":"waiting".*"detail":"required checks unavailable"/);
+  // (d) AUTO_DEPLOY_IGNORE_CHECKS still works: an ignored check is neither gating nor reported; a required one is never ignored
+  const ignored = run({ ...req, AUTO_DEPLOY_IGNORE_CHECKS: 'update,Dependabot', ...checks([...green2, r(3, 'Dependabot', 'failure', 'completed', 29110), r(4, 'update', null, 'in_progress')]) });
+  expect(ignored).toContain('DEPLOYED'); expect(ignored).not.toContain('non-required checks not green');
+  const notIgnorable = run({ ...req, AUTO_DEPLOY_IGNORE_CHECKS: 'sbom', ...checks([r(1, 'build-and-test (22)', 'success'), r(2, 'sbom', 'failure')]) });
+  expect(notIgnorable).toContain('required_not_success:sbom=failure'); expect(notIgnorable).not.toContain('DEPLOYED');
+});
+
 it('reads the required contexts from the public branch summary of main', () => {
   const bin = fs.mkdtempSync(path.join(TMPDIR, 'ad-bin-'));
   const summary = JSON.stringify({ protection: { required_status_checks: { contexts: ['build-and-test (22)'], checks: [{ context: 'sbom', app_id: 15368 }] } } });
