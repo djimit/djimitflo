@@ -138,3 +138,21 @@ it('B29: NE-012 (ruvnet agent ecosystem) guards unpinned ruflo/claude-flow execu
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+it('B29: NE-017 (Orca as runtime substrate) is REJECT and guards an Orca dependency, MCP entry or `orca serve` runtime', () => {
+  const ne17 = registry().entries.find((e) => e.id === 'NE-017');
+  expect(ne17?.verdict).toBe('REJECT');
+  expect(ne17?.forbidden_code_patterns).toEqual(expect.arrayContaining(['stablyai/orca', 'orca serve']));
+  expect(ne17?.reopen_condition).toContain('remote_maker_jobs');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ne17-guard-'));
+  try {
+    fs.mkdirSync(path.join(tmp, 'packages/x/src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'packages/x/package.json'), JSON.stringify({ name: 'x', dependencies: { orca: 'github:stablyai/orca' } }));
+    fs.writeFileSync(path.join(tmp, '.mcp.json'), JSON.stringify({ mcpServers: { orca: { command: 'orca serve' } } }));
+    const hits = forbiddenHits(tmp);
+    expect(hits).toContain(`NE-017: stablyai/orca in ${path.join('packages', 'x', 'package.json')}`);
+    expect(hits).toContain('NE-017: orca serve in .mcp.json');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
