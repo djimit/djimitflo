@@ -143,6 +143,16 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
   { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
   { name: 'SKILL_ARTIFACT_EVOLUTION_MODE', acting: true },
+  // re-20261105 E17 / P1-8: acting flags that were in no registry, or filed as non-evolution although they steer the loop
+  { name: 'PROPOSAL_GROUNDING_REQUIRED', acting: true }, { name: 'SELF_IMPROVEMENT_GOAL_ON_APPROVE', acting: true },
+  { name: 'REMOTE_MAKER_ENABLED', acting: true }, { name: 'GOVERNANCE_GATE_ENABLED', acting: true }, { name: 'LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED', acting: true },
+  { name: 'MUTATION_GAP_ENABLED', acting: true }, { name: 'MUTATION_GAP_MAX_PER_DAY', acting: true },
+  { name: 'TEST_GAP_SOURCE_ENABLED', acting: true }, { name: 'TEST_GAP_EXPORTS_ENABLED', acting: true }, { name: 'TEST_GAP_PACKAGES_ENABLED', acting: true }, { name: 'TEST_GAP_MAX_PER_DAY', acting: true },
+  // judgmentMode() builds TYPESAFE_<judgment id>_MODE at run time (TYPESAFE_PROPOSAL_PRESCREEN_MODE is listed above)
+  { name: 'TYPESAFE_KB_PASSAGE_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_DECISION_CONTEXT_MODE', acting: true },
+  { name: 'TYPESAFE_DISCOVERY_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_REFLECTION_TRIAGE_MODE', acting: true },
+  { name: 'TYPESAFE_COMMONS_CONTRIBUTION_MODE', acting: true }, { name: 'TYPESAFE_FAILURE_CAUSE_MODE', acting: true },
+  { name: 'TYPESAFE_CHECKER_SECOND_OPINION_MODE', acting: false }, { name: 'TYPESAFE_RISK_ATOMIC_MODE', acting: false }, { name: 'TYPESAFE_COMMONS_IDEA_MODE', acting: false },
   { name: 'FLEET_SHELL_ENABLED', acting: true },
 ];
 
