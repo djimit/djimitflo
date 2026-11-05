@@ -32,6 +32,7 @@ import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-
 import { asgAfterMaker, asgBeforeMaker, type AsgMakerOutcome } from './asg/oracle-lane';
 import { asgMode } from './asg/mode';
 import { recordWorkerCall } from './model-call-ledger';
+import { recordLanePolicyShadow } from './lane-policy';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -742,8 +743,10 @@ export class LoopWorkerExecutorService {
       now,
       factoryGoal?.owner_user_id ?? null,
     );
-    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId,
-      ...leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt) });
+    const identity = leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt);
+    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId, ...identity });
+    // LANE_POLICY_MODE (default off): shadow records one lane_policy judgment for this dispatch; the runtime is never changed
+    recordLanePolicyShadow(this.db, run, lease, runtime, identity.model_id);
 
     const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(
       taskId, runtime as ExecutorKind, undefined, { riskAssessmentText },
