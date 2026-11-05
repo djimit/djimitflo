@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { Database } from 'better-sqlite3';
-import { laneOf, targetMutants, type TargetMutant } from './gym-failure-tasks';
+import { WRITE_TEST_MUTANTS, laneOf, targetMutants, type TargetMutant } from './gym-failure-tasks';
 
 /**
  * SI-A graded executed fitness (operator Phase SI, prod 08-10): pass/fail saturates — gym 83.6 % success, failure-derived
@@ -20,6 +20,14 @@ import { laneOf, targetMutants, type TargetMutant } from './gym-failure-tasks';
 export type GradedKind = 'mutant_kill' | 'tests_green' | 'binary' | 'mutation_score';
 const KINDS = new Set<GradedKind>(['mutant_kill', 'tests_green', 'binary', 'mutation_score']);
 export const gradedFitnessMode = (env: NodeJS.ProcessEnv = process.env): 'off' | 'shadow' => (env.GRADED_FITNESS_MODE === 'shadow' ? 'shadow' : 'off');
+/**
+ * re-20261105 B7: at WRITE_TEST_MUTANTS = 3 a test killing 1 seeded mutant scores 0.333 and passes the value gate's 0.2, and
+ * the graded contest ties 3/3. GRADED_FITNESS_MUTANTS_V2 = off (default: 3) | on (GRADED_MUTANTS_V2 = 6): the production maker
+ * grading below (recordMakerGraded) only. The gym's write_test tasks keep WRITE_TEST_MUTANTS (scripts/gym-worker.mjs accepts ≤ 5).
+ */
+export const GRADED_MUTANTS_V2 = 6;
+export const gradedMutants = (env: NodeJS.ProcessEnv = process.env): number =>
+  (String(env.GRADED_FITNESS_MUTANTS_V2 ?? '').trim().toLowerCase() === 'on' ? GRADED_MUTANTS_V2 : WRITE_TEST_MUTANTS);
 export const gradedContestMode = (env: NodeJS.ProcessEnv = process.env): 'off' | 'shadow' | 'act' =>
   (env.GRADED_CONTEST_MODE === 'shadow' || env.GRADED_CONTEST_MODE === 'act' ? env.GRADED_CONTEST_MODE : 'off');
 
@@ -99,7 +107,7 @@ export function killShare(cwd: string, rel: string, file: string, original: stri
 
 /**
  * SI-A prod (GRADED_FITNESS_MODE=shadow): a gate-passing test-gap / exports maker whose diff adds or changes a test file
- * gets the kill share of <= 3 seeded single-operator mutants of the target (gym-failure-tasks targetMutants, the helper
+ * gets the kill share of <= gradedMutants() (3; 6 with GRADED_FITNESS_MUTANTS_V2=on) seeded single-operator mutants of the target (gym-failure-tasks targetMutants, the helper
  * the gym's write_test tasks use). Baseline must be green; only that test file runs; GRADED_KILL_BUDGET_MS in total.
  * Stored on the lease (metadata.graded), read by evolve selection and the maker outcome. A timeout, a red baseline or any
  * error stores a reason and no score — it never fails the run. Idempotent.
@@ -136,7 +144,7 @@ export function recordMakerGraded(db: Database, runId: string, leaseId: string, 
   const file = path.join(wt, target);
   let original: string;
   try { original = fs.readFileSync(file, 'utf8'); } catch { return store({ skipped: 'target missing' }); }
-  const mutants = targetMutants(original, runId, target);
+  const mutants = targetMutants(original, runId, target, gradedMutants(opts.env ?? process.env));
   if (!mutants.length) return store({ skipped: 'no mutant' });
   const budget = (opts.budgetMs ?? GRADED_KILL_BUDGET_MS) - (Date.now() - started);
   const k = killShare(path.join(wt, 'packages/server'), test.replace(/^packages\/server\//, ''), file, original, mutants, opts.run ?? vitestRunner, budget);

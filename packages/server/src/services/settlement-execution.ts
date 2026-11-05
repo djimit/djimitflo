@@ -71,6 +71,8 @@ export interface SettlementExecutionDeps {
 export interface Candidate {
   run_id: string; pr_url: string; pr_number: number | null; merged_at: string; settlement_state: string; settlement_reason: string;
   test_files: string[]; target: string | null; maker_kill_share: number | null; maker_kill_reason: string | null; attempts: number;
+  /** how many seeded mutants the maker was graded against (metadata.graded.total; WRITE_TEST_MUTANTS when not recorded) — excluded from the fresh set */
+  maker_mutants: number;
 }
 
 interface Prior { decisive: boolean; attempts: number }
@@ -107,7 +109,7 @@ export function settlementCandidates(db: Database, now = Date.now(), env: NodeJS
       proposal = db.prepare(`SELECT json_extract(s.grounding_json, '$.artifactPath') AS artifact, json_extract(s.grounding_json, '$.target') AS target
         FROM loop_runs r JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id WHERE r.id = ?`).get(p.run_id) as typeof proposal;
     } catch { /* tables absent: no test files known */ }
-    let meta: { changed_files?: unknown; graded?: { score?: unknown; kind?: unknown; skipped?: unknown } } = {};
+    let meta: { changed_files?: unknown; graded?: { score?: unknown; kind?: unknown; skipped?: unknown; total?: unknown } } = {};
     try { meta = JSON.parse(lease?.metadata || '{}'); } catch { /* unreadable lease metadata */ }
     const changed = Array.isArray(meta.changed_files) ? meta.changed_files.map(String) : [];
     let tests = changed.filter((f) => SETTLEMENT_TEST_FILE.test(f));
@@ -121,6 +123,7 @@ export function settlementCandidates(db: Database, now = Date.now(), env: NodeJS
       maker_kill_reason: makerScore !== null ? null : !lease ? 'no completed maker lease' : !g ? 'not recorded (GRADED_FITNESS_MODE off at maker time, or no graded test)'
         : typeof g.skipped === 'string' ? `skipped at maker time: ${g.skipped}` : `graded kind ${String(g.kind)} is not a mutant kill share`,
       attempts: seen?.attempts ?? 0,
+      maker_mutants: g && typeof g.total === 'number' && Number.isInteger(g.total) && g.total > 0 ? g.total : WRITE_TEST_MUTANTS,
     });
   }
   return out.sort((a, b) => (a.attempts === 0 ? 0 : 1) - (b.attempts === 0 ? 0 : 1) || Date.parse(a.merged_at) - Date.parse(b.merged_at));
@@ -132,14 +135,14 @@ export interface KillNow { score: number | null; killed?: number; total?: number
  * Kill share of the PR's server unit test on today's target against fresh seeded mutants: targetMutants seeded with
  * `S<main sha>` (an offset no uuid run id produces), minus the mutants the maker-time seed (the run id) gives on this content.
  */
-export function rescoreKillShare(worktree: string, c: Pick<Candidate, 'run_id' | 'target'>, present: string[], mainSha: string, run: KillRunner, budgetMs = GRADED_KILL_BUDGET_MS): KillNow {
+export function rescoreKillShare(worktree: string, c: Pick<Candidate, 'run_id' | 'target'> & Partial<Pick<Candidate, 'maker_mutants'>>, present: string[], mainSha: string, run: KillRunner, budgetMs = GRADED_KILL_BUDGET_MS): KillNow {
   const test = present.find((f) => GRADED_TEST.test(f));
   if (!test) return { score: null, reason: 'no packages/server/src/__tests__ unit test (the graded kill share covers those only)' };
   const target = gradedTarget(test, c.target);
   const file = path.join(worktree, target);
   let original: string;
   try { original = fs.readFileSync(file, 'utf8'); } catch { return { score: null, reason: `target missing on main: ${target}` }; }
-  const used = new Set(targetMutants(original, c.run_id, target).map((m) => m.content));
+  const used = new Set(targetMutants(original, c.run_id, target, c.maker_mutants ?? WRITE_TEST_MUTANTS).map((m) => m.content));
   const fresh = targetMutants(original, `S${mainSha}`, target, WRITE_TEST_MUTANTS * 3).filter((m) => !used.has(m.content)).slice(0, WRITE_TEST_MUTANTS);
   if (!fresh.length) return { score: null, reason: 'no fresh mutant of the target' };
   const k = killShare(path.join(worktree, 'packages/server'), test.replace(/^packages\/server\//, ''), file, original, fresh, run, budgetMs);
@@ -371,20 +374,25 @@ const median = (xs: number[]): number | null => {
   return roundGraded(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
 };
 
+/** The latest settlement_execution row per PR: its lane, verdict, merge time and fresh-mutant kill share now (null = not re-scored). */
+export interface SettledRow { run_id: string; lane: string; verdict: string; merged_at: string | null; kill_share_now: number | null }
+export function latestSettlements(db: Database, lanes = runLanes(db)): SettledRow[] {
+  let rows: Array<{ sid: string; decision: string; answers: string | null }> = [];
+  try { rows = db.prepare('SELECT subject_id AS sid, decision, answers_json AS answers FROM judgments WHERE judgment = ? ORDER BY created_at, rowid').all(SETTLEMENT_JUDGMENT) as typeof rows; } catch { /* table absent */ }
+  const latest = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) latest.set(r.sid, r);
+  return [...latest.values()].map((r) => {
+    let a: { kill_share_now?: unknown; merged_at?: unknown } = {};
+    try { a = JSON.parse(r.answers || '{}'); } catch { /* unreadable */ }
+    return { run_id: r.sid, lane: lanes.get(r.sid) ?? 'other', verdict: r.decision, merged_at: typeof a.merged_at === 'string' ? a.merged_at : null,
+      kill_share_now: typeof a.kill_share_now === 'number' && Number.isFinite(a.kill_share_now) ? a.kill_share_now : null };
+  });
+}
+
 /** evolution-evidence `settlement_value` (report only). `ci` = a binomial interval (the evidence passes Wilson). */
 export function settlementValueEvidence(db: Database, ci: (k: number, n: number) => [number, number], lanes = runLanes(db)) {
-  let rows: Array<{ sid: string; answers: string | null }> = [];
-  try { rows = db.prepare('SELECT subject_id AS sid, answers_json AS answers FROM judgments WHERE judgment = ? ORDER BY created_at, rowid').all(SETTLEMENT_JUDGMENT) as typeof rows; } catch { /* table absent */ }
-  const latest = new Map<string, string | null>();
-  for (const r of rows) latest.set(r.sid, r.answers);
   const byLane = new Map<string, number[]>();
-  for (const [sid, answers] of latest) {
-    let k: unknown = null;
-    try { k = (JSON.parse(answers || '{}') as { kill_share_now?: unknown }).kill_share_now; } catch { /* unreadable */ }
-    if (typeof k !== 'number' || !Number.isFinite(k)) continue;
-    const lane = lanes.get(sid) ?? 'other';
-    byLane.set(lane, [...(byLane.get(lane) ?? []), k]);
-  }
+  for (const r of latestSettlements(db, lanes)) if (r.kill_share_now !== null) byLane.set(r.lane, [...(byLane.get(r.lane) ?? []), r.kill_share_now]);
   return {
     threshold: SETTLEMENT_VALUE_THRESHOLD,
     by_lane: [...byLane.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([lane, xs]) => {
@@ -395,21 +403,42 @@ export function settlementValueEvidence(db: Database, ci: (k: number, n: number)
   };
 }
 
+/** The oracle lanes whose loop PRs are test-only by construction: line-retention survival cannot fail there (E13: 75/75). */
+export const TEST_ONLY_LANES = ['exports', 'test-gap', 'mutation'] as const;
+
+/**
+ * C7 (re-20261105): the settled value of a lane's PRs from their latest settlement_execution row — the D3 note in merge-survival:
+ * tests still pass at +14 d AND the fresh-mutant kill share now >= SETTLEMENT_VALUE_THRESHOLD. pass = both; fail = tests fail /
+ * removed, or pass with a kill share below; unknown = tests pass but not re-scored, unknown run, or no test files. null = no row.
+ */
+export function settledValue(rows: SettledRow[]) {
+  if (!rows.length) return null;
+  const testsPass = rows.filter((r) => r.verdict === 'pass');
+  const testsFail = rows.filter((r) => r.verdict === 'fail' || r.verdict === 'removed').length;
+  const valuePass = testsPass.filter((r) => r.kill_share_now !== null && r.kill_share_now >= SETTLEMENT_VALUE_THRESHOLD).length;
+  const low = testsPass.filter((r) => r.kill_share_now !== null && r.kill_share_now < SETTLEMENT_VALUE_THRESHOLD).length;
+  return { n: rows.length, tests_pass: testsPass.length, tests_fail: testsFail, value_pass: valuePass, value_fail: testsFail + low, value_unknown: rows.length - valuePass - testsFail - low,
+    kill_share_min: SETTLEMENT_VALUE_THRESHOLD, note: `settled value: tests still pass at +14 d and fresh-mutant kill share >= ${SETTLEMENT_VALUE_THRESHOLD} (latest settlement_execution row per PR); read-only` };
+}
+
 /**
  * Survival per lane over settled PRs only. informative: true once a lane has a regression (the label has failed, so it can);
- * with 0 regressions false at ≥ SURVIVAL_INFORMATIVE_MIN_N settled (it cannot fail there) and null below — not enough settled
- * to know (E-assumptions A16/C9: 8 and 16 settled PRs with 0 regressions were shown as true).
+ * on a TEST_ONLY_LANES lane with 0 regressions null at any n (C7, re-20261105: line retention cannot fail for test-only PRs — it is
+ * not a pass; the settled value is settled_value); on any other lane with 0 regressions false at ≥ SURVIVAL_INFORMATIVE_MIN_N
+ * settled and null below — not enough settled to know (E-assumptions A16/C9). Read-only: the counts are unchanged.
  */
-export function survivalByLane(prs: LoopPrSettlement[], lanes: Map<string, string>) {
+export function survivalByLane(prs: LoopPrSettlement[], lanes: Map<string, string>, settled: SettledRow[] = []) {
   const byLane = new Map<string, LoopPrSettlement['settlement']['state'][]>();
   for (const p of prs) { const lane = lanes.get(p.run_id) ?? 'other'; byLane.set(lane, [...(byLane.get(lane) ?? []), p.settlement.state]); }
   return [...byLane.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([lane, states]) => {
     const c = survivalCounts(states);
+    const testOnly = (TEST_ONLY_LANES as readonly string[]).includes(lane);
     const enough = c.settled >= SURVIVAL_INFORMATIVE_MIN_N;
-    const informative: boolean | null = c.regressed > 0 ? true : enough ? false : null;
-    return { lane, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, informative,
-      informative_reason: informative === false ? `0 regressions in ${c.settled} settled PRs: line-retention survival cannot fail on this lane (test-only PRs); see settlement_value`
-        : informative === null ? `not enough settled: 0 regressions in ${c.settled} settled PRs (< ${SURVIVAL_INFORMATIVE_MIN_N}); whether survival can fail on this lane is unknown` : null };
+    const informative: boolean | null = c.regressed > 0 ? true : testOnly || !enough ? null : false;
+    return { lane, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, test_only: testOnly, informative,
+      informative_reason: informative === false ? `0 regressions in ${c.settled} settled PRs: line-retention survival cannot fail on this lane; see settlement_value`
+        : informative === null && testOnly ? `test-only lane: line-retention survival cannot fail (0 regressions in ${c.settled} settled) — not a pass; the settled value is settled_value`
+          : informative === null ? `not enough settled: 0 regressions in ${c.settled} settled PRs (< ${SURVIVAL_INFORMATIVE_MIN_N}); whether survival can fail on this lane is unknown` : null,
+      settled_value: settledValue(settled.filter((r) => r.lane === lane)) };
   });
 }
-

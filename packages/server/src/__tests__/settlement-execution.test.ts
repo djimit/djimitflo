@@ -200,19 +200,49 @@ describe('U1: settlement value label (report only) and survival informativeness 
     expect(e.settlement_value.by_lane).toEqual(v.by_lane);
   });
 
-  it(`survival section: a lane with 0 regressions at ≥ ${SURVIVAL_INFORMATIVE_MIN_N} settled PRs is informative:false with a reason; Gate B unchanged`, () => {
+  // re-20261105 C7 (E13): settled survived 75/75, min retained 0.94 — on a test-only lane line retention cannot fail, so it is
+  // informative:null (never a pass) at any n; only a non-test lane can be informative:false. The settled value is next to it.
+  it(`survival section: a test-only lane with 0 regressions is informative:null at any n (not a pass); a non-test lane at ≥ ${SURVIVAL_INFORMATIVE_MIN_N} is false; Gate B unchanged`, () => {
     for (let i = 0; i < SURVIVAL_INFORMATIVE_MIN_N; i++) seedPr(`x${i}`, 500 + i, { refs: EXPORTS, survived: true });
     for (let i = 0; i < SURVIVAL_INFORMATIVE_MIN_N - 1; i++) seedPr(`t${i}`, 600 + i, { refs: GAP, survived: true });
     seedPr('t-reg', 700, { refs: GAP, survived: false, status: 'regressed' });
     for (let i = 0; i < 5; i++) seedPr(`u${i}`, 800 + i, { refs: MUT, survived: true });
+    for (let i = 0; i < SURVIVAL_INFORMATIVE_MIN_N; i++) seedPr(`o${i}`, 1200 + i, { refs: ['doc-drift:README.md'], survived: true });
     const s = buildEvolutionEvidence(db, ENV, now).merge.settlement!;
     const lane = (l: string) => s.by_lane.find((x) => x.lane === l)!;
-    expect(lane('exports')).toMatchObject({ settled: 30, survived: 30, regressed: 0, informative: false });
-    expect(lane('exports').informative_reason).toMatch(/0 regressions in 30 settled/);
+    expect(lane('exports')).toMatchObject({ settled: 30, survived: 30, regressed: 0, informative: null, test_only: true });
+    expect(lane('exports').informative_reason).toMatch(/test-only lane: line-retention survival cannot fail \(0 regressions in 30 settled\) — not a pass; the settled value is settled_value/);
     expect(lane('test-gap')).toMatchObject({ settled: 30, regressed: 1, informative: true, informative_reason: null });
-    expect(lane('mutation')).toMatchObject({ settled: 5, regressed: 0, informative: null }); // not enough settled to know (below)
+    expect(lane('mutation')).toMatchObject({ settled: 5, regressed: 0, informative: null, test_only: true });
+    expect(lane('other')).toMatchObject({ settled: 30, regressed: 0, informative: false, test_only: false });
+    expect(lane('other').informative_reason).toMatch(/0 regressions in 30 settled/);
     // the overall numbers (and so Gate B and fitness) are what they were
-    expect(s).toMatchObject({ survived: 64, regressed: 1, settled: 65 });
+    expect(s).toMatchObject({ survived: 94, regressed: 1, settled: 95 });
+  });
+
+  it('C7: each survival lane carries the settled value — tests still pass at +14 d AND fresh-mutant kill >= 0.2 — where settlement rows exist; null otherwise', () => {
+    seedPr('e1', 1301, { refs: EXPORTS, survived: true }); seedPr('e2', 1302, { refs: EXPORTS, survived: true }); seedPr('e3', 1303, { refs: EXPORTS, survived: true });
+    seedPr('e4', 1304, { refs: EXPORTS, survived: true }); seedPr('e5', 1305, { refs: EXPORTS, survived: true }); seedPr('e6', 1306, { refs: EXPORTS, survived: true });
+    seedPr('g1', 1307, { refs: GAP, survived: true });
+    judge('e1', 0.9, now - 3 * DAY, 'pass'); judge('e1', 0.667, now - 2 * DAY, 'pass'); // the latest row decides
+    judge('e2', 0.1, now - 2 * DAY, 'pass'); // tests pass, kills too little
+    judge('e3', null, now - 2 * DAY, 'fail'); judge('e6', null, now - 2 * DAY, 'removed');
+    judge('e4', null, now - 2 * DAY, 'pass'); // tests pass, not re-scored: value unknown
+    // e5 has no settlement row: not counted
+    const s = buildEvolutionEvidence(db, ENV, now).merge.settlement!;
+    const lane = (l: string) => s.by_lane.find((x) => x.lane === l)!;
+    expect(lane('exports').settled_value).toEqual({ n: 5, tests_pass: 3, tests_fail: 2, value_pass: 1, value_fail: 3, value_unknown: 1, kill_share_min: 0.2,
+      note: expect.stringMatching(/tests still pass at \+14 d and fresh-mutant kill share >= 0.2/) });
+    expect(lane('exports').informative).toBeNull();
+    expect(lane('test-gap').settled_value).toBeNull(); // no settlement row: nothing to show, never a pass
+  });
+
+  it('B7: the maker-time mutants a settlement re-score excludes are the ones the maker was graded against (graded.total; default 3)', () => {
+    seedPr('k6', 1401, { graded: { kind: 'mutant_kill', score: 0.5, killed: 3, total: 6 } });
+    seedPr('k3', 1402, { graded: { kind: 'mutant_kill', score: 0.333, killed: 1, total: 3 } });
+    seedPr('k0', 1403);
+    const by = Object.fromEntries(settlementCandidates(db, now, ENV).map((c) => [c.run_id, c.maker_mutants]));
+    expect(by).toEqual({ k6: 6, k3: 3, k0: 3 });
   });
 
   // E-assumptions A16/C9 (re-20261030): mutation (16 settled) and test-gap (8) were labelled informative:true with 0
@@ -221,9 +251,12 @@ describe('U1: settlement value label (report only) and survival informativeness 
     for (let i = 0; i < 8; i++) seedPr(`g${i}`, 900 + i, { refs: GAP, survived: true });
     for (let i = 0; i < SURVIVAL_INFORMATIVE_MIN_N - 1; i++) seedPr(`u${i}`, 1000 + i, { refs: MUT, survived: true });
     seedPr('e-reg', 1100, { refs: EXPORTS, survived: false, status: 'regressed' }); seedPr('e-ok', 1101, { refs: EXPORTS, survived: true });
+    for (let i = 0; i < 8; i++) seedPr(`o${i}`, 1150 + i, { refs: ['doc-drift:README.md'], survived: true });
     const lane = (l: string) => buildEvolutionEvidence(db, ENV, now).merge.settlement!.by_lane.find((x) => x.lane === l)!;
     expect(lane('test-gap')).toMatchObject({ settled: 8, regressed: 0, informative: null });
-    expect(lane('test-gap').informative_reason).toMatch(/not enough settled: 0 regressions in 8 settled PRs \(< 30\)/);
+    expect(lane('test-gap').informative_reason).toMatch(/test-only lane: .*0 regressions in 8 settled/); // C7: test-only, never a pass
+    expect(lane('other')).toMatchObject({ settled: 8, regressed: 0, informative: null });
+    expect(lane('other').informative_reason).toMatch(/not enough settled: 0 regressions in 8 settled PRs \(< 30\)/);
     expect(lane('mutation')).toMatchObject({ settled: 29, regressed: 0, informative: null });
     expect(lane('exports')).toMatchObject({ settled: 2, regressed: 1, informative: true, informative_reason: null }); // it has failed: it can fail
   });

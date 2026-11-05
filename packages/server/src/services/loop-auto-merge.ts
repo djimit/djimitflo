@@ -5,8 +5,10 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
-  readClassState, reasonCode, RECHECK_PER_TICK, revokeClass, VALUE_GATE_REASONS, valueGateActsOn } from './loop-auto-merge-state';
+import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
+  readClassState, readLaneRevocations, reasonCode, RECHECK_PER_TICK, revokeClass, revokeLane, SETTLEMENT_REVOKE_JUDGMENT, SETTLEMENT_REVOKE_KILL_BELOW, SETTLEMENT_REVOKE_LANES, SETTLEMENT_REVOKE_SHARE,
+  SETTLEMENT_REVOKE_WINDOW, VALUE_GATE_REASONS, valueGateActsOn } from './loop-auto-merge-state';
+import { latestSettlements } from './settlement-execution';
 import { oracleLane } from './gym-failure-tasks';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
@@ -39,6 +41,8 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * graded kill share / mutation score >= 0.2 (loop-auto-merge-state autoMergeValueSignal); shadow stamps would_block_value, on is ineligible.
  * With LOOP_AUTO_MERGE_VALUE_GATE_LANES set, on blocks only PRs of a listed lane (the proposal's oracle lane, as settlement);
  * other lanes are stamped like shadow.
+ * Settled value (B3, LOOP_AUTO_MERGE_SETTLEMENT_REVOKE off | shadow | on): >= 50 % of the last 20 settled exports PRs with a
+ * settlement kill share < 0.2 revokes the exports lane (loop-auto-merge-state); in act its PRs are 'revoked_hold'.
  * Cap: LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h).
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit fails a REQUIRED check on
@@ -185,6 +189,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
 
   // 1. Revert window over earlier auto-merges (act only produces them; shadow has nothing to revoke).
   const revoked = await checkRevocations(db, json, mergeCommitChecks, events, base, now, env);
+  const laneRevokedNow = await settlementRevocation(db, env, now);
+  const laneRevocations = readLaneRevocations(db);
 
   // 2. Candidates: loop PRs without a final decision for this mode.
   const runs = db.prepare(`SELECT r.id, r.status, r.gates_json, r.metadata, s.status AS improvement_status, s.evidence_refs_json AS ev FROM loop_runs r
@@ -201,7 +207,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const prev = meta.auto_merge;
     let rechecking = false;
     // the value gate acts on this PR only when on and its lane is listed (or no list is set); otherwise it is shadow for it
-    const valueActs = valueGateActsOn(valueGate, valueLanes, oracleLane(run.ev));
+    const lane = oracleLane(run.ev);
+    const valueActs = valueGateActsOn(valueGate, valueLanes, lane);
     // U2 rollback: a rejection by the value gate alone is final only while the gate acts on the PR — off / shadow / its lane
     // leaving the list re-evaluates it through every gate (every other permanent reason stays final)
     const valueRejectionLifted = prev?.decision === 'ineligible' && !valueActs && (VALUE_GATE_REASONS as readonly string[]).includes(reasonCode(prev.reason));
@@ -296,6 +303,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
 
     const effective = mode === 'act' && readClassState(db).state === 'revoked' ? 'held' : mode;
     if (effective === 'held') { record('revoked_hold', `class revoked: ${readClassState(db).reason ?? 'unknown'}`); continue; }
+    const laneRevoked = laneRevocations[lane] ?? laneRevocations['*'];
+    if (mode === 'act' && laneRevoked) { record('revoked_hold', `lane ${lane} revoked: ${laneRevoked.reason}`); continue; }
     // a PR already counted as would_merge / merged in this window does not count against its own re-check
     const counted = prev?.mode === mode && prev.decision === (mode === 'act' ? 'merged' : 'would_merge') && Date.parse(prev.at) >= now.getTime() - DAY ? 1 : 0;
     const today = (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = ? AND json_extract(metadata, '$.auto_merge.at') >= ?`)
@@ -343,7 +352,41 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     } catch { /* the loop event above is the second record */ }
     await pushNotice(`Auto-merged test-only loop PR #${number}: ${meta.pr_url}`, env);
   }
-  return { evaluated, merged, revoked };
+  return { evaluated, merged, revoked: revoked || laneRevokedNow };
+}
+
+/** B3: one judgment per lane window (its newest settled PR); in 'on' a firing rule revokes the lane. True when this tick revoked one. */
+async function settlementRevocation(db: Database, env: NodeJS.ProcessEnv, now: Date): Promise<boolean> {
+  const mode = autoMergeSettlementRevoke(env);
+  if (mode === 'off') return false;
+  let rows: ReturnType<typeof latestSettlements> = [];
+  try { rows = latestSettlements(db); } catch { return false; }
+  let fresh = false;
+  for (const lane of SETTLEMENT_REVOKE_LANES) {
+    const window = rows.filter((r) => r.lane === lane && r.kill_share_now !== null)
+      .sort((a, b) => String(b.merged_at ?? '').localeCompare(String(a.merged_at ?? '')) || b.run_id.localeCompare(a.run_id)).slice(0, SETTLEMENT_REVOKE_WINDOW);
+    if (!window.length) continue;
+    const kills = window.map((r) => Number(r.kill_share_now)); const sorted = [...kills].sort((a, b) => a - b); const mid = Math.floor(sorted.length / 2);
+    const n = window.length; const below = kills.filter((k) => k < SETTLEMENT_REVOKE_KILL_BELOW).length;
+    const fires = n >= SETTLEMENT_REVOKE_WINDOW && below / n >= SETTLEMENT_REVOKE_SHARE;
+    const decision = n < SETTLEMENT_REVOKE_WINDOW ? 'insufficient' : !fires ? 'keep' : mode === 'on' ? 'revoke' : 'would_revoke';
+    const newest = window[0].run_id;
+    const reason = `settlement value: ${below}/${n} settled ${lane} PRs kill < ${SETTLEMENT_REVOKE_KILL_BELOW} fresh mutants at +14 d (rule: ≥ ${SETTLEMENT_REVOKE_SHARE * 100} % of the last ${SETTLEMENT_REVOKE_WINDOW})`;
+    const answers = { lane, window: SETTLEMENT_REVOKE_WINDOW, share_min: SETTLEMENT_REVOKE_SHARE, kill_below: SETTLEMENT_REVOKE_KILL_BELOW, n, below, share_below: +(below / n).toFixed(3),
+      kill_share_now_median: +(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2).toFixed(3), newest_run_id: newest, run_ids: window.map((r) => r.run_id) };
+    let inserted = 0;
+    try {
+      inserted = db.prepare(`INSERT OR IGNORE INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+        VALUES (?, ?, 'loop_auto_merge_lane', ?, ?, ?, ?, ?, ?, ?)`).run(`${SETTLEMENT_REVOKE_JUDGMENT}:${mode}:${lane}:${newest}`, SETTLEMENT_REVOKE_JUDGMENT, lane, newest.slice(0, 16), mode, decision, reason,
+        JSON.stringify(answers), now.toISOString()).changes;
+    } catch { continue; } // judgments absent: nothing judged, nothing acts
+    // the same window acts once: after an operator re-enable only a newer settlement can revoke again
+    if (inserted && decision === 'revoke' && revokeLane(db, lane, reason, newest, now)) {
+      fresh = true;
+      await pushNotice(`Auto-merge for test-only ${lane} loop PRs REVOKED — ${reason}. Re-enable needs an operator.`, env);
+    }
+  }
+  return fresh;
 }
 
 /** The revert window: true when this tick revoked the class. Closes a PR's window after 14 d once merge survival settled it (or 30 d). */

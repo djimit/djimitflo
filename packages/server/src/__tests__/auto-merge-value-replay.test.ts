@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { autoMergeEvidence } from '../services/loop-auto-merge-state';
-import { VALUE_GATE_REPLAY_JUDGMENT, replayAutoMergeValueGate } from '../services/auto-merge-value-replay';
+import { VALUE_GATE_REPLAY_JUDGMENT, prValueSignals, replayAutoMergeValueGate } from '../services/auto-merge-value-replay';
 
 /**
  * E-assumptions C4 (re-20261030): LOOP_AUTO_MERGE_VALUE_GATE=shadow collected 0 decisions since the flip (no PRs), while the
@@ -74,4 +74,22 @@ it('apply: one shadow judgment per decision (replay: true), idempotent on re-run
   expect(db.prepare('SELECT id, metadata FROM loop_runs ORDER BY id').all()).toEqual(before);
   // the auto-merge evidence shows the replay next to the (empty) live shadow
   expect(autoMergeEvidence(db, { LOOP_AUTO_MERGE_VALUE_GATE: 'shadow' }).value_gate.replay).toEqual({ n: 5, pass: 2, low: 2, missing: 1 });
+});
+
+// re-20261105 B1: the merge train reads the gate's signal per open loop PR (scripts/merge-train.sh --value-signals); the file is
+// what dist/scripts/pr-value-signals.js prints: every loop PR of the repo, any decision, lane + autoMergeValueSignal. Read-only.
+it('B1 pr value signals: every loop PR of the repo (merged or not) → {lane, value_signal}, the gate\'s rule on the deciding lease; read-only', () => {
+  seedAll();
+  // another repo's PR #1 never shadows this repo's #1; a newer run for the same PR decides
+  db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json, metadata, created_at) VALUES ('other', 'g-none', 'x', 'closed', 'completed', '[]', ?, '2026-10-25T00:00:00Z')")
+    .run(JSON.stringify({ pr_url: 'https://github.com/someone/else/pull/1' }));
+  const before = db.prepare('SELECT COUNT(*) AS n FROM judgments').get();
+  const out = prValueSignals(db, 'djimit/djimitflo', NOW);
+  expect(out).toMatchObject({ repo: 'djimit/djimitflo', generated_at: NOW.toISOString(), kill_share_min: 0.2 });
+  expect(out.prs).toEqual({
+    1: { lane: 'exports', value_signal: 'pass', run_id: 'run-1' }, 2: { lane: 'exports', value_signal: 'low', run_id: 'run-2' },
+    3: { lane: 'mutation', value_signal: 'pass', run_id: 'run-3' }, 4: { lane: 'test-gap', value_signal: 'missing', run_id: 'run-4' },
+    5: { lane: 'exports', value_signal: 'low', run_id: 'run-5' }, 6: { lane: 'exports', value_signal: 'pass', run_id: 'run-6' } });
+  expect(db.prepare('SELECT COUNT(*) AS n FROM judgments').get()).toEqual(before);
+  expect(prValueSignals(db, 'Someone/Else', NOW).prs).toEqual({ 1: { lane: 'other', value_signal: 'missing', run_id: 'other' } });
 });
