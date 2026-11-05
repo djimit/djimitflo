@@ -54,6 +54,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   FITNESS_SHADOW_ENABLED: 'off',
   FLEET_EVENT_SIGNATURES: 'off (`shadow`, `enforce`)',
   FLEET_REPAIR_MODE: 'off (`shadow`; `on` runs as shadow)',
+  FLEET_SHELL_ENABLED: 'off (`1`)',
   FRONTIER_UNITS_REQUIRE_RELEVANCE: 'off',
   GENOME_APPLY_MODE: 'unset (only `shadow` exists)',
   GENOME_FIRE_CHECK: 'off',
