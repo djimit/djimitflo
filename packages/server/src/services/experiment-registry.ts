@@ -69,6 +69,14 @@ const AMENDED = 'stop condition added 2026-10-19; verdict rules unchanged';
  * (pinned by experiment-registry.test.ts against those sources).
  */
 const MAKER_SELECTION_ENV = ['LOOP_DAEMON_MAKER_RUNTIME', 'LOOP_BANDIT_ENABLED', 'LOOP_BANDIT_SPECIES', 'LOOP_BANDIT_MAX_SHARE', 'REMOTE_MAKER_ENABLED', 'META_TUNING_MIN_CONFIDENCE'];
+/**
+ * re-20261105 E14 / A M3: runtime changes that alter the oracle-goal population or what reaches its makers wrote no boundary
+ * (value gate on + LANES=exports 31-10: which PRs merge and so settle; content-safety model 31-10 + ignored categories 02-11: which
+ * KB pages makers are served under KB_CONTEXT_ENABLED; the capability factory: a second goal source; the lane caps: how many
+ * goals exist). Each is a treatment variable of every running oracle-population experiment.
+ */
+const ORACLE_POPULATION_ENV = ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', 'CONTENT_SAFETY_MODEL', 'CONTENT_SAFETY_IGNORE_CATEGORIES',
+  'KB_CONTEXT_ENABLED', 'CAPABILITY_FACTORY_MODE', 'MUTATION_GAP_MAX_PER_DAY', 'TEST_GAP_MAX_PER_DAY'];
 /** TG-001 closed by the operator: INCONCLUSIVE at 20 tasks, no extension to 40 (task supply). INCONCLUSIVE from the evidence
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
@@ -90,7 +98,7 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'ACE-001', flag: 'ACE_001_MODE', protocol: 'docs/research/ace/ACE-001_PROTOCOL.md', started_at: '2026-10-12T00:00:00.000Z',
     target_n: ACE_001_TARGET_PER_ARM, stop_by: ACE_001_STOP_BY,
     stop_note: `${AMENDED}: start + 1.25 × 50 ÷ 1.87/day (slowest arm, 13 in 6.9 d)`, stop_source: 'docs/research/ace/ACE-001_PROTOCOL.md#amendment-2-2026-10-19', population: 'oracle_goals',
-    treatment_env: ['ACE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'MEMORY_HOLDOUT_RATE', 'PROPOSAL_DEDUPE_MODE', 'LOOP_DAEMON_CHECK_SCRIPTS', ...MAKER_SELECTION_ENV],
+    treatment_env: ['ACE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'MEMORY_HOLDOUT_RATE', 'PROPOSAL_DEDUPE_MODE', 'LOOP_DAEMON_CHECK_SCRIPTS', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
     // ace001Evidence counts from max(since, analysis_since)
     status: (db, env, now, since) => { const e = ace001Evidence(db, since > aceAnalysisSince(env) ? since : aceAnalysisSince(env), env, now);
       const main = (m: { diff: number | null; withheld: string | null }): ExperimentEffect => ({ metric: 'verified rate, factor on − off (at the readout only)', estimate: m.diff, ci: null, p: null, withheld: m.withheld });
@@ -99,14 +107,14 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'STE-001', flag: 'STE_001_MODE', protocol: 'docs/research/ace/STE-001_PROTOCOL.md', started_at: '2026-10-11T00:00:00.000Z',
     target_n: STE_001_TARGET_PER_ARM, stop_by: '2026-11-14T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 1.25 × 100 ÷ 3.78/day (slowest arm, 30 in 7.9 d)`, stop_source: 'docs/research/ace/STE-001_PROTOCOL.md#amendment-1-2026-10-19', population: 'oracle_goals',
-    treatment_env: ['STE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'TEST_ONLY_DIFF_MAX', ...MAKER_SELECTION_ENV],
+    treatment_env: ['STE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'TEST_ONLY_DIFF_MAX', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
     status: (db, env, _now, since) => { const e = ste001Evidence(db, since, env);
       return { n_per_arm: { 0: e.arms['0'].n, 1: e.arms['1'].n }, verdict: null,
         effects: { maker_template: { metric: 'verified rate, STE − current template (interim, descriptive)', estimate: e.diff, ci: null, p: null } } }; } },
   { id: 'MAKER-DEPS-001', flag: 'MAKER_DEPS_001_MODE', protocol: 'docs/research/di-001/MAKER_DEPS_001_PREREG.md', started_at: '2026-10-14T00:00:00.000Z',
     target_n: MAKER_DEPS_001_TARGET_PER_ARM, stop_by: '2026-12-16T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 1.25 × 141 ÷ 2.83/day (slowest arm, 14 in 4.9 d)`, stop_source: 'docs/research/di-001/MAKER_DEPS_001_AMENDMENT_1.md#amendment-1-2026-10-19', population: 'oracle_goals',
-    treatment_env: ['MAKER_DEPS_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'LOOP_MAKER_PREPARE_DEPS', 'OPENCODE_MAX_RUN_TOKENS', ...MAKER_SELECTION_ENV],
+    treatment_env: ['MAKER_DEPS_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'LOOP_MAKER_PREPARE_DEPS', 'OPENCODE_MAX_RUN_TOKENS', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
     approved_over_limit: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4',
     status: (db, env, _now, since) => { const e = makerDeps001Evidence(db, since, env);
       return { n_per_arm: { A: e.arms.A.terminal, B: e.arms.B.terminal }, verdict: null,
@@ -114,14 +122,14 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'X1', flag: 'EFFORT_SIBLING_RANDOMISE', protocol: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2', started_at: X1_STARTED,
     target_n: 94, stop_by: '2026-11-06T00:00:00.000Z', stop_note: 'EXP-2 registration: 4 weeks, ~94 settled per arm', stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2', population: 'oracle_goals',
     // makers on the shared oracle-goal population: the memory-rules switch (EXPERIMENT_PROTOCOL.md amendment 2026-10-27) alters them too
-    treatment_env: ['EFFORT_SIBLING_RANDOMISE', 'LOOP_MEMORY_RULES_ENABLED', ...MAKER_SELECTION_ENV],
+    treatment_env: ['EFFORT_SIBLING_RANDOMISE', 'LOOP_MEMORY_RULES_ENABLED', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
     status: (db, env, _now, since) => { const e = effortX1Evidence(db, since, env, fisherExact);
       return { n_per_arm: { on: e.on.verified + e.on.regressed, off: e.off.verified + e.off.regressed }, verdict: null,
         effects: { effort_siblings: { metric: 'verified / settled, evolve siblings on vs off (Fisher exact; no effect size computed)', estimate: null, ci: null, p: e.fisher_p } } }; } },
   { id: 'F2', flag: 'CHECKER_FAMILY_RANDOMISE', protocol: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-1', started_at: '2026-10-17T00:00:00.000Z',
     target_n: CHECKER_FAMILY_TARGET_DEFAULT, stop_by: '2027-01-15T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 90 d cap (v2; 1 settled per arm in 1.9 d projects past the cap)`, stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#amendment-2026-10-19-stop-conditions', population: 'oracle_goals',
-    treatment_env: ['CHECKER_FAMILY_RANDOMISE', 'CHECKER_FAMILY_VERSION', 'LOOP_MEMORY_RULES_ENABLED', ...MAKER_SELECTION_ENV],
+    treatment_env: ['CHECKER_FAMILY_RANDOMISE', 'CHECKER_FAMILY_VERSION', 'LOOP_MEMORY_RULES_ENABLED', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
     approved_over_limit: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4',
     status: (db, env, now, since) => { const e = checkerFamilyEvidence(db, since, env, fisherExact, now);
       return { n_per_arm: { same: e.primary.n.same, cross: e.primary.n.cross }, verdict: e.stop.verdict === 'collecting' ? null : e.stop.verdict,
@@ -141,7 +149,7 @@ export const experimentDefs = (): ExperimentDef[] => [
     target_n: PL_PAIRS, stop_by: PL_DECIDE_START_BY,
     stop_note: `protocol stop rule: ${PL_PAIRS} completed pairs or day ${PL_MAX_DAYS} after the first attempt (stop_by = first attempt + ${PL_MAX_DAYS} d once one exists); before the first attempt the runner amendment registers a decide-start-or-close date; verdict rules unchanged`,
     stop_source: 'docs/research/procedure-loop/PL-001_PROTOCOL.md#amendment-2026-10-26-runner', population: 'gym_tasks',
-    treatment_env: ['PL_001_MODE', 'PL_001_CAP_SHARE', 'PROCEDURE_SELECTOR_MODE', 'GYM_PROD_GATES', 'GYM_MAKER_TIMEOUT_MS', 'GENOME_APPLY_MODE', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY'],
+    treatment_env: ['PL_001_MODE', 'PL_001_CAP_SHARE', 'PROCEDURE_SELECTOR_MODE', 'GYM_PROD_GATES', 'GYM_MAKER_TIMEOUT_MS', 'GENOME_APPLY_MODE', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', 'GYM_TIER_PROBE_ENABLED'],
     schedule: (db) => { const f = plFirstAttempt(db); return f ? { started_at: f, stop_by: new Date(Date.parse(f) + PL_MAX_DAYS * 86_400_000).toISOString() } : null; },
     // n = completed pairs (both arms observed or censored), counted over the whole experiment; it cannot window
     status: (db, _env, now, since) => {
