@@ -7,6 +7,7 @@ import { redactSecrets } from './secret-patterns';
 import { decisionsInbox, openDecisionCounts, recordNeedsYouRanking, type DecisionsInbox } from './decisions-inbox';
 import { dependencyHuman, openLoopPrSplit, optionalLabelling } from './needs-you-classes';
 import { autoMergeEvidence } from './loop-auto-merge-state';
+import { mergeAttribution } from './merge-attribution';
 
 /**
  * UX-12 / UX-13 (Phase UX, operator 2026-10-04: channel = Telegram). Nothing reached the operator unless they opened
@@ -301,6 +302,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
   ].map((x) => ({ ...x, link: link(x.anchor) }));
   const lane = laneMode(env) === 'off' ? null : (() => { try { return dependencyLaneQueue(db, env, now); } catch { return null; } })();
   const am = (() => { try { return autoMergeEvidence(db, env, now); } catch { return null; } })();
+  const merges = mergeAttribution(db, env, now); // re-20261105 C10: per-class merge counts on main (null = no readable checkout)
   const data = {
     verified_24h: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'verified' AND updated_at >= ?", d1),
     regressed_24h: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'regressed' AND updated_at >= ?", d1),
@@ -323,6 +325,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     optional_labelling: Object.fromEntries(optional.map((x) => [x.key, { count: x.count, link: x.link }])),
     dependency_lane: lane ? { mode: lane.effective_mode, open: lane.open, merged_24h: lane.merged_24h, revoked: !!lane.revoked_at } : null,
     auto_merge: am && am.mode !== 'off' ? { mode: am.mode, class: am.class.state, merged_24h: am.counts.merged_24h, audit_samples_open: am.counts.audit_samples_open } : null,
+    merges_24h: merges,
   };
   const n = (v: number | null) => (v === null ? 'unknown' : String(v));
   const known = sections.filter((x) => x.count !== null);
@@ -342,6 +345,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     data.schedulers_off_unexpected.length ? `Schedulers off unexpectedly: ${data.schedulers_off_unexpected.length} (${data.schedulers_off_unexpected.map((s) => `${s.name} ${s.status}`).join(', ')})` : null,
     data.schedulers_off_by_flag.length ? `Schedulers off by flag: ${data.schedulers_off_by_flag.length} (${data.schedulers_off_by_flag.map((s) => s.name).join(', ')})` : null,
     data.dependency_lane ? `Dependency lane (${data.dependency_lane.mode}${data.dependency_lane.revoked ? ', act revoked' : ''}): ${data.dependency_lane.open} Dependabot PRs open, ${data.dependency_lane.merged_24h} merged in 24 h` : null,
+    merges ? `Merges on main (24 h): ${merges.auto_merge} auto-merge, ${merges.agent_script} agent script, ${merges.human_ui} human UI` : 'Merges on main (24 h): unknown',
     data.auto_merge ? `Test-only auto-merge (${data.auto_merge.mode}): class ${data.auto_merge.class}, ${data.auto_merge.merged_24h} merged in 24 h, ${data.auto_merge.audit_samples_open} audit sample(s) waiting for you` : null,
   ].filter(Boolean).join('\n');
   return { at: new Date(now).toISOString(), text: redactSecrets(text).redacted, data };

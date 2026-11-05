@@ -88,7 +88,7 @@ export async function ingestKbPages(db: Database, host: string, pages: unknown, 
     const done = verdict === 'unsafe' ? out.unsafe : state && verdict !== 'safe' ? out.pending : out.accepted; // E2: no verdict is not a pass
     const setQuarantine = () => db.prepare('UPDATE kb_pages SET quarantined_at = ?, quarantine_reason = ? WHERE path = ?').run(...quarantine, path);
     if (unchanged) { setQuarantine(); done.push(path); continue; }
-    const v = await embed(`${title}\n${body}`, fetchFn);
+    const v = await embed(`${title}\n${body}`, fetchFn, 'passage', 'kb_page');
     // no embedding: the new text is not stored (re-sent next run); an unsafe verdict still quarantines the stored older text
     if (!v) { if (verdict === 'unsafe' && prev) setQuarantine(); out.failed.push(path); continue; }
     db.prepare('INSERT OR REPLACE INTO kb_pages (path, host, title, body, sha, vector, updated_at, embedding_model, embedding_dim, quarantined_at, quarantine_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')

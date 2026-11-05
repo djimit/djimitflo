@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { recordModelCall } from './model-selector';
+import { makerDiffSource } from './egress-classification';
 
 /**
  * B29 (operator 2026-10-11, after PR #779): every model call answers "what for, in which experiment, at what cost".
@@ -47,6 +48,8 @@ export function recordWorkerCall(db: Database, c: {
     latencyMs: Math.max(0, c.durationMs || 0), outChars: 0, shadow: 0, agree: null, tokensIn, tokensOut, taskKind: c.loopName, runId: c.runId,
     purpose: `${c.role ?? c.consumer}:${c.loopName}`, experimentId: experimentArms(db, c.goalId, c.ace ?? null, c.ste ?? null),
     status: c.status ?? (maker ? (c.ok ? 'verified' : 'not_verified') : c.ok ? 'ok' : 'failed'),
+    // re-20261105 C4: a maker / reviewer sends its goal repo's code to its model
+    ...(c.consumer === 'gym' ? {} : { dataSource: makerDiffSource(db, c.goalId) }),
   });
 }
 

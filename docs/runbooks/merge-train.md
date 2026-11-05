@@ -33,7 +33,11 @@ the exact sha — `skipped`, `neutral`, `cancelled`, `stale` is red (`required_n
    every poll (moved → SUPERSEDED, an obsolete sha's CI is never used); red → FAIL_CLOSED; TIMEOUT → HOLD, never approved.
 5. Re-read state, head, draft, main (moved → redo the attempt) and the policy verdict (changed → HOLD).
 6. `PUT pulls/{n}/merge` with `merge_method=squash` and `sha=<head>` (GitHub refuses any other head); the outcome is read from
-   live state. No auto-merge, no branch deletion.
+   live state. No auto-merge, no branch deletion. The squash commit gets GitHub's own default squash body (GraphQL
+   `viewerMergeBodyText`) plus `merged-via: merge-train.sh (agent, operator instruction) <ISO ts>` (re-20261105 E10: `merged_by`
+   is `djimit` for agent and human alike); `MT_MERGED_VIA_ACTOR` overrides the actor, `dependabot-merge.sh` writes
+   `(workflow, operator policy)`. The operator digest counts merges on main per class (`merge-attribution.ts`: auto-merge /
+   agent script / human UI; human UI = no trailer and no auto-merge or dependency-lane record).
 
 Every mutation is preceded by a ledger entry (`ready_intent`, `update_intent`, `merge_intent`); a failed ledger write exits 8
 before the mutation. SIGTERM/SIGINT records `cancelled` and releases the claim.

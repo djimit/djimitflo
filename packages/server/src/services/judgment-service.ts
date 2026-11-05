@@ -89,7 +89,9 @@ export async function runJudgment(db: Database, def: JudgmentDef, subject: { typ
   const id = randomUUID();
   try {
     // B8: a shadow judgment is fire-and-forget — retrying during a burst only deepens the queue; enforce keeps its retries
-    const response = await client.systemOne(state, def.questions, mode === 'shadow' ? { retries: 0 } : {});
+    // re-20261105 C4: facts.dataSource names the payload source for the egress shadow judgment on the ledger row
+    const dataSource = typeof facts?.dataSource === 'string' ? { dataSource: facts.dataSource } : {};
+    const response = await client.systemOne(state, def.questions, mode === 'shadow' ? { retries: 0, ...dataSource } : dataSource);
     const { decision, reason, answers } = decideObserved(def, response.answers, facts);
     localShadow(db, def, subject, stateHash, state, def.questions, facts);
     const at = new Date().toISOString();
@@ -192,7 +194,8 @@ function fireChallenger(db: Database, parts: Array<{ def: JudgmentDef; prefix: s
   const run = (async () => {
     const started = Date.now();
     let response: TsResponse | null = null; let error = '';
-    try { response = await client.systemOne(frozen, questions, { retries: 0, model, purpose: 'jev:challenger', noWait: true }); }
+    const source = parts.map((p) => p.facts?.dataSource).find((v): v is string => typeof v === 'string');
+    try { response = await client.systemOne(frozen, questions, { retries: 0, model, purpose: 'jev:challenger', noWait: true, ...(source ? { dataSource: source } : {}) }); }
     catch (err) { error = (err instanceof Error ? err.message : String(err)).slice(0, 200); }
     if (!response && /^TYPESAFE_(?:DROPPED_BUSY|BREAKER_OPEN)/.test(error)) return; // not attempted: the ledger row says why, no pair
     const share = (n: number | undefined) => Math.round((n ?? 0) / parts.length);

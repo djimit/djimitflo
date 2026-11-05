@@ -73,15 +73,16 @@ export class TypeSafeClient {
    * One ledger row per call (final outcome + attempts), not one per attempt; breaker_open and queue_full are recorded too.
    * JEV-114: `model` overrides the pinned model for one call (the paired challenger), `purpose` tags its ledger row, and
    * `noWait` drops the call (TYPESAFE_DROPPED_BUSY) instead of queueing it when no slot is free right now.
+   * `dataSource` (re-20261105 C4) names the payload source for the egress shadow judgment on the ledger row.
    */
-  async systemOne(state: unknown, questions: Record<string, TsQuestion>, opts: { timeoutMs?: number; retries?: number; model?: string; purpose?: string; noWait?: boolean } = {}): Promise<TsResponse> {
+  async systemOne(state: unknown, questions: Record<string, TsQuestion>, opts: { timeoutMs?: number; retries?: number; model?: string; purpose?: string; noWait?: boolean; dataSource?: string } = {}): Promise<TsResponse> {
     const key = process.env.TYPESAFE_API_KEY?.trim();
     if (!key) throw new Error('TYPESAFE_NOT_CONFIGURED');
     const model = opts.model || typesafeModel();
     const challenger = model !== typesafeModel();
     let started = Date.now();
     const record = (ok: boolean, status: string, attempts: number, tokensIn?: number) =>
-      recordLlmCall({ consumer: 'jev', model, provider: 'typesafe', ok, latencyMs: Date.now() - started, outChars: 0, tokensIn, taskKind: 'systemone', status, attempts, ...(opts.purpose ? { purpose: opts.purpose } : {}) });
+      recordLlmCall({ consumer: 'jev', model, provider: 'typesafe', ok, latencyMs: Date.now() - started, outChars: 0, tokensIn, taskKind: 'systemone', status, attempts, ...(opts.purpose ? { purpose: opts.purpose } : {}), dataSource: opts.dataSource });
     if (Date.now() < downUntil) { record(false, 'breaker_open', 0); throw new Error('TYPESAFE_BREAKER_OPEN'); }
     if (!(await acquire(opts.noWait))) {
       if (opts.noWait) { record(false, 'dropped_busy', 0); throw new Error('TYPESAFE_DROPPED_BUSY'); }
