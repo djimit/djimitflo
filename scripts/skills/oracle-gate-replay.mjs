@@ -103,10 +103,13 @@ const serial = (fn) => { const p = gitLock.then(fn); gitLock = p.catch(() => {})
 
 async function replay(c, o, ref) {
   const tokens = String(c.grounding?.runtimeCommand ?? '').trim().split(/\s+/);
-  const base = git(['rev-list', '-1', `--before=${c.created}`, 'origin/main']);
-  const row = { lane: c.lane, lease: short(c.lease), rt: c.rt, prod_status: c.status, base: short(base), base_rule: 'last origin/main commit before lease created_at (approximation)',
+  // the base is unknown (not 0, not HEAD) when origin/main history is absent, e.g. a shallow CI checkout
+  let base = null;
+  try { base = git(['rev-list', '-1', `--before=${c.created}`, 'origin/main']) || null; } catch { base = null; }
+  const row = { lane: c.lane, lease: short(c.lease), rt: c.rt, prod_status: c.status, base: base ? short(base) : 'unresolved', base_rule: 'last origin/main commit before lease created_at (approximation)',
     reference: referenceVerdict(c, ref) };
-  if (!o.apply) return { ...row, dry_run: `would: worktree at ${short(base)}, apply ${c.diff.split('\n').filter((l) => l.startsWith('diff --git')).length} file diff(s), run oracle-gate -- ${tokens.join(' ')}` };
+  if (!o.apply) return { ...row, dry_run: `would: worktree at ${base ? short(base) : 'UNRESOLVED base (no origin/main history)'}, apply ${c.diff.split('\n').filter((l) => l.startsWith('diff --git')).length} file diff(s), run oracle-gate -- ${tokens.join(' ')}` };
+  if (!base) return { ...row, gate: null, skipped: 'base unresolved: no origin/main history in this checkout' };
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `ogr-${short(c.lease)}-`));
   const wt = path.join(tmp, 'wt');
   try {

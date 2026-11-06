@@ -68,7 +68,7 @@ operator evidence dir; this file carries only counts and decisions.
 | M6 | The daemon's check exit codes stored with the capability id; lease `completed`, not brake-killed or rescued | same PR |
 | M7 | Credit only when invoked ∧ checks pass ∧ verified; new credit kind `capability`; no `capability_id` for shown-only | same PR |
 | M8 | Boundary row when a capability is validated or deprecated; register L1-OG-001 | same PR |
-| — | `swarm_tasks` foreign-key fix | its own PR |
+| #1167 | `swarm_tasks` foreign-key fix | verified on a prod DB copy (PASS, 06-11) |
 
 ## Next action
 
