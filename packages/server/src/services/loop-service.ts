@@ -37,6 +37,7 @@ import { SelfImprovementService } from './self-improvement-service';
 import { MAKER_TEMPLATE_RULES_STE, steRulesFor } from './ste-001';
 import { extraRepoByPath, extraRepoChecks } from './repo-registry';
 import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
+import { skillRouteEventMeta } from './skill-route';
 import { firstJsonObject } from './model-json';
 import { isHighRiskPath } from './diff-capture';
 import { recordPolicyViolation } from './policy-violations';
@@ -2473,14 +2474,16 @@ export class LoopService {
   ): void {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
-    const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
-    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste || extra.capabilities) {
-      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}), ...(extra.capabilities ? { capabilities: extra.capabilities } : {}), ...(extra.capability_ids ? { capability_ids: extra.capability_ids } : {}) });
-    }
+    const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`, process.env, runtime);
     // multi-repo: an extra repo's maker is told that repo's check scripts (EXTRA_REPOS_ENABLED=on); djimitflo's text is unchanged
     const repo = extraRepoByPath(run.repository_path);
     const content = renderWorkAssignment(run, finding, runtime, advisoryContext.text, extra, { nestedSpawnControl: options.nestedSpawnControl, ...(repo ? { checkScripts: extraRepoChecks(repo.slug) } : {}) });
+    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste || extra.capabilities || extra.skill_route) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}${extra.skill_route ? ` (skill route ${extra.skill_route.mode}: ${extra.skill_route.capability_id} ${extra.skill_route.arm}, delivered=${extra.skill_route.delivered})` : ''}.`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}), ...(extra.capabilities ? { capabilities: extra.capabilities } : {}), ...(extra.capability_ids ? { capability_ids: extra.capability_ids } : {}),
+          // L1 receipt: capability id, version, artifact digest, block sha256, arm and the sha256 of this LOOP_WORK.md
+          ...(extra.skill_route ? { skill_route: skillRouteEventMeta(extra.skill_route, content) } : {}) });
+    }
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 
