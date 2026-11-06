@@ -359,6 +359,10 @@ export interface EvolutionEvidence {
   content_drafts?: Record<string, unknown>;
   /** capability factory (CAPABILITY_FACTORY_MODE): operator requests by status; null counts when unreadable (services/capability-factory.ts) */
   capability_factory?: { mode: 'off' | 'on'; requests: Record<'reused' | 'proposed' | 'in_progress' | 'merged' | 'registered' | 'rejected', number> | null; registered_downgraded: number | null };
+  /** L1 skill route (SKILL_ROUTE_MODE): funnel per arm × lane; contrast descriptive, difference null below n 30 per arm; null = unreadable */
+  skill_route?: { mode: 'off' | 'shadow' | 'on'; since: string; note: string;
+    by_arm_lane: Array<{ arm: string; lane: string; selected: number; delivered: number; invoked: number; passed: number; verified: number; credited: number }> | null;
+    contrast: { treatment: { n: number; verified: number; rate: number | null }; holdout: { n: number; verified: number; rate: number | null }; difference: number | null; withheld: string | null } | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
