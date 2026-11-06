@@ -58,6 +58,7 @@ import { fleetRepairEvidence } from './fleet-repair';
 import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
+import { skillRouteEvidence } from './skill-route';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -142,6 +143,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'CAPABILITY_FACTORY_MODE', acting: true },
   { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
   { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
+  { name: 'SKILL_ROUTE_MODE', acting: true },
   { name: 'SKILL_ARTIFACT_EVOLUTION_MODE', acting: true },
   { name: 'EGRESS_CLASS_MODE', acting: false },
   // re-20261105 E17 / P1-8: acting flags that were in no registry, or filed as non-evolution although they steer the loop
@@ -581,5 +583,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // track C (CONTENT_DRAFTS_MODE): content_draft judgments by decision, verifier pass rate per check, draft PRs opened, tokens (read-only)
     content_drafts: contentDraftsEvidence(db, env, since),
     // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
-    capability_factory: capabilityFactoryEvidence(db, env) };
+    capability_factory: capabilityFactoryEvidence(db, env),
+    // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
+    skill_route: skillRouteEvidence(db, env, since) };
 }

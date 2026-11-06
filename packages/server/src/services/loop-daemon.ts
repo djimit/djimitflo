@@ -1,3 +1,4 @@
+import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
 import { mutationCheckEnv } from './test-gap-source-service';
@@ -28,7 +29,8 @@ import { runAce001, runGenome, skillContentHash } from './maker-genome';
 import { runSte001 } from './ste-001';
 import { extraRepoChecks, goalExtraRepo, goalRepoSlug, primaryRepo, repoSkillPrefix, type ExtraRepo } from './repo-registry';
 import { recordMakerCall } from './model-call-ledger';
-import { strategyGenomeFor } from './genome-registry';
+import { genomeDelivery, strategyGenomeFor } from './genome-registry';
+import { settleSkillRoute, skillRouteCreditable, skillRouteMode, skillRouteOutcomeState } from './skill-route';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFactorySpecialist } from './capability-factory';
 import { recordFitnessShadow } from './fitness-view';
@@ -667,11 +669,20 @@ export class LoopDaemon {
       if (!makerAlreadyDone) try {
         const lease = this.db.prepare('SELECT runtime, json_extract(metadata, \'$.model\') AS model FROM worker_leases WHERE id = ?').get(makerLease.id) as { runtime: string; model: string | null } | undefined;
         const strategy = lease ? strategyGenomeFor(this.db, lease.runtime, lease.model) : null;
-        if (strategy) {
+        // AG-trace gap A (SKILL_ROUTE_MODE shadow|on): the genome is this maker's strategy only if its lines are in the maker's
+        // LOOP_WORK.md (the gym fire check); otherwise it is recorded as undelivered and earns no credit anywhere (off: today)
+        const delivery = strategy && skillRouteMode() !== 'off' ? genomeDelivery(this.db, strategy, this.assignmentText(makerLease.id)) : null;
+        if (strategy && delivery && !delivery.delivered) {
+          this.db.prepare("UPDATE worker_leases SET metadata = json_set(json_remove(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome_id'), '$.genome_undelivered', json(?)) WHERE id = ?")
+            .run(JSON.stringify({ genome_id: strategy.id, genome_lines: delivery.genome_lines, genome_lines_found: delivery.genome_lines_found, goal_sha256: delivery.goal_sha256, reason: delivery.reason }), makerLease.id);
+          new LoopEventService(this.db).recordEvent(run.id, 'genome_undelivered', 'info', `Genome ${strategy.id}: ${delivery.reason}; not credited`, { genome_id: strategy.id, maker_lease_id: makerLease.id, genome_lines: delivery.genome_lines, genome_lines_found: delivery.genome_lines_found });
+        } else if (strategy) {
           this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome_id', ?) WHERE id = ?").run(strategy.id, makerLease.id);
-          if (process.env.GENOME_APPLY_MODE === 'shadow' && strategy.lines.length) new LoopEventService(this.db).recordEvent(run.id, 'genome_apply_shadow', 'info',
-            `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
+          if (delivery) this.db.prepare("UPDATE worker_leases SET metadata = json_set(metadata, '$.genome_delivery', json(?)) WHERE id = ?")
+            .run(JSON.stringify({ delivered: true, genome_lines: delivery.genome_lines, genome_lines_found: delivery.genome_lines_found, goal_sha256: delivery.goal_sha256 }), makerLease.id);
         }
+        if (strategy && process.env.GENOME_APPLY_MODE === 'shadow' && strategy.lines.length) new LoopEventService(this.db).recordEvent(run.id, 'genome_apply_shadow', 'info',
+          `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
       } catch { /* attribution is best-effort */ }
       // capability factory (CAPABILITY_FACTORY_MODE=on): the species chosen above is the run's `specialist` (no-op otherwise)
       if (!makerAlreadyDone) try { recordFactorySpecialist(this.db, run.id, makerLease.id); } catch { /* attribution is best-effort */ }
@@ -936,13 +947,17 @@ export class LoopDaemon {
       // 9a'+. Attributable outcome (OUTCOME_ATTRIBUTION_ENABLED): maker / reviewer / environment failure or verified, recorded
       // once per run before the maker outcome below, so maker-side learners can leave reviewer/env failures out.
       // E2: a gate without evidence is passed on too, so an unknown-only run is never attributed 'verified' (it lands on environment/reviewer)
+      // L1 M6/M7 (SKILL_ROUTE_MODE shadow|on): the daemon's check exit codes and this verdict settle the maker's skill attempt
+      // before the credits below are written (no-op when off or no skill was selected)
+      let skillRoute: ReturnType<typeof settleSkillRoute> = null;
+      try { skillRoute = settleSkillRoute(this.db, run.id, activeMakerLease.id, outcomeVerified); } catch { /* evidence only */ }
       recordOutcomeAttribution(this.db, run.id, activeMakerLease.id, verification.gates.filter((g) => g.status === 'fail' || g.status === 'unknown').map((g) => g.name));
 
       // 9a''. Heritability (E10): each run is one outcome of its maker "skill" (loop × runtime) — the fitness signal the
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const leaseMeta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown; effective_runtime?: unknown; effective_model?: unknown } : {};
+        const leaseMeta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; genome_undelivered?: { genome_id?: unknown }; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown; effective_runtime?: unknown; effective_model?: unknown } : {};
         // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback maker is its own species (loop-maker:<lane>:claude), tagged for experiment exclusion
         // P0-7: an engine fallback (effective_runtime on the lease) is attributed to the runtime that ran, with its model (unknown = none)
         const leaseRuntime = leaseMeta.runtime_fallback && maker ? maker.runtime : activeMakerLease.runtime;
@@ -964,7 +979,12 @@ export class LoopDaemon {
         // OMEGA slice 1 (record-only, no gate reads it): the factory capabilities this maker was shown, as `capability:<id>@<version>`
         // refs; exactly one also becomes the lease's capability_id (competence per capability, meta-evolution dormancy)
         const capabilityIds = genome.capability_ids;
-        if (capabilityIds.length === 1) this.db.prepare('UPDATE worker_leases SET capability_id = ? WHERE id = ? AND capability_id IS NULL')
+        // L1 M7: with the skill route on or in shadow a merely shown capability earns nothing (historical rows stay); the lease's
+        // capability_id is set only by a credited skill attempt below
+        const routeOn = skillRouteMode() !== 'off';
+        const skillCredited = skillRoute !== null && skillRouteCreditable(skillRoute);
+        if (skillCredited) this.db.prepare('UPDATE worker_leases SET capability_id = ? WHERE id = ? AND capability_id IS NULL').run(skillRoute!.capability_id, activeMakerLease.id);
+        if (!routeOn && capabilityIds.length === 1) this.db.prepare('UPDATE worker_leases SET capability_id = ? WHERE id = ? AND capability_id IS NULL')
           .run(capabilityIds[0].slice(0, capabilityIds[0].lastIndexOf('@')), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
         const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
@@ -980,13 +1000,16 @@ export class LoopDaemon {
           // §16 step 9: identity of the template + examples + sealed rules + strategy genome this maker ran with
           skillContentHash: skillContentHash(genome, typeof meta.genome_id === 'string' ? meta.genome_id : null),
           ...(capabilityIds.length ? { skillVersion: capabilityIds.join(',') } : {}),
+          ...(skillCredited ? { capabilityId: skillRoute!.capability_id, artifactDigest: skillRoute!.artifact_digest } : {}),
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
             ...(outcomeVerified ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
             ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
             ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : []),
-            ...(ran.runtime !== leaseRuntime ? [`requested_runtime:${leaseRuntime}`] : []), ...capabilityIds.map((c) => `capability:${c}`)],
+            ...(ran.runtime !== leaseRuntime ? [`requested_runtime:${leaseRuntime}`] : []), ...capabilityIds.map((c) => `capability:${c}`),
+            ...(typeof meta.genome_undelivered?.genome_id === 'string' ? [`strategy_genome_undelivered:${meta.genome_undelivered.genome_id}`] : []),
+            ...(skillRoute ? [`skill_route:${skillRoute.arm}:${skillRouteOutcomeState(skillRoute)}`, `skill:${skillRoute.capability_id}@${skillRoute.version}`] : [])],
         });
       } catch { /* best-effort learning */ }
 
@@ -1066,6 +1089,14 @@ export class LoopDaemon {
       this.persistActiveGoals();
       this.pruneWorktrees();
     }
+  }
+
+  /** The maker's LOOP_WORK.md text ('' when unreadable): what the gap-A fire check looks for the genome lines in. */
+  private assignmentText(leaseId: string): string {
+    try {
+      const file = (this.db.prepare("SELECT json_extract(metadata, '$.assignment_file') AS f FROM worker_leases WHERE id = ?").get(leaseId) as { f: string | null } | undefined)?.f;
+      return file ? fs.readFileSync(file, 'utf8') : '';
+    } catch { return ''; }
   }
 
   private pruneWorktrees(): void {

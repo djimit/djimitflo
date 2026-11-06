@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import type { GymTask } from './gym-task-miner';
 import type { MutantTask } from './gym-mutants';
@@ -295,6 +296,19 @@ export function fireCheckVoid(db: Database, genomeId: string | undefined, status
   const want = Math.max(1, genome(db, genomeId)?.lines.length ?? 0);
   if (!evidence) return 'fire_check: no evidence that the genome lines reached the maker';
   return evidence.genome_lines_found >= want ? null : `fire_check: ${evidence.genome_lines_found} of ${want} genome lines in the maker prompt`;
+}
+
+/**
+ * AG-trace gap A (SKILL_ROUTE_MODE shadow|on, loop-daemon): a production maker is attributed to a strategy genome only when
+ * the genome's lines are in its assignment text — the gym's fire check (fireCheckVoid) applied to LOOP_WORK.md. A genome with
+ * no lines (baseline) has nothing to deliver. Undelivered = no genome_id stamp, so no strategy credit, ref, content hash,
+ * merge-survival attribution or knowledge-fitness use follows from it.
+ */
+export function genomeDelivery(db: Database, g: Genome, assignmentText: string): FireCheck & { delivered: boolean; reason: string | null } {
+  const found = g.lines.filter((l) => l.trim() && assignmentText.includes(l.trim())).length;
+  const evidence: FireCheck = { goal_sha256: createHash('sha256').update(assignmentText).digest('hex'), genome_lines: g.lines.length, genome_lines_found: found };
+  const reason = g.lines.length ? fireCheckVoid(db, g.id, 'success', evidence) : null;
+  return { ...evidence, delivered: reason === null, reason };
 }
 
 /**
