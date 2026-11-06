@@ -18,8 +18,8 @@ const detail = (over: Partial<MissionDetail> = {}): MissionDetail => ({
       closure: { eval_run_id: 'eval-1', score_delta: 0.1, created_at: '2026-10-20T01:35:00Z' }, attribution: { outcome: 'verified', reason: null, created_at: '2026-10-20T01:40:00Z', judgment_id: 'j1' } },
   ],
   leases: [
-    { id: 'mk-1', loop_run_id: 'run-1', role: 'maker', runtime: 'codex', status: 'completed', created_at: '2026-10-20T01:01:00Z', verdict: null, maker_lease_id: null },
-    { id: 'ck-1', loop_run_id: 'run-1', role: 'checker', runtime: 'claude', status: 'completed', created_at: '2026-10-20T01:02:00Z', verdict: 'accepted', maker_lease_id: 'mk-1' },
+    { id: 'mk-1', loop_run_id: 'run-1', role: 'maker', runtime: 'codex', status: 'completed', created_at: '2026-10-20T01:01:00Z', parent_lease_id: null, spawn_tree_id: null, depth: 0, verdict: null, maker_lease_id: null, reserved_tokens: null, measured_tokens: null },
+    { id: 'ck-1', loop_run_id: 'run-1', role: 'checker', runtime: 'claude', status: 'completed', created_at: '2026-10-20T01:02:00Z', parent_lease_id: null, spawn_tree_id: null, depth: 0, verdict: 'accepted', maker_lease_id: 'mk-1', reserved_tokens: null, measured_tokens: null },
   ],
   tasks: [], decisions: [],
   blocker: { text: 'failed gates: tests_lint_typecheck', source: 'loop_runs.gates_json#run-2' },
@@ -69,6 +69,17 @@ it('derives delegation and agreement only from task assignments and quorum decis
     decisions: [{ id: 'd1', task_id: null, decision_type: 'quorum', decision: 'approve', reason: '', actor: 'panel', blocked_reasons: [], created_at: '' },
       { id: 'd2', task_id: null, decision_type: 'state_transition', decision: 'observed->planned', reason: '', actor: 'system', blocked_reasons: [], created_at: '' }] });
   expect(rel.map((r) => [r.type, r.from, r.to])).toEqual([['delegation', 'task Write fix', 'lease mk-9'], ['agreement', 'panel', 'mission']]);
+});
+
+it('shows nested worker lineage separately from its unverified execution status', () => {
+  const d = detail({ leases: [
+    ...detail().leases,
+    { id: 'child-1', loop_run_id: 'run-1', role: 'maker', runtime: 'opencode', status: 'completed', created_at: '2026-10-20T01:03:00Z', parent_lease_id: 'mk-1', spawn_tree_id: 'mk-1', depth: 1, verdict: null, maker_lease_id: null, reserved_tokens: 500, measured_tokens: null },
+  ] });
+  const nested = missionRelationships(d).find((row) => row.evidence === 'worker_leases.parent_lease_id#child-1');
+  expect(nested).toMatchObject({ type: 'delegation', from: 'lease mk-1', to: 'lease child-1', detail: 'execution completed; verification unknown — not recorded; reserved tokens 500; measured tokens unknown; depth 1' });
+  view(d);
+  expect(screen.getByText(/execution completed; verification unknown — not recorded; reserved tokens 500; measured tokens unknown; depth 1/)).toBeTruthy();
 });
 
 it('reports tokens with coverage, and unknown (not 0) without usage or linked runs', () => {

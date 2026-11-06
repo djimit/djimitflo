@@ -32,6 +32,7 @@ export type Relationship = { type: RelationshipType; from: string; to: string; d
 export function missionRelationships(detail: Pick<MissionDetail, 'leases' | 'tasks' | 'decisions'>): Relationship[] {
   const out: Relationship[] = [];
   for (const l of detail.leases) out.push({ type: 'participation', from: `lease ${l.id} (${l.role}, ${l.runtime})`, to: `run ${l.loop_run_id}`, detail: l.status, evidence: `worker_leases.loop_run_id#${l.id}` });
+  for (const l of detail.leases) if (l.parent_lease_id) out.push({ type: 'delegation', from: `lease ${l.parent_lease_id}`, to: `lease ${l.id}`, detail: `execution ${l.status}; verification ${l.verdict ?? 'unknown — not recorded'}; reserved tokens ${l.reserved_tokens ?? 'unknown'}; measured tokens ${l.measured_tokens ?? 'unknown'}; depth ${l.depth}`, evidence: `worker_leases.parent_lease_id#${l.id}` });
   for (const l of detail.leases) {
     if (l.role === 'maker' || !l.verdict) continue;
     out.push({ type: 'verification', from: `lease ${l.id} (${l.role})`, to: l.maker_lease_id ? `maker lease ${l.maker_lease_id}` : `run ${l.loop_run_id} (maker lease not named)`,

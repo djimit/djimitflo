@@ -25,6 +25,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   CONTENT_DRAFTS_MODE: 'off (`shadow`, `on`)',
   DEAD_CODE_LANE_ENABLED: 'off',
   DEAD_CODE_MAX_PER_DAY: '2 (also the in-flight cap)',
+  DELEGATION_FACADE_MODE: 'off',
   DEPENDENCY_LANE_MAX_PER_DAY: '4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h)',
   DEPENDENCY_LANE_MODE: 'off (`shadow`: records the Dependabot queue and `would_merge`/`would_rebase`, no GitHub writes; `act`: one `@dependabot…',
   DJIMITFLO_PUBLIC_URL: 'unset (Host header)',

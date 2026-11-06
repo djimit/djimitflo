@@ -21,7 +21,7 @@ interface Harness {
   loopRunId: string;
 }
 
-function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; wallBudgetMs?: number; maxConcurrent?: number; riskClass?: 'low' | 'medium' | 'high' | 'critical' } = {}): Harness {
+function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; wallBudgetMs?: number; maxConcurrent?: number; riskClass?: 'low' | 'medium' | 'high' | 'critical'; capabilityIds?: string[] } = {}): Harness {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   db.exec(schema);
@@ -56,6 +56,7 @@ function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; w
     total_wall_budget_ms: overrides.wallBudgetMs ?? 10_000_000,
     max_concurrent_children: overrides.maxConcurrent ?? 20,
     risk_class: overrides.riskClass ?? 'medium',
+    capability_ids: overrides.capabilityIds,
   });
 
   return { db, loops, spawns, intelligence, tempDir, worktreeRoot, loopRunId: run.id, ...({ root } as any) } as any;
@@ -135,6 +136,48 @@ describe('nested-spawn-service (P1 gates)', () => {
     }
   });
 
+  it('returns the same prepared lease for a repeated idempotent submission', () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 1_000_000 });
+    try {
+      const input = {
+        spawn_tree_id: (h as any).root.spawn_tree_id,
+        parent_lease_id: (h as any).root.root_lease_id,
+        requested_by_lease_id: (h as any).root.root_lease_id,
+        role: 'maker',
+        runtime: 'mock',
+        prompt: 'bounded duplicate-safe task',
+        idempotency_key: 'request-1',
+      } as any;
+      const first = h.spawns.requestSpawn(input, { internal: true });
+      const second = h.spawns.requestSpawn(input, { internal: true });
+      expect(second.spawn_id).toBe(first.spawn_id);
+      expect(second.child_lease_id).toBe(first.child_lease_id);
+      expect(h.spawns.listSpawnTree((h as any).root.spawn_tree_id).spawns).toHaveLength(2); // root + one child
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('rejects reuse of an idempotency key for different delegated work', () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 1_000_000 });
+    try {
+      const root = (h as any).root;
+      const common = {
+        spawn_tree_id: root.spawn_tree_id,
+        parent_lease_id: root.root_lease_id,
+        requested_by_lease_id: root.root_lease_id,
+        role: 'maker',
+        runtime: 'mock',
+        idempotency_key: 'request-1',
+      };
+      h.spawns.requestSpawn({ ...common, prompt: 'first task' } as any, { internal: true });
+      expect(() => h.spawns.requestSpawn({ ...common, prompt: 'different task' } as any, { internal: true }))
+        .toThrow('SPAWN_IDEMPOTENCY_CONFLICT');
+    } finally {
+      cleanup(h);
+    }
+  });
+
   it('cycle guard: same prompt + role as an ancestor is rejected', () => {
     const h = setupHarness({ depthBudget: 2, tokenBudget: 1_000_000 });
     try {
@@ -206,7 +249,7 @@ describe('nested-spawn-service (P1 gates)', () => {
   });
 
   it('capability routing: a non-live (draft) capability is gated out', () => {
-    const h = setupHarness({ depthBudget: 2, tokenBudget: 1_000_000 });
+    const h = setupHarness({ depthBudget: 2, tokenBudget: 1_000_000, capabilityIds: ['cap-draft'] });
     try {
       h.intelligence.registerCapability({
         id: 'cap-draft', kind: 'skill', owner: 'test', version: '0.1.0', status: 'draft',
@@ -224,7 +267,7 @@ describe('nested-spawn-service (P1 gates)', () => {
   });
 
   it('capability routing: a live capability that forbids the action is gated out', () => {
-    const h = setupHarness({ depthBudget: 2, tokenBudget: 1_000_000 });
+    const h = setupHarness({ depthBudget: 2, tokenBudget: 1_000_000, capabilityIds: ['cap-live'] });
     try {
       h.intelligence.registerCapability({
         id: 'cap-live', kind: 'skill', owner: 'test', version: '1.0.0', status: 'validated',

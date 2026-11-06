@@ -4,6 +4,8 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
+import { DelegationService } from '../services/delegation-service';
+import { NestedSpawnService } from '../services/nested-spawn-service';
 import { LoopRunQueryService } from '../services/loop-run-query-service';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { dependencyLaneQueue, reenableDependencyLane } from '../services/dependency-lane';
@@ -13,6 +15,15 @@ import { param } from './params';
 
 function mapLoopServiceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
+  if (message === 'DELEGATION_FACADE_OFF') throw createError(409, 'Delegation facade is disabled', 'DELEGATION_FACADE_OFF');
+  if (message === 'DELEGATION_ACTOR_REQUIRED') throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+  if (message === 'DELEGATION_IDEMPOTENCY_KEY_INVALID' || message === 'SPAWN_IDEMPOTENCY_KEY_INVALID') throw createError(400, 'A valid Idempotency-Key header is required', 'DELEGATION_IDEMPOTENCY_KEY_INVALID');
+  if (message === 'DELEGATION_PARENT_SCOPE_INVALID' || message === 'DELEGATION_CHILD_SCOPE_INVALID' || message === 'SPAWN_TREE_MISMATCH') throw createError(409, 'Delegation lease is outside the requested loop scope', 'DELEGATION_SCOPE_INVALID');
+  if (message === 'DELEGATION_RUN_NOT_EXECUTABLE') throw createError(409, 'The loop or parent lease is no longer accepting delegated work', 'DELEGATION_RUN_NOT_EXECUTABLE');
+  if (message === 'SPAWN_CAPABILITY_ESCALATION') throw createError(403, 'A child cannot request capabilities outside its parent lease', 'SPAWN_CAPABILITY_ESCALATION');
+  if (message === 'DELEGATION_RUNTIME_UNSUPPORTED') throw createError(400, 'Runtime is not supported by the delegation facade', 'DELEGATION_RUNTIME_UNSUPPORTED');
+  if (message === 'DELEGATION_NOT_FOUND') throw createError(404, 'Delegation receipt not found', 'DELEGATION_NOT_FOUND');
+  if (message === 'SPAWN_IDEMPOTENCY_CONFLICT') throw createError(409, 'Idempotency-Key was already used for different work', 'SPAWN_IDEMPOTENCY_CONFLICT');
   if (message === 'GOAL_NOT_FOUND') throw createError(404, 'Goal not found', 'GOAL_NOT_FOUND');
   if (message === 'LOOP_NAME_UNSUPPORTED') throw createError(400, 'loop_name is not supported', 'LOOP_NAME_UNSUPPORTED');
   if (message === 'LOOP_RUN_NOT_FOUND') throw createError(404, 'Loop run not found', 'LOOP_RUN_NOT_FOUND');
@@ -81,6 +92,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const loopService = new LoopService(db, evidenceRoot, executionEngine);
+  const delegation = new DelegationService(db, loopService, new NestedSpawnService(db, loopService));
   const queries = new LoopRunQueryService(db);
 
   router.get('/catalog', requirePermission('read:evidence'), (_req, res, next) => {
@@ -97,6 +109,10 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     } catch (error) {
       next(error);
     }
+  });
+
+  router.get('/delegation/mode', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ mode: delegation.mode() });
   });
 
   // UX-7: the loop's draft PRs (read-only, from loop_runs metadata; no GitHub call)
@@ -304,6 +320,33 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
       } catch (mapped) {
         next(mapped);
       }
+    }
+  });
+
+  router.post('/runs/:id/delegate', requirePermission('write:swarm_action'), requirePermission('create:task'), (req, res, next) => {
+    try {
+      if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const body = req.body || {};
+      const receipt = delegation.submitCodeTask({
+        loop_run_id: param(req, 'id'),
+        parent_lease_id: body.parent_lease_id,
+        runtime: body.runtime,
+        prompt: body.prompt,
+        capability_ids: body.capability_ids,
+        idempotency_key: req.get('Idempotency-Key') || '',
+        actor_user_id: req.user.sub,
+      });
+      res.status(receipt.execution_outcome === 'queued' ? 202 : 200).json(receipt);
+    } catch (error) {
+      try { mapLoopServiceError(error); } catch (mapped) { next(mapped); }
+    }
+  });
+
+  router.get('/runs/:id/delegations/:spawnId', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(delegation.getReceipt(param(req, 'id'), param(req, 'spawnId')));
+    } catch (error) {
+      try { mapLoopServiceError(error); } catch (mapped) { next(mapped); }
     }
   });
 
