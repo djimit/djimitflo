@@ -31,6 +31,10 @@ const MUTATING = {
     dryRun: [SHA],
     setup: (root) => ({ DEPLOY_ROOT: root, AUTO_DEPLOY_INSTALL_DIR: path.join(root, 'lib/djimitflo') }),
   },
+  'scripts/verify-fk-repair.sh': {
+    dryRun: ['djimitflo:main-test', 'copy.sqlite'],
+    setup: (root) => { fs.writeFileSync(path.join(root, 'copy.sqlite'), ''); return {}; },
+  },
   'scripts/deploy-vps.sh': {
     dryRun: [SHA],
     looseFlags: 'an unknown 2nd/3rd arg falls to the dry run, or past --apply to a real deploy; any edit pauses auto-deploy until the host copy is reinstalled (DEP-01) — needs its own change',
