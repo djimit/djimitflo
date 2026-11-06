@@ -2017,7 +2017,87 @@ export function runMigrations(db: BetterSqlite3Database) {
   new FrontierExpertRegistryService(db).seedTaxonomy();
   createAccountUsageSnapshotTables(db);
   createPerformanceIndexes(db);
+  repairRenamedForeignKeyTargets(db);
   ensureMakerSpanSettlement(db);
+}
+
+/**
+ * A table whose FOREIGN KEY names a table that no longer exists rejects EVERY insert ("no such table: main.<parent>"),
+ * even with a NULL key. It happens when a parent is rebuilt rename-first (ALTER TABLE p RENAME TO p_old; CREATE p; copy;
+ * DROP p_old): since SQLite 3.26 (legacy_alter_table OFF, whatever foreign_keys says) the RENAME rewrites every child's
+ * REFERENCES to "p_old", and the DROP leaves them dangling. Prod: swarm_tasks.assigned_lease_id → "worker_leases_old"
+ * (already in the 2026-10-12 backup), so no swarm task was ever stored. Safe rebuild order is create-copy-drop-rename
+ * (rebuildLoopTables, skill-evolution-engine relaxTokensNotNull), which never renames a parent away.
+ *
+ * Only a table with such an FK is touched, and only when the renamed-away name maps to an existing table
+ * (`<p>_old` / `<p>_legacy[_x]` → `<p>`); an FK to a table that is merely absent is left alone. Per table, in one
+ * transaction: the stored DDL with only that REFERENCES repointed, every row copied, row count compared, the old table
+ * dropped, the copy renamed, its indexes and triggers recreated, PRAGMA foreign_key_check on it. Any failure rolls back
+ * and leaves the table exactly as it was (logged). foreign_keys must be OFF for the DROP — with it ON, DROP runs an
+ * implicit DELETE that would cascade into children (swarm_decisions) — and the pragma is a no-op inside a transaction, so
+ * a caller that holds one is skipped. Idempotent: a repaired DB has no dangling FK left. Returns the repaired tables.
+ * Down: none needed — the repaired DDL is the one createSwarmIntelligenceTables declares.
+ */
+export function repairRenamedForeignKeyTargets(db: BetterSqlite3Database): string[] {
+  const names = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((r) => r.name);
+  const exists = new Set(names.map((n) => n.toLowerCase()));
+  const plans: Array<{ table: string; targets: Map<string, string> }> = [];
+  for (const table of names) {
+    const targets = new Map<string, string>();
+    for (const fk of db.pragma(`foreign_key_list("${table.replace(/"/g, '""')}")`) as Array<{ table: string }>) {
+      if (exists.has(fk.table.toLowerCase())) continue;
+      const base = /^(.+?)_(?:old|legacy)(?:_\w+)?$/i.exec(fk.table)?.[1];
+      if (base && exists.has(base.toLowerCase())) targets.set(fk.table, base);
+    }
+    if (targets.size) plans.push({ table, targets });
+  }
+  if (!plans.length) return [];
+
+  const foreignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+  db.pragma('foreign_keys = OFF');
+  const repaired: string[] = [];
+  try {
+    if (db.pragma('foreign_keys', { simple: true })) {
+      console.warn(`FK repair skipped (inside a transaction, foreign_keys stays ON): ${plans.map((p) => p.table).join(', ')}`);
+      return [];
+    }
+    for (const { table, targets } of plans) {
+      const q = (n: string) => `"${n.replace(/"/g, '""')}"`;
+      const tmp = `${table}__fk_repair`;
+      try {
+        db.transaction(() => {
+          const ddl = tableSql(db, table) ?? '';
+          let fixed = ddl;
+          for (const [from, to] of targets) {
+            const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            fixed = fixed.replace(new RegExp(`(REFERENCES\\s+)(["\`[]?)${esc}(["\`\\]]?)(?![\\w$])`, 'gi'), `$1${q(to)}`);
+          }
+          const copy = fixed.replace(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"(?:[^"]|"")+"|`[^`]+`|\[[^\]]+\]|[\w$]+)/i, `CREATE TABLE ${q(tmp)}`);
+          if (fixed === ddl || copy === fixed) throw new Error('DDL did not match the expected shape');
+          const dependents = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL")
+            .all(table) as Array<{ sql: string }>;
+          const count = (t: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${q(t)}`).get() as { n: number }).n;
+          db.exec(`DROP TABLE IF EXISTS ${q(tmp)}`);
+          db.exec(copy);
+          db.exec(`INSERT INTO ${q(tmp)} SELECT * FROM ${q(table)}`);
+          const rows = count(table);
+          if (count(tmp) !== rows) throw new Error('row count mismatch after copy');
+          db.exec(`DROP TABLE ${q(table)}`);
+          db.exec(`ALTER TABLE ${q(tmp)} RENAME TO ${q(table)}`);
+          for (const { sql } of dependents) db.exec(sql);
+          const violations = db.pragma(`foreign_key_check(${q(table)})`) as unknown[];
+          if (violations.length) throw new Error(`${violations.length} foreign key violation(s) after repoint`);
+          console.log(`FK repair: ${table} now references ${[...targets.values()].join(', ')} instead of ${[...targets.keys()].join(', ')} (${rows} rows kept)`);
+        })();
+        repaired.push(table);
+      } catch (err) {
+        console.warn(`FK repair of ${table} rolled back, table unchanged:`, (err as Error)?.message || err);
+      }
+    }
+  } finally {
+    db.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
+  }
+  return repaired;
 }
 
 /**
