@@ -186,4 +186,212 @@ describe('SkillFactoryService existing loop continuation', () => {
     expect(loops.executeMaker).not.toHaveBeenCalled();
   });
 
+  it('throws when the goal does not exist', () => {
+    const { factory } = harness();
+    expect(() => factory.prepare('missing', 'owner', prep)).toThrow('SKILL_FACTORY_GOAL_NOT_FOUND');
+  });
+
+  it('rejects terminal goals (failed and cancelled)', () => {
+    const { factory } = harness();
+    for (const status of ['failed', 'cancelled'] as const) {
+      db.prepare('UPDATE goals SET status=?').run(status);
+      expect(() => factory.prepare('goal', 'owner', prep)).toThrow('SKILL_FACTORY_GOAL_TERMINAL');
+    }
+  });
+
+  it('rejects operator-paused goals', () => {
+    const { factory } = harness();
+    db.prepare('UPDATE goals SET metadata=?').run(JSON.stringify({ skill_factory_key: 'skill-factory:fixture:owner', skill_factory_capability: 'fixture', skill_factory_package_id: 'fixture-v1-0-0', operator_paused: true }));
+    expect(() => factory.prepare('goal', 'owner', prep)).toThrow('SKILL_FACTORY_PAUSED');
+  });
+
+  it('requires both skill_factory_key and skill_factory_capability individually', () => {
+    const { factory } = harness();
+    const base = JSON.stringify({ skill_factory_key: 'k', skill_factory_capability: 'c', skill_factory_package_id: 'fixture-v1-0-0' });
+    db.prepare('UPDATE goals SET metadata=?').run(JSON.stringify({ skill_factory_key: 'k', skill_factory_capability: 'c', skill_factory_package_id: 'fixture-v1-0-0' }));
+    db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.skill_factory_key',null)").run();
+    expect(() => factory.prepare('goal', 'owner', prep)).toThrow('SKILL_FACTORY_GOAL_REQUIRED');
+    db.prepare('UPDATE goals SET metadata=?').run(base);
+    db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.skill_factory_capability',null)").run();
+    expect(() => factory.prepare('goal', 'owner', prep)).toThrow('SKILL_FACTORY_GOAL_REQUIRED');
+  });
+
+  it('refuses to prepare a terminal run', () => {
+    const { factory } = harness();
+    db.prepare("INSERT INTO loop_runs VALUES ('run','goal','2026-10-31')").run();
+    for (const status of ['failed', 'cancelled', 'completed', 'escalated'] as const) {
+      run.status = status;
+      expect(() => factory.prepare('goal', 'owner', prep)).toThrow('SKILL_FACTORY_RUN_TERMINAL');
+    }
+  });
+
+  it('reports next_action for running and ready_for_human_merge states', async () => {
+    const { factory } = harness();
+    expect(factory.prepare('goal', 'owner', prep).next_action).toContain('Continue');
+    leases.forEach(l => { l.status = 'completed'; });
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner', { checker_runtime: 'claude' });
+    const result = await factory.advance('goal', 'owner');
+    expect(result.next_action).toContain('no approval');
+  });
+
+  it('refuses advance without a prior prepared run', async () => {
+    const { factory } = harness();
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_NOT_PREPARED');
+  });
+
+  it('refuses advance on a terminal run', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    for (const status of ['failed', 'cancelled', 'completed', 'escalated'] as const) {
+      run.status = status;
+      await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_RUN_TERMINAL');
+    }
+  });
+
+  it('refuses advance when leases are empty', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    leases.length = 0;
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_NOT_PREPARED');
+  });
+
+  it('reports in_progress for running maker leases and queued tasks', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].status = 'running';
+    expect((await factory.advance('goal', 'owner')).status).toBe('in_progress');
+    leases[0].status = 'prepared';
+    leases[0].metadata.execution_task_id = 'task';
+    db.prepare("INSERT INTO tasks VALUES ('task','queued','{}')").run();
+    expect((await factory.advance('goal', 'owner')).status).toBe('in_progress');
+  });
+
+  it('rejects superseded maker leases and requires a maker', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].metadata.superseded_by_maker_lease_id = 'new-maker';
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_MAKER_REQUIRED');
+    leases[0].metadata.superseded_by_maker_lease_id = undefined;
+    leases[0].role = 'checker';
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_MAKER_REQUIRED');
+  });
+
+  it('requires a non-empty package id on completed maker', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].status = 'completed';
+    db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.skill_factory_package_id','')").run();
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_PACKAGE_ID_REQUIRED');
+    db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.skill_factory_package_id',null)").run();
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_PACKAGE_ID_REQUIRED');
+  });
+
+  it('requires a worktree path on completed maker', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].status = 'completed';
+    (leases[0] as WorkerLeaseRecord).worktree_path = null;
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_WORKTREE_REQUIRED');
+  });
+
+  it('refuses skills directory outside the worktree', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].status = 'completed';
+    fs.rmSync(path.join(worktree, 'skills'), { recursive: true, force: true });
+    fs.symlinkSync(os.tmpdir(), path.join(worktree, 'skills'));
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_PACKAGE_OUTSIDE_WORKTREE');
+  });
+
+  it('refuses unsafe test paths', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].status = 'completed';
+    db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.skill_factory_package_id','fixture v1')").run();
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_TEST_PATH_UNSAFE');
+  });
+
+  it('blocks when required checks are missing even if existing ones pass', async () => {
+    const { factory, loops } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].status = 'completed';
+    loops.runDeterministicChecks.mockImplementationOnce(() => ({ run, lease: leases[0], checks: [{ name: 'test', status: 'pass', exit_status: 0 }] }));
+    expect((await factory.advance('goal', 'owner')).status).toBe('blocked');
+  });
+
+  it('blocks when any extra check fails even if required ones pass', async () => {
+    const { factory, loops } = harness(); factory.prepare('goal', 'owner', prep);
+    leases[0].status = 'completed';
+    const checks = ['test','lint','type-check','test:skill-package'].map(name => ({ name, status: 'pass', exit_status: 0 }));
+    checks.push({ name: 'extra', status: 'fail', exit_status: 1 });
+    loops.runDeterministicChecks.mockImplementationOnce(() => ({ run, lease: leases[0], checks }));
+    expect((await factory.advance('goal', 'owner')).status).toBe('blocked');
+  });
+
+  it('requires all deterministic checks on second advance', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner');
+    leases[0].metadata.deterministic_checks = [{ name: 'test', status: 'pass', exit_status: 0 }];
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_PACKAGE_CHECKS_REQUIRED');
+    delete leases[0].metadata.deterministic_checks;
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_PACKAGE_CHECKS_REQUIRED');
+  });
+
+  it('requires reviewers for admission and validates maker_lease_id', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner');
+    leases.splice(1);
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_REVIEWER_REQUIRED');
+  });
+
+  it('only counts reviewers matching the maker lease id', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner');
+    leases[1].metadata.maker_lease_id = 'other-maker';
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_REVIEWER_REQUIRED');
+  });
+
+  it('rejects mock reviewer runtimes among real ones', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner');
+    leases[1].status = 'completed';
+    leases.push({ id: 'sec', loop_run_id: 'run', role: 'security_checker', status: 'completed', runtime: 'mock', finding_id: null, worktree_path: null, branch_name: null, budget: {}, metadata: { maker_lease_id: 'maker' }, created_at: '', updated_at: '', parent_lease_id: null, spawn_tree_id: null, depth: 0, spawned_by_agent_id: null } as WorkerLeaseRecord);
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_REAL_RUNTIME_REQUIRED');
+  });
+
+  it('blocks when reviewers are not completed', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner');
+    leases[1].status = 'failed';
+    expect((await factory.advance('goal', 'owner')).status).toBe('blocked');
+  });
+
+  it('requires a completed execution task for admission', async () => {
+    const { factory } = harness(); factory.prepare('goal', 'owner', prep);
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner', { checker_runtime: 'claude' });
+    db.prepare("UPDATE tasks SET status='pending' WHERE id='maker-task'").run();
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_COMPLETED_TASK_REQUIRED');
+  });
+
+  it('detects package changes after verification passes', async () => {
+    const { factory, loops } = harness(); factory.prepare('goal', 'owner', prep);
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner');
+    await factory.advance('goal', 'owner', { checker_runtime: 'claude' });
+    loops.verifyLoopRun.mockImplementationOnce(() => { run.status = 'ready_for_human_merge'; packageState.hash = 'changed-after-verify'; return { run, leases, gates: [{ name: 'checker_verdict', status: 'pass' as const, evidence: 'fixture' }] }; });
+    await expect(factory.advance('goal', 'owner')).rejects.toThrow('SKILL_FACTORY_PACKAGE_CHANGED_AFTER_CHECKS');
+  });
+
+  it('validates prepare and advance input schemas strictly', async () => {
+    const { factory } = harness();
+    expect(() => factory.prepare('goal', 'owner', { repository_path: '', runtime: 'codex' })).toThrow();
+    expect(() => factory.prepare('goal', 'owner', { repository_path: '  ', runtime: 'codex' })).toThrow();
+    expect(() => factory.prepare('goal', 'owner', { repository_path: 'x'.repeat(4097), runtime: 'codex' })).toThrow();
+    expect(() => factory.prepare('goal', 'owner', { repository_path: 'x', runtime: 'codex', model: 'y'.repeat(201) })).toThrow();
+    expect(() => factory.prepare('goal', 'owner', { repository_path: 'x', runtime: 'codex', extra: true } as never)).toThrow();
+    factory.prepare('goal', 'owner', prep);
+    await expect(factory.advance('goal', 'owner', { timeout_ms: 100 } as never)).rejects.toThrow();
+    await expect(factory.advance('goal', 'owner', { timeout_ms: 600001 } as never)).rejects.toThrow();
+    await expect(factory.advance('goal', 'owner', { extra: true } as never)).rejects.toThrow();
+  });
+
 });
