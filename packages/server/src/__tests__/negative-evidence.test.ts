@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
 
 /**
  * B29: the negative-evidence registry (docs/research/negative-evidence) is permanent. Its schema is checked here, and an
@@ -137,6 +138,44 @@ it('B29: NE-012 (ruvnet agent ecosystem) guards unpinned ruflo/claude-flow execu
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+/**
+ * Reopen state machine: REJECT → REOPEN_CANDIDATE → PREREGISTERED_EXPERIMENT → REOPENED, never straight back. Until
+ * REOPENED the verdict stays closed, so the forbidden patterns stay enforced during the evaluation.
+ */
+const REOPEN_STATES = ['REOPEN_CANDIDATE', 'PREREGISTERED_EXPERIMENT', 'REOPENED'];
+type Reopen = { state: string; since: string; decision_ref: string; prereg_ref?: string; prereg_sha256?: string; result_ref?: string };
+function reopenViolations(entries: (Entry & { reopen?: Reopen })[], root: string): string[] {
+  const out: string[] = [];
+  for (const e of entries) {
+    const r = e.reopen;
+    if (!r) continue;
+    if (!REOPEN_STATES.includes(r.state)) { out.push(`${e.id}: unknown reopen state ${r.state}`); continue; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.since ?? '')) out.push(`${e.id}: reopen.since must be a date`);
+    if (!r.decision_ref || r.decision_ref.length < 10) out.push(`${e.id}: reopen needs a decision_ref`);
+    if (r.state !== 'REOPENED' && !CLOSED.includes(e.verdict)) out.push(`${e.id}: verdict must stay closed until REOPENED`);
+    if (r.state !== 'REOPEN_CANDIDATE') {
+      const file = r.prereg_ref ? path.join(root, r.prereg_ref.split(' ')[0]) : '';
+      if (!file || !fs.existsSync(file)) out.push(`${e.id}: ${r.state} needs an existing prereg_ref`);
+      else if (createHash('sha256').update(fs.readFileSync(file)).digest('hex') !== r.prereg_sha256) out.push(`${e.id}: prereg_sha256 does not match ${r.prereg_ref}`);
+    }
+    if (r.state === 'REOPENED' && !r.result_ref) out.push(`${e.id}: REOPENED needs a result_ref`);
+  }
+  return out;
+}
+
+it('B29: reopening a closed entry goes through REOPEN_CANDIDATE → PREREGISTERED_EXPERIMENT → REOPENED', () => {
+  expect(reopenViolations(registry().entries, repo)).toEqual([]);
+  const base = { id: 'NE-900', hypothesis: 'h'.repeat(20), verdict: 'REJECT', evidence: ['x'], reopen_condition: 'c'.repeat(20) };
+  const decision = { since: '2026-11-07', decision_ref: 'operator decision 2026-11-07' };
+  expect(reopenViolations([{ ...base, reopen: { state: 'REOPEN_CANDIDATE', ...decision } }], repo)).toEqual([]);
+  expect(reopenViolations([{ ...base, verdict: 'INCONCLUSIVE', reopen: { state: 'REOPEN_CANDIDATE', ...decision } }], repo)).toEqual(['NE-900: verdict must stay closed until REOPENED']);
+  expect(reopenViolations([{ ...base, reopen: { state: 'REOPENED', ...decision } }], repo)).toEqual(['NE-900: REOPENED needs an existing prereg_ref', 'NE-900: REOPENED needs a result_ref']);
+  expect(reopenViolations([{ ...base, reopen: { state: 'PREREGISTERED_EXPERIMENT', ...decision, prereg_ref: 'README.md', prereg_sha256: '0'.repeat(64) } }], repo)).toEqual(['NE-900: prereg_sha256 does not match README.md']);
+  expect(reopenViolations([{ ...base, reopen: { state: 'OPEN', ...decision } }], repo)).toEqual(['NE-900: unknown reopen state OPEN']);
+  const ne17 = (registry().entries as (Entry & { reopen?: Reopen })[]).find((e) => e.id === 'NE-017');
+  expect(ne17?.reopen?.state).toBe('REOPEN_CANDIDATE');
 });
 
 it('B29: NE-017 (Orca as runtime substrate) is REJECT and guards an Orca dependency, MCP entry or `orca serve` runtime', () => {

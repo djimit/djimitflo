@@ -346,7 +346,14 @@
       "match_terms": [
         "stablyai/orca"
       ],
-      "reopen_condition": "Both: (a) a measured DjimitFlo gap that only Orca closes, and (b) Orca running inside the workstation pull worker behind remote_maker_jobs, at a pinned version with a contract snapshot. Permits a bounded, flagged evaluation, not adoption."
+      "reopen_condition": "Both: (a) a measured DjimitFlo gap that only Orca closes, and (b) Orca running inside the workstation pull worker behind remote_maker_jobs, at a pinned version with a contract snapshot. Permits a bounded, flagged evaluation, not adoption.",
+      "reopen": {
+        "state": "REOPEN_CANDIDATE",
+        "since": "2026-11-07",
+        "decision_ref": "operator decision 2026-11-07 (AskUserQuestion 'Reopen-pad starten' on the add-orca-runtime-adapter mission)",
+        "condition_status": "(a) not met yet: the only candidate gap is supervision of remote workstation attempts (30 d: 55/946 remote gym attempts lost as 'maker crashed or timed out without a change'; remote maker jobs 7 work_timeout + 9 cancelled without a reason); nothing shows yet that only Orca closes it. (b) not met yet: no Orca binary on any host; v1.4.251 pinned for the workstation install, contract snapshot pending.",
+        "prereg_ref": "docs/research/negative-evidence/ORCA-001-PREREG.md (draft; frozen with a sha256 only after the contract snapshot)"
+      }
     }
   ]
 }
