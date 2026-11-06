@@ -44,3 +44,56 @@ it('review #1094: selectors some code path reads are not reported (literal, allo
   };
   expect(unknownEnvFlags(env)).toEqual([]);
 });
+
+it('FLAG_NAME_PATTERN end anchors: _MAX_PER_DAY$ and _SHARE$ reject trailing suffixes', () => {
+  expect(unknownEnvFlags({ OLD_LANE_MAX_PER_DAY_X: '3', FOO_SHARED: 'x' })).toEqual([]);
+});
+
+it('SELECTOR_NAME_PATTERN end anchors: trailing suffixes after each selector stem are not flag-shaped', () => {
+  expect(unknownEnvFlags({
+    FOO_RUNTIME_X: 'x', FOO_MODEL_X: 'x', FOO_PROVIDER_X: 'x',
+    FOO_TIMEOUT_MS_X: 'x', FOO_SPECIES_X: 'x',
+  })).toEqual([]);
+});
+
+it('SELECTOR_NAME_PATTERN start anchor: ^MODEL_CANDIDATES_ rejects a leading prefix', () => {
+  expect(unknownEnvFlags({ FOO_MODEL_CANDIDATES_X: 'x' })).toEqual([]);
+});
+
+it('SELECTOR_NAME_PATTERN: a name extending MODEL_CANDIDATES_PANEL_REVIEW past the end is reported (not the dynamic read)', () => {
+  expect(unknownEnvFlags({ MODEL_CANDIDATES_PANEL_REVIEWX: 'x' })).toEqual(['MODEL_CANDIDATES_PANEL_REVIEWX']);
+});
+
+it('DYNAMIC_FLAGS TYPESAFE regex: a multi-char id is read dynamically, not reported', () => {
+  expect(unknownEnvFlags({ TYPESAFE_FOO_MODE: 'x' })).toEqual([]);
+});
+
+it('DYNAMIC_FLAGS TYPESAFE regex anchors: a leading prefix or trailing suffix is reported', () => {
+  expect(unknownEnvFlags({ X_TYPESAFE_FOO_MODE: 'x' })).toEqual(['X_TYPESAFE_FOO_MODE']);
+  expect(unknownEnvFlags({ TYPESAFE_FOO_MODE_BAR: 'x' })).toEqual(['TYPESAFE_FOO_MODE_BAR']);
+});
+
+it('DYNAMIC_FLAGS SOCIAL_MODEL regex anchors: a leading prefix or trailing suffix is reported', () => {
+  expect(unknownEnvFlags({ X_CLAUDE_SOCIAL_MODEL: 'x' })).toEqual(['X_CLAUDE_SOCIAL_MODEL']);
+  expect(unknownEnvFlags({ AA_SOCIAL_MODEL_RUNTIME: 'x' })).toEqual(['AA_SOCIAL_MODEL_RUNTIME']);
+});
+
+it('conditionallyRead: LLM_FALLBACK_MODEL (no digit) is read when its OPENAI_URL is set', () => {
+  expect(unknownEnvFlags({ LLM_FALLBACK_MODEL: 'm', LLM_FALLBACK_OPENAI_URL: 'http://x' })).toEqual([]);
+});
+
+it('conditionallyRead: a leading prefix is reported even with a matching OPENAI_URL set', () => {
+  expect(unknownEnvFlags({ XLLM_FALLBACK_MODEL: 'm', LLM_FALLBACK_OPENAI_URL: 'http://x' })).toEqual(['XLLM_FALLBACK_MODEL']);
+});
+
+it('conditionallyRead: a trailing suffix is reported even with a matching OPENAI_URL set', () => {
+  expect(unknownEnvFlags({ LLM_FALLBACK2_MODEL_RUNTIME: 'm', LLM_FALLBACK2_OPENAI_URL: 'http://x' })).toEqual(['LLM_FALLBACK2_MODEL_RUNTIME']);
+});
+
+it('conditionallyRead: a whitespace-only OPENAI_URL does not count as set', () => {
+  expect(unknownEnvFlags({ LLM_FALLBACK2_MODEL: 'm', LLM_FALLBACK2_OPENAI_URL: '   ' })).toEqual(['LLM_FALLBACK2_MODEL']);
+});
+
+it('passthrough: surrounding whitespace is trimmed so a flag-shaped passthrough name is not reported', () => {
+  expect(unknownEnvFlags({ RUNTIME_ENV_PASSTHROUGH: '  FOO_MODE  ', FOO_MODE: 'on' })).toEqual([]);
+});
