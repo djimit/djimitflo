@@ -36,6 +36,7 @@ import { recordWorkerCall } from './model-call-ledger';
 import { buildExecutorEnv } from '../execution/executors/executor-env';
 import { makerUidSeparationMode, probeMakerContext, uidSeparationRefusal } from '../execution/executors/maker-uid-separation';
 import { recordLanePolicyShadow } from './lane-policy';
+import { observeSkillInvocation } from './skill-route';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -414,6 +415,16 @@ export class LoopWorkerExecutorService {
       ...(asg && asgOutcome ? { asg: { ...(this.loopService.getWorkerLease(makerLease.id).metadata.asg as Record<string, unknown> ?? {}), outcome: asgOutcome,
         ...(asgOutcome.rescued ? { incident_failure: runtimeFailureHint(result, 'maker', tokenBudget.gate.status === 'fail') } : {}) } } : {}),
     };
+    // L1 skill route (SKILL_ROUTE_MODE shadow|on; off = null): did this maker run the skill its assignment selected? The opencode
+    // transcript decides (a bash run of the script), the script in this worktree must still hash to the registered digest.
+    try {
+      const skillRoute = observeSkillInvocation(this.db, run.id, result.stdout || '', makerLease.worktree_path!);
+      if (skillRoute) {
+        metadataPatch.skill_route = skillRoute;
+        this.loopService.recordLoopEvent(run.id, 'skill_invocation', 'info', `Skill ${skillRoute.capability_id}@${skillRoute.version} (${skillRoute.arm}): ${skillRoute.state}${skillRoute.invoked ? `, exit ${skillRoute.exit_code ?? 'unknown'}, digest ${skillRoute.digest_ok ? 'ok' : 'MISMATCH'}` : ''}.`,
+          { maker_lease_id: makerLease.id, ...skillRoute });
+      }
+    } catch { /* observation is evidence only: never fail a maker over it */ }
 
     if (wasCancelled) {
       this.loopService.patchWorkerLeaseMetadata(makerLease.id, { ...metadataPatch, runtime_was_cancelled: true });
