@@ -9,8 +9,8 @@ import { schema } from '../database/schema';
 import { runMigrations, runPreSchemaMigrations } from '../database/migrate';
 import { ExternalEventIngestService, scoreAgentOutcomes } from '../services/external-event-ingest-service';
 import {
-  FLEET_EVENT_WINDOW_MS, fleetSignatureEvidence, fleetSignedBody, pruneFleetNonces, registerFleetHostKey, revokeFleetHostKey,
-  signFleetEventHmac, verifyFleetEvent,
+  FLEET_EVENT_WINDOW_MS, canonicalJson, ensureFleetSignatureTables, fleetSignatureEvidence, fleetSignedBody, pruneFleetNonces,
+  registerFleetHostKey, revokeFleetHostKey, signFleetEventHmac, verifyFleetEvent,
 } from '../services/fleet-event-signatures';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 
@@ -80,6 +80,125 @@ describe('P0-3 verifier', () => {
     verifyFleetEvent(db, signed(key), { master: MASTER, now: NOW });
     expect(pruneFleetNonces(db, NOW + FLEET_EVENT_WINDOW_MS)).toBe(0);
     expect(pruneFleetNonces(db, NOW + 2 * FLEET_EVENT_WINDOW_MS + 1)).toBe(1);
+  });
+});
+
+describe('P0-3 canonical encoding', () => {
+  it('canonicalJson sorts keys and nests arrays and objects with no whitespace', () => {
+    expect(canonicalJson({ b: 1, a: { y: 2, x: 1 } })).toBe('{"a":{"x":1,"y":2},"b":1}');
+    expect(canonicalJson([3, 1, { b: 1, a: 1 }])).toBe('[3,1,{"a":1,"b":1}]');
+    expect(canonicalJson(null)).toBe('null');
+  });
+
+  it('fleetSignedBody drops null/undefined payload fields but keeps present ones', () => {
+    const base = { agent: 'hermes', event_id: 'e', host: 'macmini', occurred_at: '2026-10-20T08:00:00Z', task_kind: 'briefing', success: true };
+    expect(fleetSignedBody({ ...base, tokens: null })).toBe(fleetSignedBody(base));
+    expect(fleetSignedBody({ ...base, tokens: 1200 })).not.toBe(fleetSignedBody(base));
+  });
+
+  it('signs skills identically whether they arrive as a list or the bus JSON string, and tolerates non-JSON strings', () => {
+    const key = registerFleetHostKey(db, 'macmini', { master: MASTER });
+    const skills = [{ name: 'alpha', sha: 'deadbeef' }, { name: 'beta' }];
+    const asList = signed(key, { event_id: 'agent-outcome:sk1', skills });
+    const asStr = signed(key, { event_id: 'agent-outcome:sk2', skills: JSON.stringify(skills) });
+    const norm = (s: string) => s.replace(/"event_id":"[^"]*"/, '"event_id":"X"');
+    expect(norm(fleetSignedBody(asList))).toBe(norm(fleetSignedBody(asStr)));
+    expect(verifyFleetEvent(db, asList, { master: MASTER, now: NOW }).verdict).toBe('verified');
+    expect(verifyFleetEvent(db, asStr, { master: MASTER, now: NOW }).verdict).toBe('verified');
+    const bad = signed(key, { event_id: 'agent-outcome:sk3', skills: 'not-json' });
+    expect(verifyFleetEvent(db, bad, { master: MASTER, now: NOW }).verdict).toBe('verified');
+  });
+
+  it('asBool: true/"true" and false/"false" sign alike and differ; other values are null', () => {
+    const key = registerFleetHostKey(db, 'macmini', { master: MASTER });
+    const base = outcome({ host: key.host, key_id: key.key_id });
+    const sig = (s: unknown) => signFleetEventHmac(key.secret!, { ...base, event_id: 'x', success: s });
+    expect(sig(true)).toBe(sig('true'));
+    expect(sig(false)).toBe(sig('false'));
+    expect(sig(true)).not.toBe(sig(false));
+    expect(sig('maybe')).toBe(sig(undefined));
+  });
+});
+
+describe('P0-3 key registry edge cases', () => {
+  it('rejects invalid hosts and ed25519 without a real ed25519 public key', () => {
+    expect(() => registerFleetHostKey(db, 'bad host!', { master: MASTER })).toThrow('FLEET_HOST_INVALID');
+    expect(() => registerFleetHostKey(db, ' macmini', { master: MASTER })).toThrow('FLEET_HOST_INVALID');
+    expect(() => registerFleetHostKey(db, 'macmini ', { master: MASTER })).toThrow('FLEET_HOST_INVALID');
+    expect(() => registerFleetHostKey(db, 'h', { alg: 'ed25519', master: MASTER })).toThrow('FLEET_PUBLIC_KEY_REQUIRED');
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const rsaPem = rsa.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    expect(() => registerFleetHostKey(db, 'h', { alg: 'ed25519', publicKey: rsaPem, master: MASTER })).toThrow('FLEET_PUBLIC_KEY_NOT_ED25519');
+  });
+
+  it('hmac keys never store a public_key even if one is passed', () => {
+    const key = registerFleetHostKey(db, 'macmini', { master: MASTER, publicKey: 'should-be-ignored' });
+    const row = db.prepare('SELECT public_key FROM fleet_event_keys WHERE host = ? AND key_id = ?').get(key.host, key.key_id) as { public_key: string | null };
+    expect(row.public_key).toBeNull();
+  });
+
+  it('revoke works on a fresh db and targets one key or all active keys of a host', () => {
+    const fresh = new Database(':memory:');
+    expect(revokeFleetHostKey(fresh)).toBe(0);
+    fresh.close();
+    registerFleetHostKey(db, 'macmini', { master: MASTER });
+    const k2 = registerFleetHostKey(db, 'macmini', { master: MASTER });
+    expect(revokeFleetHostKey(db, 'macmini', k2.key_id)).toBe(1);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM fleet_event_keys WHERE host = ? AND status = ?').get('macmini', 'active') as { n: number }).n).toBe(1);
+    expect(revokeFleetHostKey(db, 'macmini')).toBe(1);
+  });
+});
+
+describe('P0-3 verifier shape and boundary guards', () => {
+  it('rejects non-string sig and non-string host/key_id shapes', () => {
+    const key = registerFleetHostKey(db, 'macmini', { master: MASTER });
+    expect(verifyFleetEvent(db, { ...signed(key), sig: 123 as unknown as string }, { master: MASTER, now: NOW }).verdict).toBe('unsigned');
+    const h = signed(key, { event_id: 'agent-outcome:obj-h' }); (h as Record<string, unknown>).host = { bad: 1 } as unknown as string;
+    expect(verifyFleetEvent(db, h, { master: MASTER, now: NOW }).verdict).toBe('unknown_host');
+    const k = signed(key, { event_id: 'agent-outcome:obj-k' }); (k as Record<string, unknown>).key_id = { bad: 1 } as unknown as string;
+    expect(verifyFleetEvent(db, k, { master: MASTER, now: NOW }).verdict).toBe('unknown_host');
+  });
+
+  it('an event signed with a valid hmac sig but declaring sig_alg=ed25519 is bad_signature', () => {
+    const key = registerFleetHostKey(db, 'macmini', { master: MASTER });
+    const e = signed(key, { sig_alg: 'ed25519' });
+    expect(verifyFleetEvent(db, e, { master: MASTER, now: NOW }).verdict).toBe('bad_signature');
+  });
+
+  it('an event with an empty or missing event_id is bad_signature even with a matching sig', () => {
+    const key = registerFleetHostKey(db, 'macmini', { master: MASTER });
+    const base = outcome({ host: key.host, key_id: key.key_id, occurred_at: new Date(NOW).toISOString() });
+    const empty = { ...base, event_id: '', sig: signFleetEventHmac(key.secret!, { ...base, event_id: '' }) };
+    expect(verifyFleetEvent(db, empty, { master: MASTER, now: NOW }).verdict).toBe('bad_signature');
+    const none = { ...base, sig: signFleetEventHmac(key.secret!, { ...base }) };
+    delete (none as Record<string, unknown>).event_id;
+    expect(verifyFleetEvent(db, none, { master: MASTER, now: NOW }).verdict).toBe('bad_signature');
+  });
+
+  it('a key with an unknown alg never verifies', () => {
+    ensureFleetSignatureTables(db);
+    db.prepare("INSERT INTO fleet_event_keys (host, key_id, alg, public_key, status, created_at) VALUES ('macmini', 'ffffffff', 'rsa', NULL, 'active', ?)")
+      .run(new Date(NOW).toISOString());
+    const e = outcome({ host: 'macmini', key_id: 'ffffffff', sig_alg: 'rsa', event_id: 'agent-outcome:rsa', occurred_at: new Date(NOW).toISOString() });
+    e.sig = 'AAAA';
+    expect(verifyFleetEvent(db, e, { master: MASTER, now: NOW }).verdict).toBe('bad_signature');
+  });
+
+  it('an ed25519 key with a malformed public key yields bad_signature via the catch path', () => {
+    ensureFleetSignatureTables(db);
+    db.prepare("INSERT INTO fleet_event_keys (host, key_id, alg, public_key, status, created_at) VALUES ('node-host', 'ffffffff', 'ed25519', 'not-a-pem', 'active', ?)")
+      .run(new Date(NOW).toISOString());
+    const e = outcome({ host: 'node-host', key_id: 'ffffffff', sig_alg: 'ed25519', event_id: 'agent-outcome:badpem', occurred_at: new Date(NOW).toISOString() });
+    e.sig = 'AAAA';
+    expect(verifyFleetEvent(db, e, { now: NOW }).verdict).toBe('bad_signature');
+  });
+
+  it('accepts a ts exactly at the 24h window edge and rejects just beyond', () => {
+    const key = registerFleetHostKey(db, 'macmini', { master: MASTER });
+    const edge = signed(key, { event_id: 'agent-outcome:edge', occurred_at: new Date(NOW - FLEET_EVENT_WINDOW_MS).toISOString() });
+    expect(verifyFleetEvent(db, edge, { master: MASTER, now: NOW }).verdict).toBe('verified');
+    const beyond = signed(key, { event_id: 'agent-outcome:beyond', occurred_at: new Date(NOW - FLEET_EVENT_WINDOW_MS - 1).toISOString() });
+    expect(verifyFleetEvent(db, beyond, { master: MASTER, now: NOW }).verdict).toBe('replay');
   });
 });
 

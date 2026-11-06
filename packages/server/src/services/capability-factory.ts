@@ -63,7 +63,9 @@ export function keywords(text: string): Set<string> {
   return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !STOP.has(w)));
 }
 
-interface CapView { id: string; version: string; status: string; title: string; files: string[]; test: string | null; repo: string | null; text: string; factory: boolean; proposalId: string | null }
+interface CapView { id: string; version: string; status: string; title: string; files: string[]; test: string | null; repo: string | null; text: string; factory: boolean; proposalId: string | null;
+  /** L1 skill route (skill-route.ts): a `skill_from_repair` script reaches a maker only through SKILL_ROUTE_MODE, never as a file/keyword line */
+  skill: boolean }
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : []);
 function view(row: { id: string; version: string; status: string; owner: string; metadata: string }): CapView {
   let m: Record<string, unknown> = {};
@@ -73,7 +75,7 @@ function view(row: { id: string; version: string; status: string; owner: string;
   const text = [str('title'), str('description'), str('name')].filter(Boolean).join(' ') || row.id;
   const prov = m.provenance && typeof m.provenance === 'object' ? m.provenance as Record<string, unknown> : {};
   return { id: row.id, version: row.version, status: row.status, title: str('title') || str('name') || row.id, files, test: str('test') || null, repo: str('repo') || null, text,
-    factory: row.owner === FACTORY_OWNER, proposalId: typeof prov.proposal_id === 'string' ? prov.proposal_id : null };
+    factory: row.owner === FACTORY_OWNER, proposalId: typeof prov.proposal_id === 'string' ? prov.proposal_id : null, skill: m.source === 'skill_from_repair' };
 }
 
 /** Same file (any) wins; otherwise >= 3 shared keywords that are at least half of the smaller keyword set. 0 = no match. */
@@ -101,6 +103,9 @@ function bestMatches(caps: CapView[], task: { files: string[]; text: string }, l
 
 // ─── request ───────────────────────────────────────────────────────────────
 
+/** The primary repo's deployed checkout (the skill route hashes its scripts here). */
+export const primaryRepoRoot = (env: NodeJS.ProcessEnv = process.env): string => repoRoot(primaryRepo(env), env);
+
 function repoRoot(slug: string, env: NodeJS.ProcessEnv): string {
   if (slug.toLowerCase() !== primaryRepo(env).toLowerCase()) return extraRepoBySlug(slug, env)!.path;
   // services/ → src → server → packages → repo root (never the process cwd)
@@ -117,7 +122,7 @@ function resolveRepo(repo: string | undefined, env: NodeJS.ProcessEnv): string {
 }
 
 /** Repo-relative, inside the checkout (symlinks resolved), and either existing or a new file under packages/<pkg>/src. */
-function checkRepoPath(root: string, rel: string, what: string, allowNew: boolean): boolean {
+export function checkRepoPath(root: string, rel: string, what: string, allowNew: boolean): boolean {
   if (!REL_PATH.test(rel) || rel.split('/').some((seg) => seg === '..' || seg === '.')) throw new CapabilityRequestError('INVALID_PATH', `${what} must be a repo-relative path`);
   const abs = path.join(root, rel);
   if (!fs.existsSync(abs)) {
@@ -375,7 +380,7 @@ export function factoryCapabilityLines(db: Database, goalId: string | null, env:
   let grounding: Record<string, unknown> = {}; try { grounding = JSON.parse(row.grounding || '{}') as Record<string, unknown>; } catch { /* none */ }
   const files = [grounding.target, grounding.artifactPath].filter((f): f is string => typeof f === 'string' && f.length > 0);
   const slug = goalRepoSlug(db, goalId) ?? primaryRepo(env);
-  const caps = validatedCaps(db, true).filter((c) => c.proposalId !== row.id && c.id !== pinnedCap?.id && sameRepo(c, slug, primaryRepo(env)));
+  const caps = validatedCaps(db, true).filter((c) => !c.skill && c.proposalId !== row.id && c.id !== pinnedCap?.id && sameRepo(c, slug, primaryRepo(env)));
   const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim().slice(0, 200);
   return [...(pinnedCap ? [pinnedCap] : []), ...bestMatches(caps, { files, text: `${row.title}\n${row.description}` }, DISCOVERY_CAP - (pinnedCap ? 1 : 0))]
     .map((c) => ({ id: c.id, version: c.version, line: `${oneLine(c.title)} — ${c.files.join(', ')} — ${oneLine(c.test ?? 'no test recorded')}` }));
