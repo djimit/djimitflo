@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import { realRunIdSql } from './synthetic-runs';
 import { loopPrSettlements, survivalCounts, type SettlementState } from './merge-survival';
+import { skillRouteCreditable } from './skill-route';
 import type { Database } from 'better-sqlite3';
 
 /**
@@ -205,7 +206,8 @@ export function leaseRanOn(runtime: string, meta: { model?: unknown; effective_r
   return { runtime, model: typeof meta.model === 'string' ? meta.model : null };
 }
 
-export type CreditKind = 'maker' | 'reviewer' | 'model' | 'genome' | 'memory_rule' | 'example' | 'knowledge' | 'judgment';
+/** `skill_invoked` (L1 skill route): ref `<capability id>@<version>`, only for an invoked ∧ checks-pass ∧ verified treatment attempt */
+export type CreditKind = 'maker' | 'reviewer' | 'model' | 'genome' | 'memory_rule' | 'example' | 'knowledge' | 'judgment' | 'skill_invoked';
 export function ensureCreditTable(db: Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS outcome_credits (run_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, created_at TEXT NOT NULL,
     PRIMARY KEY (run_id, kind, ref))`);
@@ -219,13 +221,15 @@ export function creditedContributors(db: Database, runId: string, makerLeaseId: 
   const leases = db.prepare('SELECT id, role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ id: string; role: string; runtime: string; status: string; metadata: string }>;
   const maker = leases.find((l) => l.id === makerLeaseId) ?? leases.filter((l) => l.role === 'maker').pop();
   if (maker) {
-    const m = parse(maker.metadata) as { model?: unknown; effective_runtime?: unknown; effective_model?: unknown; genome?: { id?: unknown }; genome_id?: unknown };
+    const m = parse(maker.metadata) as { model?: unknown; effective_runtime?: unknown; effective_model?: unknown; genome?: { id?: unknown }; genome_id?: unknown; skill_route?: { capability_id?: unknown; version?: unknown } };
     const ran = leaseRanOn(maker.runtime, m); // P0-7: credit the runtime that ran, not the one requested
     const model = ran.model ?? '';
     out.push({ kind: 'maker', ref: model ? `${ran.runtime}@${model}` : ran.runtime });
     if (model) out.push({ kind: 'model', ref: model });
     if (typeof m.genome?.id === 'string') out.push({ kind: 'genome', ref: m.genome.id });
     if (typeof m.genome_id === 'string') out.push({ kind: 'genome', ref: `strategy:${m.genome_id}` });
+    // L1 M7: settled by settleSkillRoute before attribution; a shown, read, held-out or failed attempt is never a credit
+    if (skillRouteCreditable(m.skill_route)) out.push({ kind: 'skill_invoked', ref: `${String(m.skill_route!.capability_id)}@${String(m.skill_route!.version)}` });
   }
   for (const l of leases.filter((x) => (x.role === 'checker' || x.role === 'security_checker') && x.status === 'completed')) {
     const m = parse(l.metadata) as { verdict?: unknown; model?: unknown; maker_lease_id?: unknown };

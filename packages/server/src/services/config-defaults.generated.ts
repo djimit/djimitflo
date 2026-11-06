@@ -147,6 +147,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   SKILL_ARTIFACT_EVOLUTION_MODE: 'off (`on`)',
   SKILL_DISTILLATION_MODE: 'off (`shadow`)',
   SKILL_FIRST_MODE: 'off (`shadow`, `on`)',
+  SKILL_ROUTE_MODE: 'off (`shadow`, `on`)',
   SOCIAL_AUTOPILOT_FORECAST_ONLY: 'off',
   SPEC_GAP_LANE: 'off (`shadow`, `on`)',
   STE_001_MODE: 'off (`on`)',

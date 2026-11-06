@@ -88,4 +88,70 @@ describe.each([
   it('project on an unknown id returns an empty array', () => {
     expect(store.project('nope', 3)).toEqual([]);
   });
+
+  it('project with a negative depth returns an empty array (the depth guard stops the root)', () => {
+    const a = store.store({ ...sample, content: 'a' });
+    expect(store.project(a.id, -1)).toEqual([]);
+  });
+
+  it('project traverses relations whose toId is the current node (reverse direction)', () => {
+    const a = store.store({ ...sample, content: 'a' });
+    const b = store.store({ ...sample, content: 'b' });
+    const c = store.store({ ...sample, content: 'c' });
+    store.relate(b.id, a.id, 'links', 0.5);
+    store.relate(c.id, b.id, 'links', 0.5);
+    expect(store.project(a.id, 1).map(r => r.content).sort()).toEqual(['a', 'b']);
+    expect(store.project(a.id, 2).map(r => r.content).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('search by type returns every matching record and only matching records', () => {
+    store.store({ ...sample, type: 'episode', content: 'e1' });
+    store.store({ ...sample, type: 'episode', content: 'e2' });
+    store.store({ ...sample, type: 'skill', content: 's1' });
+    const got = store.search({ type: 'episode' });
+    expect(got).toHaveLength(2);
+    expect(got.every(r => r.type === 'episode')).toBe(true);
+  });
+
+  it('search by source returns every matching record and only matching records', () => {
+    store.store({ ...sample, source: 'loop', content: 'l1' });
+    store.store({ ...sample, source: 'loop', content: 'l2' });
+    store.store({ ...sample, source: 'manual', content: 'm1' });
+    const got = store.search({ source: 'loop' });
+    expect(got).toHaveLength(2);
+    expect(got.every(r => r.source === 'loop')).toBe(true);
+  });
+
+  it('search minConfidence includes a record exactly at the threshold (>=, not > or <)', () => {
+    store.store({ ...sample, confidence: 0.5, content: 'exact' });
+    store.store({ ...sample, confidence: 0.4, content: 'below' });
+    expect(store.search({ minConfidence: 0.5 }).map(r => r.confidence)).toEqual([0.5]);
+  });
+
+  it('search with limit 0 is treated as no limit (the falsy guard skips slicing)', () => {
+    store.store({ ...sample, content: 'x' });
+    store.store({ ...sample, content: 'y' });
+    expect(store.search({ limit: 0 })).toHaveLength(2);
+  });
+});
+
+describe('SqliteMemoryStore schema', () => {
+  let db: Database.Database;
+  let store: SqliteMemoryStore;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    store = new SqliteMemoryStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('creates the idx_cm_type and idx_mr_from indexes', () => {
+    const cmIdx = (db.prepare("PRAGMA index_list('central_memories')").all() as Array<{ name: string }>).map(i => i.name);
+    const mrIdx = (db.prepare("PRAGMA index_list('memory_relations')").all() as Array<{ name: string }>).map(i => i.name);
+    expect(cmIdx).toContain('idx_cm_type');
+    expect(mrIdx).toContain('idx_mr_from');
+  });
 });
