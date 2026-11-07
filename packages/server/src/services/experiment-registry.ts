@@ -78,7 +78,9 @@ const MAKER_SELECTION_ENV = ['LOOP_DAEMON_MAKER_RUNTIME', 'LOOP_BANDIT_ENABLED',
 const ORACLE_POPULATION_ENV = ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', 'CONTENT_SAFETY_MODEL', 'CONTENT_SAFETY_IGNORE_CATEGORIES',
   'KB_CONTEXT_ENABLED', 'CAPABILITY_FACTORY_MODE', 'MUTATION_GAP_MAX_PER_DAY', 'TEST_GAP_MAX_PER_DAY',
   // L1: the skill route changes what oracle-lane makers receive (shadow → on delivers the block to the treatment arm)
-  'SKILL_ROUTE_MODE'];
+  'SKILL_ROUTE_MODE',
+  // the A4 brake's cache-read weight decides which opencode makers are stopped (15 of 31 braked in 7 d to 11-07), so their outcomes
+  'OPENCODE_BRAKE_CACHE_READ_WEIGHT'];
 /** TG-001 closed by the operator: INCONCLUSIVE at 20 tasks, no extension to 40 (task supply). INCONCLUSIVE from the evidence
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
