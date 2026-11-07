@@ -107,6 +107,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   LOOP_PR_CI_WATCH_MINUTES: '15 (> 0, else 15)',
   LOOP_RESUME_INTERRUPTED: 'off (`shadow`, `on`)',
   MAKER_DIFF_CAPTURE: 'off (`on`: when a maker lease completes, the working-tree diff that `diff_lines` is counted from — tracked changes plus…',
+  MAKER_SCOPE_REPAIR: 'off (`on`: only for maker leases of the oracle test lanes — test-gap incl. `#exports`, mutation-gap; never TG-001 or th…',
   MAKER_UID_SEPARATION: 'off (`shadow`: S0 step 1 — before every in-container maker lease (all runtimes but `remote`) one `/bin/sh` probe is spa…',
   MAKER_WARM_DEPS: 'off (`on`: before a local opencode maker of a goal run starts (MAKER-DEPS-001\'s eligible population: never TG-001, the …',
   MEMORY_DELIVERY_RECEIPTS: 'off (`shadow`, `on`)',
