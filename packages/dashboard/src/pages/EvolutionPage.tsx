@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Dna } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api, type EvolutionEvidence, type GateState } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
@@ -82,6 +83,24 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
 
       <Section title="Experiments">
         <ExperimentsSection data={data} />
+      </Section>
+
+      <Section title="Capability learning evidence">
+        <p className="text-sm text-foreground-secondary">
+          Reuse and selection are the current learning mechanisms; this page does not train model weights. Activity or a successful run is not, by itself, evidence of a durable improvement.
+        </p>
+        <Table head={['Surface', 'What is measured now', 'What is still needed to claim improvement']} rows={[
+          ['Agents', 'Outcomes are summarized by domain and skill; this feed does not provide a matched, per-agent task comparison.', <><Link className="text-accent hover:underline" to="/agents">Agent inventory</Link>; compare agents on the same task set, evaluator and budget before selecting on quality.</>],
+          ['Swarms', 'Mission Control reports run completion and token/cost coverage by loop cohort; completion is not verified task success, and watt-hours are not measured here.', <><Link className="text-accent hover:underline" to="/swarm-mission-control">Swarm Mission Control</Link>; add a matched single-agent control and compare verified outcomes, latency and known usage.</>],
+          ['Skills', data.skill_route?.by_arm_lane
+            ? `Selection → delivery → invocation → verification is recorded (${data.skill_route.by_arm_lane.reduce((n, a) => n + a.selected, 0)} selected; ${data.skill_route.by_arm_lane.reduce((n, a) => n + a.verified, 0)} verified). The treatment contrast is descriptive.`
+            : 'No readable skill-route funnel in this response.', 'Require the exact delivered skill version, enough comparable holdout outcomes and a registered decision before attributing a gain.'],
+          ['Memory', `Rules n=${data.memory_holdout.rules.n}, verified=${data.memory_holdout.rules.verified} (${pct(data.memory_holdout.rules.verified_rate)}); holdout n=${data.memory_holdout.holdout.n}, verified=${data.memory_holdout.holdout.verified} (${pct(data.memory_holdout.holdout.verified_rate)}); Fisher p=${num(data.memory_holdout.fisher_p, 3)}. This is not automatic promotion.`, <><Link className="text-accent hover:underline" to="/knowledge">Knowledge and memory</Link>; retain versioned rules, delivery receipts and a recorded experiment verdict.</>],
+          ['Knowledge retrieval', `ACE-001 ${data.ace_001.status}; R delivery ${pct(data.ace_001.delivery?.retrieval_rate)}, S delivery ${pct(data.ace_001.delivery?.examples_rate)}; interim retrieval effect ${num(data.ace_001.main_effects.retrieval.diff)}, examples effect ${num(data.ace_001.main_effects.examples.diff)}.`, 'Keep retrieval and examples separable; require stable cases, delivery evidence and a recorded verdict before calling either beneficial.'],
+        ]} />
+        <p className="text-sm text-foreground-secondary">
+          Promotion rule: use only attributable, independently verified outcomes; compare against a simpler baseline on the same task population; keep unavailable usage and insufficient samples unknown. Rejected candidates and regressions remain evidence, not training wins.
+        </p>
       </Section>
 
       {data.pl_001 && (
