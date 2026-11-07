@@ -16,7 +16,7 @@ afterEach(() => db.close());
 
 it('lists every running experiment with its registered target and stop date; none without one is hidden', () => {
   const r = experimentsReport(db, {}, NOW);
-  expect(r.experiments.map((e) => e.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'TG-001', 'PL-001', 'D5-NO', 'JEV-114', 'memory-holdout']);
+  expect(r.experiments.map((e) => e.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'TG-001', 'PL-001', 'CV-001', 'D5-NO', 'JEV-114', 'memory-holdout']);
   expect(r.experiments.every((e) => !e.error)).toBe(true);
   expect(r.overdue).toEqual([]);
   // X1 (4 weeks) and D5-NO (cutoff + 90 d) were registered with a stop date; the other seven got one by the 2026-10-19 amendments
@@ -33,7 +33,14 @@ it('lists every running experiment with its registered target and stop date; non
     expect(Date.parse(e.stop_by as string) - Date.parse(e.started_at), e.id).toBeLessThanOrEqual(90 * 86_400_000);
   }
   // the amended stops cite the amendment, and the amendment text exists in that document
-  for (const e of r.experiments.filter((x) => !['X1', 'D5-NO', 'PL-001'].includes(x.id))) {
+  // CV-001 registers its own stop rule (not an amendment): the cited section exists and names the decide-start date
+  const cv = r.experiments.find((e) => e.id === 'CV-001')!;
+  const [cvFile, cvAnchor] = cv.stop_source.split('#');
+  const cvDoc = readFileSync(join(__dirname, '../../../..', cvFile), 'utf8');
+  expect(cvDoc.split('\n').some((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/ /g, '-') === cvAnchor)).toBe(true);
+  expect(cvDoc).toContain('stop_by 2026-12-07');
+  expect(cv).toMatchObject({ stop_by: '2026-12-07T00:00:00.000Z', target_n: 120, population: 'gym_tasks' });
+  for (const e of r.experiments.filter((x) => !['X1', 'D5-NO', 'PL-001', 'CV-001'].includes(x.id))) {
     const [file, anchor] = e.stop_source.split('#');
     const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
     expect(doc, e.id).toContain('2026-10-19');

@@ -128,7 +128,7 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
       }
       // re-20261030 §3b: the workstation ran 47 PL-001 attempts the night the gym stall fired — its shared remote slots serve
       // PL-001 / TG-001 (loop names PL_LOOP / TG_LOOP, which are never 'evolution-gym'), so their remote runs are host activity
-      const host = one<{ loop: string; t: string }>("SELECT loop_name AS loop, created_at AS t FROM loop_runs WHERE loop_name IN ('pl-001', 'tg-001') AND json_extract(metadata, '$.gym.remote_host') IS NOT NULL AND created_at >= ? ORDER BY created_at DESC LIMIT 1", ago(now, 6));
+      const host = one<{ loop: string; t: string }>("SELECT loop_name AS loop, created_at AS t FROM loop_runs WHERE loop_name IN ('pl-001', 'tg-001', 'cv-001') AND json_extract(metadata, '$.gym.remote_host') IS NOT NULL AND created_at >= ? ORDER BY created_at DESC LIMIT 1", ago(now, 6));
       if (host) return { capped: `gym host busy with ${host.loop} (last remote run ${host.t}); no gym outcome since ${last ?? 'never'}` };
       const infra = one<{ n: number }>("SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%'", ago(now, 24))?.n ?? 0;
       out.push({ subsystem: 'gym', since: last, detail: `no gym outcome for > 6 h; ${infra} infra discard(s) in 24 h (circuit breaker benches a species at 3)` });

@@ -5,6 +5,7 @@ import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { ExperimentsSection } from './EvolutionExperiments';
 import { Pl001Card } from './EvolutionPl001';
+import { Cv001Card } from './EvolutionCv001';
 import { DataTable } from '../components/ui';
 
 const fetchEvidence = () => api.getEvolutionEvidence();
@@ -87,6 +88,12 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
       {data.pl_001 && (
         <Section title="PL-001 — procedure with vs without (gym repair)">
           <Pl001Card data={data.pl_001} />
+        </Section>
+      )}
+
+      {data.cv_001 && (
+        <Section title="CV-001 — discipline control vector (gym repair)">
+          <Cv001Card data={data.cv_001} />
         </Section>
       )}
 

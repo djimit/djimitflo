@@ -24,6 +24,8 @@ import { gatePolicyClaim, gatePolicyResult, type GatePolicyClaim } from './gym-g
 import { PROCEDURE_ID, procedureSelectorMode, recordProcedureSelection } from './procedure-selector';
 import { PL_ID, PL_LOOP, PL_MUTANT_TIERS, PL_REQUIRED_CAPABILITIES, PL_SPECIES, applyPl001Lifecycle, claimPl001, freezePl001, lastPlFreezeRefusal, pl001On, plClaimMeta,
   plClaims24h, plManifest, plResult, plStartCondition, plState, plTaskKeys, plVoid, recordPl001, recordPlFreezeRefusal, type PlClaimMeta, type PlManifest } from './pl-001';
+import { CV_ID, CV_LOOP, CV_MUTANT_TIERS, CV_REQUIRED_CAPABILITIES, CV_SPECIES, CV_TIMEOUT_REASON, applyCv001Verdict, claimCv001, cv001On, cvClaimMeta, cvManifest, cvResult, cvServable,
+  cvState, cvTaskKeys, cvVoid, freezeCv001, isMakerTimeoutDiscard, lastCvFreezeRefusal, recordCv001, recordCvFreezeRefusal, sanitizeModelCheck, type CvClaim, type CvClaimMeta, type CvManifest } from './cv-001';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
 /**
@@ -54,7 +56,10 @@ const holdoutKeys = (db: Database): string[] => {
   try { keys = (db.prepare('SELECT commit_sha AS k FROM gym_holdout UNION SELECT key AS k FROM gym_mutant_holdout UNION SELECT key AS k FROM gym_write_test_holdout UNION SELECT task_key AS k FROM tg_attempts').all() as Array<{ k: string }>).map((r) => r.k); } catch { return []; }
   // PL-001: a frozen task is reserved for the experiment (both arms), never served as ordinary gym work
   const pl = plTaskKeys(db);
-  return pl.size ? [...keys, ...[...pl].filter((k) => !keys.includes(k))] : keys;
+  // CV-001: likewise reserved for the experiment (both arms, both repeats)
+  const cv = cvTaskKeys(db);
+  const out = pl.size ? [...keys, ...[...pl].filter((k) => !keys.includes(k))] : keys;
+  return cv.size ? [...out, ...[...cv].filter((k) => !out.includes(k))] : out;
 };
 /**
  * RX-11: a canary is a mutant task whose run also carries a test that no source-only change can turn green. A solved canary
@@ -132,8 +137,8 @@ export function prepareGymDiff(raw: string): { diff: string; sha256: string; red
   return { diff, sha256: createHash('sha256').update(diff).digest('hex'), redacted: count, truncated };
 }
 
-export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; prompt_override?: string; tg?: { experiment: string; generation: string; arm: string }; pl?: { experiment: string; arm: string } } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number | null; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown }
+export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; prompt_override?: string; tg?: { experiment: string; generation: string; arm: string }; pl?: { experiment: string; arm: string }; model_override?: { alias: string }; cv?: { experiment: string; arm: string; repeat: number } } | { skipped: string };
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number | null; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown; model_check?: unknown }
 
 /**
  * Tokens the worker reported: a positive count, or null = unknown. gym-worker.mjs before this change sent 0 for every attempt
@@ -159,7 +164,7 @@ export class GymRunSettledError extends Error {
  * The task stays untried (an 'infra:' reason), no skill outcome is written, and a TG-001 attempt is settled the same way.
  * A run that already carries a result is never touched. Returns the ids it settled.
  */
-function settleLostRuns(db: Database, runs: Array<{ id: string; tg: string | null; pl?: string | null }>, reason: string, now: string): string[] {
+function settleLostRuns(db: Database, runs: Array<{ id: string; tg: string | null; pl?: string | null; cv?: string | null }>, reason: string, now: string): string[] {
   const settle = db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
       metadata = json_set(metadata, '$.gym_result', json(?))
       WHERE id = ? AND status = 'running' AND json_extract(metadata, '$.gym_result') IS NULL`);
@@ -168,13 +173,15 @@ function settleLostRuns(db: Database, runs: Array<{ id: string; tg: string | nul
   for (const r of runs) {
     // gate-policy binding: a bound (non-TG/PL) claim keeps its result-side binding on a server-generated discard too
     let claim: GatePolicyClaim | undefined;
-    if (!r.tg && !r.pl) { try { claim = JSON.parse((claimPolicy.get(r.id) as { p: string | null } | undefined)?.p ?? 'null') ?? undefined; } catch { /* unreadable: unbound */ } }
+    if (!r.tg && !r.pl && !r.cv) { try { claim = JSON.parse((claimPolicy.get(r.id) as { p: string | null } | undefined)?.p ?? 'null') ?? undefined; } catch { /* unreadable: unbound */ } }
     const bound = gatePolicyResult(claim, now, undefined);
     if (!settle.run(now, JSON.stringify({ status: 'discarded', reason, ...(bound ? { gate_policy: bound } : {}) }), r.id).changes) continue;
     settled.push(r.id);
     if (r.tg) { try { recordTg001(db, r.tg, r.id, { status: 'discarded', reason }, now); } catch { /* bookkeeping */ } }
     // PL-001: a lost report is an infra discard of the arm (re-served, or INFRA_CENSORED after the permitted retries)
     if (r.pl) { try { recordPl001(db, r.pl, plResult({ runId: r.id, status: 'discarded', reason, void: null, prodGates: undefined, tokens: null, now })); } catch { /* bookkeeping */ } }
+    // CV-001: the same (an infra discard of the slot: re-served, or INFRA_CENSORED after the permitted retries)
+    if (r.cv) { try { recordCv001(db, r.cv, cvResult({ runId: r.id, status: 'discarded', reason, void: null, prodGates: undefined, modelCheck: null, tokens: null, now })); } catch { /* bookkeeping */ } }
   }
   return settled;
 }
@@ -197,9 +204,9 @@ export function sweepOrphanedGymRuns(db: Database, now = new Date(), env: NodeJS
   const mode = gymOrphanSweepMode(env);
   if (mode === 'off') return { mode, candidates: [], settled: [] };
   const before = new Date(now.getTime() - gymOrphanAfterMs(env)).toISOString();
-  const runs = db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg, json_extract(metadata, '$.gym.pl.attempt_id') AS pl FROM loop_runs
-    WHERE loop_name IN ('evolution-gym', '${TG_LOOP}', '${PL_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') IS NOT NULL
-      AND json_extract(metadata, '$.gym_result') IS NULL AND created_at < ? ORDER BY created_at LIMIT 50`).all(before) as Array<{ id: string; tg: string | null; pl: string | null }>;
+  const runs = db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg, json_extract(metadata, '$.gym.pl.attempt_id') AS pl, json_extract(metadata, '$.gym.cv.attempt_id') AS cv FROM loop_runs
+    WHERE loop_name IN ('evolution-gym', '${TG_LOOP}', '${PL_LOOP}', '${CV_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') IS NOT NULL
+      AND json_extract(metadata, '$.gym_result') IS NULL AND created_at < ? ORDER BY created_at LIMIT 50`).all(before) as Array<{ id: string; tg: string | null; pl: string | null; cv: string | null }>;
   const settled = mode === 'on' ? settleLostRuns(db, runs, ORPHANED_NO_RESULT, now.toISOString()) : [];
   return { mode, candidates: runs.map((r) => r.id), settled };
 }
@@ -221,8 +228,8 @@ export class RemoteGymService {
     // A host runs one attempt at a time (systemd oneshot), so its runs still 'running' at a new claim lost their report
     // (prod 2026-09-27: 'fetch failed' left f2df0beb running for good). Settle them as an infra discard — the task stays untried.
     // TG-001 runs too: their attempt is settled as an infra discard (re-queued or INFRA_CENSORED), never left 'claimed'
-    const lost = this.db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg, json_extract(metadata, '$.gym.pl.attempt_id') AS pl FROM loop_runs
-      WHERE loop_name IN ('evolution-gym', '${TG_LOOP}', '${PL_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).all(host) as Array<{ id: string; tg: string | null; pl: string | null }>;
+    const lost = this.db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg, json_extract(metadata, '$.gym.pl.attempt_id') AS pl, json_extract(metadata, '$.gym.cv.attempt_id') AS cv FROM loop_runs
+      WHERE loop_name IN ('evolution-gym', '${TG_LOOP}', '${PL_LOOP}', '${CV_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).all(host) as Array<{ id: string; tg: string | null; pl: string | null; cv: string | null }>;
     settleLostRuns(this.db, lost, LOST_AT_CLAIM, now.toISOString());
     const since = new Date(now.getTime() - 86_400_000).toISOString();
     if (remoteGymCap(this.db, now.getTime()).capped) return { skipped: 'daily cap reached' };
@@ -255,6 +262,20 @@ export class RemoteGymService {
     // settled and still yields to trial attempts (served after them, below).
     let pl: { attempt_id: string; arm: 'A' | 'B'; task: GymTask; lines: string[] } | null = null; let plFrozen: PlManifest | null = null;
     const healthyKeys = healthy.map((s) => (s.model ? `${s.runtime}@${s.model}` : s.runtime));
+    // CV-001 (CV_001_MODE=on): the control-vector arms, only for a worker announcing prod_gates + model_override (it forces the
+    // claimed alias into every model request and reports what the router served). The freezing claim starts no CV attempt.
+    // Attempts are served only inside the quiet window and while no remote maker job waits; then CV-001 takes the claim ahead
+    // of canaries, probes, trials and PL-001. Outside that the claim falls through unchanged.
+    let cv: CvClaim | null = null;
+    if (!task && cv001On() && gymProdGatesEnabled() && CV_REQUIRED_CAPABILITIES.every((c) => caps.includes(c))) {
+      const cvFrozen: CvManifest | null = cvManifest(this.db);
+      if (!cvFrozen) this.freezeCv(repo, now);
+      else if (cvFrozen.frozen_at < now.toISOString() && healthyKeys.includes(cvFrozen.species)) {
+        try { applyCv001Verdict(this.db, cvFrozen, cvState(this.db, cvFrozen, now.getTime()), now.toISOString()); } catch { /* a day-28 verdict is recorded at the next claim or result */ }
+        if (cvServable(this.db, now).open) cv = claimCv001(this.db, cvFrozen, runId, now.toISOString());
+      }
+      if (cv) { task = cv.task; key = cvFrozen!.species; }
+    }
     if (!task && pl001On() && gymProdGatesEnabled() && PL_REQUIRED_CAPABILITIES.every((c) => caps.includes(c))) {
       plFrozen = plManifest(this.db);
       if (!plFrozen) this.freezePl(repo, now);
@@ -308,6 +329,7 @@ export class RemoteGymService {
     if (!task) {
       const tried = triedTasks(this.db, key);
       for (const k of plTaskKeys(this.db)) tried.add(k); // PL-001: a frozen task is the experiment's, never an ordinary replay
+      for (const k of cvTaskKeys(this.db)) tried.add(k); // CV-001: likewise
       // Y4: the mined fix commits run out (prod 2026-10-01) — then a seeded mutant-repair task keeps the gym supplied
       task = tasks.find((t) => !tried.has(t.commit)) ?? mutantTask(this.db, repo, key, tried) ?? undefined;
     }
@@ -315,23 +337,45 @@ export class RemoteGymService {
     const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
     const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
     const gates = gymProdGatesEnabled() && (opts.capabilities ?? []).map(String).includes(PROD_GATES_CAPABILITY) ? prodGatesConfig() : null;
-    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}), ...(pl ? { pl: plClaimMeta(pl) } : {}) };
+    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}), ...(pl ? { pl: plClaimMeta(pl) } : {}), ...(cv ? { cv: cvClaimMeta(cv) } : {}) };
     // gate-policy binding (gym-gate-policy): non-TG/PL attempts only — a TG-001 / PL-001 run's metadata stays exactly as before
-    if (!tg && !pl) Object.assign(gymMeta, { gate_policy: gatePolicyClaim(this.db, { gates: gates ?? prodGatesConfig(), gated: !!gates, attemptId: runId, claimedAt: now.toISOString(), task: String(task.commit), species: key }) });
+    if (!tg && !pl && !cv) Object.assign(gymMeta, { gate_policy: gatePolicyClaim(this.db, { gates: gates ?? prodGatesConfig(), gated: !!gates, attemptId: runId, claimedAt: now.toISOString(), task: String(task.commit), species: key }) });
     // B27 isolation by provenance: a TG-001 run is not an 'evolution-gym' run, so no gym statistic, breaker, IRT, hack rate,
     // graded pool, trial deciding set or estimator (all of which select loop_name = 'evolution-gym') can count it
     this.db.prepare('INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, ?, \'closed\', \'running\', ?, ?, ?, ?)')
-      .run(runId, tg ? TG_LOOP : pl ? PL_LOOP : 'evolution-gym', repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
-    if (!tg && !pl) recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
+      .run(runId, tg ? TG_LOOP : pl ? PL_LOOP : cv ? CV_LOOP : 'evolution-gym', repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
+    if (!tg && !pl && !cv) recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
     // PL-001 (PROCEDURE_SELECTOR_MODE=shadow): an ordinary claim — not TG-001, a trial (either arm), a canary or a holdout task —
     // records whether the procedure applies to its task; nothing is sent, so the payload below is the same as with the mode off
-    if (procedureSelectorMode() === 'shadow' && !tg && !pl && !trialGenome && !canary && !holdoutKeys(this.db).includes(task.commit)) {
+    if (procedureSelectorMode() === 'shadow' && !tg && !pl && !cv && !trialGenome && !canary && !holdoutKeys(this.db).includes(task.commit)) {
       recordProcedureSelection(this.db, runId, task, caps, key, now.toISOString());
     }
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}),
       ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, generation: tg.generation, arm: tg.arm } } : {}),
       // PL-001 arm B: the procedure's lines, delivered as genome strategy lines are (the worker's gymGoal 'Strategy:'); arm A: none
-      ...(pl ? { ...(pl.lines.length ? { genome: { id: PROCEDURE_ID, lines: pl.lines } } : {}), pl: { experiment: PL_ID, arm: pl.arm } } : {}) };
+      ...(pl ? { ...(pl.lines.length ? { genome: { id: PROCEDURE_ID, lines: pl.lines } } : {}), pl: { experiment: PL_ID, arm: pl.arm } } : {}),
+      // CV-001: the router model alias of the arm; the worker forces it into every model request and reports what was served
+      ...(cv ? { model_override: { alias: cv.alias }, cv: { experiment: CV_ID, arm: cv.arm, repeat: cv.repeat } } : {}) };
+  }
+
+  /** CV-001 freeze on the deploy checkout; a refused freeze is recorded and retried at most hourly. */
+  private freezeCv(repo: string, now: Date): void {
+    const last = lastCvFreezeRefusal(this.db);
+    if (last && Date.parse(last.at) > now.getTime() - 3_600_000) return;
+    try {
+      const r = freezeCv001(this.db, this.cvCandidates(repo, CV_SPECIES), { species: CV_SPECIES, commit: gitHead(repo), harness: harnessHash(repo), prodGates: prodGatesConfig(), now: now.toISOString() });
+      if (!r.frozen && r.reason) recordCvFreezeRefusal(this.db, r.reason, now.toISOString());
+    } catch (e) { recordCvFreezeRefusal(this.db, `freeze failed: ${e instanceof Error ? e.message : String(e)}`, now.toISOString()); }
+  }
+
+  /** Injectable for tests: the CV-001 candidate pool — seeded mutant repairs at tiers 3–6 from the deploy checkout (no mined tasks). */
+  cvCandidates(repo: string, speciesKey: string): GymTask[] {
+    const tried = new Set<string | null>([...triedTasks(this.db, speciesKey), ...holdoutKeys(this.db)]);
+    const out: GymTask[] = [];
+    for (const tier of CV_MUTANT_TIERS) {
+      for (let i = 0; i < 60; i++) { const m = mutantTask(this.db, repo, speciesKey, tried, tier); if (!m) break; tried.add(m.commit); out.push(m); }
+    }
+    return out;
   }
 
   /** PL-001 freeze on the deploy checkout; a refused freeze is recorded and retried at most hourly (it mutates every candidate file). */
@@ -374,7 +418,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string }; pl?: PlClaimMeta; gate_policy?: GatePolicyClaim } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string }; pl?: PlClaimMeta; cv?: CvClaimMeta; gate_policy?: GatePolicyClaim } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw this.settled(runId);
     // TG-001 generations: a result for a run claimed under another generation (e.g. before a restore) is never accepted
@@ -389,6 +433,8 @@ export class RemoteGymService {
     const diffText = typeof result.diff === 'string' ? result.diff : '';
     let status: RemoteGymResult['status'] | 'quarantined' = result.status;
     let reason = String(result.reason || '').slice(0, 200);
+    // CV-001 (protocol amendment 1): a maker timeout is an observation, not infra, even when the maker changed nothing
+    if (gym.cv && isMakerTimeoutDiscard(status, reason, result.tg_metrics)) { status = 'failure'; reason = CV_TIMEOUT_REASON; }
     if (canonical && status === 'success' && (!changedFiles?.length || !diffText.trim())) {
       status = 'discarded'; reason = 'infra: success without changed_files/diff evidence';
     }
@@ -414,13 +460,17 @@ export class RemoteGymService {
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
     // PL-001: the fire check is mandatory in both arms and the oracle must have run the gates; otherwise the attempt is VOID
     const plVoided = gym.pl ? plVoid(gym.pl, gym.prod_gates === 1, status, prod_gates, result.fire_check) : null;
+    // CV-001: the delivery proof (the alias used and served, the arm's control vector) and the oracle gates; otherwise VOID
+    const modelCheck = gym.cv ? sanitizeModelCheck(result.model_check) : null;
+    const cvVoided = gym.cv ? cvVoid(gym.cv, gym.prod_gates === 1, status, prod_gates, modelCheck) : null;
+    const cvRec = gym.cv ? cvResult({ runId, status, reason, void: cvVoided, prodGates: prod_gates, modelCheck, tgMetrics: result.tg_metrics, tokens, now: new Date().toISOString() }) : null;
     const plRec = gym.pl ? plResult({ runId, status, reason, void: plVoided, prodGates: prod_gates, hackFlags: hack_flags, graded: graded?.graded ?? null, gradedKind: graded?.graded_kind ?? null,
       tokens, durationMs: result.durationMs, tgMetrics: result.tg_metrics, fireCheck: result.fire_check, now: new Date().toISOString() }) : null;
     // one transaction: the outcome, the stored diff, the run settlement and the TG-001 attempt land together or not at all
     // (a kill between the outcome and the settlement left an outcome on a run the next claim then discarded: counted twice)
     const write = this.db.transaction(() => {
       // TG-001 attempts are an experiment on the prompt, not gym fitness: no skill outcome (the attempt row keeps the result)
-      if (status !== 'discarded' && !gym.canary && !voided && !gym.tg && !gym.pl) {
+      if (status !== 'discarded' && !gym.canary && !voided && !gym.tg && !gym.pl && !gym.cv) {
         const [species] = parseSpecies(gym.species, 1);
         this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
           success: status === 'success', tokensUsed: tokens, durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
@@ -431,7 +481,7 @@ export class RemoteGymService {
       const now = new Date().toISOString();
       let diff_ref: string | undefined;
       // a TG-001 diff stays out of the gym training dataset (a copy would lose the experiment's provenance); its sha256 is kept on the run
-      if ((gym.tg || gym.pl) && typeof result.diff === 'string' && result.diff.trim()) diff_ref = `sha256:${prepareGymDiff(result.diff).sha256}`;
+      if ((gym.tg || gym.pl || gym.cv) && typeof result.diff === 'string' && result.diff.trim()) diff_ref = `sha256:${prepareGymDiff(result.diff).sha256}`;
       else if (gymStoreDiffs() && status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
         try {
           const d = prepareGymDiff(result.diff);
@@ -443,27 +493,30 @@ export class RemoteGymService {
       // P0-12: every recorded success / quarantine carries the server-side hash of the diff it rests on
       if (!diff_ref && canonical && (status === 'success' || status === 'quarantined')) diff_ref = `sha256:${prepareGymDiff(diffText).sha256}`;
       // gate-policy binding: a no-op for TG-001 / PL-001 runs and for runs claimed before the binding existed (never retrospective)
-      const boundResult = gym.tg || gym.pl ? undefined : gatePolicyResult(gym.gate_policy, now, prod_gates); const policyResult = boundResult ? { gate_policy: boundResult } : {};
+      const boundResult = gym.tg || gym.pl || gym.cv ? undefined : gatePolicyResult(gym.gate_policy, now, prod_gates); const policyResult = boundResult ? { gate_policy: boundResult } : {};
       const settled = this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ? AND status = 'running'")
         .run(now, JSON.stringify({ status, reason, tokens, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
           ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
-          ...(plRec?.fire_check ? { fire_check: plRec.fire_check } : fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : plVoided ? { void: plVoided } : {}), ...policyResult }), runId).changes;
+          ...(plRec?.fire_check ? { fire_check: plRec.fire_check } : fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : plVoided ? { void: plVoided } : cvVoided ? { void: cvVoided } : {}), ...(modelCheck ? { model_check: modelCheck } : {}), ...policyResult }), runId).changes;
       if (!settled) throw new GymRunSettledError(null); // settled since the read above: the outcome is rolled back
       if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }
       if (gym.pl?.attempt_id && plRec) { try { recordPl001(this.db, gym.pl.attempt_id, { ...plRec, at: now }); } catch { /* experiment bookkeeping never breaks the report */ } }
+      if (gym.cv?.attempt_id && cvRec) { try { recordCv001(this.db, gym.cv.attempt_id, { ...cvRec, at: now }); } catch { /* experiment bookkeeping never breaks the report */ } }
     });
     try { write(); } catch (error) { throw error instanceof GymRunSettledError ? this.settled(runId) : error; }
     // O2a: the gym attempt's model call in the ledger (the worker's reported tokens; none reported = NULL). A remote gym
     // attempt has no lease, so this row is its only token record; the workstation runs it locally. TG-001 / PL-001 attempts
     // stay isolated by provenance (their experiment rows keep the tokens), as for skill outcomes above.
     try {
-      const [sp] = gym.tg || gym.pl ? [] : parseSpecies(gym.species, 1);
+      const [sp] = gym.tg || gym.pl || gym.cv ? [] : parseSpecies(gym.species, 1);
       if (sp) recordWorkerCall(this.db, { consumer: 'gym', runId, goalId: null, loopName: 'evolution-gym', runtime: sp.runtime, provider: 'local',
         meta: { model: sp.model, runtime_usage: tokens === null ? undefined : { total_tokens: tokens } }, durationMs: Number(result.durationMs) || 0,
         ok: status !== 'discarded', status }); // ok = the call ran and was graded (a failed task is not a failed call; discarded = infra)
     } catch { /* the ledger never breaks the report */ }
     // PL-001: a completed pair may reach the verdict (60 pairs or harm); its lifecycle decision is recorded on the procedure row
     if (gym.pl) { try { const m = plManifest(this.db); if (m) applyPl001Lifecycle(this.db, m, plState(this.db, m), new Date().toISOString()); } catch { /* bookkeeping */ } }
+    // CV-001: the last open unit settles the verdict (recorded once)
+    if (gym.cv) { try { const m = cvManifest(this.db); if (m) applyCv001Verdict(this.db, m, cvState(this.db, m), new Date().toISOString()); } catch { /* bookkeeping */ } }
   }
 
   /**
