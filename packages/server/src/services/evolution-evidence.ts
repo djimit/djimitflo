@@ -67,6 +67,7 @@ import { skillRouteEvidence } from './skill-route';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
+  { name: 'DELEGATION_FACADE_MODE', acting: true },
   { name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: true },
   { name: 'SKILL_FIRST_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_MODE', acting: true },

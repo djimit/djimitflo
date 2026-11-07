@@ -6,11 +6,14 @@ import { StatusBadge, StatusIcon } from './status';
 type Runtime = 'manual' | 'codex' | 'opencode';
 
 /** UX-28: the selected run of the Goals & Loops page; data, bundle and actions stay in the page. */
-export function LoopRunDetail({ selectedRun, selectedRunId, selectedBundle, runLookupError, loading, runtime, canApprove, actionId, runLocked, runAction, completeLoop, executeChecker, splitFinding }: {
+export function LoopRunDetail({ selectedRun, selectedRunId, selectedBundle, runLookupError, loading, runtime, canApprove, actionId, runLocked, runAction, completeLoop, executeChecker, splitFinding, delegateTask, canDelegate, delegationRootReady, delegationMode }: {
   selectedRun: LoopRunRecord | null; selectedRunId: string | null; selectedBundle: LoopReviewBundle | null;
   runLookupError: { id: string; message: string } | null; loading: boolean; runtime: Runtime; canApprove: boolean;
   actionId: string | null; runLocked: boolean; runAction: (label: string, action: () => Promise<unknown>) => Promise<void>;
   completeLoop: () => Promise<void>; executeChecker: (lease: WorkerLeaseRecord) => Promise<void>; splitFinding: (findingId: string) => Promise<void>;
+  delegateTask: () => Promise<void>; delegationRootReady: boolean;
+  canDelegate: boolean;
+  delegationMode: 'off' | 'shadow' | 'execute' | 'unknown';
 }) {
   const activeWorkers = selectedBundle?.leases.filter((lease) => ['prepared', 'running'].includes(lease.status)).length ?? 0;
   return (
@@ -75,6 +78,15 @@ export function LoopRunDetail({ selectedRun, selectedRunId, selectedBundle, runL
                   <Square className="h-4 w-4" />
                   Stop
                 </button>
+                <button
+                  onClick={() => void runAction(`delegate-${selectedRun.id}`, delegateTask)}
+                  disabled={actionId !== null || runLocked || !canDelegate || delegationMode === 'off' || delegationMode === 'unknown' || runtime === 'manual' || !delegationRootReady}
+                  title={!canDelegate ? 'write:swarm_action permission is required' : delegationMode === 'off' ? 'Delegation mode is off' : delegationMode === 'unknown' ? 'Delegation mode is unavailable' : !delegationRootReady ? 'An operator-authorized swarm root is required' : runtime === 'manual' ? 'Select an executable runtime' : undefined}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground hover:border-accent/30 disabled:opacity-50"
+                >
+                  <GitBranch className="h-4 w-4" />
+                  {delegationMode === 'shadow' ? 'Propose task (shadow)' : 'Delegate task'}
+                </button>
               </div>
             </div>
           </div>
@@ -99,6 +111,7 @@ export function LoopRunDetail({ selectedRun, selectedRunId, selectedBundle, runL
                 <LeaseRow
                   key={lease.id}
                   lease={lease}
+                  checkerLease={selectedBundle.leases.find((candidate) => candidate.role === 'checker' && candidate.metadata.maker_lease_id === lease.id)}
                   onAccept={() => void runAction(`accept-${lease.id}`, () => lease.role === 'security_checker'
                     ? api.submitSecurityVerdict(selectedRun.id, lease.id, 'accepted', 'Accepted from dashboard')
                     : api.submitCheckerVerdict(selectedRun.id, lease.id, 'accepted', 'Accepted from dashboard'))}
@@ -191,6 +204,7 @@ function GateRow({ gate }: { gate: LoopGate }) {
 
 function LeaseRow({
   lease,
+  checkerLease,
   onExecute,
   onExecuteChecker,
   onAccept,
@@ -202,6 +216,7 @@ function LeaseRow({
   runMakerCost,
 }: {
   lease: WorkerLeaseRecord;
+  checkerLease?: WorkerLeaseRecord;
   onExecute: () => void;
   onExecuteChecker: () => void;
   onAccept: () => void;
@@ -223,7 +238,8 @@ function LeaseRow({
   const efficiency = lease.metadata.token_efficiency as { tokens_per_diff_line?: number | null } | undefined;
   const warnings = Array.isArray(lease.metadata.runtime_warnings) ? lease.metadata.runtime_warnings : [];
   const hasArtifacts = typeof lease.metadata.stdout_path === 'string' && lease.metadata.stdout_path.length > 0;
-  const hasExecutionMetrics = Boolean(runtimeUsage?.total_tokens || typeof efficiency?.tokens_per_diff_line === 'number' || warnings.length > 0 || hasArtifacts);
+  const delegation = lease.metadata.delegation_facade as { reserved_tokens?: number | null } | undefined;
+  const hasExecutionMetrics = Boolean(runtimeUsage?.total_tokens || typeof efficiency?.tokens_per_diff_line === 'number' || warnings.length > 0 || hasArtifacts || delegation);
   return (
     <div className="rounded border border-border bg-background p-3">
       <div className="flex items-center justify-between gap-2">
@@ -235,9 +251,11 @@ function LeaseRow({
         <span className="truncate">Finding: {lease.finding_id?.slice(0, 8) || 'none'}</span>
         <span className="truncate">Branch: {lease.branch_name || 'none'}</span>
       </div>
+      {lease.parent_lease_id && <div className="mt-2 text-xs text-foreground-tertiary">Parent lease: {lease.parent_lease_id} · depth {lease.depth ?? 'unknown'} · execution {lease.status} · verification {checkerLease ? (checkerLease.status === 'completed' ? String(checkerLease.metadata.verdict ?? 'inconclusive — no verdict') : checkerLease.status) : 'unknown — not recorded'}</div>}
       {hasExecutionMetrics && (
-        <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs text-foreground-tertiary">
-          <span className="truncate">Tokens: {runtimeUsage?.total_tokens ?? 'unknown'}</span>
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-5 gap-2 text-xs text-foreground-tertiary">
+          <span className="truncate">Measured tokens: {runtimeUsage?.total_tokens ?? 'unknown'}</span>
+          {delegation && <span className="truncate">Reserved tokens: {delegation.reserved_tokens ?? 'unknown'}</span>}
           <span className="truncate">Tokens/diff: {typeof efficiency?.tokens_per_diff_line === 'number' ? efficiency.tokens_per_diff_line.toFixed(0) : 'n/a'}</span>
           <span className="truncate">Warnings: {warnings.length}</span>
           <span className="truncate">Artifacts: {hasArtifacts ? 'yes' : 'no'}</span>

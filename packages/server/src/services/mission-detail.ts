@@ -36,9 +36,13 @@ export function missionDetail(db: Database, id: string, now = Date.now()) {
     AND subject_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC, id DESC`).all(ids) as Array<{ id: string; subject_id: string; decision: string; reason: string | null; created_at: string }>, [])) {
     if (!attribution.has(j.subject_id)) attribution.set(j.subject_id, { outcome: j.decision, reason: j.reason, created_at: j.created_at, judgment_id: j.id });
   }
-  const leases = safe(() => db.prepare(`SELECT id, loop_run_id, role, runtime, status, created_at, json_extract(metadata, '$.verdict') AS verdict,
-      json_extract(metadata, '$.maker_lease_id') AS maker_lease_id FROM worker_leases WHERE loop_run_id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id`).all(ids) as Array<{
-      id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null }>, []);
+  const leases = safe(() => db.prepare(`SELECT id, loop_run_id, role, runtime, status, created_at, parent_lease_id, spawn_tree_id, depth,
+      json_extract(metadata, '$.verdict') AS verdict, json_extract(metadata, '$.maker_lease_id') AS maker_lease_id,
+      json_extract(metadata, '$.delegation_facade.reserved_tokens') AS reserved_tokens,
+      json_extract(metadata, '$.runtime_usage.total_tokens') AS measured_tokens
+      FROM worker_leases WHERE loop_run_id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id`).all(ids) as Array<{
+      id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; parent_lease_id: string | null;
+      spawn_tree_id: string | null; depth: number; verdict: string | null; maker_lease_id: string | null; reserved_tokens: number | null; measured_tokens: number | null }>, []);
 
   const runs = runRows.map((r) => ({
     id: r.id, loop_name: r.loop_name, status: r.status, created_at: r.created_at, updated_at: r.updated_at, completed_at: r.completed_at,

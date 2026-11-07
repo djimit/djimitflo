@@ -111,6 +111,7 @@ export interface RequestSpawnInput {
   prompt: string;
   capability_ids?: string[];
   token?: string; // required when invoked over HTTP (external); omitted for internal calls
+  idempotency_key?: string;
 }
 
 export interface RequestSpawnResult {
@@ -119,10 +120,11 @@ export interface RequestSpawnResult {
   parent_lease_id: string;
   child_lease_id: string | null;
   depth: number;
-  status: 'prepared' | 'gated_out';
+  status: 'prepared' | 'gated_out' | 'held';
   reject_reason?: string;
   token_budget_grant?: number;
   wall_budget_ms?: number;
+  idempotent_replay?: boolean;
   control_url?: string;
   control_token?: string;
 }
@@ -288,14 +290,37 @@ export class NestedSpawnService {
     const parent = this.getWorkerLeaseRow(input.parent_lease_id);
     if (!parent) throw new Error('PARENT_LEASE_NOT_FOUND');
     if (parent.spawn_tree_id !== input.spawn_tree_id) throw new Error('SPAWN_TREE_MISMATCH');
+    const run = this.loops.getLoopRun(parent.loop_run_id);
 
     const depth = (parent.depth ?? 0) + 1;
+    const intentDigest = createHash('sha256').update(JSON.stringify({
+      spawn_tree_id: input.spawn_tree_id,
+      parent_lease_id: input.parent_lease_id,
+      role: input.role,
+      runtime: input.runtime,
+      prompt_digest: promptDigest,
+    })).digest('hex');
+    const rawIdempotencyKey = input.idempotency_key?.trim() || null;
+    if (input.idempotency_key !== undefined && (!rawIdempotencyKey || rawIdempotencyKey.length > 200)) throw new Error('SPAWN_IDEMPOTENCY_KEY_INVALID');
+    const idempotencyKey = rawIdempotencyKey
+      ? createHash('sha256').update(`${input.spawn_tree_id}|${input.parent_lease_id}|${rawIdempotencyKey}`).digest('hex')
+      : null;
+    if (idempotencyKey) {
+      const prior = this.reserveIdempotentSpawn(input, spawnId, promptDigest, intentDigest, idempotencyKey, depth);
+      if (prior) return prior;
+    }
+
     try {
-      this.loops.assertOperatorNotPaused(this.loops.getLoopRun(parent.loop_run_id));
+      this.loops.assertOperatorNotPaused(run);
     } catch (error) {
       if ((error as { code?: string }).code !== 'LOOP_OPERATOR_PAUSED') throw error;
       return this.gateOut(spawnId, input, depth, promptDigest, 'operator_paused', now);
     }
+
+    if (['blocked', 'completed', 'failed', 'cancelled', 'escalated', 'interrupted', 'ready_for_human_merge'].includes(run.status)
+      || !['prepared', 'running'].includes(parent.status)) throw new Error('DELEGATION_RUN_NOT_EXECUTABLE');
+    const parentCapabilities = new Set(Array.isArray(parent.metadata.capability_ids) ? parent.metadata.capability_ids.filter((id): id is string => typeof id === 'string') : []);
+    if ((input.capability_ids ?? []).some((id) => !parentCapabilities.has(id))) throw new Error('SPAWN_CAPABILITY_ESCALATION');
 
     // 2. Depth budget gate.
     if (depth > tree.depth_budget) {
@@ -423,9 +448,9 @@ export class NestedSpawnService {
     opts: { token?: string; internal?: boolean } = { internal: true }
   ): { child_lease_id: string; status: string; reject_reason: string | null; depth: number; runtime: string; role: string } {
     const row = this.db.prepare(`
-      SELECT status, reject_reason, depth, runtime, requested_role, child_lease_id, spawn_tree_id
-      FROM sub_agent_spawns WHERE child_lease_id = ?
-      ORDER BY created_at DESC LIMIT 1
+      SELECT s.status, l.status AS lease_status, s.reject_reason, s.depth, s.runtime, s.requested_role, s.child_lease_id, s.spawn_tree_id
+      FROM sub_agent_spawns s LEFT JOIN worker_leases l ON l.id = s.child_lease_id WHERE s.child_lease_id = ?
+      ORDER BY s.created_at DESC LIMIT 1
     `).get(childLeaseId) as any;
     if (!row) throw new Error('SPAWN_NOT_FOUND');
     if (!opts.internal && (!opts.token || !this.validateSpawnToken(opts.token, childLeaseId, row.spawn_tree_id))) {
@@ -433,7 +458,7 @@ export class NestedSpawnService {
     }
     return {
       child_lease_id: row.child_lease_id,
-      status: row.status,
+      status: row.lease_status ?? row.status,
       reject_reason: row.reject_reason ?? null,
       depth: row.depth,
       runtime: row.runtime,
@@ -463,8 +488,9 @@ export class NestedSpawnService {
 
   listSpawnTree(spawnTreeId: string): { tree: SpawnTreeRecord | null; spawns: SubAgentSpawnRecord[] } {
     const tree = this.getSpawnTree(spawnTreeId);
-    const rows = this.db.prepare('SELECT * FROM sub_agent_spawns WHERE spawn_tree_id = ? ORDER BY depth, created_at').all(spawnTreeId) as any[];
-    return { tree, spawns: rows.map((row) => this.parseSpawnRow(row)) };
+    const rows = this.db.prepare(`SELECT s.*, l.status AS lease_status FROM sub_agent_spawns s
+      LEFT JOIN worker_leases l ON l.id = s.child_lease_id WHERE s.spawn_tree_id = ? ORDER BY s.depth, s.created_at`).all(spawnTreeId) as any[];
+    return { tree, spawns: rows.map((row) => this.parseSpawnRow({ ...row, status: row.lease_status ?? row.status })) };
   }
 
   /** Mint a scoped, expiring spawn token (HMAC). Never printed except by the caller. */
@@ -477,6 +503,54 @@ export class NestedSpawnService {
   }
 
   // --- internal helpers ---
+
+  private reserveIdempotentSpawn(
+    input: RequestSpawnInput,
+    spawnId: string,
+    promptDigest: string,
+    intentDigest: string,
+    key: string,
+    depth: number,
+  ): RequestSpawnResult | null {
+    const existing = () => this.db.prepare('SELECT * FROM sub_agent_spawns WHERE idempotency_key = ?').get(key) as any;
+    const prior = existing();
+    if (prior) return this.idempotentResult(prior, intentDigest);
+    try {
+      this.db.prepare(`
+        INSERT INTO sub_agent_spawns (
+          id, spawn_tree_id, parent_lease_id, child_lease_id, requested_by_lease_id,
+          depth, runtime, requested_role, prompt_digest, status, idempotency_key, intent_digest, created_at
+        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, 'requested', ?, ?, ?)
+      `).run(
+        spawnId, input.spawn_tree_id, input.parent_lease_id, input.requested_by_lease_id,
+        depth, input.runtime, input.role, promptDigest, key, intentDigest, new Date().toISOString(),
+      );
+      return null;
+    } catch (error) {
+      const raced = existing();
+      if (raced) return this.idempotentResult(raced, intentDigest);
+      throw error;
+    }
+  }
+
+  private idempotentResult(row: any, intentDigest: string): RequestSpawnResult {
+    if (row.intent_digest !== intentDigest) throw new Error('SPAWN_IDEMPOTENCY_CONFLICT');
+    if (row.status === 'requested') {
+      return {
+        spawn_id: row.id, spawn_tree_id: row.spawn_tree_id, parent_lease_id: row.parent_lease_id,
+        child_lease_id: null, depth: row.depth, status: 'held', reject_reason: 'submission_outcome_unknown',
+      };
+    }
+    return {
+      spawn_id: row.id, spawn_tree_id: row.spawn_tree_id, parent_lease_id: row.parent_lease_id,
+      child_lease_id: row.child_lease_id ?? null, depth: row.depth,
+      status: row.status === 'gated_out' ? 'gated_out' : 'prepared',
+      ...(row.reject_reason ? { reject_reason: row.reject_reason } : {}),
+      ...(row.token_budget_grant !== null ? { token_budget_grant: row.token_budget_grant } : {}),
+      ...(row.wall_budget_ms !== null ? { wall_budget_ms: row.wall_budget_ms } : {}),
+      idempotent_replay: true,
+    };
+  }
 
   private gateOut(
     spawnId: string,
@@ -570,7 +644,7 @@ export class NestedSpawnService {
     // is the operator-armed principal, not an in-flight child, so exclude it —
     // otherwise max_concurrent_children=1 would block the very first child.
     const row = this.db.prepare(`
-      SELECT COUNT(*) as n FROM sub_agent_spawns
+      SELECT COUNT(*) as n FROM worker_leases
       WHERE spawn_tree_id = ? AND depth > 0 AND status IN ('prepared', 'running')
     `).get(spawnTreeId) as { n: number };
     return row.n;
@@ -588,6 +662,12 @@ export class NestedSpawnService {
         depth, runtime, requested_role, prompt_digest, status, reject_reason,
         token_budget_grant, wall_budget_ms, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        child_lease_id = excluded.child_lease_id,
+        status = excluded.status,
+        reject_reason = excluded.reject_reason,
+        token_budget_grant = excluded.token_budget_grant,
+        wall_budget_ms = excluded.wall_budget_ms
     `).run(
       input.id, input.spawn_tree_id, input.parent_lease_id, input.child_lease_id,
       input.requested_by_lease_id, input.depth, input.runtime, input.requested_role,

@@ -19,6 +19,8 @@ import { createAuthMiddleware } from '../middleware/auth';
 import { LoopService } from '../services/loop-service';
 import { NestedSpawnService } from '../services/nested-spawn-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { DelegationService } from '../services/delegation-service';
+import { createLoopRoutes } from '../routes/loops';
 
 /**
  * L1/L3 end-to-end proof that the nested-spawn control loop is REAL, not
@@ -68,7 +70,7 @@ function makeTempRepo(): string {
   return tempDir;
 }
 
-function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; controlUrl?: string; capabilityIds?: string[]; runtime?: string } = {}): Harness {
+function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; controlUrl?: string; capabilityIds?: string[]; runtime?: string; maxConcurrentChildren?: number } = {}): Harness {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   db.exec(schema);
@@ -102,7 +104,7 @@ function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; c
     depth_budget: overrides.depthBudget,
     total_token_budget: overrides.tokenBudget,
     total_wall_budget_ms: 10_000_000,
-    max_concurrent_children: 20,
+    max_concurrent_children: overrides.maxConcurrentChildren ?? 20,
     risk_class: 'medium',
     capability_ids: overrides.capabilityIds,
   });
@@ -233,7 +235,200 @@ describe('nested-spawn control loop (L1 real, L3 token-or-user auth)', () => {
       const result = await h.loops.executeWorker(h.loopRunId, { lease_id: child.child_lease_id! });
       expect(result.lease.role).toBe('planner');
       expect(result.lease.status).toBe('completed');
+      expect(h.spawns.getSpawnStatus(child.child_lease_id!).status).toBe('completed');
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns.find((spawn) => spawn.id === child.spawn_id)?.status).toBe('completed');
     } finally {
+      cleanup(h);
+    }
+  });
+
+  it('defaults the delegation facade off and shadow creates no child lease', () => {
+    const h = setupHarness({ depthBudget: 1 });
+    const priorMode = process.env.DELEGATION_FACADE_MODE;
+    try {
+      delete process.env.DELEGATION_FACADE_MODE;
+      const facade = new DelegationService(h.db, h.loops, h.spawns);
+      expect(() => facade.submitCodeTask({
+        loop_run_id: h.loopRunId, parent_lease_id: h.root.root_lease_id, runtime: 'mock',
+        prompt: 'bounded work', idempotency_key: 'shadow-1', actor_user_id: 'operator-1',
+      })).toThrow('DELEGATION_FACADE_OFF');
+      process.env.DELEGATION_FACADE_MODE = 'shadow';
+      const before = h.loops.listWorkerLeases(h.loopRunId).length;
+      const result = facade.submitCodeTask({
+        loop_run_id: h.loopRunId, parent_lease_id: h.root.root_lease_id, runtime: 'mock',
+        prompt: 'bounded work', idempotency_key: 'shadow-1', actor_user_id: 'operator-1',
+      });
+      expect(result).toMatchObject({ proposed: true, executed: false, execution_outcome: 'not_started', verification_outcome: 'unknown' });
+      expect(h.loops.listWorkerLeases(h.loopRunId)).toHaveLength(before);
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns).toHaveLength(1);
+    } finally {
+      if (priorMode === undefined) delete process.env.DELEGATION_FACADE_MODE;
+      else process.env.DELEGATION_FACADE_MODE = priorMode;
+      cleanup(h);
+    }
+  });
+
+  it('refuses runtimes outside the tested delegated maker contract before creating leases', () => {
+    const h = setupHarness({ depthBudget: 1 });
+    const priorMode = process.env.DELEGATION_FACADE_MODE;
+    try {
+      process.env.DELEGATION_FACADE_MODE = 'execute';
+      const facade = new DelegationService(h.db, h.loops, h.spawns);
+      expect(() => facade.submitCodeTask({
+        loop_run_id: h.loopRunId, parent_lease_id: h.root.root_lease_id, runtime: 'editor' as any,
+        prompt: 'unsupported editor task', idempotency_key: 'unsupported-1', actor_user_id: 'operator-1',
+      })).toThrow('DELEGATION_RUNTIME_UNSUPPORTED');
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns).toHaveLength(1);
+    } finally {
+      if (priorMode === undefined) delete process.env.DELEGATION_FACADE_MODE;
+      else process.env.DELEGATION_FACADE_MODE = priorMode;
+      cleanup(h);
+    }
+  });
+
+  it('dispatches an admitted delegated task through executeWorker once and leaves verification unknown', async () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 1_000_000 });
+    const priorMode = process.env.DELEGATION_FACADE_MODE;
+    try {
+      process.env.DELEGATION_FACADE_MODE = 'execute';
+      const facade = new DelegationService(h.db, h.loops, h.spawns);
+      const input = {
+        loop_run_id: h.loopRunId, parent_lease_id: h.root.root_lease_id, runtime: 'mock' as const,
+        prompt: 'bounded worker task', idempotency_key: 'execute-1', actor_user_id: 'operator-1',
+      };
+      const first = facade.submitCodeTask(input);
+      const replay = facade.submitCodeTask(input);
+      expect(first.spawn_id).toBe(replay.spawn_id);
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns).toHaveLength(2);
+      expect(h.db.prepare("SELECT COUNT(*) AS count FROM loop_events WHERE loop_run_id = ? AND event_type = 'delegation_admitted'").get(h.loopRunId)).toMatchObject({ count: 1 });
+      const deadline = Date.now() + 10_000;
+      let receipt = facade.getReceipt(h.loopRunId, first.spawn_id!);
+      while ((receipt.execution_outcome !== 'completed' || receipt.verification_outcome === 'pending') && receipt.execution_outcome !== 'failed' && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        receipt = facade.getReceipt(h.loopRunId, first.spawn_id!);
+      }
+      expect(receipt.execution_outcome).toBe('completed');
+      expect(receipt.verification_outcome).toBe('unknown');
+      expect(receipt.delivery_outcome).toBe('delivered');
+      const maker = h.loops.getWorkerLease(receipt.child_lease_id!);
+      const checker = h.loops.listWorkerLeases(h.loopRunId).find((lease) => lease.role === 'checker' && lease.metadata.maker_lease_id === maker.id);
+      expect(checker).toMatchObject({ status: 'completed' });
+      expect(checker!.worktree_path).not.toBe(maker.worktree_path);
+      const finalReplay = facade.submitCodeTask(input);
+      expect(finalReplay.execution_outcome).toBe('completed');
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns).toHaveLength(3); // root + maker + independent checker
+      h.db.prepare("UPDATE worker_leases SET runtime = 'claude', metadata = json_remove(metadata, '$.verdict') WHERE id = ?").run(checker!.id);
+      expect(facade.getReceipt(h.loopRunId, first.spawn_id!).verification_outcome).toBe('inconclusive');
+    } finally {
+      if (priorMode === undefined) delete process.env.DELEGATION_FACADE_MODE;
+      else process.env.DELEGATION_FACADE_MODE = priorMode;
+      cleanup(h);
+    }
+  });
+
+  it('does not admit delegation after the parent run is stopped', async () => {
+    const h = setupHarness({ depthBudget: 1 });
+    const priorMode = process.env.DELEGATION_FACADE_MODE;
+    try {
+      process.env.DELEGATION_FACADE_MODE = 'execute';
+      await h.loops.stopLoopRun(h.loopRunId);
+      const facade = new DelegationService(h.db, h.loops, h.spawns);
+      expect(() => facade.submitCodeTask({
+        loop_run_id: h.loopRunId, parent_lease_id: h.root.root_lease_id, runtime: 'mock',
+        prompt: 'must remain stopped', idempotency_key: 'stopped-run', actor_user_id: 'operator-1',
+      })).toThrow('DELEGATION_RUN_NOT_EXECUTABLE');
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns).toHaveLength(1);
+    } finally {
+      if (priorMode === undefined) delete process.env.DELEGATION_FACADE_MODE;
+      else process.env.DELEGATION_FACADE_MODE = priorMode;
+      cleanup(h);
+    }
+  });
+
+  it('does not let a child request capabilities absent from its parent lease', () => {
+    const h = setupHarness({ depthBudget: 1, capabilityIds: ['parent-capability'] });
+    try {
+      expect(() => h.spawns.requestSpawn({
+        spawn_tree_id: h.root.spawn_tree_id, parent_lease_id: h.root.root_lease_id,
+        requested_by_lease_id: h.root.root_lease_id, role: 'maker', runtime: 'mock',
+        prompt: 'capability escalation', capability_ids: ['other-capability'],
+      }, { internal: true })).toThrow('SPAWN_CAPABILITY_ESCALATION');
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns).toHaveLength(1);
+    } finally { cleanup(h); }
+  });
+
+  it('frees per-tree concurrency from canonical terminal worker leases', async () => {
+    const h = setupHarness({ depthBudget: 1, maxConcurrentChildren: 1 });
+    try {
+      const first = h.spawns.requestSpawn({
+        spawn_tree_id: h.root.spawn_tree_id, parent_lease_id: h.root.root_lease_id,
+        requested_by_lease_id: h.root.root_lease_id, role: 'maker', runtime: 'mock', prompt: 'first',
+      }, { internal: true });
+      await h.loops.executeWorker(h.loopRunId, { lease_id: first.child_lease_id! });
+      const second = h.spawns.requestSpawn({
+        spawn_tree_id: h.root.spawn_tree_id, parent_lease_id: h.root.root_lease_id,
+        requested_by_lease_id: h.root.root_lease_id, role: 'maker', runtime: 'mock', prompt: 'second',
+      }, { internal: true });
+      expect(second.status).toBe('prepared');
+    } finally { cleanup(h); }
+  });
+
+  it('exposes an authenticated API receipt and canonical readback for real delegated execution', async () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 1_000_000 });
+    const priorMode = process.env.DELEGATION_FACADE_MODE;
+    const app = express();
+    app.use(express.json());
+    app.use('/api/loops', (req, _res, next) => { (req as any).user = { sub: 'operator-1' }; next(); });
+    app.use('/api/loops', createLoopRoutes(h.db));
+    app.use(errorHandler);
+    const server = app.listen(0);
+    try {
+      process.env.DELEGATION_FACADE_MODE = 'execute';
+      await new Promise<void>((resolve) => server.once('listening', resolve));
+      const address = server.address() as AddressInfo;
+      const endpoint = `http://127.0.0.1:${address.port}/api/loops/runs/${h.loopRunId}/delegate`;
+      const request = () => fetch(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'http-task-1' },
+        body: JSON.stringify({ parent_lease_id: h.root.root_lease_id, runtime: 'mock', prompt: 'HTTP delegated work' }),
+      });
+      const response = await request();
+      expect(response.status).toBe(202);
+      const initial = await response.json() as { spawn_id: string; execution_outcome: string; verification_outcome: string };
+      expect(initial.execution_outcome).toBe('queued');
+      expect(initial.verification_outcome).toBe('unknown');
+      expect((await request()).status).toBe(200);
+      const receiptUrl = `http://127.0.0.1:${address.port}/api/loops/runs/${h.loopRunId}/delegations/${initial.spawn_id}`;
+      let receipt = await (await fetch(receiptUrl)).json() as { execution_outcome: string; verification_outcome: string };
+      const deadline = Date.now() + 10_000;
+      while ((receipt.execution_outcome !== 'completed' || receipt.verification_outcome === 'pending') && receipt.execution_outcome !== 'failed' && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        receipt = await (await fetch(receiptUrl)).json() as typeof receipt;
+      }
+      expect(receipt).toMatchObject({ execution_outcome: 'completed', verification_outcome: 'unknown' });
+    } finally {
+      if (priorMode === undefined) delete process.env.DELEGATION_FACADE_MODE;
+      else process.env.DELEGATION_FACADE_MODE = priorMode;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      cleanup(h);
+    }
+  });
+
+  it('rejects an unauthenticated delegation request at the mounted API boundary', async () => {
+    const h = setupHarness({ depthBudget: 1 });
+    const { server, baseUrl } = await startServer(h.db);
+    const priorMode = process.env.DELEGATION_FACADE_MODE;
+    try {
+      process.env.DELEGATION_FACADE_MODE = 'execute';
+      const response = await fetch(`${baseUrl}/api/loops/runs/${h.loopRunId}/delegate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'unauthenticated' },
+        body: JSON.stringify({ parent_lease_id: h.root.root_lease_id, runtime: 'mock', prompt: 'must not be admitted' }),
+      });
+      expect(response.status).toBe(401);
+      expect(h.spawns.listSpawnTree(h.root.spawn_tree_id).spawns).toHaveLength(1);
+    } finally {
+      if (priorMode === undefined) delete process.env.DELEGATION_FACADE_MODE;
+      else process.env.DELEGATION_FACADE_MODE = priorMode;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       cleanup(h);
     }
   });

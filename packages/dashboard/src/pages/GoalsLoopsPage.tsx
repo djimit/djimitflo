@@ -10,6 +10,7 @@ export function GoalsLoopsPage() {
   const dialog = useDialog();
   const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
   const canIntervene = useAuthStore((state) => state.hasPermission('manage:config'));
+  const canDelegate = useAuthStore((state) => state.hasPermission('write:swarm_action'));
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [runs, setRuns] = useState<LoopRunRecord[]>([]);
   const [catalog, setCatalog] = useState<LoopCatalogItem[]>([]);
@@ -20,6 +21,7 @@ export function GoalsLoopsPage() {
   const [selectedLoopName, setSelectedLoopName] = useState('doc-drift-and-small-fix-loop');
   const [selectedGoalId, setSelectedGoalId] = useState('');
   const [runtime, setRuntime] = useState<'manual' | 'codex' | 'opencode'>('manual');
+  const [delegationMode, setDelegationMode] = useState<'off' | 'shadow' | 'execute' | 'unknown'>('unknown');
   const [goalObjective, setGoalObjective] = useState('');
   const [goalAcceptance, setGoalAcceptance] = useState('');
   const [goalRisk, setGoalRisk] = useState<'low' | 'medium' | 'high' | 'critical'>('low');
@@ -36,6 +38,7 @@ export function GoalsLoopsPage() {
   );
   const [runLookupError, setRunLookupError] = useState<{ id: string; message: string } | null>(null);
   const selectedBundle = bundle?.run.id === selectedRun?.id ? bundle : null;
+  const delegatedWorkerActive = !!selectedBundle?.leases.some((lease) => lease.parent_lease_id && ['prepared', 'running'].includes(lease.status));
   const selectedRunRef = useRef<string | null>(null);
   selectedRunRef.current = selectedRun?.id || null;
   const bundleRequest = useRef(0);
@@ -44,6 +47,7 @@ export function GoalsLoopsPage() {
 
   useEffect(() => {
     void refresh();
+    void api.getDelegationMode().then((result) => setDelegationMode(result.mode)).catch(() => setDelegationMode('unknown'));
   }, []);
 
   useEffect(() => {
@@ -53,6 +57,13 @@ export function GoalsLoopsPage() {
     }
     void loadBundle(selectedRun.id);
   }, [selectedRun?.id]);
+
+  useEffect(() => {
+    if (!selectedRun || !delegatedWorkerActive) return;
+    const runId = selectedRun.id;
+    const timer = window.setInterval(() => void loadBundle(runId), 1_500);
+    return () => window.clearInterval(timer);
+  }, [selectedRun?.id, delegatedWorkerActive]);
 
   // UX-005: the run list holds only the newest runs; a linked older run is fetched by its id
   useEffect(() => {
@@ -136,6 +147,19 @@ export function GoalsLoopsPage() {
     if (!selectedRun || runLocked) return;
     if (runtime === 'manual') throw new Error('Select Codex or OpenCode for runtime review, or submit a manual verdict');
     await api.executeChecker(selectedRun.id, lease.id, { runtime, timeout_ms: 120_000 });
+  }
+
+  async function delegateTask() {
+    if (!selectedRun || !selectedBundle || runLocked) return;
+    if (runtime === 'manual') throw new Error('Select Codex or OpenCode to delegate executable work');
+    const root = selectedBundle.leases.find((lease) => lease.parent_lease_id == null && lease.spawn_tree_id);
+    if (!root) throw new Error('This run has no armed spawn tree. Create an operator-authorized swarm root before delegating.');
+    const answer = await dialog.ask({ title: 'Delegate bounded code task', fields: [{ name: 'prompt', label: 'Task and completion criteria', multiline: true, required: true }], confirmLabel: 'Queue task' });
+    if (answer === null || !answer.prompt.trim()) return;
+    const receipt = await api.delegateTask(selectedRun.id, {
+      parent_lease_id: root.id, runtime, prompt: answer.prompt.trim(), idempotency_key: globalThis.crypto.randomUUID(),
+    });
+    setNotice('Delegation ' + (receipt.spawn_id ?? 'shadow') + ': execution ' + receipt.execution_outcome + '; verification ' + receipt.verification_outcome + '.');
   }
 
   async function completeLoop() {
@@ -369,6 +393,7 @@ export function GoalsLoopsPage() {
           selectedRun={selectedRun} selectedRunId={selectedRunId} selectedBundle={selectedBundle} runLookupError={runLookupError} loading={loading}
           runtime={runtime} canApprove={canApprove} actionId={actionId} runLocked={runLocked} runAction={runAction}
           completeLoop={completeLoop} executeChecker={executeChecker} splitFinding={splitFinding}
+          delegateTask={delegateTask} canDelegate={canDelegate} delegationRootReady={!!selectedBundle?.leases.some((lease) => lease.parent_lease_id == null && lease.spawn_tree_id)} delegationMode={delegationMode}
         />
       </div>
     </div>
