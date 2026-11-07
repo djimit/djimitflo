@@ -17,3 +17,10 @@ CVE-2026-56865
 # github-cocreate); it never serves HTTP/2, and the only peer that could send SETTINGS frames is GitHub itself. Revisit with
 # the two entries above when cli/cli ships a release with the fixes (bump GH_CLI_VERSION, drop these lines).
 CVE-2026-78669
+
+# gh CLI (/usr/bin/gh): golang.org/x/net v0.60.0 carries CVE-2026-78661 (golang.org/x/net/html: denial of service when
+# parsing crafted HTML), fixed in x/net 0.62.0; the latest gh release (v2.103.3, go1.27.3) still ships x/net v0.60.0.
+# djimitflo runs gh only as a short-lived client of api.github.com (GithubPrReviewService, github-cocreate); its inputs are
+# GitHub API responses, so the only party that could feed it crafted HTML is GitHub itself, and a DoS ends one short gh
+# process. Revisit with the entries above when cli/cli ships a release with x/net >= 0.62.0 (bump GH_CLI_VERSION, drop this).
+CVE-2026-78661
