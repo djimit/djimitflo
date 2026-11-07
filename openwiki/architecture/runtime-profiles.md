@@ -3,9 +3,6 @@ type: architecture concept
 title: Runtime Profiles (api / operator / autonomous)
 description: How DJIMITFLO_RUNTIME_PROFILE is resolved and exactly which background services, schedulers, and workers each of the three runtime profiles (api, operator, autonomous) enables at server startup.
 tags: [runtime-profile, bootstrap, operator-services, autonomous-services, explainer-fleet, configuration]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-6f28e3706fee061aefa2c0e9
     resource: repo://packages/server/src/__tests__/runtime-profile.test.ts
@@ -19,6 +16,10 @@ sources:
     resource: repo://packages/server/src/index.ts
   - id: openwiki-source-d6853545652195828b66802f
     resource: repo://packages/server/src/routes/swarms.ts
+  - id: openwiki-source-d7f173c2aeaf115fa777420f
+    resource: repo://packages/server/src/services/content-drafts.ts
+  - id: openwiki-source-4e8b7ed0d5e2a29a3e24d30b
+    resource: repo://packages/server/src/services/dependency-lane.ts
   - id: openwiki-source-83fe84389bdafd15acb3bfec
     resource: repo://packages/server/src/services/expert-swarm-orchestrator.ts
   - id: openwiki-source-a0498d9559274d42a0f51a59
@@ -33,7 +34,10 @@ sources:
     resource: repo://packages/server/src/services/nested-spawn-service.ts
   - id: openwiki-source-d5f2846ded726ca7ba790a19
     resource: repo://packages/server/src/services/repo-explainer-scheduler.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-07T14:47:55.436Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-07T14:47:55.436Z
 ---
 
 # Runtime Profiles (api / operator / autonomous)
@@ -51,11 +55,11 @@ without a process restart.
 `resolveRuntimeProfile()` in `packages/server/src/config/runtime-profile.ts` reads
 `DJIMITFLO_RUNTIME_PROFILE`, trims and lowercases it, and returns one of three values:
 
-| Profile | Operator stack | Autonomy stack |
-| --- | --- | --- |
-| `api` (default) | no | no |
-| `operator` | yes | no |
-| `autonomous` | yes | yes |
+| Profile | Resolution | Operator stack | Autonomy stack |
+| --- | --- | --- | --- |
+| `api` (default) | unset, empty, or invalid value (warns) | no | no |
+| `operator` | `DJIMITFLO_RUNTIME_PROFILE=operator` | yes | no |
+| `autonomous` | `DJIMITFLO_RUNTIME_PROFILE=autonomous` | yes | yes |
 
 Two facts matter operationally:
 
@@ -76,11 +80,11 @@ alternative to it. There is no way to get the autonomy stack without the operato
 ```mermaid
 flowchart TD
     ENV["DJIMITFLO_RUNTIME_PROFILE<br/>(unset / api / operator / autonomous)"] --> RES["resolveRuntimeProfile()<br/>trim · lowercase · fallback api + warn"]
-    RES --> OP{"runtimeProfileEnablesOperator?<br/>operator | autonomous"}
+    RES --> OP{"runtimeProfileEnablesOperator?<br/>operator or autonomous"}
     RES --> AU{"runtimeProfileEnablesAutonomy?<br/>autonomous only"}
-    OP -->|true| OPSVCS["External event ingest + PromptIntel<br/>Dennis queue · Retention · CognitiveLoopClosure<br/>Telegram gateway (needs TELEGRAM_BOTS_CONFIG)"]
-    AU -->|true| AUSVCS["initAutonomousServices() + LoopDaemon<br/>MetaOrchestration wired into engine+loops<br/>SelfModificationPipeline · OpenMythos nightly"]
-    ALL["Every profile: database + loop recovery, auth, HTTP/WebSocket, ExecutionEngine,<br/>memory/reasoning/trajectory wiring, always-constructed schedulers (each default-off),<br/>ExplainerFleetWorker (unless DJIMITFLO_EXPLAINER_AUTONOMY=false)"]
+    OP -->|true| OPSVCS["External event ingest runs everywhere<br/>+ PromptIntel · Dennis queue<br/>Retention · CognitiveLoopClosure<br/>Telegram gateway (needs TELEGRAM_BOTS_CONFIG)"]
+    AU -->|true| AUSVCS["initAutonomousServices() + LoopDaemon<br/>recordTreatmentEnvBoundaries · resumeInterruptedRuns<br/>MetaOrchestration wired into engine+loops<br/>SelfModificationPipeline · OpenMythos nightly"]
+    ALL["Every profile: database + loop recovery, auth, HTTP/WebSocket, ExecutionEngine,<br/>memory/reasoning/trajectory wiring, default-off scheduler family + lane timers,<br/>ExplainerFleetWorker (unless DJIMITFLO_EXPLAINER_AUTONOMY=false)"]
 ```
 
 ## Startup sequence and gates
@@ -95,35 +99,62 @@ flowchart TD
    constructs `ExternalEventIngestService`, starts it, and registers it with the
    `lifecycleManager`. It is the one service from the operator bootstrap module that is
    **not** profile-gated.
-3. **Operator gate (`operatorRuntime`).** Runs `initOperatorServices(db)`, starts the
-   Dennis governed queue timer, starts `RetentionService` + `CognitiveLoopClosureService`,
-   and (after the fleet worker, below) starts the Telegram gateway.
-4. **Autonomy gate (`autonomousRuntime`).** Runs `initAutonomousServices(db, recoverySvc)`
-   and starts the `LoopDaemon`; later wires `MetaOrchestrationService` into the execution
-   engine and loop service and kicks the `SelfModificationPipeline`.
+3. **Operator gate (`operatorRuntime`).** Runs `initOperatorServices(db)` and starts the
+   Dennis governed queue timer; later adds `RetentionService` +
+   `CognitiveLoopClosureService` and the Telegram gateway.
+4. **Autonomy gate (`autonomousRuntime`).** Records experiment treatment period
+   boundaries (`recordTreatmentEnvBoundaries`), runs
+   `initAutonomousServices(db, recoverySvc)`, and starts the `LoopDaemon`; later
+   re-queues this boot's interrupted runs (`recoverySvc.resumeInterruptedRuns()`), wires
+   `MetaOrchestrationService` into the execution engine and loop service, kicks the
+   `SelfModificationPipeline`, and arms the `OpenMythosNightlyService` if enabled.
 5. **Core stack (all profiles).** Auth, Express app, WebSocket service,
    `RuntimeGovernanceService`, `ExecutionEngine` (plus interrupted-task reconciliation),
    memory/reasoning/vector/trajectory wiring, `MultiModelIntelligence` seeding, and the
    always-constructed `ProactiveMemoryService` / `ComplianceAuditService` side effects.
-6. **Profile-independent in-process schedulers.** `ComplianceReportScheduler`,
-   `SelfHealingScheduler`, `SelfImprovementAutoReviewScheduler`,
-   `FrontierExpertScheduler`, `SpecialistPanelBacklogScheduler`, and
-   `MemoryCandidateReviewScheduler` are constructed in every profile, but each `start()`
-   returns a boolean and self-disarms unless its own env flag is set — they are
+6. **Profile-independent schedulers and lane timers.** Six boolean-`start()`
+   schedulers (`ComplianceReportScheduler`, `SelfHealingScheduler`,
+   `SelfImprovementAutoReviewScheduler`, `FrontierExpertScheduler`,
+   `SpecialistPanelBacklogScheduler`, `MemoryCandidateReviewScheduler`) plus five
+   `start*` lane timers (`startDependencyLane`, `startOllamaProbe`,
+   `startShippedCodeScan`, `startSkillDistillation`, `startContentDrafts`) are invoked
+   in **every** profile, and each self-disarms unless its own env flag is set — they are
    default-off regardless of profile.
 7. **Explainer fleet worker (every profile).** See below.
 
-Because `main()` wires `operatorRuntime` into `createRoutes(...)` (consumed by the `/apex`
-router), an api-profile process also differs at the HTTP layer, but all other routes are
-identical across profiles.
+Because `main()` wires `operatorRuntime` and possibly `metaOrchestration` into
+`createRoutes(...)` (the flag is consumed by routers such as `/apex`), an api-profile
+process also differs at the HTTP layer, but all other routes are identical across
+profiles.
+
+## What each profile enables
+
+| Subsystem | `api` | `operator` | `autonomous` |
+| --- | --- | --- | --- |
+| HTTP API, auth, WebSocket, ExecutionEngine, memory/reasoning/trajectory substrate | yes | yes | yes |
+| Database init + `recoverInterruptedRuns()` (`recoverySvc` LoopService) | yes | yes | yes |
+| `ExternalEventIngestService` (`initExternalEventIngest`) | yes | yes | yes |
+| Explainer fleet worker + drift check | yes (opt-out `DJIMITFLO_EXPLAINER_AUTONOMY=false`) | yes | yes |
+| Default-off scheduler family (compliance report, self-healing, self-improvement auto-review, frontier experts, specialist-panel backlog, memory-candidate review) | constructed, individually armed | constructed, individually armed | constructed, individually armed |
+| Default-off lane timers (dependency lane, Ollama failover probe, shipped-code scan, skill distillation, content drafts) | individually armed | individually armed | individually armed |
+| PromptIntel one-shot ingest (`PROMPT_INTEL_PENDING`) | — | yes | yes |
+| Dennis governed queue (60 s) + DjimitSec scan tick | — | yes | yes |
+| `RetentionService` + `CognitiveLoopClosureService` | — | yes | yes |
+| Telegram gateway (`TELEGRAM_BOTS_CONFIG` required) | — | yes | yes |
+| `recordTreatmentEnvBoundaries` + `resumeInterruptedRuns()` | — | — | yes |
+| `initAutonomousServices` stack (learning loop, swarm intelligence, RSI, curiosity/goal generation, opt-in lanes) | — | — | yes |
+| `LoopDaemon` continuous goal queue | — | — | yes |
+| `MetaOrchestrationService` (wired into engine + loops + routes) | — | — | yes |
+| `SelfModificationPipeline.analyze()/autoPlan()` at boot | — | — | yes |
+| `OpenMythosNightlyService` | — | — | constructed; arms only with its own flag |
 
 ## api profile (default)
 
 The minimal control plane: HTTP API + authenticated WebSocket, execution engine, auth,
 learning/memory substrate, external event ingest, the explainer fleet worker, and any
-individually-armed default-off schedulers. No Telegram, no retention enforcement, no
-Dennis queue, no continuous goals, no self-modification. This is the right profile for a
-dashboard- or API-facing instance that should never act on its own.
+individually-armed default-off scheduler or lane. No Telegram, no retention enforcement,
+no Dennis queue, no continuous goals, no self-modification. This is the right profile
+for a dashboard- or API-facing instance that should never act on its own.
 
 ## operator profile
 
@@ -135,8 +166,11 @@ Everything in `api`, plus the operator-facing automation. The gates are spread a
   findings file at `PROMPT_INTEL_PENDING` (defaulting to
   `$HOME/.djimit/roborev/paperclip-tasks.pending.jsonl`). Failures are non-fatal.
 - **Dennis governed queue** (inline): constructs `DennisAgentService` with the WebSocket
-  service, runs `processGovernedQueue()` once at boot and then every 60 s on an unref'd
-  timer. The timer is cleared on SIGTERM.
+  service, runs the tick once at boot and then every 60 s on an unref'd timer. Each tick
+  calls `processGovernedQueue()` and then ticks `DjimitSecTriggerService`
+  (`scanRuntime.triggers.tick()`); the scheduler registry notes the
+  `djimitsec_repository_scan` scheduler as armed only under the operator gate with
+  `DJIMITSEC_SCAN_TRIGGERS=shadow|execute`. The timer is cleared on SIGTERM.
 - **RetentionService** (inline): centralized data-lifecycle enforcement, started under
   the same `operatorRuntime` gate as **CognitiveLoopClosureService**.
 - **Telegram gateway** (inline): only when `TELEGRAM_BOTS_CONFIG` is set. The
@@ -149,10 +183,11 @@ Everything in `api`, plus the operator-facing automation. The gates are spread a
 
 ## autonomous profile
 
-Everything in `operator`, plus the self-driving stack. `initAutonomousServices(db,
-recoverySvc)` in `bootstrap/autonomous-services.ts` constructs the bulk of it; `index.ts`
-adds the `LoopDaemon`, meta-orchestration wiring, self-modification, and the OpenMythos
-nightly eval.
+Everything in `operator`, plus the self-driving stack. `index.ts` first records
+experiment treatment period boundaries, then `initAutonomousServices(db, recoverySvc)`
+in `bootstrap/autonomous-services.ts` constructs the bulk of it; `index.ts` adds the
+`LoopDaemon`, `resumeInterruptedRuns()`, meta-orchestration wiring, self-modification,
+and the OpenMythos nightly eval.
 
 ### From `initAutonomousServices`
 
@@ -176,6 +211,16 @@ broken subsystem never blocks the rest of the stack.
   behind `eventPublishEnabled()`.
 - **TestGapSourceService** — deterministic test-only proposals for untested services,
   max 2/day; default off behind `testGapSourceEnabled()`.
+- **DeadCodeSourceService** — proposals to remove unused files / dormant route groups;
+  default off behind `deadCodeLaneEnabled()` (`DEAD_CODE_LANE_ENABLED`).
+- **FindingFixSourceService** — one ESLint pack-v1 finding per proposal, shadow records
+  only; default off behind `findingFixMode()` (`FINDING_FIX_LANE`).
+- **AdvisoryExposureService** — EVE-V advisory ids → OSV → lockfile verdicts; default
+  off behind `advisoryExposureMode()` (`ADVISORY_EXPOSURE_MODE`).
+- **Auto-requeue** — requeues retryable failures once, dismisses the rest after 14 d;
+  via `startAutoRequeue`, default off (`REQUEUE_AUTO_MODE`).
+- **EvolutionGymService** — sandbox replay tasks from the system's own history feeding
+  species selection; default off behind `gymArmed()` (`EVOLUTION_GYM_ENABLED`).
 - **DreamStateService** — shadow failure-cause replay every 6 h; default off behind
   `dreamStateEnabled()`.
 - **NeedsGroundingTriageService** — reflection-triage-driven way out of
@@ -186,6 +231,30 @@ broken subsystem never blocks the rest of the stack.
   unvalidated drafts; default off.
 - **KnowledgeMaintenanceService** — scheduled OKF drift / wiki delta / OKF lint checks
   projected into work items; default off.
+- **Interest/evolution feedback lanes** — `startInterestFeedback` (daily
+  `djimitflo.feedback.interests` profile; `FEEDBACK_INTERESTS_ENABLED=true`) and
+  `startEvolutionFeedback` (daily digest; `EVOLUTION_FEEDBACK_MODE=shadow|on`), both
+  default-off.
+- **Commons lanes** — evidence room (`COMMONS_EVIDENCE_ROOM_MODE=on`), investigation
+  outcomes (`COMMONS_INVESTIGATION_MODE=shadow|on`), and the falsifier niche
+  (`COMMONS_FALSIFIER_MODE=shadow`), all default-off `start*` functions.
+- **Settlement and fleet repair** — `startSettlementExecution`
+  (`SETTLEMENT_EXECUTION_MODE=shadow`) and `startFleetRepair` (`FLEET_REPAIR_MODE=shadow`),
+  default-off.
+- **Evolution and settlement timers** — `startValueAllocator` (`VALUE_ALLOCATOR_MODE`),
+  `startDreamEvolution` (`DREAM_EVOLUTION_ENABLED`, with the remote-gym orphan sweep
+  riding its tick under `GYM_ORPHAN_SWEEP`), `startEvolutionEstimators`
+  (`EVOLUTION_ESTIMATORS_ENABLED`), `startCommitteeEvolution` (`COMMITTEE_SWARM_ENABLED`),
+  `startMergeSurvival` (`MERGE_SURVIVAL_ENABLED`), all default-off.
+- **Loop PR lifecycle timers** — `startLoopAutoMerge` (`LOOP_AUTO_MERGE_TEST_ONLY`),
+  `startDraftPrRetry` (`LOOP_DRAFT_PR_RETRY`), `startLoopPrCiWatch` (`LOOP_PR_CI_WATCH`),
+  all default-off.
+- **Scheduler watchdog + stall watch** — `startSchedulerWatchdog`
+  (`SCHEDULER_SELF_HEAL_MODE`, default `shadow`) diagnoses armed-but-not-ticking
+  schedulers and performs one bounded restart in `act` mode; `startStallWatch`
+  (`STALL_WATCH_ENABLED`, default off) logs silent stalls and pushes them via
+  `pushStall`. The watchdog defaults to shadow, so it starts (diagnose + escalate only)
+  in this profile without extra flags.
 - **SwarmIntelligenceService + NestedSpawnService** — always constructed here; the nested
   spawn service receives `controlUrl` from `DJIMITFLO_CONTROL_URL` (see below).
 - **NegotiationCoordinator** — inter-agent `help_request` protocol, started against the
@@ -194,7 +263,10 @@ broken subsystem never blocks the rest of the stack.
 - **MetaEvolutionService** — periodic self-evaluation + capability pruning.
 - **AutonomousGoalGenerator + CuriosityService** — curiosity starts and runs an initial
   `scanForGaps()`; the generator runs after that scan resolves and logs generated
-  improvement/security goals.
+  improvement/security goals. An hourly `scheduled_proposal_goals` tick
+  (`guardTick`-guarded, `SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS` default 3 600 000 ms)
+  converts panel-authorised scheduled proposals into goals between restarts and is
+  always on in this profile.
 - **RSI engine trio** — `RsiSafetyGuard`, `ServiceRefactoringAnalyzer`, and
   `EmergentSpecializationService` are constructed for side effects (the refactor /
   safety / specialization engine).
@@ -202,15 +274,23 @@ broken subsystem never blocks the rest of the stack.
   `WorkerPool({ concurrency: 10 })` and the OKF updater are side-effect constructions.
 
 Every interval/timer service is registered with the `lifecycleManager` under a
-`serviceName` so shutdown is centralized.
+`serviceName` so shutdown is centralized; most default-off lanes also register a
+bounded `registerRestart(...)` self-heal hook in the scheduler registry.
 
 ### From `index.ts` under `autonomousRuntime`
 
+- **Treatment-period bookkeeping + run resume** — before `initAutonomousServices`,
+  `recordTreatmentEnvBoundaries(db)` records a period boundary for every experiment
+  whose treatment env flag changed since the last boot; after the execution engine's
+  recovery, `recoverySvc.resumeInterruptedRuns()` re-queues this boot's interrupted
+  runs with a fresh maker (`LOOP_RESUME_INTERRUPTED`, default off).
 - **LoopDaemon** — the continuous goal queue. Critically, it is constructed with the
   *same* `recoverySvc` `LoopService` instance used for boot recovery, so the daemon and
-  the API share runtime leases. Poll interval: `GOAL_QUEUE_POLL_MS` (default 5000 ms);
-  each goal gets its own swarm/worktree and the AIMD controller bounds global
-  concurrency.
+  the API share runtime leases. Poll interval: `GOAL_QUEUE_POLL_MS` (default 5000 ms).
+  Each tick starts as many pending goals as fit the available slots
+  (`GOAL_MAX_CONCURRENT`, default 4, minus active goals); each goal gets its own
+  swarm/worktree, and the AIMD controller separately bounds global runtime-lease
+  concurrency across all goals.
 - **MetaOrchestrationService** — the self-driving optimization layer connecting the
   learning subsystems. Started, then injected into both `executionEngine` and
   `recoverySvc` via `setMetaOrchestration(...)`, and passed into `createRoutes(...)` —
@@ -218,7 +298,7 @@ Every interval/timer service is registered with the `lifecycleManager` under a
 - **SelfModificationPipeline** — runs `analyze()` and `autoPlan()` once at boot inside
   the autonomy gate.
 - **OpenMythosNightlyService** — fills the governance leaderboard; `start()` is
-  boolean-returning and default-off, armed only in this profile.
+  boolean-returning and default-off, attempted only in this profile.
 
 ## Profile-independent: the explainer fleet worker
 
@@ -233,9 +313,11 @@ Two off-switches exist, at different layers:
 - **Boot-time opt-out:** `DJIMITFLO_EXPLAINER_AUTONOMY=false` skips construction entirely
   (logged as an info line).
 - **Runtime kill-switch:** the scheduler's paused flag is persisted in the `config` table
-  under `explainer_scheduler_paused`; `tick()` and `checkDrift()` both consult
-  `isPaused()`, so pausing survives restarts and works in every profile. The worker is
-  also stopped explicitly in the SIGTERM handler.
+  under `explainer_scheduler_paused`; `tick()`, `checkDrift()`, and even
+  `claimNextJob()` consult `isPaused()` — the pause check shares the claim transaction so
+  a worker cannot claim a job after the operator pauses the fleet. Pausing survives
+  restarts and works in every profile. The worker is also stopped explicitly in the
+  SIGTERM handler.
 
 ## DJIMITFLO_CONTROL_URL derivation
 
@@ -265,14 +347,20 @@ The profile is a coarse gate; several subsystems require an additional, independ
   `FRONTIER_EXPERTS_SCHEDULER_ENABLED=true`), the expert-swarm orchestrator's frontier
   expert selection, and the swarms API (409 `FRONTIER_EXPERTS_DISABLED` when off). The
   scheduler is constructed in every profile but never arms without the base flag.
-- The other always-constructed schedulers (compliance reports, self-healing,
+- The other always-constructed class schedulers (compliance reports, self-healing,
   self-improvement auto-review, specialist-panel backlog, memory-candidate review) are
   likewise default-off and individually armed, per their service headers.
-- Within the autonomous stack, many services are default-off behind their own
+- Five lane timers started in every profile are default-off mode lanes: dependency lane
+  (`DEPENDENCY_LANE_MODE=shadow|act`, and it also refuses to arm without
+  `GITHUB_REPOSITORY`/`GITHUB_TOKEN`), Ollama auto-failover probe
+  (`OLLAMA_AUTO_FAILOVER=on`), shipped-code scan (`SHIPPED_CODE_SCAN_MODE=shadow`),
+  skill distillation (`SKILL_DISTILLATION_MODE=shadow`), and content drafts
+  (`CONTENT_DRAFTS_MODE=shadow|on`).
+- Within the autonomous stack, most peripheral services are default-off behind their own
   `*_ENABLED`-style helpers (`eventPublishEnabled`, `dreamStateEnabled`,
   `diskGuardEnabled`, `queueHygieneEnabled`, `maintenanceEnabled`, etc.), so flipping to
   `autonomous` enables the core loop/meta/RSI machinery while the peripheral janitors
-  remain opt-in.
+  and shadow lanes remain opt-in.
 
 ## Failure and lifecycle invariants
 

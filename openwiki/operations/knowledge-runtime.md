@@ -3,9 +3,6 @@ type: operations-runbook
 title: Knowledge Runtime & OKF Bundle Operations
 description: How to operate the DjimFlo knowledge substrate — the OKF bundle layout (skills/agents/memory/services/repos/models), canonical path resolution with the packages/knowledge legacy guard, the validator-gated capability sync, health/drift reporting, and the MCP okf_* read tools.
 tags: [okf, knowledge-runtime, capability-sync, validation, drift, mcp, operations, governance]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-d554b7e49c0422f3a614813f
     resource: repo://packages/knowledge/skills/python-fix.md

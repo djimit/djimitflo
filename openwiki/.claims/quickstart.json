@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9f4bd263626fc4c42f4db69335159a09d209e3fe33fba467a356fda8681eef2e",
+  "pageVersion": "sha256:49cb8940626e125123b04512fc9ecd5ae774ae756e4fe5133556636ed89b7eae",
   "claims": [
     {
       "id": "claim_15b3bc080b674f18a4a995e40843858d",
       "statement": "DjimFlo is a research-grade agentic governance laboratory: a TypeScript npm-workspaces monorepo with a Node.js/Express + SQLite backend and a React dashboard for orchestrating AI coding agents, managing tasks across multiple runtimes, and governing agent behavior with approval workflows, policy enforcement, and audit trails.",
       "evidence": [
         {
-          "resource": "repo://README.md#L1-L13",
-          "version": "repo-lines-v1:sha256:6f87210dc2337c34a2173f846f9653904fb5612591ac13e36ca7ae7a738f4bcd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NzkzMDgzNDA0Yjk3N2JhMzNiMDBjNGU3N2NiNTMzM2NkYzdmYmNlMzA5ZjU3MjY5N2I5NmUwZWE5ODMxNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMjk3NzdjOTJjYThjNmMyZDg4MmFmODk2MDFkNmFjNWVjNTk0YzA5OWJjZDI2YjI1NjRjNGM3NmU3NWY0MmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
         },
         {
           "resource": "repo://package.json#L1-L10",
@@ -21,30 +21,30 @@
       "statement": "DjimFlo is explicitly labeled a research prototype and is not production-ready for sensitive data; the README states that adapter registration, rendered screens, and passing unit tests do not establish production readiness.",
       "evidence": [
         {
-          "resource": "repo://README.md#L13-L13",
-          "version": "repo-lines-v1:sha256:8329777c92ca8c6c2d882af89601d6ac5ec594c099bcd26b2564c4c76e75f42a:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODMyOTc3N2M5MmNhOGM2YzJkODgyYWY4OTYwMWQ2YWM1ZWM1OTRjMDk5YmNkMjZiMjU2NGM0Yzc2ZTc1ZjQyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODMyOTc3N2M5MmNhOGM2YzJkODgyYWY4OTYwMWQ2YWM1ZWM1OTRjMDk5YmNkMjZiMjU2NGM0Yzc2ZTc1ZjQyYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjNlMWE0OGFiYTVkZDU1ZDExMDU1NzhhYWVlNzM5ZTBjMTc3MjBlZWZjOTgwMmQxYzIxNWUwOThhNzIxZTNiMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
-        },
-        {
-          "resource": "repo://README.md#L43-L47",
-          "version": "repo-lines-v1:sha256:7345542983a28bb9e3c3f7675fa683e7c354acd6cf975c8e8ef59ac516015a6d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2NGNkZDkyNGJkYWVjOTFmMTBhY2U3ZjUwYmY1NDQ0NTE2YjRkMmQ2OWE2MzU0YjNmNjMyNTRkM2IwNDUzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFiYmY5YzA4OTFhOTNhMmM4MTRhYWMwNjBjYWZkYTVlNTJjNDAyZjYxMDBiODBlMjliNzZlZjgzODliMDRlZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGVhNDhlOWFiZDY3NWRlNzg2MTY0M2RiMjNlMDZjYWVjM2MyY2MzMDRiZGIzODRhYTZmNGUwYjgwZWFhZTRkYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
         }
       ]
     },
     {
       "id": "claim_117a7c40ad8346f59b3acb8700f0954d",
-      "statement": "The authoritative runtime is packages/server (@djimitflo/server). It boots from packages/server/src/index.ts, which initializes the SQLite database, runs loop and task crash recovery, wires services, mounts the API, and attaches an authenticated WebSocket server.",
+      "statement": "The authoritative runtime is packages/server (@djimitflo/server). It boots from packages/server/src/index.ts, whose main() resolves the runtime profile, initializes the SQLite database, runs loop and task crash recovery, wires profile-gated services, mounts the composed API router under /api, attaches an authenticated WebSocket server at /ws, serves the dashboard statically, and shuts down gracefully on SIGTERM.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/index.ts#L163-L211",
-          "version": "repo-lines-v1:sha256:d361aed759a7b3b641c474b70c4c45a9f0652ac3b113c668f1a26c22984fe24c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0MTdkN2U0ZDI5MmRlYThmYWRlNWU3NDRkMThhODY1MDUwMzQwMTc4M2JjZTgzOWY3ZTgxOGJlMDU5Y2NmMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4YTJlZTRkOTdjZGQxNWFjOGQzYmUyOGNhMGI2YTI1MDdjOGU3MzQwNWM0NjhjYmE2NjUwNmU2MTlkYThlMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1YzA1MDYzZTZhNWZjNjk4Y2E5YjlmODhkYTA3ZmQyODFjNDEzMTI3ODM3ZTUyZGE5MDg4YzYyN2MwMjM1NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2OTZkNzFiNjVjMGJkMWU4OGE3MDZlMzA4YTBhOGNjOTQwNGRmNjFkZmQxNjJkMDE3OGQzY2FhMmIyZTJkYTYifQ"
+          "resource": "repo://packages/server/src/index.ts#L187-L206",
+          "version": "repo-lines-v1:sha256:60a0566deff73b7c08a85749b6f8f8491eef16802fe5c8400d036a9b1345cecc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0MTdkN2U0ZDI5MmRlYThmYWRlNWU3NDRkMThhODY1MDUwMzQwMTc4M2JjZTgzOWY3ZTgxOGJlMDU5Y2NmMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZjAzNDg2YWUwZGNhYTI0Y2M1YzJkNTU0ZjljNzU0MTk3OWVlYzc2OWY2YjQyYWU0MGEwMzFmNzNjMTg5ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1YzA1MDYzZTZhNWZjNjk4Y2E5YjlmODhkYTA3ZmQyODFjNDEzMTI3ODM3ZTUyZGE5MDg4YzYyN2MwMjM1NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwNzgyYjRkNTAwZGFkYWVkOGM4ZTEwMjc4MzE2NGRlOGM2N2IyNTY1MjdkOTMxZTk0ZTdkODY3ZjUzMmY4YTIifQ"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L302-L306",
-          "version": "repo-lines-v1:sha256:a4409342668881ab8b68621ddc0177043709d3ed8bd055ee569ae0093bba6a39:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzMwNzE4YTg5Y2QzNDkxNjBlNWNlODczM2E1ZTgyN2FmNDQyYzNiM2I5MDc1Yzc4NjlhZWZmOTdiYTNjOWFiMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzdiNzIzYjRiYTQzYTM3YTE2MDIwZGY0OTFmODBmZmZiOWIxNDUyMDc3NWUyYzJkMGJmNGE3Yjk5NWNlYjVhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTViODY5ZTgzMzEwMmQ3M2UyMjIzYjgwMTUxYjY3MzYxZDZkNmIyMWYyY2JmZmYxYmZkN2I2YWJhZWYzMmYwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGIzN2RjOTVhM2IxMDk3OTMxZWJhYTU5NzI3MzAzNmE0MzFiMzQyM2EzYWI4ZTcxNWM1M2NjYWE3ODFlYTRiNSJ9"
+          "resource": "repo://packages/server/src/index.ts#L390-L394",
+          "version": "repo-lines-v1:sha256:a4409342668881ab8b68621ddc0177043709d3ed8bd055ee569ae0093bba6a39:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzMwNzE4YTg5Y2QzNDkxNjBlNWNlODczM2E1ZTgyN2FmNDQyYzNiM2I5MDc1Yzc4NjlhZWZmOTdiYTNjOWFiMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzdiNzIzYjRiYTQzYTM3YTE2MDIwZGY0OTFmODBmZmZiOWIxNDUyMDc3NWUyYzJkMGJmNGE3Yjk5NWNlYjVhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTBkNDUwZGU5ZTc0OWIxZGFlMjg3YTFhM2EzOTJjODc0ODgxYWMxZDc3Mjc2NGNkZWZjMGM0YzQzNDUyZTE5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGIzN2RjOTVhM2IxMDk3OTMxZWJhYTU5NzI3MzAzNmE0MzFiMzQyM2EzYWI4ZTcxNWM1M2NjYWE3ODFlYTRiNSJ9"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L75-L120",
-          "version": "repo-lines-v1:sha256:7518e8d7f74381dc6f36340c41533c77b54747ca1ee4245c669bfafde6a69677:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5NzU5NDUxNmYwYzljOWFlMDZmMTA4YjhmOTM2MTNlMGU1YTM3NmU1ZjgyMzBlZjY3ZjY3NmQzNTUzZjZlMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1YjcwZTQwMzEzZDhkZTNiNWRhMGQxZDNmN2MwM2Q3NzVmYTAwMWY5ODMyZGVkMmNkZjdiODlkMDg1OGZlNTcifQ"
+          "resource": "repo://packages/server/src/index.ts#L440-L500",
+          "version": "repo-lines-v1:sha256:3b2525e2c8fb0e39c7efec1807ecf34a74ba70f9f78cf76f370815c2e74f0bc3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMjk3NzQ3MDM1ZTJjZjg5Mjk1NTA1YTU0ZjgxNTJiZjU3OWJhNTlkOGRmMjllMzFkYzE4ZDc4YzQ3MjQ2ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNTI1OGE2NGM5NTJhYzZkMWRhYzI4NzFhNDI0ZWI4MzViOGI0MGU0ZjA4MGExNjMzNzY4MjU4YTA2Mjc5MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0YzEzZTIzMDZjZTNjZGE4OWZiMGNhZDE2ZGNmYWVjNzRjOWI4ZjFlZTQ4ZjhiOTc4OWRkZGExZTRiMzc0NDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L96-L149",
+          "version": "repo-lines-v1:sha256:9ea2c7b445addd9a6c0ba2fa08fdeb45cb98d145b2718481eaf30f9b273dfe2a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMTE1NmIzMTcxM2NmZDlhMDc2MTRjMmE2MDI1NTRmNzRkMGM2ODUwYjI4MTRhMmUzMDkzODA0MTM3ZmE2ZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3ZTRhODhhZjFhMjA2ODkwNWJkYWVlYjBkNTQ4NzBlNTliOTY1YmQ2NDFlMzMzOGE0ODU3M2UyNzk0YjBiZGUifQ"
         }
       ]
     },
@@ -71,8 +71,8 @@
       "statement": "The monorepo contains 7 npm workspaces under packages/* (shared, server, dashboard, mcp-server, telegram, agent-catalog, ransomware-module) plus a runtime-generated knowledge directory; the server satellite surfaces include the React dashboard, MCP server, Telegram bot, and agent catalog.",
       "evidence": [
         {
-          "resource": "repo://README.md#L87-L103",
-          "version": "repo-lines-v1:sha256:1a7b4cd89190d487b61c2d7a1753f3778fbf1a393993d1096298fff906cf6aa6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMTA2ZDlhYmM3YzRmOTE2Mjk4N2EzNzA1NTE0MzhlYjk0OTU3YzcyNDgxNTI2ODA0ZjQ0OTFjYTU3NzRjNzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3YTc1Nzk5NzNmYjA2ZGRhM2Y3MGMyMjM4YzQyMWExZTAwZGYxNjIxMGRlMzI2N2RiYWE4MmQ0YWU2ZjYyZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3ODZhNzI0MzRiZDkxN2RiODNmZjk4Y2VkYTMwMDMzN2FhN2I0ODZhNzM3YTE0OTE2OTlmMmViNmVjN2MyOGMifQ"
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
         },
         {
           "resource": "repo://package.json#L8-L10",
@@ -95,28 +95,72 @@
       "statement": "The server aggregates API routes via routes/index.ts, which composes domain routers (tasks, agents, approvals, policies, goals, loops, swarms, spawns, MCP, telegram, and more) into the /api surface; a source-derived route inventory feeds the OpenAPI metadata.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/index.ts#L1-L60",
-          "version": "repo-lines-v1:sha256:75030cf3ec66dd5e06fe672732070e5c31434d75e9ae31e9b4f54dda8ad38ad1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NGQ5OTE3ZWVjMTEyZjhjNzY2MjRjM2UxYjlmNDMzNWIwNWMzNTJmNjE5ZjVlYzQ1YTlmMWYyMzFjNTk4YzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiNTZlMzZjZTMxNzNjYzQyN2U5YzExZDllZjZjMDQ0YzI5MjY5YzBiMzk2NTM2NGZlZWQwMjljYmVlMDJhYjcifQ"
+          "resource": "repo://packages/server/src/routes/index.ts#L135-L164",
+          "version": "repo-lines-v1:sha256:1d40a8256d577be2303a57f925313a4af019acd81eabc2adc86805bb6e515376:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOGM2ZTdmYTZkOWFmMGMwOWRlY2FmMGZkNzFmYTQzOTM2ZTc0NDYzMGJlMzJmNTM0ODQyMGUxYmVjMzcyMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNjQ4YmMyYWEyODlkNmM2YzcwZmQ2ZjIxMmY1OGQwMDU5YmYzMjUzMWU0YTQ1M2RlNzc2NjMyOTZmZDE1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5NTgyM2IwNTRlNzllYjg5NGNjNDkwNWYxOGU0NmFiNmM4YzJiNWIxZWJiYWZjNTI3MzhkNTk2MmY1Yzc5ZDAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L223-L225",
+          "version": "repo-lines-v1:sha256:b1e4046fa35396ee200a6ebf67d72898b8cbdeb6c52c43b10b6c08bfff417449:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzBmMDMxZmVjNGRjOWM4N2ZhOGFhMGE1Mjc0NmJjMDA1NTNhOWVlZjBjNzU2YzRjZGM1YWM2Y2EzMGQwZDk2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODg5ZmVmMTZlZGRjZjFjYTc1OWE5YTM5NzQ1Nzg3OTIzNTBlMTRmODc2NDFjMjU0MjYwODEzNTg0NDAzNGI1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmJhODhiMjJiYzZmOWU2ZjFiNzgxYzUwY2M5ODVjMmRhNGY1MzdiZjViYmViYWFlMTg3ZTJjMTc3OTY3MGZiYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L78-L110",
+          "version": "repo-lines-v1:sha256:ed184246141a81a810cc53b6e7f24b114214223049ef241944aa2cbb32785369:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmYjYyYjFlZDVmYTlkZTBhMzdkMmNhZmE4N2NkYTEyMzliNzcxNzkyNDZiZmY4MjQ3Mjk3NzFhZGMyN2M0ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwYjMwY2ZlMzY2NjU3NTA3OTEwNDg2YTA4YThhNmY5MTQwY2ZmNWQ0YzgyYWQyZTI4NWY1NWQ1MGFkMjFmNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjZWQ4MDIwMDA1YmE1YjYwNzJkYWJmN2EyNzlhNzdlODJjNjcwZjg2YTdhYzFhOGUyNjkwMDgxMTM1OWU5N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxZmU3MWE2YzM4OWZkMjZhNjM3MmQ5OTk5NjUwNGNjMDQyZmVhMjUzZGFjYjhjMjVhZDQyZWM5NWU5ZjhjMjcifQ"
         }
       ]
     },
     {
       "id": "claim_b012be05caf64438ae209b5df12431ae",
-      "statement": "DjimFlo enforces a seven-role RBAC model (admin, platform_admin, approver, maker, checker, auditor, viewer) with granular permissions, described in the README and implemented via shared role definitions.",
+      "statement": "DjimFlo enforces a seven-role RBAC model (admin, platform_admin, approver, maker, checker, auditor, viewer) with granular permissions, described in the README role table and implemented via the UserRole enum and ROLE_PERMISSIONS map in @djimitflo/shared.",
       "evidence": [
         {
-          "resource": "repo://README.md#L123-L133",
-          "version": "repo-lines-v1:sha256:c0948cc6f4a77161afe7d0c8ced0a4fcecb2c4d39773333c17ac0a4a308f1ca7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxZGQ0NDI2OWRhZGZmYWIzMzliYWQ1OTcyN2VmZWM4YzBlYzcwOGIyNDc4NjQwNDRiMmQ5ZDMyZmI1YjFkNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkNmIxY2ZmNDZmMTY1NjQ4NWE0YWZhYzJhZDE4Y2I5ZGI3NDUzMmViMWYwMTY2NTFmZWQ3MjdlYmU5ZTc3N2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNjNjOWU4NGUwMzRkZDBmN2JlMTRhN2U2OTNkNDQ1NjFjNDkyZjdlNDhlY2YyYTlhN2MwNTQ2ODFkNGU4NzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
         },
         {
-          "resource": "repo://packages/shared/package.json",
-          "version": "repo-file-v1:sha256:1c9656e3f887b75bfcfd37b07f1dcf5f85c2c9f7e4f66073d9e754c54edd5893"
+          "resource": "repo://packages/shared/src/types/auth.ts#L5-L38",
+          "version": "repo-lines-v1:sha256:470ac40915cb477ab7a8f85149130f80d30287771c7af9c85938f21216d9d784:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5Y2Y2MGMzYTIxNWEwNmJjMTA2MTc1MDFkZWViZTZlN2I5MzAyZDUwZjdhMjRmOWE0MGM4MThmMzBlNjE5OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2NGQ4YzA3MzQyOTg5MzEwMTU3NmQ4OGQ5OTEyN2U4OWQ2ODkxZDNiMTdlODlkZjAyZWM5YWU3MDcwNWQ4YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmM2Q4MDVlZmQyNjA4NzAyZjMxYjdlMTk4OWUyNTJlNjZlZDk1YmZjMjFjNjViMTg3YWY3MmYwMzVjNjJkZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4N2ExNTJhNzg1ODM1Y2YzYTU5OTMwNDhlYWRlMTVjNTQ1ODAwODY0YjQ1OWJiOTc3NzRiNDg2M2Q1MzlkZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_49f37f3fc5744c70901979f6f611cf69",
+      "statement": "Server behavior is gated by a runtime profile (api, operator, autonomous) resolved from DJIMITFLO_RUNTIME_PROFILE: an unset or invalid value falls back to api with a warning; operator services run in operator and autonomous profiles, while autonomous loops (e.g. the LoopDaemon) run only in the autonomous profile.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/config/runtime-profile.ts#L1-L19",
+          "version": "repo-lines-v1:sha256:e71eb8e61830385d2fb28df231ed44a5358d945d665729c99ed665688bab1036:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ODYxYjMyZGI5MWEwYjJhYmQ4MDE3NmVlNDAwZDRhZTNmZWYzY2E3Y2Q1ODJmMDc4YWE2NTQ1ZDFiMmI3MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L128-L144",
+          "version": "repo-lines-v1:sha256:599dfd99aeaf1f67c9bab171eb19032272e098c6622437cb6d0a8c942132e201:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZmIxM2YxZGJlNTU1OTU5MDg1MDVmNGVlZDRkYTRjYzZkOGU3N2E0N2EyNDJjNDc0ZjlhM2IwZGUwOGU4ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmMjJhNDIwZTUxMjA2MDYwNzVlZTA1OWQxODhkYjYxMDMxODVjZmU2ZWU5YjZiMjVjNDE5MTJmOTg4MjI3ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjMjhkMTE3MTBiMGRhMTYwOTdjODg3ODcwYzE4NjY0Y2M3NmZlNTZmZmE0OTEwODRlN2JmODM3MzExMTI3N2UifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L98-L101",
+          "version": "repo-lines-v1:sha256:9005ee49041bb6d646c790f39870d3029201dae09bb25de3544c0b96e1b06b1e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjViMjk4ZjMyNGNhZTlhZDhkNjg4YzczMDA3YmYwYTJkYzIyODljNjViYTRkZTgwODczZDEyZTY1MzAxMzRhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTBiMTlhNTI4MjdlNjAxYWYyOTk2MmRhZmY3MzhjMTUzNjAzMDI3MjA4ZDQ3YmZkM2Q1OWYyNTczNDdkZDIwZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODdjMzZjNTFiZjM2ZWMzMmVjYmY4MjJhYzBmNzA0ZDkxOTE2MGJhMzk0NGRiOTVlYzU0YWJmN2EwOGRjM2Y2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdmMDhjNmNlM2M4NDU4MWJjYmJhMzA4NWYzYTY5ODNmOTk3NzQxOTlhN2QzZmUwZTE5NTYzNzg0OTQwZmYxNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea2dee0b52434021bdd5171591ee07dd",
+      "statement": "The API is composed in routes/index.ts as a declarative, order-sensitive mount table (e.g. /swarms/spawns mounted before /swarms), and the same table feeds the machine-readable route inventory behind the authenticated /api/openapi.json endpoint.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L135-L164",
+          "version": "repo-lines-v1:sha256:1d40a8256d577be2303a57f925313a4af019acd81eabc2adc86805bb6e515376:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOGM2ZTdmYTZkOWFmMGMwOWRlY2FmMGZkNzFmYTQzOTM2ZTc0NDYzMGJlMzJmNTM0ODQyMGUxYmVjMzcyMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNjQ4YmMyYWEyODlkNmM2YzcwZmQ2ZjIxMmY1OGQwMDU5YmYzMjUzMWU0YTQ1M2RlNzc2NjMyOTZmZDE1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5NTgyM2IwNTRlNzllYjg5NGNjNDkwNWYxOGU0NmFiNmM4YzJiNWIxZWJiYWZjNTI3MzhkNTk2MmY1Yzc5ZDAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L172-L174",
+          "version": "repo-lines-v1:sha256:360765ee5630fb3800806c55837014f247d4c5d441c294b19e04277b18f1b562:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxNTQ0N2FjMzc2NTk3NDUzOThiNjY1NjAyOTQ2YTM2NDkxOWMzMDI1ZjUzNjE2MDJkMjgxNWIwNGU5NzY0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTY5MTI3NmY4YzBmMzk0MjBlNWU4N2IyYTVkMDFlZWMzZjc0YmVmOGQ5ZDY1NzcyZmYzNDRhNWMwY2RmZGM1NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmRjMGI5ZTNlNzk0Mjc4OWVlZTdjYzRkM2QwOWY2ZjY0OGUwYzRjZTM0NjA1NTAwZGNjY2Q0ZDAwZjE1ODNmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDFlMzMxNTJiNDU5ZDdjNmMzOGI1NjMwMjBhN2FhYzliYzMxOTY5MDQ1MjlmNTJhMDQyYmY2ODViMTljMDI3OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L223-L225",
+          "version": "repo-lines-v1:sha256:b1e4046fa35396ee200a6ebf67d72898b8cbdeb6c52c43b10b6c08bfff417449:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzBmMDMxZmVjNGRjOWM4N2ZhOGFhMGE1Mjc0NmJjMDA1NTNhOWVlZjBjNzU2YzRjZGM1YWM2Y2EzMGQwZDk2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODg5ZmVmMTZlZGRjZjFjYTc1OWE5YTM5NzQ1Nzg3OTIzNTBlMTRmODc2NDFjMjU0MjYwODEzNTg0NDAzNGI1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmJhODhiMjJiYzZmOWU2ZjFiNzgxYzUwY2M5ODVjMmRhNGY1MzdiZjViYmViYWFlMTg3ZTJjMTc3OTY3MGZiYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-11-07T14:47:55.436Z"
   }
 }

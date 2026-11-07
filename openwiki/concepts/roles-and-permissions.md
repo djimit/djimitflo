@@ -3,14 +3,13 @@ type: security-architecture
 title: "AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth"
 description: The seven-role RBAC model and ROLE_PERMISSIONS table, AuthService JWT issuance with revocable session-bound access tokens and 30-day refresh-cookie rotation, requireAuth/requirePermission middleware that re-reads role and organization membership from the DB on every request, and bearer-subprotocol WebSocket authentication with close-code-driven client re-auth.
 tags: [authentication, authorization, rbac, jwt, refresh-token-rotation, sessions, websocket, middleware, separation-of-duties, tenancy]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-a43d7cc8a5a9d2a77f3767e3
     resource: repo://packages/dashboard/src/hooks/useWebSocket.ts
   - id: openwiki-source-d36d683c6b74032d523158e2
     resource: repo://packages/dashboard/src/lib/auth-store.ts
+  - id: openwiki-source-f7f39a249d77c3c6437d03d3
+    resource: repo://packages/dashboard/src/lib/permissions.ts
   - id: openwiki-source-fb076baf3fdf496e3f60e96a
     resource: repo://packages/server/src/__tests__/auth-cookie-session.test.ts
   - id: openwiki-source-57959e4badab2397dc83bc5e
@@ -29,6 +28,8 @@ sources:
     resource: repo://packages/server/src/routes/index.ts
   - id: openwiki-source-b1ecc86b3bdfbe9ada697f4f
     resource: repo://packages/server/src/routes/organizations.ts
+  - id: openwiki-source-d1ad81b770ebea131df09b62
+    resource: repo://packages/server/src/routes/spawns.ts
   - id: openwiki-source-fb188ee3df500e339b426861
     resource: repo://packages/server/src/services/approval-service.ts
   - id: openwiki-source-bafa824370e2b0da2c9a92e8
@@ -45,7 +46,10 @@ sources:
     resource: repo://packages/shared/src/types/auth.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-07T14:47:55.436Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-07T14:47:55.436Z
 ---
 
 # AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth
@@ -96,6 +100,15 @@ The table is the single authority consulted by `requirePermission`, by
 and by the dashboard's `auth-store` for UI gating — so a permission change in
 one enum file propagates to every enforcement and presentation surface.
 
+### Dashboard permission gating is UX-only, never authoritative
+
+`packages/dashboard/src/lib/permissions.ts` maintains `ACTION_PERMISSIONS`
+(which server permission each operator action needs) and `NAV_PERMISSIONS`
+(thresholds for route visibility). Its purpose is UX-only: to hide or disable
+controls the server will reject anyway, so a button never ends in a 403. The
+server is the sole authority; these mappings are a convenience layer for the
+operator interface.
+
 ### Maker–checker–approver separation
 
 The split between `maker`, `checker`, and `approver` is the governance backbone
@@ -118,6 +131,12 @@ that the rest of the pipeline relies on (see /openwiki/concepts/governance-pipel
 
 So an operator who builds can never be the operator who signs off, even with an
 admin token, and a non-privileged approver can never sign off their own work.
+
+The human decider is derived from the JWT subject: the approval route handlers
+call `getUser(req)` and pass `user?.sub || 'system'` as `decidedBy` to
+`executionEngine.handleApprovalDecision`, which flows into
+`ApprovalService.decideApproval`'s self-approval check
+(packages/server/src/routes/approvals.ts lines 179–215).
 
 ## JWT issuance and verification
 
@@ -245,9 +264,9 @@ Browser sessions (dashboard) are distinguished by the
 - `/api/auth/login` with the header sets a `djimitflo_refresh` cookie —
   `HttpOnly`, `SameSite=Strict`, `Path=/api/auth`, 30-day max age — and returns
   the access token in the JSON body. The cookie is `Secure` in production
-  unless `AUTH_COOKIE_SECURE` explicitly overrides it (`'true'`/`'false'`).
-  JS never reads the cookie; the raw refresh token never appears in a response
-  body.
+  unless `AUTH_COOKIE_SECURE` explicitly overrides it (`'true'`/`'false'`)
+  (packages/server/src/routes/auth.ts lines 16–59). JS never reads the cookie;
+  the raw refresh token never appears in a response body.
 - `/api/auth/refresh` and `/api/auth/logout` (cookie path) require the browser
   header and return 403 without it, which — combined with explicit-origin
   credentialed CORS — stops cross-origin pages from riding ambient cookies.
@@ -266,10 +285,12 @@ Browser sessions (dashboard) are distinguished by the
   success; malformed bodies are rejected 400 before any credential operation.
 
 The **legacy non-browser login** (no header) still returns a bare
-`{ token, user }` JWT via `authenticate()` — no refresh row, no `sid`, and
-logout explicitly does **not** claim to revoke it. The cookie-session tests pin
-this compatibility contract: after legacy logout, `verifyToken` still accepts
-the token. Any caller needing revocability must use the browser flow.
+`{ token, user }` JWT via `authenticate()` with no `sessionId` argument
+(packages/server/src/services/auth-service.ts lines 133–143) — no refresh row,
+no `sid`, and logout explicitly does **not** claim to revoke it. The
+cookie-session tests pin this compatibility contract: after legacy logout,
+`verifyToken` still accepts the token. Any caller needing revocability must use
+the browser flow.
 
 ## Enforcing on HTTP: requireAuth and requirePermission
 
@@ -328,8 +349,19 @@ with `bearerAuth` security per protected path, so the published API contract and
 the enforced one cannot silently diverge. The mount table itself
 (`packages/server/src/routes/index.ts`) throws `AUTH_MIDDLEWARE_REQUIRED` when
 constructed without an auth service, and mounts nearly every prefix behind
-`requireAuth` — `/auth`, `/health`, `/version`, the Telegram webhook, and the
-signed runtime callbacks are the deliberate exceptions.
+`requireAuth` — `/auth`, `/health`, `/version`, the diff routes, `/gym-worker`,
+`/host-agent`, the Telegram webhook, and the signed runtime callbacks like
+`/swarm-v2/social-runtime` are the deliberate exceptions.
+
+### The `/swarms/spawns` mounting exception
+
+The nested-spawn control prefix `/swarms/spawns` is mounted **before** the
+generic `/swarms` prefix in Express's order-sensitive mount table, guarded by
+`requireAuthOrSpawnToken` instead of `requireAuth` — so a child runtime holding
+only an `X-Spawn-Token` can still reach `POST /api/swarms/spawns` and
+`GET /api/swarms/spawns/:id/status` without a user JWT. `POST /spawns/root`
+inside the router still requires `write:swarm_action`, so token-only children
+cannot create root spawns.
 
 ## WebSocket authentication
 

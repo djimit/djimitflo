@@ -40,11 +40,16 @@ sources:
     resource: repo://packages/server/src/services/loop-service.ts
   - id: openwiki-source-79e38068daabb6567e2c465d
     resource: repo://packages/server/src/services/runtime-governance-service.ts
+  - id: openwiki-source-7a3b7174c12d6f71149b943b
+    resource: repo://packages/server/src/services/scheduler-registry.ts
   - id: openwiki-source-8aaff226df3ca5c2697d015e
     resource: repo://packages/server/src/services/self-healing-scheduler.ts
   - id: openwiki-source-fa568b0862f0b0b901ecfc19
     resource: repo://packages/server/src/services/websocket-service.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-07T14:47:55.436Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-07T14:47:55.436Z
 ---
 
 # Server Runtime & Startup Composition
@@ -69,7 +74,8 @@ boot work:
   CognitiveLoopClosureService, and the Telegram gateway.
 - `runtimeProfileEnablesAutonomy` — true only for `autonomous`. Gates
   `initAutonomousServices`, the LoopDaemon, MetaOrchestrationService +
-  SelfModificationPipeline, and the OpenMythos nightly scheduler.
+  SelfModificationPipeline, the OpenMythos nightly scheduler, and the boot-time
+  `resumeInterruptedRuns` re-queue.
 
 A handful of services run in **every** profile regardless: external event ingest,
 the ExecutionEngine with its startup reconciliation, the learning stores
@@ -94,8 +100,7 @@ Before `main()` runs, two module-level adjustments apply:
 `main()` wires the process in the following exact order; each step only sees
 dependencies constructed earlier:
 
-<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Parse error on line 26: ...tall SIGTERM handler Expecting '()', 'SOLID_OPEN_ARROW', 'DOTTED_OPEN_ARROW', 'SOLID_ARROW', 'SOLID_ARROW_TOP', 'SOLID_ARROW_BOTTOM', 'STICK_ARROW_TOP', 'STICK_ARROW_BOTTOM', 'SOLID_ARROW_TOP_DOTTED', 'SOLID_ARROW_BOTTOM_DOTTED', 'STICK_ARROW_TOP_DOTTED', 'STICK_ARROW_BOTTOM_DOTTED', 'SOLID_ARROW_TOP_REVERSE', 'SOLID_ARROW_BOTTOM_REVERSE', 'STICK_ARROW_TOP_REVERSE', 'STI -->
-```text
+```mermaid
 sequenceDiagram
     autonumber
     participant M as main
@@ -108,20 +113,20 @@ sequenceDiagram
     participant EE as ExecutionEngine
     participant LR as learning services
     participant SC as schedulers
-    participant RT as /api router
+    participant RT as API router
 
     M->>DB: open sqlite, pragmas, schema, migrations
-    M->>LS: recoverInterruptedRuns (orphaned runs to interrupted, leases to failed, prune worktrees)
-    M->>BS: profile-gated init (operator / autonomous bootstrap, LoopDaemon)
+    M->>LS: recoverInterruptedRuns (orphans settled, leases failed, worktrees pruned)
+    M->>BS: profile-gated init (operator and autonomous bootstrap, LoopDaemon)
     M->>AU: bootstrapAdmin, createAuthMiddleware
-    M->>EX: securityHeaders, cors, webhook raw-body, express.json, requestLogger
+    M->>EX: securityHeaders, requestContext, cors, webhook raw-body, express.json, requestLogger
     M->>WS: ws server on /ws with bearer subprotocol auth
     M->>EE: RuntimeGovernanceService start, recoverInterruptedTasks (never replays)
     M->>LR: MemorySync, ReasoningBank, VectorMemory, TrajectoryStore wired into engine
-    M->>SC: default-off schedulers armed (retention, compliance, self-healing, etc.)
+    M->>SC: default-off schedulers armed via noteScheduler plus registerRestart
     M->>RT: mount /api router, /explore public pages, /metrics
-    M->>EX: dashboard static + SPA fallback, errorHandler last
-    M->>M: httpServer.listen; install SIGTERM handler
+    M->>EX: dashboard static and SPA fallback, errorHandler last
+    M->>M: httpServer.listen, install SIGTERM handler
 ```
 
 Exact boot wiring order in `main()` — recovery happens before any route accepts traffic.
@@ -150,13 +155,14 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
    produces `requireAuth` and `requireAuthOrSpawnToken`.
 5. **Express app + middleware chain** (order is security-relevant):
    `trust proxy = 1` (one nginx hop; without it express-rate-limit throws
-   `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`), then `securityHeaders`, then `cors`
-   (origins from `CORS_ORIGINS`, default the Vite dev origins, credentials true),
-   then the **GitHub webhook router mounted at `/github/webhook` BEFORE
-   `express.json()`** — its HMAC signature check must consume the exact raw wire bytes
-   (`express.raw`), never reserialized JSON — then `express.json()`, then
-   `requestLogger`. The public `/health` liveness endpoint (which reports build
-   identity and `commit_matches_build`) is registered directly on the app.
+   `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`), then `securityHeaders`, then `requestContext`
+   (X-Request-ID on every response), then `cors` (origins from `CORS_ORIGINS`, default
+   the Vite dev origins, credentials true), then the **GitHub webhook router mounted at
+   `/github/webhook` BEFORE `express.json()`** — its HMAC signature check must consume
+   the exact raw wire bytes (`express.raw`), never reserialized JSON — then
+   `express.json()`, then `requestLogger`. The public `/health` liveness endpoint
+   (which reports build identity and `commit_matches_build`) is registered directly on
+   the app.
 6. **HTTP + WebSocket server.** `createServer(app)` hosts a `WebSocketServer` on path
    `/ws` whose `handleProtocols` echoes back the client's `bearer.<token>`
    subprotocol per RFC 6455 §4.2.2 (dashboard offers it via
@@ -168,9 +174,11 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
    is constructed and `start()`ed (it subscribes to `swarmEventBus` for behavioral
    monitoring); it is shared by the ExecutionEngine, the dispatch path, and the
    runtime-governance routes. `ExecutionEngine.recoverInterruptedTasks()` runs
-   immediately after construction. This is also where the operator-profile Dennis
-   governed-queue 60 s timer and the token-gated `/metrics` Prometheus endpoint are
-   installed.
+   immediately after construction. For autonomous profiles this same block also arms
+   the **RIR resume** (`resumeInterruptedRuns()`, gated by `LOOP_RESUME_INTERRUPTED`,
+   default off). The operator-profile Dennis governed-queue 60 s timer is installed
+   before the governance/engine block, and the token-gated `/metrics` Prometheus
+   endpoint is mounted immediately after it.
 8. **Learning services wired into the engine.** `MemorySyncService`,
    `ReasoningBankService` (with `VectorMemoryService` attached for self-learning
    feedback), `TrajectoryStore` — each attaches to the engine via a `set...Service`
@@ -180,25 +188,33 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
    `SelfModificationPipeline.analyze()/autoPlan()` pass. `ProactiveMemoryService` and
    `ComplianceAuditService` are constructed for side effects (table setup / event
    registration).
-9. **Schedulers (default-off, in-process).** Compliance reports, self-healing,
-   self-improvement auto-review, frontier experts, specialist-panel backlog, memory
-   candidate review — each `start()` returns false (no-op) unless its enable env var
-   is set; the OpenMythos nightly scheduler additionally requires the autonomous
-   profile. Operator profile also starts `RetentionService` and
-   `CognitiveLoopClosureService` unconditionally.
+9. **Schedulers (default-off, in-process).** Memory delivery reconcile, compliance
+   reports, self-healing, self-improvement auto-review, frontier experts,
+   specialist-panel backlog, memory candidate review, dependency lane, inference
+   failover probe, shipped-code scan, skill distillation, and content drafts — each
+   `start()` returns false (no-op) unless its enable env var is set; the OpenMythos
+   nightly scheduler additionally requires the autonomous profile. Every armed
+   scheduler is recorded with `noteScheduler(name, flag, armed, intervalMs)` and armed
+   with a bounded self-heal `registerRestart(name, ...)`. Operator profiles also start
+   `RetentionService` and `CognitiveLoopClosureService` unconditionally, and the Dennis
+   governed-queue 60 s timer runs `processDennisQueue()` (also ticking the DjimitSec
+   trigger service); RetentionService itself defaults on via `RETENTION_ENABLED !==
+   'false'`.
 10. **Route aggregation.** `createRoutes(...)` mounts under `/api`. It requires the
     auth service and middleware (throws `AUTH_MIDDLEWARE_REQUIRED` otherwise), limits
-    bodies to 1 MB, re-applies `securityHeaders` and a 300-req/min rate limit, serves
-    a public `/version`, an authenticated cached `openapi.json` derived from the
-    mount table, and a declarative `mounts[]` table where **order matters**:
-    `/swarms/spawns` (which accepts a scoped `X-Spawn-Token` for runtime children) is
-    mounted before the generic `/swarms` `requireAuth` mount, and the self-authenticating
-    diff routes are mounted at `/` without a mount-level guard so they don't intercept
-    the Telegram webhook. Signed runtime callbacks at `/swarm-v2/social-runtime` carry
-    no user JWT middleware by design. Public, unauthenticated but rate-limited
-    `/explore` pages mount after `/api`. Then the ExplainerFleetWorker starts (every
-    profile) and, for operator profiles, the Telegram gateway is dynamically imported
-    from `@djimitflo/telegram` and `startAll()`ed when `TELEGRAM_BOTS_CONFIG` is set.
+    bodies to 1 MB, re-applies `securityHeaders` and a 300-req/min rate limit, also runs
+    the local `UsageTelemetry` middleware (dormant-surface counts), serves a public
+    `/version`, an authenticated cached `openapi.json` derived from the mount table, and
+    a declarative `mounts[]`
+    table where **order matters**: `/swarms/spawns` (which accepts a scoped
+    `X-Spawn-Token` for runtime children) is mounted before the generic `/swarms`
+    `requireAuth` mount, and the self-authenticating diff routes are mounted at `/`
+    without a mount-level guard so they don't intercept the Telegram webhook. Signed
+    runtime callbacks at `/swarm-v2/social-runtime` carry no user JWT middleware by
+    design. Public, unauthenticated but rate-limited `/explore` pages mount after
+    `/api`. Then the ExplainerFleetWorker starts (every profile) and, for operator
+    profiles, the Telegram gateway is dynamically imported from `@djimitflo/telegram`
+    and `startAll()`ed when `TELEGRAM_BOTS_CONFIG` is set.
 11. **Dashboard static serving + error handler.** The built dashboard (default
     `packages/dashboard/dist`, overridable with `DASHBOARD_PATH`, disabled with
     `DASHBOARD_SERVE_ENABLED=false` for API-only mode) is served with
@@ -215,18 +231,35 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
 
 At boot the process's in-memory lease registry (`RuntimeLeaseRegistry` in
 loop-recovery-service.ts) is **empty by construction** — live worker child processes
-never survive a restart. Recovery therefore treats durable state as orphaned:
+never survive a restart. `LoopService.recoverInterruptedRuns()` delegates to
+`LoopRecoveryService.recoverInterruptedRuns()` and then prunes stale orphaned
+worktrees in the same call. Recovery therefore treats durable state as orphaned:
 
 - Every `worker_lease` still `'running'` in the DB whose id is not in the (empty)
   live set is marked `'failed'` with `failed_reason: 'server_restart'`.
-- Every `loop_run` in an active status with no live lease is marked `'interrupted'`
-  with `interrupted_reason: 'server_restart'` — **except** runs in `planning` and
-  runs whose goal is `blocked` awaiting a human approval (`awaiting_approval.run_id`),
-  which are idle-by-design and must not be flipped by a restart.
+- Every active `loop_run` with no live lease is settled — **except**:
+  - runs in `planning` (idle-by-design, a restart must not flip them),
+  - runs whose goal is `blocked` awaiting a human approval
+    (`awaiting_approval.run_id`) — a restart must not lose their place in the
+    approval flow, **unless** the approval was approved but the restart killed the
+    approved task (`approvalWaitIsDead`), in which case the run is settled as a
+    deploy-restart zombie,
+  - runs whose goal is already re-queued for resume (`goal.status='decomposed'` +
+    `metadata.resume_run_id`), which a second restart must not settle or retry, and
+  - remote gym runs (`metadata.gym.remote_host`), which execute on their host and
+    whose next claim settles them.
+- A LOCAL `running` run with no live/running lease, no pending approval on any of
+  its tasks, and last activity predating this boot is **settled** via
+  `settleDeployRestartRun`: run marked `'interrupted'` with
+  `interrupted_reason: 'server_restart'`, its `'prepared'` leases cancelled with
+  `cancellation_reason 'deploy_restart'`, its running/blocked goal failed, and its
+  in-flight proposal `infra_failed` (requeueable, no verdict on the proposal). Other
+  orphaned runs are simply marked `'interrupted'` with
+  `interrupted_reason: 'server_restart'`.
 - Orphaned on-disk worktrees whose leases are terminal (or absent) and older than
   `LOOP_WORKTREE_MAX_AGE_HOURS` (24 h) grace are pruned in the same call.
 - The operation is idempotent and safe to call anytime; interrupted runs can later be
-  resumed explicitly via `resumeInterruptedRun` (bounded to 3 attempts before a
+  resumed explicitly via `resumeInterruptedRuns` (bounded to 3 attempts before a
   bounded fail) or retried via `retryLoopRun`. `recoverInterruptedRuns` itself only
   re-labels state; it does not dispatch work.
 
@@ -296,9 +329,10 @@ requirements, and `httpServer.listen` are hard failures — and any uncaught err
   holds for unknown/malformed/forged provenance, safe fail only for stamped
   in-process mocks, `EXECUTION_RECOVERY_REQUIRED` redispatch blocking, and metadata
   forgery resistance.
-- `src/__tests__/loop-recovery-service.test.ts` /
-  `loop-recovery-awaiting-approval.test.ts` — orphaned lease/run re-labeling and the
-  awaiting-approval exemption.
+- `src/__tests__/loop-recovery-service.test.ts`,
+  `loop-recovery-awaiting-approval.test.ts`, `loop-recovery-deploy-restart.test.ts`,
+  and `loop-resume-interrupted.test.ts` — orphaned lease/run re-labeling, the
+  awaiting-approval exemption, deploy-restart settle, and the bounded resume path.
 - `src/__tests__/lifecycle-manager.test.ts` — the standalone LifecycleManager
   SIGTERM/SIGINT shutdown behavior used by bootstrap services.
 
@@ -309,9 +343,11 @@ requirements, and `httpServer.listen` are hard failures — and any uncaught err
   migrations, instance id, path resolution.
 - `packages/server/src/config/runtime-profile.ts` — profile resolution and gating.
 - `packages/server/src/bootstrap/operator-services.ts`,
-  `bootstrap/autonomous-services.ts` — profile-gated service construction.
+  `bootstrap/autonomous-services.ts`, `bootstrap/recovery.ts` — profile-gated and
+  database/recovery bootstrap.
 - `packages/server/src/services/loop-service.ts`,
-  `services/loop-recovery-service.ts` — orphan recovery and resume bounds.
+  `services/loop-recovery-service.ts` — orphan recovery, deploy-restart settle, and
+  resume bounds.
 - `packages/server/src/execution/execution-engine.ts` — `recoverInterruptedTasks`
   hold/fail semantics and redispatch guard.
 - `packages/server/src/routes/index.ts` — declarative mount table and ordering rules.
@@ -319,3 +355,5 @@ requirements, and `httpServer.listen` are hard failures — and any uncaught err
   authentication.
 - `packages/server/src/services/lifecycle-manager.ts` — standalone shutdown
   coordinator for registered services.
+- `packages/server/src/services/scheduler-registry.ts` — `noteScheduler`/`registerRestart`
+  scheduler arming and bounded self-heal bookkeeping.

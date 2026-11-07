@@ -57,9 +57,6 @@ sources:
   - id: openwiki-source-ecc4c6c168f7ce5ad8ec280e
     resource: repo://vitest.service-mutation.config.ts
 generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Local Development, Build & Test Commands

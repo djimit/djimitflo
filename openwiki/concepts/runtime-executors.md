@@ -49,9 +49,6 @@ sources:
   - id: openwiki-source-4420159e8c2bcabac04f85cb
     resource: repo://packages/server/src/services/runtime-command-service.ts
 generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Agent Runtimes & Executor Adapters
