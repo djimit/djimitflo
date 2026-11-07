@@ -1,11 +1,8 @@
 ---
 type: security-gated-mechanism
 title: Nested Spawn & Swarm Trees
-description: How NestedSpawnService gives running runtime children a gated, budget-accounted path to spawn sub-agents — depth budgets (default 0 = off), cycle guards, cumulative token/wall budgets, capability routing, per-tree concurrency caps, scoped spawn tokens, and the /api/swarms/spawns control endpoint.
+description: How NestedSpawnService gives running runtime children a gated, budget-accounted path to spawn sub-agents — depth budgets (default 0 = off), cycle guards, cumulative token/wall budgets, capability routing, per-tree concurrency caps, scoped spawn tokens, the /api/swarms/spawns control endpoint, and the DJIMITFLO_CONTROL_URL startup derivation.
 tags: [nested-spawn, spawn-trees, worker-leases, spawn-tokens, default-deny, budgets, capability-routing, auth-middleware, control-endpoint, audit]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-c0941a928920f2167e6565c3
     resource: repo://packages/server/src/__tests__/loop-routing-continuation.test.ts
@@ -13,8 +10,6 @@ sources:
     resource: repo://packages/server/src/__tests__/nested-spawn-loop.test.ts
   - id: openwiki-source-2e6c86fd020200014c5adbb2
     resource: repo://packages/server/src/__tests__/nested-spawn.test.ts
-  - id: openwiki-source-6b4f1fcbf14aab8839ec85c7
-    resource: repo://packages/server/src/bootstrap/constants.ts
   - id: openwiki-source-34dcb5fad537d29b30c58bda
     resource: repo://packages/server/src/database/migrate.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
@@ -31,11 +26,16 @@ sources:
     resource: repo://packages/server/src/services/loop-worker-executor-service.ts
   - id: openwiki-source-70ed66716f0f1e6ad06b18e3
     resource: repo://packages/server/src/services/nested-spawn-service.ts
+  - id: openwiki-source-074393606ee8590a84b193c7
+    resource: repo://packages/server/src/services/proof-run-service.ts
   - id: openwiki-source-2b37e053dd4f4389d76de035
     resource: repo://packages/server/src/services/spawn-token.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-07T14:47:55.436Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-07T14:47:55.436Z
 ---
 
 # Nested Spawn & Swarm Trees
@@ -196,8 +196,11 @@ HMAC-SHA256(secret, payload). Scope is a single `(leaseId, spawnTreeId)` pair
 with a short TTL (`SPAWN_TOKEN_TTL_MS` = 30 minutes, a child lease's spawn
 window), so a leaked child token can only spawn children inside that one tree
 within its window. Validation is constant-time on the signature and never
-throws — any malformed, expired, or wrong-scope token returns `false`, which
-`requestSpawn` maps to `SPAWN_TOKEN_INVALID` → HTTP 401.
+throws — any malformed, expired, or wrong-scope token returns `false` from the
+boolean `validateSpawnToken` wrapper, or a descriptive reason string
+(`malformed` | `bad_mac` | `expired` | `wrong_scope` | `wrong_subject`) from
+`spawnTokenRejection` when the caller needs to log the reason. Either path
+surfaces to the route as `SPAWN_TOKEN_INVALID` → HTTP 401.
 
 The secret resolves through `resolveSpawnTokenSecret`: a dedicated
 `DJIMITFLO_SPAWN_TOKEN_SECRET` wins, otherwise `JWT_SECRET` is reused;
@@ -249,25 +252,59 @@ Because `POST /spawns/root` sits behind `requirePermission('write:swarm_action')
 which 401s when `req.user` is unset, a token-only child can `POST /spawns` but
 can **never create roots** — only operators arm trees.
 
-## Observability, lifecycle, and operations
+## Control URL, 0.0.0.0, and Docker
+
+The default control URL is derived once at server startup
+(`packages/server/src/index.ts` L86–94) *before* any service construction, by
+deriving a dialable host from the bind address:
+
+```ts
+if (!process.env.DJIMITFLO_CONTROL_URL) {
+  const dialHost = HOST === '0.0.0.0' || HOST === 'localhost' ? '127.0.0.1' : HOST;
+  process.env.DJIMITFLO_CONTROL_URL = `http://${dialHost}:${PORT}/api/swarms/spawns`;
+}
+```
+
+`0.0.0.0` is a **bind address** — the wildcard interface the server listens
+on — and is **not** a valid dial target from a child process. The derivation
+therefore substitutes `127.0.0.1` (the loopback, always reachable from the
+same host) when the server binds `0.0.0.0` or `localhost`, so a same-host
+runtime child can call back without operator config. The derived value is
+written into `process.env.DJIMITFLO_CONTROL_URL` where
+`buildNestedSpawnEnv` picks it up for the child's process env.
+
+For **Docker or remote children** — where the child process does not share the
+server's network namespace — the operator must override
+`DJIMITFLO_CONTROL_URL` explicitly (set in the container/service environment)
+to the server container's address or host IP; the loopback assumption is not
+valid there. The derivation is skipped entirely when the env var is already
+set, so the override always wins.
+
+## Observability, lifecycle, and child-to-parent status reporting
 
 Both outcomes emit swarm spawn events (`SWARM_SPAWN_PREPARED`,
 `SWARM_SPAWN_GATED_OUT` in `packages/shared/src/types/websocket.ts`) carrying
 the spawn id, tree, lineage, depth, runtime, role, status, and reject reason,
-so a child spawning is observable end-to-end. `getSpawnStatus` (a child polls
-its own lease) and `listSpawnTree` (the full ancestry ledger ordered by depth)
-read back from `sub_agent_spawns`.
+so a child spawning is observable end-to-end over the authenticated WebSocket
+bus. The primary child-to-parent status channel is **pull-based** over the
+same control endpoint a child already uses to spawn: a child polls
+`GET /api/swarms/spawns/:id/status` with its scoped token (or JWT) and
+`getSpawnStatus` reads back that lease's row from `sub_agent_spawns`
+(status, reject_reason, depth, runtime, role). For server-side workflows,
+`ProofRunService` (`packages/server/src/services/proof-run-service.ts`) marks
+sub-agents `completed` in `sub_agent_spawns` and closes the tree when both
+finish, and emits a verified claim to the parent (the G5 handoff) recording
+what the sub-agent did with its evidence — the parent verifies via the claim
+ledger rather than trusting raw stdout.
 
-The default control URL is derived at server startup
-(`packages/server/src/index.ts`, mirrored in
-`packages/server/src/bootstrap/constants.ts`): when the server binds
-`0.0.0.0`/`localhost`, children dial `127.0.0.1`, and operators override
-`DJIMITFLO_CONTROL_URL` explicitly for Docker or remote children. A
-control-plane outage is non-fatal for a cooperative runtime — the mock logs
+A control-plane outage is non-fatal for a cooperative runtime — the mock logs
 `control-plane call failed`, exits 0 (echo work done), holds no runtime
-semaphore permit, and creates no child.
+semaphore permit, and creates no child
+(`packages/server/src/services/runtime-command-service.ts`
+`buildRuntimeCommand('mock', …)`).
 
-Operator-facing configuration (all resolved with `envInt` fallbacks):
+Operator-facing configuration (all resolved with `envInt` fallbacks in
+`nested-spawn-service.ts`; defaults shown):
 
 | Env | Default | Effect |
 |---|---|---|
@@ -280,6 +317,31 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
 | `SPAWN_CONTEXT_BUDGET` | `0` | per-sub-agent context isolation (0 = off) |
 | `DJIMITFLO_SPAWN_TOKEN_SECRET` | falls back to `JWT_SECRET` | HMAC secret; required in production |
 | `DJIMITFLO_CONTROL_URL` | derived from `HOST`/`PORT` | the callback URL children POST to |
+
+## Tree and budget invariants children must respect
+
+A runtime child that wants to self-spawn must comply with the same envelope
+the server enforces — it cannot negotiate around it:
+
+- The child can only spawn while its depth is **strictly less** than the tree's
+  `depth_budget`; at the depth floor (`depth == depth_budget`) the service
+  grants no child token and returns `control_token: undefined`, so the child
+  cannot mint further generations.
+- Every spawn request must carry a valid token scoped to the child's *own*
+  `(leaseId, spawnTreeId)`; a token minted for another lease or tree fails with
+  `SPAWN_TOKEN_INVALID` (401).
+- The child must present itself as the parent: `requested_by_lease_id` must
+  equal `parent_lease_id`, else `SPAWN_TOKEN_INVALID`. A child cannot ask the
+  tree to create a sibling under a different branch in one call.
+- The cumulative tree budget (`total_token_budget` / `total_wall_budget_ms`)
+  is hard; when the remaining budget is exhausted further spawns are rejected
+  (`token_budget_exceeded` / `wall_budget_exceeded`) regardless of the child's
+  remaining per-depth ceiling.
+- In-flight children are bounded by `max_concurrent_children`; a child at the
+  cap sees `concurrency_exceeded` until an existing child finishes.
+- The cycle guard forbids spawns whose `(prompt_digest, role)` already appears
+  on the child's ancestry chain — a child cannot re-request a task an ancestor
+  already ran.
 
 ## Focused tests
 
@@ -317,3 +379,6 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
   the auth middleware and RBAC/default-deny posture nested spawning mirrors.
 - [Maker–Checker Loop Execution](/openwiki/workflows/maker-checker-loop.md) —
   the goal/daemon queue and swarm control plane the spawn routes are mounted under.
+- [Exposed Surface: Djimitflo Server API](/openwiki/integrations/exposed-surface.md) —
+  DJIMITFLO_CONTROL_URL and the `/api/swarms/spawns` endpoint listed among the
+  operator-facing interface the server publishes.

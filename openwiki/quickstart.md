@@ -1,11 +1,11 @@
 ---
 type: guide
 title: DjimFlo Wiki Quickstart
-description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agent orchestration control plane with governance guardrails), how the wiki is organized, and routes you to the right page for your task.
+description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agent orchestration control plane with governance guardrails), the reading discipline it follows, how the wiki is organized, and routes you to the right page for your task.
 tags: [quickstart, orientation, governance, agent-orchestration, wiki]
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-11-07T14:47:55.436Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
@@ -15,11 +15,11 @@ sources:
     resource: repo://packages/server/src/index.ts
   - id: openwiki-source-13e7bffe2fd4d8b2a22e195d
     resource: repo://packages/server/src/routes/index.ts
-  - id: openwiki-source-c83ceec2d47257f066951051
-    resource: repo://packages/shared/package.json
+  - id: openwiki-source-f873c20d1298723efcbc88e6
+    resource: repo://packages/shared/src/types/auth.ts
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-07T14:47:55.436Z" }
 ---
 
 # DjimFlo Wiki Quickstart
@@ -40,12 +40,28 @@ enforcement, and audit trails. The root `package.json` describes it as a
 > data. Adapter registration, rendered screens, and passing unit tests do not
 > establish production readiness.
 
+Governance rests on a seven-role RBAC model — `admin`, `platform_admin`,
+`approver`, `maker`, `checker`, `auditor`, `viewer` — with granular per-role
+permissions defined in `@djimitflo/shared` (`packages/shared/src/types/auth.ts`)
+and enforced on API routes.
+
 The spine of the system is a **single authoritative server**
 (`packages/server`, published as `@djimitflo/server`). It boots from
-`packages/server/src/index.ts`, which initializes the SQLite database, runs loop
-and task crash recovery, wires services, mounts the API, and attaches the
-WebSocket server. Behavior varies by runtime profile (`api`, `operator`,
-`autonomous`) resolved from `DJIMITFLO_RUNTIME_PROFILE`.
+`packages/server/src/index.ts`: `main()` resolves the runtime profile,
+initializes the SQLite database, runs loop and task crash recovery, wires
+profile-gated services, mounts the composed API router under `/api`, attaches an
+authenticated WebSocket server at `/ws` (token via the `bearer.<token>`
+subprotocol, never the URL), serves the built dashboard statically with an SPA
+fallback, and shuts down gracefully on SIGTERM (closing WebSocket clients and
+releasing Telegram poller leases). Behavior varies by runtime profile (`api`,
+`operator`, `autonomous`) resolved from `DJIMITFLO_RUNTIME_PROFILE` — an unset or
+invalid value falls back to `api` with a warning; operator services run in
+`operator` and `autonomous`, while autonomous loops run only in `autonomous`.
+
+The API surface itself is composed in `packages/server/src/routes/index.ts` as a
+declarative, order-sensitive mount table (tasks, agents, approvals, policies,
+goals, loops, swarms, spawns, MCP, telegram, and more); the same table feeds the
+route inventory and the generated `openapi.json`.
 
 Around this spine orbit several satellite surfaces:
 
@@ -99,7 +115,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 
 | You want to… | Go to |
 |---|---|
-<!-- openwiki: broken internal link [architecture/monorepo-layout.md] file "architecture/monorepo-layout.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 | Understand the repo structure and which package owns what | [Monorepo Layout & Package Boundaries](architecture/monorepo-layout.md) |
 | Understand the `api` / `operator` / `autonomous` runtime profiles | [Runtime Profiles](architecture/runtime-profiles.md) |
 | See how the server boots, wires services, and shuts down | [Server Runtime & Startup Composition](architecture/server-runtime.md) |
@@ -130,7 +145,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 ## Where to start
 
 - **New to the codebase?** Start with
-<!-- openwiki: broken internal link [architecture/monorepo-layout.md] file "architecture/monorepo-layout.md" does not exist. Fix the href or restore the target, then delete this comment. -->
   [Monorepo Layout & Package Boundaries](architecture/monorepo-layout.md), then
   [Server Runtime & Startup Composition](architecture/server-runtime.md), then
   [Local Development](operations/local-development.md).

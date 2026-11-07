@@ -3,9 +3,6 @@ type: operations-runbook
 title: Backup, Restore & Data Retention
 description: How the Djimitflo server snapshots its SQLite database into validated tar.gz bundles, stages two-phase restores through a restore-pending.json marker applied at startup, and guards disk capacity via RetentionService purges and the DiskGuardService alerting loop.
 tags: [backup, restore, sqlite, retention, disk-guard, disaster-recovery, operations, audit]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-526c2013720d2821623139b9
     resource: repo://packages/server/src/__tests__/backup.test.ts
@@ -13,12 +10,18 @@ sources:
     resource: repo://packages/server/src/__tests__/disk-guard.test.ts
   - id: openwiki-source-4935e0ab3d4eb36eac2334d5
     resource: repo://packages/server/src/__tests__/loop-services.test.ts
+  - id: openwiki-source-37e8838e9d412d4f6ea96e25
+    resource: repo://packages/server/src/__tests__/retention-errors.test.ts
   - id: openwiki-source-289072797fee700b24a8a1d3
     resource: repo://packages/server/src/bootstrap/autonomous-services.ts
+  - id: openwiki-source-e57612dc55cb1fe7d7373bd5
+    resource: repo://packages/server/src/config/runtime-profile.ts
   - id: openwiki-source-8aed4ab6457283bb8b19e5d3
     resource: repo://packages/server/src/database/index.ts
   - id: openwiki-source-6872443c65c75a44eb429150
     resource: repo://packages/server/src/database/path.ts
+  - id: openwiki-source-baf2da50da44e229e8bb6daf
+    resource: repo://packages/server/src/database/seed-mcp-servers.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
     resource: repo://packages/server/src/index.ts
   - id: openwiki-source-63796602e121e10b1ed6d49e
@@ -31,9 +34,14 @@ sources:
     resource: repo://packages/server/src/services/disk-guard-service.ts
   - id: openwiki-source-70547df57dec40f868cbabb9
     resource: repo://packages/server/src/services/retention-service.ts
+  - id: openwiki-source-7a3b7174c12d6f71149b943b
+    resource: repo://packages/server/src/services/scheduler-registry.ts
   - id: openwiki-source-eebaf177712ad937ce48ce28
     resource: repo://packages/shared/src/types/common.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-07T14:47:55.436Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-07T14:47:55.436Z
 ---
 
 # Backup, Restore & Data Retention
@@ -44,7 +52,8 @@ how restores are staged and applied as a two-phase operation across a restart, w
 scheduled services keep the data volume from filling up, and what the archives do —
 and deliberately do not — contain. For the schema and migrations of the database
 being snapshotted, see [SQLite Data Model, Migrations & Provenance](/openwiki/architecture/data-model.md);
-for profile-gated service startup, see [Server Runtime & Startup Composition](/openwiki/architecture/server-runtime.md).
+for profile-gated service startup, see [Server Runtime & Startup Composition](/openwiki/architecture/server-runtime.md)
+and [Runtime Profiles](/openwiki/architecture/runtime-profiles.md).
 
 ## Components and wiring
 
@@ -66,10 +75,17 @@ Four pieces collaborate:
 The backup directory resolves through `resolveBackupDir()`
 (`packages/server/src/database/path.ts`): `BACKUP_DIR` when set (relative values
 anchored at `INIT_CWD`), otherwise `<monorepo-root>/.data/backups`. The routes file
-derives the same default from `DB_PATH`'s parent directory when `BACKUP_DIR` is
-unset. Both the database module and `BackupService`'s constructor create the
-directory if missing, and `database/index.ts` re-exports the resolved `BACKUP_DIR`
-and `DB_PATH` for callers that must not re-derive paths.
+derives its own fallback when `BACKUP_DIR` is unset: the parent directory of
+`process.env.DB_PATH` (or the `<monorepo-root>/.data` fallback) plus `/backups`.
+Both derivations create the directory if missing, and `database/index.ts`
+re-exports the resolved `BACKUP_DIR` and `DB_PATH` for callers that must not
+re-derive paths.
+
+> **Caveat:** when you run with a custom `DB_PATH` and leave `BACKUP_DIR` unset, the
+> routes' derivation (`<DB_PATH>/../backups`) and the boot module's derivation
+> (`<monorepo-root>/.data/backups`) disagree — staged restore markers and listings
+> land in different directories. Set `BACKUP_DIR` explicitly whenever `DB_PATH`
+> deviates from the default.
 
 ## Backup artifact contract
 
@@ -195,18 +211,20 @@ calls it before opening the database. If `restore-pending.json` exists it:
   untrusted input);
 - verifies the staged file actually exists;
 
-then atomically `renameSync`s the staged file over `targetDbPath`, deletes the
-marker, and logs the safety-backup name. After schema and migrations run on the
-restored file, a `backup.restore_completed` audit event is recorded with the
-marker metadata. **Any failure — bad marker, missing staged file, rename error —
-renames the marker to `restore-pending.json.failed` and keeps the current
-database**, so a botched restore leaves the server bootable.
+then `renameSync`s the staged file over `targetDbPath` (atomic on the same
+filesystem), deletes the marker, and logs the safety-backup name. After schema
+and migrations run on the restored file, a `backup.restore_completed` audit
+event is recorded with the marker metadata. **Any failure — bad marker, missing
+staged file, rename error — renames the marker to `restore-pending.json.failed`
+and keeps the current database**, so a botched restore leaves the server bootable.
 
 Operational note: because the swap targets the `DB_PATH` baked into
 `database/index.ts` at module load, the marker produced by `stageRestore` (which
 uses the connected database's own path) and the startup resolver agree as long as
 `DB_PATH` is consistent between the request and the restart — keep it fixed in
-the environment across the restart.
+the environment across the restart. Relatedly, both staging and boot-apply write
+into `BACKUP_DIR`, so the two derivations in "Components and wiring" must resolve
+to the same directory across the restart as well.
 
 ## HTTP API summary
 
@@ -230,9 +248,13 @@ grants accordingly.
 
 **`RetentionService`** (`packages/server/src/services/retention-service.ts`) is the
 scheduled counterpart to backups: it deletes old rows so the database — and with
-it the backups — stays bounded. Started only in operator/autonomous runtime
-profiles (in `index.ts` `main()`, inside the `operatorRuntime` branch) and, where
-the lifecycle manager is wired, registered for a clean `stop()`. Configuration:
+it the backups — stays bounded. It is constructed and started in `index.ts`
+`main()` only when `runtimeProfileEnablesOperator(runtimeProfile)` is true (the
+`operator` and `autonomous` profiles, never the bare `api` profile), inside the
+same `operatorRuntime` branch that also starts `CognitiveLoopClosureService`.
+Unlike most peers it is **not** registered with the lifecycle manager and its
+interval timer is not unref'd; the scheduler-observability path is the
+`scheduler-registry` instead. Configuration:
 
 | Env | Default | Meaning |
 |---|---|---|
@@ -246,19 +268,22 @@ Each `purge()` computes an ISO cutoff and deletes older rows from
 `ttl IS NULL` — explicit TTLs own their own lifecycle), `cognitive_episodes`,
 and `cognitive_patterns`; three hot metric tables (`llm_provider_metrics`,
 `model_routing_decisions`, `model_execution_outcomes`) use a fixed **30-day**
-cutoff instead. Deletion is table-name-constant (no injection surface), failures
-on a missing table are swallowed as `0` deletions, and `getStats()` reports
-`lastRun`, cumulative `totalPurged`, and the computed `nextRun`. Purges are
-best-effort — intervals swallow rejections — and the service never touches backup
-archives; archive cleanup on disk is an operator responsibility.
+cutoff instead. Deletion is table-name-constant (no injection surface), each
+table's outcome is reported explicitly as `ok` / `missing` / `error` (a missing
+table is the known no-op with `deleted: 0`; other DB errors yield `deleted: null`,
+never a misleading zero), and `getStats()` reports `lastRun`, `lastStatus`,
+cumulative `totalPurged`, and the computed `nextRun`. A failing tick is surfaced
+through the scheduler registry as `last_error` (status `failing`) rather than
+crashing the interval. The service never touches backup archives; archive cleanup
+on disk is an operator responsibility.
 
 **`ComplianceAuditService`** adds retention *policy* on top of raw purging:
 its "Retention Policies — automated data retention with legal hold" capability
-(together with the classification rules in `data-classification.ts`, e.g.
-`audit_evidence` at 2555 days) defines how long evidence classes must survive.
-Treat compliance/legal-hold policy as an upper bound that RetentionService's
-schedule must not undercut when configuring retention windows. It is constructed
-as a startup side-effect in every profile.
+(together with the classification rules in `data-classification.ts`, which key
+`retention_days`/`legal_hold` per classification level) defines how long evidence
+classes must survive. Treat compliance/legal-hold policy as an upper bound that
+RetentionService's schedule must not undercut when configuring retention windows.
+It is constructed as a startup side-effect in every profile.
 
 **`DiskGuardService`** (`packages/server/src/services/disk-guard-service.ts`)
 watches the capacity backups and the database share. It exists because of a real
@@ -277,6 +302,16 @@ it never deletes anything itself. Started from `initAutonomousServices`
 invokes only in the autonomous profile — so disk alerting requires the
 `autonomous` runtime profile *and* `DISK_GUARD_ENABLED=true`. It is registered
 with the lifecycle manager; failures to start are logged and non-fatal.
+
+## Safe-restore boundaries (vector stores)
+
+The two-phase restore is deliberately **not** a destructive repair path for
+derived stores. Vector-memory rows that the server owns live inside the SQLite
+backup itself and are restored with it; external vector stores such as the seeded
+`qdrant` MCP server are out of scope for the restore protocol, and this runbook
+makes no claim that they are repaired or rebuilt. After a restore, validate any
+external vector collections independently rather than assuming the database swap
+synchronized them.
 
 ## Failure modes and operational checklist
 
@@ -314,12 +349,16 @@ live database file is not overwritten by staging. `disk-guard.test.ts` covers th
 80/90 thresholds, the once-per-day-and-level dedup, and the outbox event;
 `loop-services.test.ts` covers the retention cutoff semantics (100-day-old rows
 purged, recent kept), the `RETENTION_ENABLED=false` no-op, default stats
-(90 days / 24 h), and scheduler start/stop.
+(90 days / 24 h), and scheduler start/stop. `retention-errors.test.ts` pins the
+OBS-003 error-reporting contract: a locked database surfaces per-table `error`
+rows (not a green zero), a missing table is a clean no-op, and a failing scheduled
+tick shows up as `failing` in the scheduler registry.
 
 ## Related pages
 
 - [SQLite Data Model, Migrations & Provenance](/openwiki/architecture/data-model.md) — the database being backed up, its boot order, and the startup-side restore details.
 - [Server Runtime & Startup Composition](/openwiki/architecture/server-runtime.md) — profile gating for RetentionService and autonomous services.
+- [Runtime Profiles](/openwiki/architecture/runtime-profiles.md) — how `DJIMITFLO_RUNTIME_PROFILE` enables the operator/autonomous stacks that start these services.
 - [Roles & Permissions](/openwiki/concepts/roles-and-permissions.md) — the `manage:backups` permission model.
-- `/openwiki/operations/configuration-reference` — env var reference (planned).
-- `/openwiki/operations/local-development` — local data-dir layout (planned).
+- [Configuration & Environment Variable Reference](/openwiki/operations/configuration-reference.md) — env var reference including retention and disk-guard flags.
+- [Local Development](/openwiki/operations/local-development.md) — local data-dir layout.

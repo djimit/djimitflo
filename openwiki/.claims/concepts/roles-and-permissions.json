@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3ad4537d4aa8cb77a1d260469d3369419fd18be80d8064a03ba8e5ad63061c90",
+  "pageVersion": "sha256:4dba911308fd23245981089fd4d6f6d1ac8b1cbe3cb64402a2fe1b6c45a10d67",
   "claims": [
     {
       "id": "claim_66722a4b508a48cc89b2f4e787373624",
@@ -29,12 +29,12 @@
       "statement": "The role table encodes maker-checker-approver separation of duties: the maker role can create/execute work but lacks approve:task, the approver role holds approve:task but lacks execute:task, and the checker role does neither; because admin holds both, the data layer additionally enforces separation — ApprovalService.decideApproval throws SELF_APPROVAL_FORBIDDEN when decided_by equals requested_by, and AuthorizationService.canApproveForTask denies non-privileged users from approving tasks they own — while approval decision endpoints sit behind requirePermission('approve:task').",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/approvals.ts#L155-L255",
-          "version": "repo-lines-v1:sha256:1b2db4824569242e85e6967bfc625fcbcfdf7a51fc5d30cbdf252a01e6258833:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOGRkNjFmZjgzMDhlNWJmZjBkMTkyOThhZmM5NjE4NWRiNTM3YmQ4ZTNkNTc2MGQxNTAwMGIxMzJiNzQ1NmViIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMTA2NjYwNDc2N2NjMmYxZTJhZjMwNGI4ODNiZTQwZTZiM2VlNzNhZmVkMzUxMjUzNjIzNGRkZmZkZmM5N2UzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1ZjFkMTY2MGNlZjJkYjI2OWM0ZmU0OGJmZjUwMWFmNTE4ZDE3NmYyZTlkZTI0NzdjNzIzYmIzMDY0NWExZTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZWU2OWEzM2UwYWQ1M2Q3NTc1YmJlODMwNWEwZGFiODY3MTU0YmE3MWIxYTU4Y2FkNTlkY2VkYjhlNGVmZmUwIn0"
+          "resource": "repo://packages/server/src/routes/approvals.ts#L196-L258",
+          "version": "repo-lines-v1:sha256:c9e1a61d32b8154f224c942c100b9481154f8f01576f81624e1e097b6ce529b4:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyMmYyNDdkOGNiNGRjNjE1NDE0MWE1NmFmOWVjOGE0MmMyM2ZhZGY2NTQwNjVlNGFiMzM3OGJmZWE2MGViODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmMDEzNmMxNzExMzNjMzBlYTlhZTcwZjViN2I4ZWRmNDhjNWIzZTJhYmVmZDMxODFhZDQyZWIxNmY5NmU0NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhZjY0MWM5Yzc3MzRiMDYyZGFmYWE1Y2NlMzI2NzliMzBmMzFmZTYzOWI4YTY1OGQ2NjM0NjhkNGY0MGI5ZjAifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/approval-service.ts#L153-L158",
-          "version": "repo-lines-v1:sha256:aefe605cd4640e5abd55ba9d4c82592c8cac5aa39d73fa1c1f87fe59a726e0b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I1NDlmOGNiYzc2NDdlY2IyNDYyNzNmY2EyMDFmZWVhZTYyNDIzYjNkMTZiMjFiYzZlMmZkOGIwOGQ0N2M4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTExYzc2N2NkMmY1NTM0MzRiNjNjZTQ0Y2VlMDljZmJmNGM1NWNlYmNkOWZiOWYxYTY4MWYxOTIxZWIyYjE4ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzMyMjcxZjAxOGY5MTJjOGQyYzlmYjQyOTcxZWIwOTBkZGY5Y2ZhODVhMTNlZjY3ZThiYTkzMzQ0ZDk3ZDE0OCJ9"
+          "resource": "repo://packages/server/src/services/approval-service.ts#L204-L208",
+          "version": "repo-lines-v1:sha256:e5637ded1bb6e84a509722b5d5e42513c3fcc51d01281de5c312bf9ec6769f58:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I1NDlmOGNiYzc2NDdlY2IyNDYyNzNmY2EyMDFmZWVhZTYyNDIzYjNkMTZiMjFiYzZlMmZkOGIwOGQ0N2M4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdjOTJiNTJhYzQ3MmM1YWIzZWY2Y2YwMDAzNmI2ODlhOTgwZjgzYTAxOTk4NzZlZTRlYjc5ZDgxNDVkNzgzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTExYzc2N2NkMmY1NTM0MzRiNjNjZTQ0Y2VlMDljZmJmNGM1NWNlYmNkOWZiOWYxYTY4MWYxOTIxZWIyYjE4ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmFjNDE5OTU4Y2I1NGQ0NjA2YzRjNmZiYzA0YWEyMDU0ZWFkMzA2NDk3NGJkNDlmZmFkMGI4YjhmODBjYWYzYSJ9"
         },
         {
           "resource": "repo://packages/server/src/services/authorization-service.ts#L39-L44",
@@ -221,16 +221,16 @@
           "version": "repo-lines-v1:sha256:d7848fc9f1fcec2b7bb6e55813c465cef22ecb13e6eb877ce7766ea7fa818f44:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMjg1Y2JkNGEzMzA1ZDMxMDgyOWM2YTRkNzc1YzE2YTIwZmM4NThhYzQzNmMzMzBmYjFkYTI2ZTY1Mzc4M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNmYzMjhmM2JiZTJjZmJiMDg1MDNhYjFmMzAyZDJlMjRiMWIzNmFmMTc2NmFiMWM4NmUyODJhNmI5ZTlmM2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzZmE3NzdkZjUxMGQxN2NlMWZmOTc0YmU3MDQ5YjhmOTBhYTVkNWM5ZGJiOWU4OGJkY2ZlZjU0NDQ0NWRlOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyNjg0MjIzYmFiMGI3NDkxODNkNzRhNjU2ZjE2YTMyOTI2NmE3Njk4NDlmNDRmMWRlMWM2ZGNhZDhlMTQ2NTcifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/auth.ts#L104-L141",
-          "version": "repo-lines-v1:sha256:223acc7690a21141665aec915500e7dfff69edb488d4fac85b2a32342b7c7fd5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNzNhMTMxMzVhMTYzYmM2ZjY0OTEwY2NlNjIxMzQ0NzY4YjBkZDJiNDY4ZWQyMjYxYzdhMDk5NGJmMTU3MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlMzhhZmY2ZmFjNTNiY2Q5OTc0OWVjMDhjYWYzN2JjN2YyZTU3ZTg4N2RlMmM5YjJiNmY3MjAzMWIxNTA5ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwMzhlMGZlOWNjMmU2MmNjY2ExNWJkNGYyOTFiODVlNmEwZWYzYWI0M2Y0ZGNmNWE1YTU3MWI3YjEyZTA0MDcifQ"
+          "resource": "repo://packages/server/src/routes/auth.ts#L16-L39",
+          "version": "repo-lines-v1:sha256:ca80955fea9811a3b4f3b8a11e1705b7316a33b2d49993b6a63ec945bc4aae7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxZWU1YzRlZmY3ZjE3MzRiNTMyNzY2YWQwOWRmZjIxN2RkNGUyMGVmMjc5OTUxODEyYWYwMGFiMTdmNjgwZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzZTYzMDNhNTNlMDE4NjRkMGY4MmEwMjcyNTZkYzkzNjY3NjlhOWNlNDJkNjk3ZmYxMjVmNDMzZDYwZDZjN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlMzM3ZjZiMDAzOWQyOTkwZjU5ZDAyMjcwY2RhOWQyY2Y2OWRjODRhMzc1YzdhNWE1ZjAzNDRmMGYxMzA5NDAifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/auth.ts#L15-L39",
-          "version": "repo-lines-v1:sha256:b2dca75dd7f3dfb051e0aaf1c1d50ecbcb9e26033f8bdac667a545adc344e682:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxZWU1YzRlZmY3ZjE3MzRiNTMyNzY2YWQwOWRmZjIxN2RkNGUyMGVmMjc5OTUxODEyYWYwMGFiMTdmNjgwZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzZTYzMDNhNTNlMDE4NjRkMGY4MmEwMjcyNTZkYzkzNjY3NjlhOWNlNDJkNjk3ZmYxMjVmNDMzZDYwZDZjN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5MGJjNmFiZGJhZTdhNjI0MTI0MzlkYWFmMjdkODg2OTVhNmYwMTk1YTE1NWM4MGRlNzUzYjBkMzEzZDc5NzgifQ"
+          "resource": "repo://packages/server/src/routes/auth.ts#L57-L59",
+          "version": "repo-lines-v1:sha256:bf063323124d5f48a4f82c1a9a1b932c859da50b9912afa796a55f41d3d697f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmE0MzZkY2FjYWUzNzhhNjRmMGM0NmYwNjliYWM4ZmUzNjRmODNiMzVkY2JmOGI0MzNiZjBkZWU3ZDlmMThkNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWUxMmI2MTE4OTQzZTMwYzAwNjgzM2U3ODE2MzBhNTNiMzJmNDE3ZWY1Zjk3OTVjM2YxMmYzMzA4MDI0YzVkOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTkwYmM2YWJkYmFlN2E2MjQxMjQzOWRhYWYyN2Q4ODY5NWE2ZjAxOTVhMTU1YzgwZGU3NTNiMGQzMTNkNzk3OCJ9"
         },
         {
-          "resource": "repo://packages/server/src/routes/auth.ts#L57-L81",
-          "version": "repo-lines-v1:sha256:718f1c24b4d82d8f8d4e7233d7bcebb9a8293880b86d44d230e1b2a9d7356953:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNWU0NDEwN2RiOTU1MGU5MGYzODBmNGRkYTFlNGI4ODRjZTc5ZjQwMjFhMjNjOTAyODdkYTU4NTQzNmQ2ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ODVkOGFiYTg1N2ExNTMwM2Y4ZGQyYmZiNDZlM2NmMmU3OTg3YmRlMjI2ZDIxMjVkMjI2MDNiMTA1YzAxZDAifQ"
+          "resource": "repo://packages/server/src/routes/auth.ts#L77-L102",
+          "version": "repo-lines-v1:sha256:3d186fbc9299fdb933a38e370bb946622dd8c24115acafd3b80930369992bb1c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNWU0NDEwN2RiOTU1MGU5MGYzODBmNGRkYTFlNGI4ODRjZTc5ZjQwMjFhMjNjOTAyODdkYTU4NTQzNmQ2ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OTJmODQ3YmIyMWNiMjkyZGQwOWY3ZmE2ZTdjYWM0YThjMTRkOTdkMzg5NjMzYjNkMTUyMGVhMTRiNWIxZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmNDMxZWY4MTUxMmMyNjg2ODY0ZDU5Njg5N2I2NTgxMTkzMjY0NTQ5YzE5NzE5OGE2Nzg3MTI4ZWQwN2UxODcifQ"
         }
       ]
     },
@@ -248,7 +248,7 @@
         },
         {
           "resource": "repo://packages/server/src/routes/auth.ts#L41-L102",
-          "version": "repo-lines-v1:sha256:e006ef27dec88145e38b09763900de21fd06009c424f40fac4ecd0f4809d2dc1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZDdjMzcyNzNjYjJiNTg3ZmE3Mzk1YWViYTU2ZTNjNWIzOThkNmM3MDk3YWY1YjIzZGEyZmYxY2E0MmIzYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZjZmMmNmZDJlZGRlZTIyMDAxZjE1YTg2NWI1MGNhMGI2YWNhNmI2YjA1YmJlOTM3ODY5MzNmNDhlOGIzYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMThlYmU3MjY5YjI4NGNjYjIxNWRmZWFhZTNhODVhYTJlNzE0MzQ1MmFmMjFiMDE0MjVjZmZlZmUwOTYwYWQifQ"
+          "version": "repo-lines-v1:sha256:e98568674dac7e1d9994130262618976949cbe639b97d4c2489786d7d01f43b4:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZDdjMzcyNzNjYjJiNTg3ZmE3Mzk1YWViYTU2ZTNjNWIzOThkNmM3MDk3YWY1YjIzZGEyZmYxY2E0MmIzYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZjZmMmNmZDJlZGRlZTIyMDAxZjE1YTg2NWI1MGNhMGI2YWNhNmI2YjA1YmJlOTM3ODY5MzNmNDhlOGIzYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMThlYmU3MjY5YjI4NGNjYjIxNWRmZWFhZTNhODVhYTJlNzE0MzQ1MmFmMjFiMDE0MjVjZmZlZmUwOTYwYWQifQ"
         },
         {
           "resource": "repo://packages/server/src/services/auth-service.ts#L88-L90",
@@ -263,10 +263,6 @@
         {
           "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L57-L66",
           "version": "repo-lines-v1:sha256:8f6a70e100a98fa9f7af323acb51ca77c7f8ab747f06e1fe2b4a9449bc52acc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZjM1MzA2ODcyOWI4NjUxZDM3ZjFjNjllNWJlZWFjMmE0ZjIyMDhlYmZhNTFmNWM3MDE1M2I0NDNlNGIzMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYjZjNzk2ZDQ3OWJiOTZiNzUyZWFmZTJjODIzNGM4MmVlYzc1Y2YxNDNmOWY2ZmI1NWM5YzZmM2E3MzQ3OWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjYjYxNjgzZDg3MDBlOTM4NzMxZjMwODk4ZTg1OWZkODBmNzc1OWVlYzBlNjhiNGJhMjdhMTFhMWVjYjgwZjcifQ"
-        },
-        {
-          "resource": "repo://packages/server/src/routes/auth.ts#L83-L101",
-          "version": "repo-lines-v1:sha256:123bb5b28efd1dd0f8d9de200105eb950d2357568250b85e4960e60fba1af9da:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzMmMwN2Q5OTczZWRiMTMxYjFmMzBmZWRiYTBiZmYzZTQ0MDdjMzNhNmE2ODBkYWYwN2UwYjI5ODNjNzY2MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmMTk4ODE5NjAyYjRkNmFkNjcxMTFmMDg0YTBkZDhjOWIwM2FlNmI1NjI2MTU2ZDZiMWU5YmU5ODg5MzFhOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5NTE4YjcyOTg3ZWYwZjkwZWU0NjY3ODljZTI2N2M0YzQ5MTM1YjIxNzFlYTFlM2U0NWRmOGQzMjU3MTc2ODIifQ"
         },
         {
           "resource": "repo://packages/server/src/services/auth-service.ts#L133-L143",
@@ -391,10 +387,52 @@
           "version": "repo-lines-v1:sha256:841b37198342591c17e4353c92722cc693ca473c057bbd31090b29a679309006:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmM3ZWU4MmQ3YzZhYTBkNTk0OTkwOTVmM2NhYmJlZDJkNTIxMTQzYWU3NWIxYzQyNmJiM2MyYzNlOTg3MjdhNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGEwMTI0NDBmZTc2ODk5N2M3N2IzN2M4NjI4ODQ3NzUzN2QxZTJiY2UyMGViMmQzNTczOWE2ZGQ1MjY5MmYxMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTFhNzY4OWU1MWQwNDhlMDk2ZGZhYjY4NWIwMDc4YjY5YjdkMjRmOWJkMDYzMGMzZTFkOGU1MDFjZjcyYTg2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2MzYjgxODUxYmZiYWVmNDBkYzhmM2MzNTBlYmU3YzlkMWU4Y2FlMDFlZTUzYWEzZTNlOTQ3ZTIwNDNkYTZkOCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_bba8cafb92a54c11bf1b3b0ce1ff2d11",
+      "statement": "Dashboard-side permission gating (packages/dashboard/src/lib/permissions.ts) is UX-only and never authoritative: ACTION_PERMISSIONS maps each operator action to the server permission it requires and NAV_PERMISSIONS maps dashboard routes to visibility thresholds, solely to hide or disable controls the server would reject with 403 anyway, with auth-store's hasPermission driving the checks and the server remaining the sole enforcement authority.",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/lib/permissions.ts#L1-L49",
+          "version": "repo-lines-v1:sha256:92cd5036f8d4d7b57044eab0e53c6b64752e58c9b2830f3cb8a4706d4e38aa0e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3Y2ViZmRkZmI0YzEwYjMyM2ViMGY4NTIxNTQ2NWQwNTJmZjZiY2EyNzEyMWZkM2Q0MzcyOTYyYTExOGNlMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b9f2c0b827db4234901699fe6dc0d7ee",
+      "statement": "The /swarms/spawns prefix is a deliberate mounting exception in the order-sensitive mount table (packages/server/src/routes/index.ts): it is mounted BEFORE the generic /swarms prefix and guarded by requireAuthOrSpawnToken instead of requireAuth, so a child runtime holding only an X-Spawn-Token can POST /api/swarms/spawns and GET /api/swarms/spawns/:id/status without a user JWT, while POST /spawns/root inside the router still requires write:swarm_action so token-only children cannot create root spawns.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L172-L178",
+          "version": "repo-lines-v1:sha256:6f89b722353883bba15609206ba6065b3413d5aedea4d10c672217bd0c256378:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxNTQ0N2FjMzc2NTk3NDUzOThiNjY1NjAyOTQ2YTM2NDkxOWMzMDI1ZjUzNjE2MDJkMjgxNWIwNGU5NzY0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FlMTU1MzJmMjRiZjkwYTA5MDAwZjY2NmY4OTRmM2Y5ZmQ1MjFjNmUwOTA3YWJjOWU0YWI1N2Y1Yzk2NDEyOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmRjMGI5ZTNlNzk0Mjc4OWVlZTdjYzRkM2QwOWY2ZjY0OGUwYzRjZTM0NjA1NTAwZGNjY2Q0ZDAwZjE1ODNmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODE3YWE3ZThhNGYzZDBmYTgwNTM2NjRkYzdkZjY0ODFlZDcwMGMzMzlhNjM4ZjdhNjY0YjVjMjNiMjc2MmE5ZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L98-L104",
+          "version": "repo-lines-v1:sha256:436bd9b347983eba0e444beb6887018027792113ee149f596f8e9cb48b22885d:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTVkODVjNjYzZWZiOWUyODg4OGEyNzFlYjhmZjY4MWUyMmJhNmUwZTM5MDBlYmY3NmViMWUzZTQzNThjZDE0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc0MzlhNWM4N2QwMzYzMTVmNTBhYzkyM2ZjNDY1MzAzNjUxN2IzZTQyY2VjNmY1NWZhNjYzM2IwMzY1ZjhjMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2VlZWY2NTZjZDU4YjExZjc1MGMzODcwM2Q4ZmJiY2Q2NGI2MWMzOTU3NzI0OGU5NzM1ZjNhMDMxMDIwNDI3NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTdjYzViZDEyNTYzMTlmMzc4YjUwNzA3Y2VmZDZkNDEyOWJmYzRiZTlhZGY3ZGQ3ZjNkMDY0NDU2MjRkNzAwYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/spawns.ts#L50-L116",
+          "version": "repo-lines-v1:sha256:5a8780eae8106de02b594cf31e4ec9fd68a3afeb81de48f37ea6f4a9c5b5cd12:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3YTUxNmRhZDU1YTYwY2ViOWU0MTRiNGIyOWZkYzZjOGM1NDhjOGRjZGM3NzZmMmM5MDU5ZmI2MjQ3YWQyZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4NjBkYWUwZmY1YWYwN2UwYzYyYzlkMWY4YmE5MmJjZjRiMDgxN2E4NDIxN2I2ZWRjODY0OWFkYTBiNTMwOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNjMxNGE1YjVlZTMwMmQyZTA2MGM5YmRlMmYxMmJjY2I1ZTBmNzkyNTAzOWY2ZGM5YWQ5NWZjMmY1NWExMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjYzA0MzliZGRkMGYyNzU3OGI3MjY1NGU5MTM1MWY2YWRlZTUxYTdlNTlmNDEzZjdkZTNmZjlkZDViM2Y4ZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5c58080594a0401f91c041db836c0c79",
+      "statement": "The human decider for approval decisions is derived from the JWT subject: approval route handlers in packages/server/src/routes/approvals.ts call getUser(req) and pass user?.sub || 'system' as decidedBy to executionEngine.handleApprovalDecision, which flows into ApprovalService.decideApproval where the SELF_APPROVAL_FORBIDDEN check compares decidedBy against approval.requested_by.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L179-L215",
+          "version": "repo-lines-v1:sha256:ab05d7df4fee3545e2b93c780b01a26e80a7261d378f93337a893272ae86edd8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNmE4Mzc3ZmVjODViMzg5YmJiMGQzMDU5MGE2OTUzMTEzZmY1OGU3NmQ4YTRhNjA0NTc1YzYwZmIyMTU0ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwODE5Zjc5MmEzMDBiZTEyMzE4NmIxZjI5MWM0NmQzZDliYzg1MDQ4MGY0ZjRhZjdiMjZiY2RmZWQ0YWYxOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZmU2ZjQxYTE1MGQ0N2ZlZjBjNWM0ODkxZGFjNTUwMmUxM2IxNjMzNTcwMzVjMDQxNGM1OTFjNzE1Nzc2MDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5ODE0MjM0ZmI0NWU1NmVlMjA1NGE2ZTJjZjM5ZTA4YTllNDAwNTc5NGY2YjNjODFkNTg5MGZlZGZmNzFhZWMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L204-L208",
+          "version": "repo-lines-v1:sha256:e5637ded1bb6e84a509722b5d5e42513c3fcc51d01281de5c312bf9ec6769f58:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I1NDlmOGNiYzc2NDdlY2IyNDYyNzNmY2EyMDFmZWVhZTYyNDIzYjNkMTZiMjFiYzZlMmZkOGIwOGQ0N2M4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdjOTJiNTJhYzQ3MmM1YWIzZWY2Y2YwMDAzNmI2ODlhOTgwZjgzYTAxOTk4NzZlZTRlYjc5ZDgxNDVkNzgzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTExYzc2N2NkMmY1NTM0MzRiNjNjZTQ0Y2VlMDljZmJmNGM1NWNlYmNkOWZiOWYxYTY4MWYxOTIxZWIyYjE4ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmFjNDE5OTU4Y2I1NGQ0NjA2YzRjNmZiYzA0YWEyMDU0ZWFkMzA2NDk3NGJkNDlmZmFkMGI4YjhmODBjYWYzYSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-11-07T14:47:55.436Z"
   }
 }

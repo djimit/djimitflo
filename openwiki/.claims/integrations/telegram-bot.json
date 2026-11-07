@@ -1,40 +1,52 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:109a3dfea767a0375b3d9faf87634304c44244bbdf78c2f8940ce86b693036a1",
+  "pageVersion": "sha256:6c423086a84ab2753aea19088fe1e6ffbac2b232129a5214ec3e748bd46a4085",
   "claims": [
     {
       "id": "claim_6cf598aba30145d48fd3af3a2725a6dd",
-      "statement": "Djimitflo has two independent Telegram surfaces with no shared transport code: the @djimitflo/telegram long-polling gateway (TelegramGatewayService in packages/telegram) and the single-bot webhook route at /api/telegram (createTelegramRoutes with TelegramBotService); both resolve Telegram senders to DjimFlo actors through an allowedUsers list plus an explicit userMap before any command runs.",
+      "statement": "Djimitflo has two independent Telegram surfaces with no shared transport code: the @djimitflo/telegram long-polling gateway (TelegramGatewayService in packages/telegram) and the single-bot webhook route at /api/telegram (createTelegramRoutes with TelegramBotService). Chat commands on both surfaces resolve senders through an allowedUsers list plus an explicit TELEGRAM_USER_MAP (or per-bot userMap) link before anything runs, while one-tap Approve/Deny and triage buttons are authorised only by the D3 telegram_identities table: an active mapped user whose role holds the required permission.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/telegram.ts#L47-L59",
-          "version": "repo-lines-v1:sha256:beda41e87fd8582b041493886f21ff8c29d38c419099b7ddecdfbee266c151a9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YmNhZTVmNzRiN2UwODI3OGI0MTMwZmE0Mjk3YjYxNjE2NGQ3NTI0YWIyZjNhNTYyZWZkMGFlODMxZTlkOTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExOWQ4NGNjNjA4ZWUzNzAwYjQ4MTM4Mjc4YjJmZGMxNjA4NjEyMmYxYjU0MjlhYmJjNTYzODljMWRhYjE1YzMifQ"
+          "resource": "repo://packages/server/src/routes/telegram.ts#L24-L31",
+          "version": "repo-lines-v1:sha256:65813c1dd8e7547b4f15634a1c3a634f2c295a652efbf4ae749d5be4935e7e22:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzA5NWVlMzQwMDAzZDNlYjdlYTczOGM1NDYwOGJiZDYxNmNmZTRlZDFkZDM2NjNhN2M4YjNkY2Q1ZDBlYzU0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0YzkwY2YxZTIwZjUzNGQwYjRiNzNjYzg2ZDIzOGY4ODdhMGYwYjdmOTc3NTFkYjRhN2RhMmIzZWNmZjUxYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODdlNGI1OTcxMTczYmZkODE5N2IzM2Q4ZDIyZjY3YjIzNTRhMmUxNmRmNWM4ODU4YWU5ZGI4MTYzNzdkMTNiMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTRlY2Y4NTQzYWI0MDIyNGMwMWJmOTQxZjE3NjI2YjM5Y2JmMDFiMTQ4MjcwMzA0NTAzNzI2ODViMTRmZTBlYSJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L75-L100",
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L254-L268",
+          "version": "repo-lines-v1:sha256:cadf29d9c50fad05e9a692130cb091e4a8f65dfa64d1c274a411a3239a0dc330:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4NmQ2NDRmMjQwM2Y4ODkyNTBhNDczYjNiYzRhM2RkN2QwNTY3Yjc2NmM0ZGM5Njc2OGNhZWVkY2UwMWM5NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwZjU4ODk3OThkOTY0MDY2OTVjMTBhYmNmYWUwYjRmYzM5ZmE2YTk1ZWY2MTNmODk3MzhjNTFhZmQzOGQzYWUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L81-L106",
           "version": "repo-lines-v1:sha256:ca1cefc1d8e9fdf84eb9736b530a2b8eae0211944f79b9d8e0a52470605c0acb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYmJlYjRmNTJhYTI2YmEwZDBiNGIwZTIzZTlmM2FkYWZhMWVhZTYwMGZkMmVmNDYzOTU3NmU4NTQ5YWU3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhZjZmYzNkYzdhZmM4YTYxMmU1ZmY4MmEzMGJhYjc4MTVhZmIzNTBkZGJkOWEyNGU4YzNiOTljZDczMTFmM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NWM0YzRiZjE1M2ZlNzU2NTI3M2FhYzk2ZTk4MGYyMWRjM2FlNjlkNmQyNDZjYmMxNTI4MjliZDdhOTVjMzgifQ"
         },
         {
-          "resource": "repo://packages/telegram/src/index.ts#L18-L35",
-          "version": "repo-lines-v1:sha256:f5fe5c6ed217b227340dee22c19e8dcf2ce32927a0d1bf4a640c87cf584de70f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MjBhMmE4YjllOGQyZjBjZjJlODk2YzA0M2E2ZGYxMGNkMDFmNzAwYmVhODI2ZjRmZmFiYWIwZWYzYTVkZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4ODljMGE3YWFkN2IzMzhhMmMxYjljZmQ5Y2QxOWE0YmQxMzc2ZjAzMzZiMTQxZTIyYjRkNmU5MzUwYzFmNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhOTA2ZWMzNjQ4YjhlNmNjNWZkMGViY2ZlNGRhYWNlMzgxODAyMmI2Yjc5MGMzZWVlMGM4MDQ5OGUzM2M1ZTkifQ"
+          "resource": "repo://packages/server/src/services/telegram-identity.ts#L1-L13",
+          "version": "repo-lines-v1:sha256:a127dd2b0d892d61b847030dbc02de6799d72262c46f06e526434c408345912b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5YTFlODM0ODRlZTViNzYzNmVjMzY4OGEwN2QxYzZkNTA3Yzg2N2Y3NjFjNTNmZWY5OTJlMGFmN2JmNzk4YzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyMjExYjcyNGYwOWFlNTc3MjU3ZDhiYTJhN2NlMWE4MjM3NWQ1M2U2OGMzNGFiNjNjZDM0OGUzMzI5NjIwYjAifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L143-L152",
+          "version": "repo-lines-v1:sha256:0731592d7849b975ff9532d375a400bdc3b762b6b96cf349b65644596bca66a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OWYwODQ4NTQzOGNhNTY0MTg1NzNmOGQ0Y2JiMGJhODAzM2ZjZDA5NzViZDYwM2E4YWZmZjZjZjM2OGJhOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzEzNTkwNjY1NjMyM2QxYzVlYTQxNjU0ZWU2NmFmYjU4NWFjZGNmYWVhY2ExMjFkNWUzMGJmMTkzZWVkZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmMzkwMmNjNDRiMWY1YzNkZDA0ZDg4MTU5ZGZkNDQ3ZjJiNjAzYjUwMTkzMjZjNGQyOTEyZTNjZGMzNmQwYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMjIxMmM2NThkNmRhOTUxZmZkZTk0NDExZWRmY2VhMjE2ODkxNDA3YmFlZDQxMzhmNTc3OWZkMjYwZDE3OTkifQ"
         }
       ]
     },
     {
       "id": "claim_a60e343d6b9643699c5d03d53f7d3d1f",
-      "statement": "The polling gateway starts only in operator-capable runtime profiles (operator or autonomous, never the default api profile) and only when TELEGRAM_BOTS_CONFIG is set; the JSON array's per-bot allowedUsers/userMap fall back to the TELEGRAM_ALLOWED_USERS/TELEGRAM_USER_MAP parsers shared with the webhook route, TelegramGatewayService is dynamically imported from @djimitflo/telegram, and its ops are a TelegramApiService pointed at the loopback base http://127.0.0.1:${PORT}/api. Missing config or init failure logs and continues without blocking boot.",
+      "statement": "The polling gateway starts only in operator-capable runtime profiles (operator or autonomous, never the default api profile) and only when TELEGRAM_BOTS_CONFIG is set; the JSON array's per-bot allowedUsers/userMap fall back to the TELEGRAM_ALLOWED_USERS/TELEGRAM_USER_MAP parsers shared with the webhook route, TelegramGatewayService is dynamically imported from @djimitflo/telegram (a private ESM workspace package built with tsc to dist/index.js, whose only runtime dependency is grammy), and its ops are a TelegramApiService pointed at the loopback base http://127.0.0.1:${PORT}/api. Missing config or init failure logs and continues without blocking boot, and the retained instance's stopAll() is invoked from the SIGTERM handler so leases are released on shutdown.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/config/runtime-profile.ts#L13-L15",
           "version": "repo-lines-v1:sha256:f95a58b45eb8b3584a3264c56f7d2cde100faa68ab7793b261b8b3c688cfc350:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM3NmYxMjkzZmJlYWRhMDhjMDA1MWZlYWNmOTJkZjU2Y2QwNGQzMjk1ZjFlMjJhYTAwZTU3M2U5YTA2YjVhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2RlOGFjMTFmMWY0YTAyNzA5NzE2ODQ4ZTE5NmMyNGY1ZDFiODZjMTlmZWI5Njc5YzJiNTMzOWY3MTE3OWY3MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzM4MmNhOTY5MDE2NDljMWZmODE1ODBhMGI3MDNhNTgwNTFkZmYyZGZmNjExYjY4NjA4M2Q0NWVhMGNmMDUyNCJ9"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L325-L343",
+          "resource": "repo://packages/server/src/index.ts#L413-L431",
           "version": "repo-lines-v1:sha256:4ece4e37b89355a677652de8a0703267c9be277b38ab43ee81c447b694b43b22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMzgxM2MzNTRkOTgxYjkwMmNlZDQzMDJmNDNlNmRmNDY4OTg4YzI1MTY4YWZiNGRiOGJmNDYwMDFiOWIyYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YmUyMTMwNWY2OGNlYzQ2NjkwNGE1MWUyMGQzN2RlZjMxOGQ5ZmIwMmU1MjRmNzQ2NWQ0NmVjMDM3ZmQxZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyYzYyOTVkMTBiZGE5OGNlY2Y2MGVhMTM1Mjc2ZmFhYzU4YTVmMmNkYjUyNDIyNzBmM2UwODYwYjYyMGFkNDEifQ"
         },
         {
+          "resource": "repo://packages/server/src/index.ts#L480-L493",
+          "version": "repo-lines-v1:sha256:43e59644dd04d43dc3e3fba565549c5d4155eb5f4febb2f09f34b7cb5c93e88d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZmRlZDg1N2FiMzk5ZjQ0ZWRiOTc3MDJiNjcwODUyYTA3NDI0N2UyNTk5OGE4NmM5MTBiNDA5MTNlODhlZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0ZDY3Njk4ZjkyYjVlYTIzOTAwZDBjYTc4MGE2MmZkYjA4ZjIzMzNiNmUyMDQyNGUxZGQ0ZDhmMWRmYmVmYmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhZmVlY2Q5ZTliOGU2ZDI0ZjBkYjQ3NTY3NDYxOGZmZDBkMWJkZjVlMzU0Zjg3MmY3N2I2ZDFiYWExMWVmYTMifQ"
+        },
+        {
           "resource": "repo://packages/telegram/package.json",
-          "version": "repo-file-v1:sha256:d5e02323547280921c4f079a1e8be017044d7881f634c8bc587d71843bca7ac2"
+          "version": "repo-file-v1:sha256:84a5600a1a7828d236cf5243240de32f90bd972c957335c51f367752cab2182c"
         }
       ]
     },
@@ -160,37 +172,41 @@
     },
     {
       "id": "claim_7f771403ea4a4c06876590c1584112ab",
-      "statement": "GET /api/telegram/status requires auth and returns telegramConfigStatus: configured/ready booleans, allowed_user_count, webhook_configured, linked_identity_count and a missing_env name list, where ready requires all five of TELEGRAM_BOT_TOKEN, a non-empty allowed-user list, TELEGRAM_WEBHOOK_URL, TELEGRAM_WEBHOOK_SECRET, and a non-empty user map; the serialized status never contains the token, secret, URL or mapped user ref values.",
+      "statement": "GET /api/telegram/status requires auth and returns telegramConfigStatus: configured/ready booleans, allowed_user_count, webhook_configured, linked_identity_count, approver_identity_count, a missing_env name list, and a blocking reason list. ready requires the env layer (TELEGRAM_BOT_TOKEN, a non-empty allowed-user list, TELEGRAM_WEBHOOK_URL, TELEGRAM_WEBHOOK_SECRET) plus at least one telegram_identities row whose active user holds approve:task (TELEGRAM_USER_MAP alone does not authorise buttons and appears in blocking only as an explanation, not as missing_env), and the serialized status never contains the token, secret, URL or mapped user ref values.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/__tests__/live-canvas.test.ts#L129-L142",
-          "version": "repo-lines-v1:sha256:89acfa21d247b30c4557f7bf96419c8de1edc5ed1d15f845506d59b989df1829:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNDcwNDQyMDZmYmFlNWY3ZmQ3ZjViMWQxZTNhNzUwZjdhZTg4NmY3ZjEyNWY1YzRhNjFlMGJkYmMyYTRmNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNjE4ZGMwODBmOGM2NmU3MThkMzg0ZjMyNTZlZDczNGI4MTE2ZmU1Njk3OTQ5ZjM5M2M2NTliMGYzOGNmMzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjZTZmODIzYWQzMjY1MGRjNDVlNDc1YTQxZjVmMWM1YzJmNWFiZWY2MDgyNmE0Nzk4MGU5ZjgzYzNlZGI4ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhYmY2YjFhZjgxMTZmNzBiODg5ZTUxZjk3YjczMWQyYTEzZWYxMzJjMDhkMmMwYWNiZWQ1YjM3ZjI3YzBiMWQifQ"
+          "resource": "repo://packages/server/src/__tests__/live-canvas.test.ts#L53-L70",
+          "version": "repo-lines-v1:sha256:fb405764c77606370e52ba55542f4d64cfb9dc2a10ab24c18b4d6b0e540da17e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0OThhNDViMDZjYmU5N2QzZjE5MGFiZTI0NzU1MTgxMmJlZjhkN2U1YWVmNjkxMGZkZThkNDExYzM5OWY4ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwZDI2MGE5ZTVhZjVlZGJkZjgxMmVlYjhhNTcyNDQxNGY5OGY3Nzg0OTYxYjFjOTA2ZjJiYTgzOGExNGEyZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0ODc0ZDU1MjhlNGY3NzI1ZTgwZDY4YTNkYzlhMzg5NmE4ZTRlMjVjNGQ5MTc2Zjk4ZWFkOGQxMTcyOWQ2NjgifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/telegram.ts#L26-L45",
-          "version": "repo-lines-v1:sha256:3596edb4107de6332efc8ad11ece45e43b8fa4ae68906cb512e32f56a51c57d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTQyZWY1ZTdkMmY3NmMxNGI0Nzc4NGExZjhiOWFmMzE1ODg1MWExMzAxYjg2NTkzYWMzYzZiMTc4NzYxNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNWQ2ZTQxNzQxNTMwYzRhY2QwZTAyYTBkNjJjMWYyOTM3MjU4OTAzNWViODhmYjU4N2IzM2E5ZTE4MzE0YjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3MDM4MWE4NTljOWU2OTFjZGYxYWNhMjVhZTc2N2E2MWZjYWM2MjYxOTllYjI5MjNjNmE0ZDlhZjYyYjUwMDcifQ"
+          "resource": "repo://packages/server/src/__tests__/tg2-telegram-context.test.ts#L21-L36",
+          "version": "repo-lines-v1:sha256:b5da7cee53a1390bd82cd03fd3c188093142e926fc25f3d998db904327ab3a8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmNjU4YjIwNzhjM2QxYTdlMzZlYzRmMGI4ZmVlYzA1NDBkYzZmNTRmYWUwNWRjOGE0YTVkNTg5OTlhYTYxMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1YzgxNzFmZWM1Y2VjMDQwMDMzMTdkZWNhYzhiNGFhNzc2YzMzMDg3MzJkNTc5Zjk2NmUxOTdkMDgzODI1N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNGIzZDIyZjdlMjUyMzc0MWZhY2QxOGMyNzAzNjcyZDlmZWUzNmJkNjU3ZjQyMDQ2MDQ2YTYyZmEyZWI2NDcifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/telegram.ts#L85-L88",
-          "version": "repo-lines-v1:sha256:074c238ab9d5b1c48b4283aaf1fa49a56486b1236e138ae89d40eff49e76e0a5:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE2MGFmMGI2NWE4YTFhZTliZDczOTI2ZmE5OGIxMmNhMThlOTExNmNiM2ZjNDNkNmM3Yzk3NDcyM2NhNmU5YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIwZmM5ZTY3ZGIwN2VkMjM5YmIzYWQyMzEyZWFhYjlhNzBlMWY2ZmJhMDEyODhiMGJhNmU2MWQ3ZjhlZTc4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjBlY2U3N2Q2NTQ5NGYxNTFkODVmNDA3ODExZjQ3YmIwNjM3ZTc0ZjUwOTVjNWEyMWM1YmQwMmNlODc0YzAzMCJ9"
+          "resource": "repo://packages/server/src/routes/telegram.ts#L112-L115",
+          "version": "repo-lines-v1:sha256:ad2503d066f550803da7cf5562260dcb3566777267ff6e3e68818a6b0dd15afe:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE2MGFmMGI2NWE4YTFhZTliZDczOTI2ZmE5OGIxMmNhMThlOTExNmNiM2ZjNDNkNmM3Yzk3NDcyM2NhNmU5YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIwZmM5ZTY3ZGIwN2VkMjM5YmIzYWQyMzEyZWFhYjlhNzBlMWY2ZmJhMDEyODhiMGJhNmU2MWQ3ZjhlZTc4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjBlY2U3N2Q2NTQ5NGYxNTFkODVmNDA3ODExZjQ3YmIwNjM3ZTc0ZjUwOTVjNWEyMWM1YmQwMmNlODc0YzAzMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L28-L69",
+          "version": "repo-lines-v1:sha256:ef7c026a8cd2d63ee10c7ba400fb804d7c462e6a01f0fefcff72483cf9152881:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNWQ2ZTQxNzQxNTMwYzRhY2QwZTAyYTBkNjJjMWYyOTM3MjU4OTAzNWViODhmYjU4N2IzM2E5ZTE4MzE0YjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3MDM4MWE4NTljOWU2OTFjZGYxYWNhMjVhZTc2N2E2MWZjYWM2MjYxOTllYjI5MjNjNmE0ZDlhZjYyYjUwMDcifQ"
         }
       ]
     },
     {
       "id": "claim_4b9d565b976d479ca5eee3896baa9aa0",
-      "statement": "TelegramBotService resolves userMap entries at configure() time against users.id or users.email, and handleWebhook enforces a three-step identity ladder before any command: sender in allowedUsers, sender linked to a DjimFlo user, and that account still is_active — each failure replies with a distinct refusal and no command executes.",
+      "statement": "TelegramBotService resolves userMap entries at configure() time against users.id or users.email, and handleWebhook enforces a three-step identity ladder before any chat command: sender in allowedUsers, sender linked to a DjimFlo user, and that account still is_active — each failure replies with a distinct refusal and no command executes.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L114-L121",
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L116-L123",
           "version": "repo-lines-v1:sha256:8582df92a784a533f7ff593fb85fbe71e9c4c2ae76d131ed2b17bb39757504be:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk1OTdhZTc2NjE4N2Q2NjUyOGI1MmZlZWJiOGQxOWFmMWJhODM4ZWFkYjJlNjRiODA4ZTcxNmQ1NTE2Y2MxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODRjNGMzNzA1YzU4OTk2M2FjMDcwN2YyMzZmYjNhZGYzMTZiNjgwZDIxOTJlMDI1OWQzNDdkYzRhMmJhZmM4YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWRmOGI3MTEzMmMyN2ExOGE5MWNiMWUzMTM4MmQ2ZDcxNDAwOTQ1YWFlYzIxNGIxYzQzNTIxYTE1OGFhZmM3NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk4YTM4NTgyN2U1MmFmZjI5YzhiNjFhZTA4NzJiMGM0Y2E2NTFhMWEyOThiOGYwZDU0ZTQ3ZGJkZDkzODEwZSJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L43-L50",
-          "version": "repo-lines-v1:sha256:c5b0e12cfcfd71cb50ba24a74d4a681acdac3251e26e7322722f56b72c52f0a7:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE1YWJmYzU4ODZjZDEzNmIyNjE4M2E0ZGFkNDEwMTQxOWY2MzQ3NzU3YTZkODAwYTkwMjU2NGNiMjAyZGZmNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjExMTNhZjg2NTYzMDMwM2M2ZTNlNzJiYWY3MjQwOWIzN2NiYWUzNDhiMTYxODlkMjg5Njc3YTE5YmIzYzUwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODhjNjg1MzA5M2Q2YjQ0NjEwNDgyZTBiODU3ZmZmMTA5YTcxOWVhYjA5NDE4NjJmMmM2M2ZmOTk1NzRiODE1NCJ9"
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L43-L53",
+          "version": "repo-lines-v1:sha256:6155fad92a64375e922af09bb2458e915ddf7040dcddb2565d9c2425dcd610ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MmU1MjQ5ZGY1YjkyNTRkZWM2OWE0ZGYxNzE1OTAwNjU3NmRjZTE5NzUxMDIxZWJhMjcyMTk2M2NlMTdhZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4YzY4NTMwOTNkNmI0NDYxMDQ4MmUwYjg1N2ZmZjEwOWE3MTllYWIwOTQxODYyZjJjNjNmZjk5NTc0YjgxNTQifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L70-L100",
-          "version": "repo-lines-v1:sha256:24463416dea5153e235dd015232e33f7558a2f9f32c2dc9003f9b9f8525edb19:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYjcxYWU1ODg1ODRkZGRlMTkwYzM5YzM0YTgzZWNhZDYxNTNiMTUwMmQ1YjYzNTQ4NTMwMGZkZmMyMmM0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNThjOTM4MDM0NTE1ZGM5NjI3YjQ4NWUwMzQzMTM5Y2ZmMGJmYWNkYjJiNDlkNDY3MTFhYjcwMzQ1YzA1ZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NWM0YzRiZjE1M2ZlNzU2NTI3M2FhYzk2ZTk4MGYyMWRjM2FlNjlkNmQyNDZjYmMxNTI4MjliZDdhOTVjMzgifQ"
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L81-L106",
+          "version": "repo-lines-v1:sha256:ca1cefc1d8e9fdf84eb9736b530a2b8eae0211944f79b9d8e0a52470605c0acb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYmJlYjRmNTJhYTI2YmEwZDBiNGIwZTIzZTlmM2FkYWZhMWVhZTYwMGZkMmVmNDYzOTU3NmU4NTQ5YWU3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhZjZmYzNkYzdhZmM4YTYxMmU1ZmY4MmEzMGJhYjc4MTVhZmIzNTBkZGJkOWEyNGU4YzNiOTljZDczMTFmM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NWM0YzRiZjE1M2ZlNzU2NTI3M2FhYzk2ZTk4MGYyMWRjM2FlNjlkNmQyNDZjYmMxNTI4MjliZDdhOTVjMzgifQ"
         }
       ]
     },
@@ -214,19 +230,19 @@
     },
     {
       "id": "claim_8f72830e1aed4b49af1f12f19da38bbf",
-      "statement": "All outbound delivery (sendMessage and the broadcastAlert/requestApproval fan-out to allowed users) posts MarkdownV2-escaped text to api.telegram.org/bot<token>/sendMessage with a 15-second timeout, and every failure — including non-2xx Telegram rejections — is collapsed to TELEGRAM_DELIVERY_FAILED because the request URL embeds the bot credential and raw fetch errors must never reach logs or callers.",
+      "statement": "All outbound delivery (sendMessage, requestApproval's one-tap keyboards, requestTriage, and the broadcastAlert fan-out) posts MarkdownV2-escaped text to api.telegram.org/bot<token>/sendMessage with a 15-second timeout; deliverToAll delivers to each allowed user independently with per-recipient progress tracking so a failing recipient neither stops the others nor is re-sent to one that already received the message, and every failure — including non-2xx Telegram rejections — is collapsed to TELEGRAM_DELIVERY_FAILED because the request URL embeds the bot credential and raw fetch errors must never reach logs or callers.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L129-L134",
+          "resource": "repo://packages/server/src/__tests__/operator-push.test.ts#L169-L194",
+          "version": "repo-lines-v1:sha256:69772a39cd55fe071d8d5b922c3dad91cf68b5f5906ebddf703f067602281b18:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMDZlMjI1ODFmZjZhOGNjNDYxNDMwY2NjODJlZWE1ZjU3MmRlZDhmNGQ0ODdlY2I3ZGY4YjFkOWUyNDM5MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMTQwNDM0YzgwNmEyY2NmMzA0MGY0ZWU3NjkzMWVlNjI5YmJhNmJkZTg5Zjg3MjdhMGQyOGQ5YTBlOTNlNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNTMzNjVjZTA0ZmFhMGEwYjZjNmI0ZDM5ZTQxNjA3YTcyZDRhNDUxMDI2NTVhNGQ0NDgxYTdjY2ViODcxZmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L131-L136",
           "version": "repo-lines-v1:sha256:158c3a1163c2f4b67b9b5ab7e3a84e067c6ba917ce5b9dceb4ffe24d48075eb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTU2NWRlNmVhNTViZTFlODQ4NTllN2ZiZjQ3NjgzYzI3Yjk3OTM1ZjhiOTNmOGFhYzVjMzliMzkwZGNlMTg5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDM0YjRiM2NhMTNiMTkzYjk3MTFjMDkzYzEwYzU2NDA5NjNiYzU5ODAwYzc3YWMwNmFiZTRmNjU4NDhjYzg2YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTZmNTBhYWE2NmMzMjU5NzgyMGEyOGJiZTViMzdlYzQ4MTRiNjJiZjIyMDFjZWRhZGJhNTIzYWE2ZjY1MTIwMiJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L177-L208",
-          "version": "repo-lines-v1:sha256:fe3523cfb1a944cb23245d848bae4bcccd5843d27e1964a875ef7033d097b2c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZWY3ZTAzNGYwYTQ2MjFkMGM5NTEwZjliYTdlMWRiNGI3OGY3MmUwZGNiYWY4MmViMzYzNGY3Yzk5N2ExMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5MWQ3ODI2ZWRiYzk1YWFlYWM0MDIwZjdjMzY4NjI0Nzc2MjNlYWM5YTMwNTQzNzU1ZDExY2M1ODFlOGQzZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ZGQ2NzY2ZjFlMTRjYWFmOGY3ZjA3NWU1MmNkZjcxZmU5ZWFhNzA1ZjFjNjc3ZjQ1ZThiNDRmZDM3MDg0ZmMifQ"
-        },
-        {
-          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L395-L398",
-          "version": "repo-lines-v1:sha256:d83d8e4926d152de13f1aa47a1b848d0ce274c5110c28c04217f9feab6f0e58d:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTMxNGEzODIxZTFkMThhNTJhZjYyZWEzMjc3NGUwMzUzOGFjYTkxOThmOWM1OGY0ZWZkYzk2MzAzMDJlYzFiMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzk0MGExNDVkZWYyOTIwY2ZjODQzZDQwN2MwMDNlMzQxMjg3ZjAxOWYxYjM2N2YwYjUyOGM2YjY0NTAyZTAzYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L183-L249",
+          "version": "repo-lines-v1:sha256:26bf96f05932f501434ab81d52985f66de917609c05a2b54100cf96dfab3566e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwYzA3ODRjZjU2Njc3NjBhYjg1NDA5MTE1ZjE5ZGQxZTBjZWNlNGI3NjQ1MjQ3ODdlODA5NWZmMTM0NDUwM2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5MWQ3ODI2ZWRiYzk1YWFlYWM0MDIwZjdjMzY4NjI0Nzc2MjNlYWM5YTMwNTQzNzU1ZDExY2M1ODFlOGQzZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4MjZkZGExOTVkMDFjYjY3NWUwM2ViMzBkYmNiNzJlYTc4YjU5Yjc5YjdkNGQ2ZjRhODBkMTBjMzk3MjliMjkifQ"
         }
       ]
     },
@@ -240,7 +256,7 @@
         },
         {
           "resource": "repo://packages/server/src/services/telegram-api-service.ts#L1-L30",
-          "version": "repo-lines-v1:sha256:0a8d8bb265eb5937c95425080a4579b3a98a707a8c14fbfa5c442c75a7ced540:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNjZhYmEwMjEwMmUwYjc5MDU5NWZhYmVjYjJhMDdjYTc1M2UxZDZkOGRkNzM3ZjUzMzhkZWRhOTdjZTJmYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1ODI5NmY4N2NjNTA0MmI0NzFlMzIyYjBiYWQ5YjkzNTkwNDEzMDFjYTA2ZWEzZjBhYjY1OWViYTZlNzhkZWQifQ"
+          "version": "repo-lines-v1:sha256:bd0fbc6765cd25d64f87d6401abdb7558bb99fb3eed70cfcf5cefd2fd793dc8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNjZhYmEwMjEwMmUwYjc5MDU5NWZhYmVjYjJhMDdjYTc1M2UxZDZkOGRkNzM3ZjUzMzhkZWRhOTdjZTJmYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1ODI5NmY4N2NjNTA0MmI0NzFlMzIyYjBiYWQ5YjkzNTkwNDEzMDFjYTA2ZWEzZjBhYjY1OWViYTZlNzhkZWQifQ"
         }
       ]
     },
@@ -271,10 +287,66 @@
           "version": "repo-lines-v1:sha256:c7e8c5a4c7a110b6909255f5c6b5915b35b8b72acfb7a4c1ddccc1b6f76a636a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MjM5NjRkOTdkNTFhZWQ3NDdhYWJiNzIwYmVmYjM2MTNkY2ViMDA4NDY5MWFkNTM0NTI0YWRmNWE5YWE4YmE4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1Y2JmZGU2OGUyMDQxNTExMGMxMGFlMGI1ZjIzNDZkOGE3NWM5OWIxOGFhY2U1MjNiZjgzNWRkNzRiMjg1N2VhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwM2Y0MjlkODhhOGQ1ZjM5ZGY0ZjAzYmQwZmFhMGEwMzI0NDM0YzgzYTZhMTQ2ODEzOThkOGQzM2QzNzhhMzdiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5ZThhNDVkZGM4NWFkNDc3Njg3ZmU0NzczYjM1MjJmNDMyMmIzNGQ3N2MwMmM0MGRkYTQ0NTliYmJiYjliNmI3In0"
         }
       ]
+    },
+    {
+      "id": "claim_99ef8823e65c438ca962afc2d7a45c05",
+      "statement": "The webhook router, when TELEGRAM_BOT_TOKEN is set, registers the configured TelegramBotService as the operator-push channel (setPushSender) and arms the shared 15-minute operator_digest scheduler tick; services/operator-push.ts then delivers four opt-in Telegram streams through that sender — one Approve/Deny-button message per new pending approval (TELEGRAM_PUSH_ENABLED, TELEGRAM_PUSH_DELAY_MS default 15 s, dedupe in telegram_push_log, TELEGRAM_PUSH_MAX_PER_HOUR cap, TELEGRAM_QUIET_HOURS), one alert per new stall (pushStall from stall watch), one-tap triage for memory reviews and D5 pre-screen labels (TELEGRAM_TRIAGE_ENABLED, TELEGRAM_TRIAGE_MAX_PER_PUSH default 3), and a once-per-day digest (OPERATOR_DIGEST_ENABLED at OPERATOR_DIGEST_HOUR UTC, default 7, deduped per day in operator_digest_log with failed sends retried). pushApproval is called from ApprovalService.createApproval, never throws, and all pushed text is secret-redacted and limited to ids, counts and short snippets.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L83-L86",
+          "version": "repo-lines-v1:sha256:64e9afc547b88e3beae62403139a878b23e65234c6dd4a023ecd3169a0cf7139:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzk3YzdlNmEyYWQ1MGUzNzVmYmYwMDUxNjFmNGNiYjQyZWRiNWI5MWIxNmRhNzhlZTNkNDQ4MzBjNjYzZWIwZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdmM2EwMWY4ZWRiMzIzY2ZhODI5MWM0MDhjMWM2YzY0ZjJjNTczNjQ3MTg2NWMzZDQ1ZGJhYTA5YTcxNTg0OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTE5ZDg0Y2M2MDhlZTM3MDBiNDgxMzgyNzhiMmZkYzE2MDg2MTIyZjFiNTQyOWFiYmM1NjM4OWMxZGFiMTVjMyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L144-L148",
+          "version": "repo-lines-v1:sha256:3854efc7ff48654b27981c1ddbe500003d6d73752de8cf3f3ef9631a91904589:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWFkY2MxNzM3MzIxMTJjZGE2OWRhNjliMWM2MjZlZTg5OTNkZTFiMmJlYTczNzA2OGVhODZkOTgyNzQxYjI5MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTgyMTViN2MzNzliZmVjYTI5ZTI0NDYyMzEzYjY2NDQ5NGIxOGI5NjYwN2IyODJjMTRlMDY3YThiOGEyNmI0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjQyYmJkN2VjYjY4YjZiODA4YzA5MDRlZGY1NDk0NjE0NDQyNjc0ZDI3MjE5MjQzZGMyNWNhMTE2NTIxZjQwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M4YjUzMWRlYjA0OTZhNDdlNTFhNjczNWE5YWFmZDQ0ZmY4Y2U4NDVkNTIzYzE3M2NkNDc3ZmFlZmMzMjM4MCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/operator-push.ts#L12-L56",
+          "version": "repo-lines-v1:sha256:468705975d8f1078b46e31fd4983d7abbc13fe35e7f8cbd49e33ffec15ceaba6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjMjg5MmFjOTZiNzI4MDFlYzkxZGU5Y2RlNjhkMWZhODY3OTkxN2I4ZDk1OTFlZWM2ODQ5Njg4ZWM3NWRkZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiYWMzMzRlMjdhMGE0ODI3ZTc3ZDZhMjdiMWZjM2JhMTkwZjk4ZGQ0ZTRlZTk2MzM5ZDkwYmM3OTU3ZWQ0OTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/operator-push.ts#L148-L173",
+          "version": "repo-lines-v1:sha256:76d0c7a3769ad7c8463cf9e225de30c0f50bebbc031e810b247315b45aa07389:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYjU5YmFlMWVjNGUwNWJlMTU0ZjYwYjU2NGVkMjVjMmNmMTVlNDBjZjkzNWZlODg2NGMwZGQ1ZWVmM2YwNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0YmE3Yjk1NGZjOTQ1ZWUyOWY5YWE1NGYwNDg0ODZhZjgyNTQ3M2JkYzZhZjhmNDllZDExMTVmOTY1MTQ2YmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwZDVmZGNlZmU4OGU3NjgzZjUzM2ZiMDI0ZDczN2UxOGEzZDVjYjNhYmI2Zjc5ODBmNzc0Zjc2ZTY4NGJlNDAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/operator-push.ts#L188-L206",
+          "version": "repo-lines-v1:sha256:aae94e32ea09ed3062fa1ec023cd6e87a19bc429eea6de71557e440e8a238572:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwZGI5ZGQ2MzQxMTYyYzg1Y2UxYmQ1MTI3YTYwNzU3NjI2MWViYWMyODRiZGE1ZjBhMTc1ZjRkNWRiMzc1N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlNDYwNWEzNGQ3ZjkxNDliNmUxYzg4NDg2MzY2YWIzNjZiMzhkMGU2YjhmMjVhMjIzZGNkYWU0Mjg5NDBiMDQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/operator-push.ts#L233-L263",
+          "version": "repo-lines-v1:sha256:4ef0105d159ad4fc8b5e1509a9078db795b8994a4ee731ba7775d9ca17c14652:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzMzA0ZjIzYmYwOGE5ZTdhMDIyMmIzMWE2OTgxNWYyYjgzY2ZiMTk2NDM4YWE2YWE4Y2E3MzBjMjYyNDRiNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1MjVmMjM3YWVhODJkYTc1M2I4NDQyZmQwMTNmMTMxYWY2OTZhNjI3ZjZjZmFmYmY1YTg1N2ZlZGFhZDUzZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5OWYzZjY2YjE0ZTZhZDA3ZjNkZjE5NTU5ZmZjMzc5MzdkODE5ZGZkMGJkN2Q0NWQyNTljODBmNGNkNmY0YmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/operator-push.ts#L356-L389",
+          "version": "repo-lines-v1:sha256:797d11aa0bc0506b8c04997964063aaa417c2188835158bfd3610575a51b6c48:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkNzk2NDhlODUxYThmYmNmMWRjYjM2OTc4NTAwOGNhOTM4OWRiNzdkNmQ0MTJlNThlYmVlY2JmMjYxNjgzYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTUxMWI1ZTNmYTI1MWQzYjliMTBhNjU0Mzg4OWFjNjdhYTU1N2JjN2E4ZjJmOTI0NjkxYjQ0YmZlZDc1YjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmZTJjYzk3MThmNWQ5Y2IyMjdjMDNlNmFhMDY1ZWFkMWJiMjU1NDZkYzc4MmZmNTNmNGRkMzI1ZTI1OTYxMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6ca2b5288590409bb6697da12d107ff5",
+      "statement": "One-tap callback authorisation runs through services/telegram-identity.ts against the D3 table telegram_identities (created by migration, initially empty): resolveTelegramActor requires a digit-string telegram id, a row mapping it to an existing is_active user, and mayApproveViaTelegram additionally requires the user's role to hold approve:task; every allow or deny is audited as a telegram_access judgments row and an audit failure can never grant access or crash the gateway. Operators add mappings via PUT/DELETE /api/self-improve/telegram-identities/:telegramId (manage:config), which rejects mapping to a user holding any permission the caller lacks (TELEGRAM_MAPPING_ESCALATION).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/operator-push.test.ts#L106-L113",
+          "version": "repo-lines-v1:sha256:b68e3a4e1a7b48fe5d416bab3034b679070914691987c9417be7920490a6613e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODc1YTY4YWE5ZWE0OTI1MmRhN2Y4MmEwN2FkZTgyMWU5NmQ5MWE4OWZiMjgxMGQzMDNkOGI0NjFhNWU3ODRjZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTljMTI0NjFmMWE3YzgyYjRiNzFhZmNiYjE1YzlkMzcwY2EyNDk0OTQ1YjA1YzhlN2MzYjkyMmRlZDI1ODY0YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWMzYzgxYTBmZDRiNTU1NzYzZDA4OWYzM2JkOTdhMWNiZjEyN2QyYmM2YzVjMDlhMjZjMmQyMDMwOGEyMmY4MyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1396-L1404",
+          "version": "repo-lines-v1:sha256:22378842b051b0af9c000c0b2a795b81cace25afca0740ee29659ed23c648b80:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTQ0MTk4MmYwMzkwZjZiOTMwMWVkYTUzMjZkMjI5ZjM1ZTA3NThlYzdjOTg3ZGU1N2IyMDU0NTJhMjU4Mzg5NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODRlNDIwOGNkNmZmYjhjNGEzNTQ3YjJmNTRhZGExOTk3OGMzZjM2NWU3OGY5NTAyZWY1MTQ1Y2RkMmFhODU0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGFiMTg1Y2ViYzY0ZmE2N2VkMWYyYjdkNzI1NGViM2M4MGI4ZDViYjgyYTJjNmJhZmE2Njc2NGEyOTZjMWE5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjhhODQxMGE0N2VkY2U2ZDE2Nzk1N2E4YjRhZTk3NGE5OGUwY2ViYmJmOTY1NGJiNzg1ZGNlN2ExMjU2N2U2NCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/self-improvement.ts#L204-L234",
+          "version": "repo-lines-v1:sha256:2647616a354b25731be789847966417cbb90b459988b00a774e739b7aefff682:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkNGNlYzUwYjI3ZTE3YzE4MjA0ZTNhNDI2OTZiZjcxM2U1M2Y1YjUwYmVhNjUxYjRiNmJmZTkzMDFkYWQzNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTJiZTlmNjhiMzgyYTVhYzNkMjI3ODAzZDZhN2Y5NjEzNDRkYzhjZTZlYmI1OWJmNzY5MjRlNjhjNmFhYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3ZGJiZjQzYzAzZTcxNjJkYzA3YjA2ZTAxODQzNTIyNzQ1ZDc5Mzc3NjdhNThlNjc2ZTk5YmU1YzM5NmZlMWMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-identity.ts#L14-L48",
+          "version": "repo-lines-v1:sha256:66c0a44b85ffa97bea86477e4673ada36eb98446a7b768655774a76d24246f48:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwODk5OTFlYmM0ZmNkZWQyNzZmNjM3MmQ5MzE0NTM5Zjk4YjdjNzM3ZjJmOWE1NmZmMTBmYTI3YjRhNDM4MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZDE3N2ZkYmIxYWFmN2YwOTNjMmQwOTdhOTI0ZGQxMjhlMTYzZDgzZGEwMjEwY2VkNjUyNzcwNzdlM2QzODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzMDA5NDVhMzE3YmVhYWVlY2MyYjNiZjM5MWNmMDg0ZmMzODA0N2FjYTYwZWJjNGI2YTQwNjU4YjJlMTJhNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-11-07T14:47:55.436Z"
   }
 }
