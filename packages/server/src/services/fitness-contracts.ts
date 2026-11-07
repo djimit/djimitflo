@@ -104,11 +104,11 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   { component: 'gym_genomes', class: 'gym', name: 'Maker genomes (dream evolution, gym)', unit: 'one candidate genome vs its parent on a frozen holdout epoch', mechanism: 'genomes',
     flags: ['DREAM_EVOLUTION_ENABLED', 'DREAM_TRIAL_MUTANTS', 'DREAM_TRIAL_MUTANT_TIERS', 'DREAM_PROMOTION_ALPHA', 'TRIAL_HEADROOM_PRECHECK', 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', 'DREAM_EVIDENCE_MUTATIONS',
       'GYM_HOLDOUT_EPOCH', 'GENOME_FIRE_CHECK', 'GYM_IRT_SELECTION', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', 'SUBSCRIPTION_GYM_SPECIES', 'SUBSCRIPTION_GYM_MAX_PER_DAY', 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS',
-      'GYM_ORPHAN_SWEEP', 'TG_001_MODE'],
+      'GYM_ORPHAN_SWEEP', 'TG_001_MODE', 'DREAM_PROMOTION_RULE', 'GRADED_FITNESS_MODE'],
     outcome: { metric: 'gym oracle pass (tests green, source only) on production-gated eligible attempts, VOID attempts excluded', source: "loop_runs.metadata.gym_result.status (loop_name 'evolution-gym') / skill_outcomes 'loop-maker:gym:*'", independence: 'independent' },
     cost: { tokens: 'llm_model_calls (remote gym attempts) + gym_result usage where reported', kwh: null, operator_minutes: null },
     comparison: { kind: 'holdout', ref: 'gym_holdout / gym_mutant_holdout / gym_write_test_holdout (frozen epochs, paired parent vs child)' },
-    decision_rule: 'promote when discordant wins b > c with one-sided exact McNemar p < DREAM_PROMOTION_ALPHA (0.05), mined regressions ≤ 1, scope violations not above the parent, ≤ 1 promotion per day; holdout reuse above the limit → inconclusive',
+    decision_rule: 'promote when discordant wins b > c with one-sided exact McNemar p < DREAM_PROMOTION_ALPHA (0.05), mined regressions ≤ 1, scope violations not above the parent, ≤ 1 promotion per day; under DREAM_PROMOTION_RULE=graded a one-sided paired sign-flip permutation test on the gym graded: scores (written under GRADED_FITNESS_MODE=shadow, else 1/0) decides instead (p < α AND mean diff ≥ 0.05); holdout reuse above the limit → inconclusive',
     inheritance: 'inside the gym only: a new mutant starts from the newest active genome. No production path: strategyGenomeFor attributes, GENOME_APPLY_MODE only shadows',
     status: 'closed_loop',
     note: 'The one sound select-and-inherit loop, closed inside the gym only. Docs record 0 promotions to date, DREAM_EVOLUTION_ENABLED off in prod since 09-10, and TG-001 (gym → production transfer) closed INCONCLUSIVE.' },
@@ -346,7 +346,7 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   // SETTLED_REGRESSED — cannot fire on test-only PRs — or main CI red twice); settlementRevocation (exports: ≥ 50 % of the last 20 settled
   // below 0.2 → lane revoked); isAuditSample (10 % by sha256 of the PR number, left to the human — no contrast computed)
   { component: 'auto_merge', class: 'merge', name: 'Test-only auto-merge', unit: 'one eligible loop PR',
-    flags: ['LOOP_AUTO_MERGE_TEST_ONLY', 'LOOP_AUTO_MERGE_MAX_PER_DAY', 'LOOP_AUTO_MERGE_RECHECK', 'LOOP_AUTO_MERGE_RECHECK_HOURS', 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', 'LOOP_AUTO_MERGE_REPOS', 'WEAK_ASSERTION_CHECK_MODE'],
+    flags: ['LOOP_AUTO_MERGE_TEST_ONLY', 'LOOP_AUTO_MERGE_MAX_PER_DAY', 'LOOP_AUTO_MERGE_RECHECK', 'LOOP_AUTO_MERGE_RECHECK_HOURS', 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', 'LOOP_AUTO_MERGE_REPOS', 'WEAK_ASSERTION_CHECK_MODE', 'SETTLEMENT_EXECUTION_MODE'],
     outcome: { metric: `${SETTLED_KILL}; reverts and main CI on the merge commit`, source: 'latestSettlements + checkRevocations (loop-auto-merge.ts)', independence: 'independent' },
     cost: { ...NO_COST }, comparison: { kind: 'none', ref: null },
     decision_rule: 'revoke only: a revert, SETTLED_REGRESSED or main CI red twice revokes the class; exports lane revoked when ≥ 50 % of its last 20 settled PRs kill < 0.2 of fresh mutants',
@@ -354,7 +354,7 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     note: 'Failure tripwires on fixed thresholds; a good result never widens lanes or raises the cap. The 10 % audit sample is a latent holdout — no auto-merged vs audit contrast is computed. The class was earned by an operator decision, not a rule.' },
   // loop-auto-merge-state.ts autoMergeValueSignal (FBPA pass, or graded mutant_kill / mutation_score ≥ 0.2); auto-merge-value-replay.ts replays the
   // same maker-time signal; graded-fitness.ts (3 seeded mutants by default, 6 under GRADED_FITNESS_MUTANTS_V2)
-  { component: 'value_gate', class: 'merge', name: 'Auto-merge value gate', unit: 'one auto-merge candidate PR', flags: ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', 'GRADED_FITNESS_MUTANTS_V2'],
+  { component: 'value_gate', class: 'merge', name: 'Auto-merge value gate', unit: 'one auto-merge candidate PR', flags: ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', 'GRADED_FITNESS_MUTANTS_V2', 'GRADED_FITNESS_MODE'],
     outcome: { metric: `${SETTLED_KILL} of PRs the gate passed`, source: 'settlementValueEvidence (settlement-execution.ts)', independence: 'independent' },
     cost: { ...NO_COST }, comparison: { kind: 'none', ref: null },
     decision_rule: 'pass when FBPA passes against the parent source or the maker-time graded mutant kill / mutation score ≥ 0.2; otherwise ineligible',
@@ -364,7 +364,6 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
 
 /** Acting flags that steer no learning component: infrastructure, safety, plumbing or approval routing. A reason is required. */
 export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
-  UX_NAVIGATION_DISCOVERY_MODE: 'dashboard navigation UI (search, aliases); no learner reads it',
   SKILL_FIRST_MODE: 'dispatch of explicit executable-skill requests; existing approval and promotion gates decide',
   DJIMITSEC_SCAN_MODE: 'fixed repository security scan dispatch (pinned worker), not a scored component',
   DJIMITSEC_SCAN_TRIGGERS: 'webhook triggers for the fixed security scan, not a scored component',

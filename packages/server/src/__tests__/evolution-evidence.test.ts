@@ -166,7 +166,7 @@ it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod 
   expect(e.graded.contest).toEqual({ contests: 3, agree: 2, agreement_rate: 0.667 });
   expect(e.graded.mode).toEqual({ fitness: 'shadow', contest: 'off' });
   expect(e.flags.find((f) => f.name === 'GRADED_CONTEST_MODE')).toMatchObject({ acting: true });
-  expect(e.flags.find((f) => f.name === 'GRADED_FITNESS_MODE')).toMatchObject({ acting: false, value: 'shadow' });
+  expect(e.flags.find((f) => f.name === 'GRADED_FITNESS_MODE')).toMatchObject({ acting: true, value: 'shadow' });
 });
 
 it('S7: hack_rate over 14 days per genome and task kind (checked = hack detector ran), canaries served/passed, Wilson 95 % and insufficient below n = 10', () => {
