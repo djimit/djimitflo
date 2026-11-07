@@ -59,6 +59,7 @@ import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
+import { gymNativeToolsEvidence } from './gym-native-tools';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -92,7 +93,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
   { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
   { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
-  { name: 'GYM_PROD_GATES', acting: false },
+  { name: 'GYM_PROD_GATES', acting: false }, { name: 'GYM_NATIVE_SKILL_TOOLS', acting: true },
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
   { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
   { name: 'INFERENCE_BUDGET_THROTTLE', acting: true }, { name: 'OLLAMA_WEEKLY_TOKEN_BUDGET', acting: true }, { name: 'OLLAMA_THROTTLE_AT', acting: true },
@@ -586,5 +587,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
     capability_factory: capabilityFactoryEvidence(db, env),
     // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
-    skill_route: skillRouteEvidence(db, env, since) };
+    skill_route: skillRouteEvidence(db, env, since),
+    // GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native tool on ordinary remote gym attempts — offered / called / pass rate when called /
+    // stopped within N steps after a pass (descriptive; not an experiment)
+    gym_native_tools: gymNativeToolsEvidence(db, since, env) };
 }

@@ -363,6 +363,9 @@ export interface EvolutionEvidence {
   skill_route?: { mode: 'off' | 'shadow' | 'on'; since: string; note: string;
     by_arm_lane: Array<{ arm: string; lane: string; selected: number; delivered: number; invoked: number; passed: number; verified: number; credited: number }> | null;
     contrast: { treatment: { n: number; verified: number; rate: number | null }; holdout: { n: number; verified: number; rate: number | null }; difference: number | null; withheld: string | null } | null };
+  /** GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native gym tool — offered / called / pass rate when called / stopped within N steps of a pass; null = unreadable */
+  gym_native_tools?: { mode: string | null; stop_within_steps: number; offered: number; scored: number; reported: number; unknown: number; called: number; calls: number;
+    calls_passed: number; call_pass_rate: number | null; attempts_passed: number; attempt_pass_rate: number | null; stopped_within_n: number } | null;
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
