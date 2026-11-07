@@ -52,6 +52,7 @@ import { latestSettlements, runLanes, settlementExecutionEvidence, settlementVal
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
+import { cv001Evidence } from './cv-001';
 import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 import { realRunSql } from './synthetic-runs';
 import { fleetRepairEvidence } from './fleet-repair';
@@ -114,6 +115,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'STE_001_MODE', acting: true },
   { name: 'TG_001_MODE', acting: true },
   { name: 'PL_001_MODE', acting: true }, { name: 'PL_001_CAP_SHARE', acting: true },
+  { name: 'CV_001_MODE', acting: true }, { name: 'CV_001_WINDOW_UTC', acting: true },
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
@@ -574,6 +576,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks — pairs, per-arm
     // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
     pl_001: pl001Evidence(db, env, now),
+    // CV-001 (CV_001_MODE): qwen38-27b vs the gym-only control-vector preset qwen38-27b-cvd15 on frozen mutant-repair tasks — the quiet
+    // window, pairs per (task, repeat), clean / plain success per arm, one-sided exact McNemar, the four-rule decision and the verdict
+    cv_001: cv001Evidence(db, env, now),
     // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
     memory_delivery: memoryDeliveryEvidence(db, env),
     // Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after success rate around a linked merged fix (read-only)

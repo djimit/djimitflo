@@ -8,6 +8,7 @@ import { tg001Evidence, TG_TASKS } from './tg-001';
 import { d5NoEvidence, D5NO_ANALYSIS_N } from './d5-no';
 import { jevChallengerEvidence } from './jev-challenger';
 import { PL_MAX_DAYS, PL_PAIRS, PL_PROTOCOL, plFirstAttempt, plManifest, plManifestValidity, plState } from './pl-001';
+import { CV_MAX_DAYS, CV_PROTOCOL, CV_REPEATS, CV_TASKS, cvFirstAttempt, cvManifest, cvManifestValidity, cvState } from './cv-001';
 import { fisherExact, memoryHoldoutEvidence } from './evolution-evidence';
 
 /**
@@ -95,6 +96,9 @@ const X1_STARTED = '2026-10-09T00:00:00.000Z';
 /** PL-001 runner amendment (2026-10-26): registered, not started; decide start or close by PL_DECIDE_START_BY (registered + 30 d) */
 const PL_REGISTERED_AT = '2026-10-26T00:00:00.000Z';
 const PL_DECIDE_START_BY = '2026-11-25T00:00:00.000Z';
+/** CV-001 (pre-registered 2026-11-07): not started; decide start or close by CV_DECIDE_START_BY (registered + 30 d) */
+const CV_REGISTERED_AT = '2026-11-07T00:00:00.000Z';
+const CV_DECIDE_START_BY = '2026-12-07T00:00:00.000Z';
 
 /** Literal dates (pinned against their source constants in experiment-registry.test.ts): X1 = start + 28 d, D5-NO = cutoff + 90 d.
  *  A function, not a constant: the imported targets are read at call time (stall-watch ↔ d5-no import cycle). */
@@ -161,6 +165,20 @@ export const experimentDefs = (): ExperimentDef[] => [
       if (!m || !plManifestValidity(db, m).valid) return { n_per_arm: null, verdict: null };
       const s = plState(db, m, now);
       if (since !== (first ?? PL_REGISTERED_AT)) return { n_per_arm: null, verdict: s.verdict };
+      return { n_per_arm: { pairs: s.completed.length }, verdict: s.verdict }; } },
+  { id: 'CV-001', flag: 'CV_001_MODE', protocol: CV_PROTOCOL, started_at: CV_REGISTERED_AT,
+    target_n: CV_TASKS * CV_REPEATS, stop_by: CV_DECIDE_START_BY,
+    stop_note: `protocol stop rule: every unit (task x repeat) complete or INVALID, or day ${CV_MAX_DAYS} after the first attempt (stop_by = first attempt + ${CV_MAX_DAYS} d once one exists); before the first attempt a decide-start-or-close date`,
+    stop_source: 'docs/research/cv-001/CV-001_PROTOCOL.md#stop-rule', population: 'gym_tasks',
+    // gym population only: the arms change the router model of gym attempts, never a production maker (no maker-selection env)
+    treatment_env: ['CV_001_MODE', 'CV_001_WINDOW_UTC', 'GYM_PROD_GATES', 'GYM_MAKER_TIMEOUT_MS', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', 'HACK_DETECTOR_MODE'],
+    schedule: (db) => { const f = cvFirstAttempt(db); return f ? { started_at: f, stop_by: new Date(Date.parse(f) + CV_MAX_DAYS * 86_400_000).toISOString() } : null; },
+    // n = completed pairs (task x repeat, both arms observed or censored) over the whole experiment; it cannot window
+    status: (db, _env, now, since) => {
+      const m = cvManifest(db); const first = cvFirstAttempt(db);
+      if (!m || !cvManifestValidity(db, m).valid) return { n_per_arm: null, verdict: null };
+      const s = cvState(db, m, now);
+      if (since !== (first ?? CV_REGISTERED_AT)) return { n_per_arm: null, verdict: s.verdict };
       return { n_per_arm: { pairs: s.completed.length }, verdict: s.verdict }; } },
   { id: 'D5-NO', flag: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', protocol: 'docs/research/eco/D5NO_PROTOCOL.md', started_at: '2026-10-11T21:00:00.000Z',
     target_n: D5NO_ANALYSIS_N, stop_by: '2027-01-09T21:00:00.000Z', stop_note: 'cutoff + 90 days → INSUFFICIENT_EVIDENCE', stop_source: 'docs/research/eco/D5NO_PROTOCOL.md', population: 'prescreen_proposals',

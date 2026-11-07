@@ -193,3 +193,35 @@ vector is inert at this scale; a retry with another scale or layer range is a ne
 Amendments are appended below the fingerprint line, dated, with a reason. They never change the text above it.
 ---
 PREREG_SHA256: b6e1bb318557464e49d6cef8663c5730a1d56dc396c6e471324e556faf25771c (sha256 of everything above this line; computed 2026-11-07 before any CV-001 runner or worker code existed)
+
+## Amendment 2026-11-07 (1): runner
+
+Reason: the runner is built (`packages/server/src/services/cv-001.ts`, worker `scripts/gym-worker.mjs`, same branch) before any
+attempt. The points below are fixed here, before any outcome exists. The hypothesis, treatment, population, schedule,
+primary endpoint, test, alpha, decision rule, n and stop rule are as frozen: verdict rules unchanged.
+
+1. **Flags.** `CV_001_MODE=off|on` (default off) and `CV_001_WINDOW_UTC` (default `0-6`). Rollback is `off`: claims then match
+   the pre-CV-001 claims byte for byte, also for a worker that announces `model_override`.
+2. **Worker.** CV-001 slots are served only to a worker that announces `prod_gates` and `model_override` and offers
+   `atomic@llama-router`. The claim carries `model_override: { alias }` and `cv: { experiment, arm, repeat }`. The worker then
+   routes the maker through an HTTP route on its host-side socket (instead of the byte pipe) that sets `model` in every JSON
+   request body and writes its counts after every response. It reports `model_check`: alias, requests, forced, unforced, the
+   models named in the router's responses, router HTTP errors (status ≥ 400 or no answer), the router listing for the alias
+   (status, launch-argument control vectors with the sha256 of each file, layer range) and the transcript counts. A claim
+   without an alias keeps the byte pipe and sends no `model_check`.
+3. **Delivery proof, made concrete (never weaker than frozen).** VOID unless: alias = claimed alias; forced ≥ 1 and
+   unforced = 0; every served model = the alias; the listing names the alias; no control-vector layer range on the alias (a
+   layer range is a different treatment); arm B: exactly one vector, scale 1.5, file sha256 `db1893a4…4281`; arm A: none;
+   the transcript counts (tool calls, broken tool calls, loop, edits after the first pass) are all present. This holds in
+   both arms.
+4. **Maker timeouts.** The worker discards a maker that timed out without a change as `infra:`. In CV-001 such an attempt is
+   an **observation**, not infra (otherwise rule 4 could never see the timeouts that matter most): it is scored as a failure
+   (`maker timeout (CV-001 observation)`), timeout = true, not plain, not clean, under the same delivery proof. A crash
+   (any other termination) stays infra and is re-served.
+5. **Degenerate.** "HTTP errors from the router" in the frozen definition are the forced POST requests that got a status ≥ 400
+   or no answer.
+6. **Verdict record.** The verdict is recorded once on `cv_experiments.verdict_json` at the result or claim that settles it;
+   REJECT also records a `negative_evidence_draft` judgment. The experiment registry reports CV-001 with target 120 units and
+   the stop dates frozen above.
+7. **Isolation detail.** Besides `loop_name = 'cv-001'`, the species breaker and tried-task bookkeeping (which select by
+   species, not by loop name) skip any run carrying `gym.cv`, as they skip `gym.pl`.
