@@ -157,6 +157,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'TYPESAFE_COMMONS_CONTRIBUTION_MODE', acting: true }, { name: 'TYPESAFE_FAILURE_CAUSE_MODE', acting: true },
   { name: 'TYPESAFE_CHECKER_SECOND_OPINION_MODE', acting: false }, { name: 'TYPESAFE_RISK_ATOMIC_MODE', acting: false }, { name: 'TYPESAFE_COMMONS_IDEA_MODE', acting: false },
   { name: 'FLEET_SHELL_ENABLED', acting: true },
+  { name: 'OPENCODE_BRAKE_CACHE_READ_WEIGHT', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */

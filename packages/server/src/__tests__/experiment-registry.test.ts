@@ -4,7 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, experimentDefs, experimentsReport, recordTreatmentEnvBoundaries, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
-import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { EVOLUTION_FLAGS, buildEvolutionEvidence } from '../services/evolution-evidence';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { D5NO_CUTOFF, D5NO_DEADLINE_DAYS } from '../services/d5-no';
@@ -286,6 +286,14 @@ it('re-20261105 E14 / A M3: oracle-population changes (value gate, content safet
     expect(boot({ [name]: after }).map((r) => [r.experiment_id, r.env_name, r.previous, r.current]), name).toEqual(ids.map((id) => [id, name, before, after]));
     boot({}); // reset to unset for the next name
   }
+});
+
+it('OPENCODE_BRAKE_CACHE_READ_WEIGHT decides which opencode makers are braked: a change writes a boundary for every running oracle experiment', () => {
+  const t = (d: string) => Date.parse(`2026-11-${d}T00:00:00Z`);
+  expect(recordTreatmentEnvBoundaries(db, { OPENCODE_BRAKE_CACHE_READ_WEIGHT: '1' }, t('08'))).toEqual([]);
+  expect(recordTreatmentEnvBoundaries(db, { OPENCODE_BRAKE_CACHE_READ_WEIGHT: '0.1' }, t('09')).map((r) => [r.experiment_id, r.env_name, r.previous, r.current]))
+    .toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2'].map((id) => [id, 'OPENCODE_BRAKE_CACHE_READ_WEIGHT', '1', '0.1']));
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'OPENCODE_BRAKE_CACHE_READ_WEIGHT', acting: true });
 });
 
 it('re-20261105 B6: an experiment with a verdict projects no power left (PL-001 showed "7.3 pairs/day, projected 102" after NOT_SUPPORTED)', () => {
