@@ -150,7 +150,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'PROPOSAL_GROUNDING_REQUIRED', acting: true }, { name: 'SELF_IMPROVEMENT_GOAL_ON_APPROVE', acting: true },
   { name: 'REMOTE_MAKER_ENABLED', acting: true }, { name: 'GOVERNANCE_GATE_ENABLED', acting: true }, { name: 'LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED', acting: true },
   { name: 'MUTATION_GAP_ENABLED', acting: true }, { name: 'MUTATION_GAP_MAX_PER_DAY', acting: true },
-  { name: 'TEST_GAP_SOURCE_ENABLED', acting: true }, { name: 'TEST_GAP_EXPORTS_ENABLED', acting: true }, { name: 'TEST_GAP_PACKAGES_ENABLED', acting: true }, { name: 'TEST_GAP_MAX_PER_DAY', acting: true },
+  { name: 'TEST_GAP_SOURCE_ENABLED', acting: true }, { name: 'TEST_GAP_EXPORTS_ENABLED', acting: true }, { name: 'TEST_GAP_PACKAGES_ENABLED', acting: true }, { name: 'TEST_GAP_DASHBOARD_ENABLED', acting: true }, { name: 'TEST_GAP_MAX_PER_DAY', acting: true },
   // judgmentMode() builds TYPESAFE_<judgment id>_MODE at run time (TYPESAFE_PROPOSAL_PRESCREEN_MODE is listed above)
   { name: 'TYPESAFE_KB_PASSAGE_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_DECISION_CONTEXT_MODE', acting: true },
   { name: 'TYPESAFE_DISCOVERY_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_REFLECTION_TRIAGE_MODE', acting: true },
