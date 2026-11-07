@@ -104,6 +104,10 @@ interface OpenCodeRunMetrics {
   costDollars: number;
   /** sum over steps (each step re-sends its context), i.e. what the run actually consumed so far */
   tokenSum?: number;
+  /** set only while the A4 brake is armed: OPENCODE_BRAKE_CACHE_READ_WEIGHT for this run */
+  brakeWeight?: number;
+  /** what the A4 brake counts: per step total − (1 − brakeWeight) × cache.read; tokenSum stays the provider total */
+  brakeSum?: number;
 }
 
 /**
@@ -114,6 +118,33 @@ interface OpenCodeRunMetrics {
 export function maxRunTokens(env: NodeJS.ProcessEnv = process.env): number | null {
   const n = Number(env.OPENCODE_MAX_RUN_TOKENS);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const warnedBrakeWeights = new Set<string>();
+/**
+ * OPENCODE_BRAKE_CACHE_READ_WEIGHT (0..1, default 1 = the brake counts every token, as before). Prod 7 d to 2026-11-07: 15 of 31
+ * opencode makers were stopped by the 1 M brake, and ~92 % of what it counted were cache reads (total 1 009 869, cache.read
+ * 932 503, input 50 517) — re-read context, not runaway fresh work. The weight scales cache reads in the brake sum only;
+ * reported tokens and token accounting keep the full provider numbers. An invalid value is 1, with one warning per value.
+ */
+export function brakeCacheReadWeight(env: NodeJS.ProcessEnv = process.env, warn: (message: string) => void = console.warn): number {
+  const raw = env.OPENCODE_BRAKE_CACHE_READ_WEIGHT;
+  if (raw === undefined || raw.trim() === '') return 1;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 0 && n <= 1) return n;
+  if (!warnedBrakeWeights.has(raw)) {
+    warnedBrakeWeights.add(raw);
+    warn(`[opencode] OPENCODE_BRAKE_CACHE_READ_WEIGHT=${JSON.stringify(raw)} is not a number in 0..1; using 1 (cache reads count fully)`);
+  }
+  return 1;
+}
+
+/** one step's contribution to the brake: total − (1 − weight) × cache.read, at least 0 (missing cache = 0, missing total = 0) */
+export function brakeStepTokens(tokens: OpenCodeStepFinish['tokens'], weight: number): number {
+  const total = tokens?.total;
+  if (typeof total !== 'number') return 0;
+  const cacheRead = typeof tokens?.cache?.read === 'number' ? tokens.cache.read : 0;
+  return Math.max(0, total - (1 - weight) * cacheRead);
 }
 
 /**
@@ -195,15 +226,19 @@ export class OpenCodeExecutor implements TaskExecutor {
       }, timeoutMs);
 
       const tokenCap = maxRunTokens();
+      if (tokenCap) metrics.brakeWeight = brakeCacheReadWeight();
       let braked = false;
       child.stdout?.on('data', (data) => {
         const text = data.toString();
         metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
         emitter.emit('output', text, 'stdout');
-        if (tokenCap && !braked && (metrics.tokenSum ?? 0) > tokenCap) {
+        if (tokenCap && !braked && (metrics.brakeSum ?? 0) > tokenCap) {
           braked = true;
           stopRuntimeProcess(child);
-          emitter.emit('error', new Error(`OpenCode token budget exceeded: ${metrics.tokenSum} > ${tokenCap} tokens (OPENCODE_MAX_RUN_TOKENS)`));
+          const counted = metrics.brakeWeight === 1
+            ? `${metrics.tokenSum} > ${tokenCap} tokens (OPENCODE_MAX_RUN_TOKENS)`
+            : `${Math.round(metrics.brakeSum ?? 0)} > ${tokenCap} tokens (OPENCODE_MAX_RUN_TOKENS, cache reads weighted ${metrics.brakeWeight}; provider total ${metrics.tokenSum})`;
+          emitter.emit('error', new Error(`OpenCode token budget exceeded: ${counted}`));
         }
       });
 
@@ -335,6 +370,9 @@ export class OpenCodeExecutor implements TaskExecutor {
     if (typeof total === 'number') {
       metrics.tokenUsage = Math.max(metrics.tokenUsage, total);
       metrics.tokenSum = (metrics.tokenSum ?? 0) + total;
+    }
+    if (metrics.brakeWeight !== undefined) {
+      metrics.brakeSum = (metrics.brakeSum ?? 0) + brakeStepTokens(part.tokens, metrics.brakeWeight);
     }
     if (typeof part.cost === 'number') {
       metrics.costDollars = Math.max(metrics.costDollars, part.cost);

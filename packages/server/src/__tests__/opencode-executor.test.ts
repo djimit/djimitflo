@@ -217,6 +217,39 @@ describe('OpenCodeExecutor', () => {
       expect(maxRunTokens({ OPENCODE_MAX_RUN_TOKENS: 'x' })).toBeNull();
     });
 
+    it('OPENCODE_BRAKE_CACHE_READ_WEIGHT: default 1, 0..1 accepted, anything else is 1 with one warning per value', async () => {
+      const { brakeCacheReadWeight } = await import('../execution/executors/opencode-executor');
+      const warn = vi.fn();
+      expect(brakeCacheReadWeight({}, warn)).toBe(1);
+      expect(brakeCacheReadWeight({ OPENCODE_BRAKE_CACHE_READ_WEIGHT: ' ' }, warn)).toBe(1);
+      expect(brakeCacheReadWeight({ OPENCODE_BRAKE_CACHE_READ_WEIGHT: '0.1' }, warn)).toBe(0.1);
+      expect(brakeCacheReadWeight({ OPENCODE_BRAKE_CACHE_READ_WEIGHT: '0' }, warn)).toBe(0);
+      expect(brakeCacheReadWeight({ OPENCODE_BRAKE_CACHE_READ_WEIGHT: '1' }, warn)).toBe(1);
+      expect(warn).not.toHaveBeenCalled();
+      for (const bad of ['abc', '-0.1', '1.01', 'Infinity', 'abc']) expect(brakeCacheReadWeight({ OPENCODE_BRAKE_CACHE_READ_WEIGHT: bad }, warn), bad).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(4); // 'abc' twice → one warning
+      expect(warn.mock.calls[0][0]).toContain('OPENCODE_BRAKE_CACHE_READ_WEIGHT');
+    });
+
+    it('the brake sum weights cache reads per step (clamped at 0); tokenSum and tokenUsage stay the provider totals', async () => {
+      const { brakeStepTokens } = await import('../execution/executors/opencode-executor');
+      const step = { total: 40_395, input: 2_021, output: 1_074, cache: { read: 37_300, write: 0 } };
+      expect(brakeStepTokens(step, 1)).toBe(40_395);
+      expect(brakeStepTokens(step, 0.1)).toBeCloseTo(6_825, 6);
+      expect(brakeStepTokens({ total: 500 }, 0)).toBe(500); // missing cache = 0
+      expect(brakeStepTokens({ total: 10, cache: { read: 50 } }, 0)).toBe(0); // clamp
+      expect(brakeStepTokens(undefined, 0.5)).toBe(0);
+
+      const line = JSON.stringify({ type: 'step_finish', part: { type: 'step-finish', reason: 'tool-calls', tokens: step, cost: 0.01 } });
+      const weighted = { tokenUsage: 0, costDollars: 0, brakeWeight: 0.1 };
+      (executor as any).collectMetricsFromText(`${line}\n${line}\n`, weighted);
+      expect(weighted).toMatchObject({ tokenUsage: 40_395, costDollars: 0.01, tokenSum: 80_790 });
+      expect((weighted as { brakeSum?: number }).brakeSum).toBeCloseTo(13_650, 6);
+      const unarmed = { tokenUsage: 0, costDollars: 0 }; // brake off: no brake sum, metrics exactly as before
+      (executor as any).collectMetricsFromText(`${line}\n`, unarmed);
+      expect(unarmed).toEqual({ tokenUsage: 40_395, costDollars: 0.01, tokenSum: 40_395 });
+    });
+
     it('returns null for blank lines', () => {
       expect((executor as any).parseJsonEvent('')).toBeNull();
       expect((executor as any).parseJsonEvent('   ')).toBeNull();
