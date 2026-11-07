@@ -23,6 +23,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   COMMONS_INVESTIGATION_MODE: 'off (`shadow`, `on`)',
   COMMONS_THREAD_GATE_ENABLED: 'off',
   CONTENT_DRAFTS_MODE: 'off (`shadow`, `on`)',
+  COUNCIL_JUDGE_ROUTING_MODE: 'off (`shadow` records independent-judge relative-rank outcomes and a candidate routing decision without changing counci…',
   DEAD_CODE_LANE_ENABLED: 'off',
   DEAD_CODE_MAX_PER_DAY: '2 (also the in-flight cap)',
   DEPENDENCY_LANE_MAX_PER_DAY: '4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h)',

@@ -71,6 +71,7 @@ export interface CouncilResult {
 }
 
 const ANONYMOUS_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const COUNCIL_DIVERGE_TASK = 'council-diverge';
 const COUNCIL_TRANSPORT_TASK = 'council-diverge-transport';
 const COUNCIL_JUDGE_RANK_TASK = 'council-diverge-judge-rank';
 
@@ -209,6 +210,9 @@ export class CouncilOrchestrator {
     }
 
     try {
+      const judgeRoutingMode = ['shadow', 'enforce'].includes(process.env.COUNCIL_JUDGE_ROUTING_MODE ?? '')
+        ? process.env.COUNCIL_JUDGE_ROUTING_MODE as 'shadow' | 'enforce'
+        : 'off';
       let selection = this.registry.selectModelsForCouncil({
         mode: session.mode as CouncilMode,
         risk_class: session.risk_class as any,
@@ -216,7 +220,7 @@ export class CouncilOrchestrator {
         max_cost: session.metadata.max_cost as number | undefined,
         custom_models: session.metadata.custom_models as string[] | undefined,
       });
-      selection = this.routeCouncilSelection(selection);
+      selection = this.routeCouncilSelection(selection, judgeRoutingMode);
       const judge = this.selectIndependentJudge(session, selection);
 
       swarmEventBus.emit('council:diverge:started', {
@@ -224,13 +228,13 @@ export class CouncilOrchestrator {
         models: selection.models.map(m => m.model_name),
       });
 
-      const divergeOutputs = await this.executeDivergePhase(sessionId, session.task_description, selection);
+      const divergeOutputs = await this.executeDivergePhase(sessionId, session.task_description, selection, judgeRoutingMode);
       this.updateSessionPhase(sessionId, 'reviewing');
 
       swarmEventBus.emit('council:review:started', { session_id: sessionId });
 
       await this.executeReviewPhase(sessionId, session.task_description, selection, divergeOutputs, judge);
-      if (judge) this.recordIndependentJudgeOutcomes(sessionId, selection.models, divergeOutputs);
+      if (judge && judgeRoutingMode !== 'off') this.recordIndependentJudgeOutcomes(sessionId, selection.models, divergeOutputs);
       this.updateSessionPhase(sessionId, 'synthesizing');
 
       swarmEventBus.emit('council:synthesize:started', { session_id: sessionId });
@@ -349,6 +353,7 @@ export class CouncilOrchestrator {
     sessionId: string,
     taskDescription: string,
     selection: CouncilSelection,
+    judgeRoutingMode: 'off' | 'shadow' | 'enforce',
   ): Promise<CouncilOutputRecord[]> {
     const prompt = `You are one member of an anonymous model council. Independently produce your best answer to the task below. Be concrete and complete; do not mention that you are part of a council.\n\nTask:\n${taskDescription}`;
 
@@ -362,12 +367,17 @@ export class CouncilOrchestrator {
         result = await this.callModel(model, prompt);
         this.modelRouter.recordOutcome({
           modelId: `council:${model.id}`,
-          taskType: COUNCIL_TRANSPORT_TASK,
+          taskType: judgeRoutingMode === 'off' ? COUNCIL_DIVERGE_TASK : COUNCIL_TRANSPORT_TASK,
           success: true,
+          ...(judgeRoutingMode === 'off' ? { score: model.avg_governance_score } : {}),
           latencyMs: result.latencyMs,
         });
       } catch (error) {
-        this.modelRouter.recordOutcome({ modelId: `council:${model.id}`, taskType: COUNCIL_TRANSPORT_TASK, success: false });
+        this.modelRouter.recordOutcome({
+          modelId: `council:${model.id}`,
+          taskType: judgeRoutingMode === 'off' ? COUNCIL_DIVERGE_TASK : COUNCIL_TRANSPORT_TASK,
+          success: false,
+        });
         throw error;
       }
 
@@ -454,7 +464,7 @@ export class CouncilOrchestrator {
     });
   }
 
-  private routeCouncilSelection(selection: CouncilSelection): CouncilSelection {
+  private routeCouncilSelection(selection: CouncilSelection, judgeRoutingMode: 'off' | 'shadow' | 'enforce'): CouncilSelection {
     for (const model of selection.models) {
       const modelId = `council:${model.id}`;
       if (!this.modelRouter.hasModel(modelId)) {
@@ -463,10 +473,18 @@ export class CouncilOrchestrator {
           modelName: model.model_name,
           provider: model.provider,
           costPerMtok: model.cost_per_1m_tokens,
-          capabilities: [{ taskType: COUNCIL_TRANSPORT_TASK, successRate: 0.5 }],
+          capabilities: [{ taskType: COUNCIL_DIVERGE_TASK, successRate: 0.5 }],
         });
       }
     }
+    if (judgeRoutingMode === 'off') {
+      const routed = this.modelRouter.routeWithCascade({ taskType: COUNCIL_DIVERGE_TASK });
+      const preferred = selection.models.find(model => `council:${model.id}` === routed.selectedModel);
+      return preferred
+        ? { ...selection, models: [preferred, ...selection.models.filter(model => model.id !== preferred.id)] }
+        : selection;
+    }
+
     const measured = this.modelRouter.getBestModels(
       COUNCIL_JUDGE_RANK_TASK,
       selection.models.length,
@@ -475,12 +493,21 @@ export class CouncilOrchestrator {
     const minimumSamples = this.modelRouter.getMinimumSampleCountForRouting();
     if (!selection.models.every(model => measured.some(
       entry => entry.modelId === `council:${model.id}` && entry.sampleCount >= minimumSamples,
-    ))) return selection;
+    ))) return judgeRoutingMode === 'shadow' ? selection : this.routeLegacyCouncilSelection(selection);
 
     const routed = this.modelRouter.routeTask({
       taskType: COUNCIL_JUDGE_RANK_TASK,
       allowedModelIds: selection.models.map(model => `council:${model.id}`),
     });
+    const preferred = selection.models.find(model => `council:${model.id}` === routed.selectedModel);
+    if (judgeRoutingMode === 'shadow') return this.routeLegacyCouncilSelection(selection);
+    return preferred
+      ? { ...selection, models: [preferred, ...selection.models.filter(model => model.id !== preferred.id)] }
+      : this.routeLegacyCouncilSelection(selection);
+  }
+
+  private routeLegacyCouncilSelection(selection: CouncilSelection): CouncilSelection {
+    const routed = this.modelRouter.routeWithCascade({ taskType: COUNCIL_DIVERGE_TASK });
     const preferred = selection.models.find(model => `council:${model.id}` === routed.selectedModel);
     return preferred
       ? { ...selection, models: [preferred, ...selection.models.filter(model => model.id !== preferred.id)] }

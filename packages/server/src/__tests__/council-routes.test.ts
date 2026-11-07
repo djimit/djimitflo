@@ -13,8 +13,11 @@ describe('Council routes', () => {
   let modelServer: Server;
   let baseUrl: string;
   let modelRequests: any[];
+  let originalJudgeRoutingMode: string | undefined;
 
   beforeEach(async () => {
+    originalJudgeRoutingMode = process.env.COUNCIL_JUDGE_ROUTING_MODE;
+    delete process.env.COUNCIL_JUDGE_ROUTING_MODE;
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -54,6 +57,8 @@ describe('Council routes', () => {
 
   afterEach(async () => {
     delete process.env.OLLAMA_URL;
+    if (originalJudgeRoutingMode === undefined) delete process.env.COUNCIL_JUDGE_ROUTING_MODE;
+    else process.env.COUNCIL_JUDGE_ROUTING_MODE = originalJudgeRoutingMode;
     await Promise.all([server, modelServer].map(instance => new Promise<void>((resolve, reject) => {
       instance.close(error => error ? reject(error) : resolve());
     })));
@@ -111,7 +116,9 @@ describe('Council routes', () => {
     expect(executed.body.session.status).toBe('completed');
     expect(executed.body.requires_human_approval).toBe(true);
     expect(db.prepare(`SELECT COUNT(*) AS count FROM model_execution_outcomes
-      WHERE task_type = 'council-diverge-transport' AND success = 1`).get()).toEqual({ count: 3 });
+      WHERE task_type = 'council-diverge' AND success = 1`).get()).toEqual({ count: 3 });
+    expect(db.prepare(`SELECT COUNT(*) AS count FROM model_execution_outcomes
+      WHERE task_type = 'council-diverge-transport'`).get()).toEqual({ count: 0 });
     expect(db.prepare(`SELECT COUNT(*) AS count FROM model_execution_outcomes
       WHERE task_type = 'council-diverge-judge-rank'`).get()).toEqual({ count: 0 });
     expect((await request(`/sessions/${sessionId}/execute`, { method: 'POST' })).status).toBe(409);
@@ -137,6 +144,7 @@ describe('Council routes', () => {
         judge_model: 'judge',
       }),
     });
+    process.env.COUNCIL_JUDGE_ROUTING_MODE = 'shadow';
     const requestOffset = modelRequests.length;
     expect((await request(`/sessions/${independent.body.id}/execute`, { method: 'POST' })).status).toBe(200);
     const reviewRequests = modelRequests.slice(requestOffset).filter(item => String(item.prompt).includes('Candidate '));
@@ -148,7 +156,7 @@ describe('Council routes', () => {
     expect(firstJudgeOutcomes.every(outcome => outcome.evidence_ref === independent.body.id)).toBe(true);
     expect(firstJudgeOutcomes.filter(outcome => outcome.success === 1)).toHaveLength(1);
     expect(firstJudgeOutcomes.every(outcome => outcome.score > 0)).toBe(true);
-    expect((db.prepare('SELECT COUNT(*) AS count FROM model_routing_decisions').get() as { count: number }).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM model_routing_decisions WHERE task_type = 'council-diverge-judge-rank'").get() as { count: number }).count).toBe(0);
 
     for (let run = 1; run < 5; run++) {
       const repeated = await request('/sessions', {
@@ -163,7 +171,7 @@ describe('Council routes', () => {
       });
       expect((await request(`/sessions/${repeated.body.id}/execute`, { method: 'POST' })).status).toBe(200);
     }
-    expect((db.prepare('SELECT COUNT(*) AS count FROM model_routing_decisions').get() as { count: number }).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM model_routing_decisions WHERE task_type = 'council-diverge-judge-rank'").get() as { count: number }).count).toBe(0);
 
     const routed = await request('/sessions', {
       method: 'POST',
@@ -176,9 +184,27 @@ describe('Council routes', () => {
       }),
     });
     expect((await request(`/sessions/${routed.body.id}/execute`, { method: 'POST' })).status).toBe(200);
-    const routingDecision = db.prepare('SELECT task_type, selected_model FROM model_routing_decisions').get() as { task_type: string; selected_model: string };
+    const routingDecision = db.prepare("SELECT task_type, selected_model FROM model_routing_decisions WHERE task_type = 'council-diverge-judge-rank'").get() as { task_type: string; selected_model: string };
     expect(routingDecision.task_type).toBe('council-diverge-judge-rank');
     expect(['generalist', 'skeptic', 'expert'].some(name => routingDecision.selected_model === `council:${modelIds[['generalist', 'skeptic', 'expert'].indexOf(name)]}`)).toBe(true);
+
+    process.env.COUNCIL_JUDGE_ROUTING_MODE = 'enforce';
+    const enforced = await request('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        task_description: 'Apply the measured council routing decision',
+        mode: 'council',
+        custom_models: ['generalist', 'skeptic', 'expert'],
+        independent_judge: true,
+        judge_model: 'judge',
+      }),
+    });
+    expect((await request(`/sessions/${enforced.body.id}/execute`, { method: 'POST' })).status).toBe(200);
+    const enforcedDecision = db.prepare("SELECT selected_model FROM model_routing_decisions WHERE task_type = 'council-diverge-judge-rank' ORDER BY created_at DESC LIMIT 1").get() as { selected_model: string };
+    const firstDivergingModel = db.prepare(`SELECT model FROM council_outputs
+      WHERE session_id = ? AND phase = 'diverge' AND anonymous_id = 'A'`).get(enforced.body.id) as { model: string };
+    const selectedModelName = ['generalist', 'skeptic', 'expert'][modelIds.indexOf(enforcedDecision.selected_model.replace('council:', ''))];
+    expect(firstDivergingModel.model).toBe(selectedModelName);
 
     expect((await request('/sessions/missing/outputs')).status).toBe(404);
     expect((await request('/sessions/missing/evaluations')).status).toBe(404);
