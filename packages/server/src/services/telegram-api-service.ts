@@ -26,7 +26,7 @@ export class TelegramApiService {
     });
     // 204 No Content (e.g. POST /self-improve/proposals/:id/prescreen-label) has no body to parse
     const raw = await response.text();
-    let data: any = {};
+    let data: any;
     try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
     if (!response.ok) throw new Error(data.error?.code || `DJIMFLO_API_HTTP_${response.status}`);
     return data as T;
