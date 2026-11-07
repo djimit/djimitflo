@@ -9,6 +9,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ARENA_GATE_ENABLED: 'off',
   ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
+  BENCHMARK_SCHEDULE_MODE: 'off (`on`: hourly scheduler `benchmark_schedule`. Weekly (Monday 03:00Z) it writes one `benchmark_runs` row with the gy…',
   CAPABILITY_FACTORY_MODE: 'off (`on`)',
   CAPABILITY_FACTORY_REUSE_EXECUTE: 'off (`on`)',
   CAPABILITY_LIFECYCLE_V2: 'off (`on`)',
@@ -186,6 +187,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */
 export const SCHEDULER_FLAGS: readonly string[] = [
   'ADVISORY_EXPOSURE_MODE',
+  'BENCHMARK_SCHEDULE_MODE',
   'COMMITTEE_SWARM_ENABLED',
   'COMMONS_FALSIFIER_MODE',
   'COMMONS_INVESTIGATION_MODE',

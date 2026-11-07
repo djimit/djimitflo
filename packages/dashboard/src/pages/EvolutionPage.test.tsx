@@ -326,3 +326,37 @@ it('UXE-00: visibleText ignores sr-only text', () => {
   expect(visibleText(container)).toContain('shown');
   expect(visibleText(container)).not.toContain('hidden-value');
 });
+
+const BENCH: EvolutionEvidence['benchmarks'] = { mode: 'on', token_cap: 6_000_000, margin: 0.05, benchmarks: [
+  { id: 'sec-f1', title: 'SEC-F1 security checker discrimination', metric: 'auc', cadence: 'monthly', execution: 'operator_runner', due: false, overdue: false, owed_at: '2026-12-01T02:00:00.000Z',
+    regression: { regressed: true, drop: 0.125, threshold: 0.05, basis: 'margin' }, series: [
+      { started_at: '2026-10-21T19:24:46Z', status: 'ok', value: 0.975, ci_low: 0.925, ci_high: 1, n: 46, catches: 19, false_rejects: 0, tokens: 2_000_000, models: ['ollama/glm-5.2:cloud'], prompt_sha256: 'dd10', reason: null },
+      { started_at: '2026-11-01T02:30:00Z', status: 'ok', value: 0.85, ci_low: 0.74, ci_high: 0.96, n: 46, catches: 15, false_rejects: 2, tokens: 2_100_000, models: ['ollama/glm-5.2:cloud'], prompt_sha256: 'ab12', reason: null },
+    ] },
+  { id: 'f1', title: 'F1-R checker discrimination', metric: 'auc', cadence: 'monthly', execution: 'operator_runner', due: true, overdue: false, owed_at: '2026-11-01T02:00:00.000Z',
+    regression: { regressed: false, drop: null, threshold: null, basis: null }, series: [] },
+  { id: 'gym-holdout', title: 'Gym frozen holdout readout', metric: 'pass_rate', cadence: 'weekly', execution: 'in_process', due: false, overdue: true, owed_at: '2026-11-02T03:00:00.000Z',
+    regression: { regressed: false, drop: null, threshold: null, basis: null }, series: [
+      { started_at: '2026-10-26T03:00:00Z', status: 'insufficient', value: null, ci_low: null, ci_high: null, n: 0, catches: null, false_rejects: null, tokens: 0, models: ['atomic@llama-router'], prompt_sha256: null, reason: '0 eligible result(s) on 85 holdout task(s) (< 10)' },
+    ] },
+] };
+
+it('fixed benchmarks: the series per benchmark with CIs, the regression, due command and overdue state; unknown values read —', () => {
+  render(<EvolutionBody data={{ ...EMPTY, benchmarks: BENCH }} />);
+  const t = visibleText(screen.getByTestId('benchmarks-card'));
+  expect(t).toContain('SEC-F1 security checker discrimination');
+  expect(t).toContain('regression: −0.125 > 0.050 (margin)');
+  expect(t).toContain('0.975');
+  expect(t).toContain('[0.740, 0.960]');
+  expect(t).toContain('15 / 2');
+  expect(t).toContain('due — bash scripts/benchmark-run.sh f1 --apply');
+  expect(t).toContain('No run recorded yet.');
+  expect(t).toContain('overdue since 2026-11-02');
+  expect(t).toContain('insufficient — 0 eligible result(s) on 85 holdout task(s) (< 10)');
+  expect(t).not.toMatch(/\b0\.000\b/); // a null pass rate is never shown as 0
+});
+
+it('fixed benchmarks: no card when the server does not report the section', () => {
+  render(<EvolutionBody data={EMPTY} />);
+  expect(screen.queryByTestId('benchmarks-card')).toBeNull();
+});

@@ -59,6 +59,7 @@ import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
+import { benchmarkEvidence } from './benchmark-schedule';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -158,6 +159,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'TYPESAFE_CHECKER_SECOND_OPINION_MODE', acting: false }, { name: 'TYPESAFE_RISK_ATOMIC_MODE', acting: false }, { name: 'TYPESAFE_COMMONS_IDEA_MODE', acting: false },
   { name: 'FLEET_SHELL_ENABLED', acting: true },
   { name: 'OPENCODE_BRAKE_CACHE_READ_WEIGHT', acting: true },
+  { name: 'BENCHMARK_SCHEDULE_MODE', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -494,6 +496,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
+    // periodic fixed benchmarks (SEC-F1, F1-R, gym holdout readout): series, due / overdue and the regression verdict
+    benchmarks: (() => { try { return benchmarkEvidence(db, env, now); } catch { return null; } })(),
     // UX-20: where model calls send data (shadow report; nothing is blocked)
     egress: egressEvidence(db, env, now),
     // UX-21: vectors compared across dimensions since boot, per store (resampled by default; skipped under VECTOR_STRICT_DIM)

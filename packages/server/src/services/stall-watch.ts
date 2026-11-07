@@ -12,6 +12,7 @@ import { hostTokenStalls, hostTokenWatchMode } from './host-token-watch';
 import { gapLaneResults } from './test-gap-source-service';
 import { fleetDrift } from '../utils/fleet-drift';
 import { MIN_HOST_AGENT_VERSION } from '../routes/host-agent';
+import { benchmarkScheduleMode, detectBenchmarkStalls } from './benchmark-schedule';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -226,6 +227,9 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     const last = one<{ t: string | null }>('SELECT MAX(computed_at) AS t FROM evolution_estimates')?.t ?? null;
     if (!last || last < ago(now, 36)) out.push({ subsystem: 'estimates', since: last, detail: 'EVOLUTION_ESTIMATORS_ENABLED is on but no evolution estimate was written for > 36 h' });
   });
+  // 8b. periodic benchmarks (benchmark-schedule.ts, BENCHMARK_SCHEDULE_MODE=on): a reviewer benchmark due on an idle host, a run
+  // more than 7 days late, or an AUC / pass rate below the previous run by more than its CI (or the margin)
+  run('benchmarks', benchmarkScheduleMode(env) === 'on', () => { out.push(...detectBenchmarkStalls(db, env, now)); });
   // 6b. prod 27-10: an active host's token refused again and again (it expired at 00:24Z; 7 h of 401s went unnoticed), or a
   // host token that expires within 7 days (host-token-watch.ts; HOST_TOKEN_WATCH_MODE=shadow)
   run('host_tokens', hostTokenWatchMode(env) === 'shadow', () => { out.push(...hostTokenStalls(db, now)); });
