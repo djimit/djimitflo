@@ -105,11 +105,23 @@ export class MultiModelIntelligence {
     minSuccessRate?: number;
     maxCost?: number;
     preferLowLatency?: boolean;
+    allowedModelIds?: string[];
   }): RoutingDecision {
     this.loadModels();
-    const models = this.getEligibleModels(input.taskType, input.minSuccessRate, input.maxCost);
+    const models = this.getEligibleModels(input.taskType, input.minSuccessRate, input.maxCost, input.allowedModelIds);
 
     if (models.length === 0) {
+      if (input.allowedModelIds) {
+        return {
+          id: randomUUID(),
+          taskType: input.taskType,
+          selectedModel: '',
+          reason: 'No measured eligible model in the allowed set',
+          alternatives: [],
+          confidence: 0,
+          timestamp: new Date().toISOString(),
+        };
+      }
       return {
         id: randomUUID(),
         taskType: input.taskType,
@@ -142,7 +154,7 @@ export class MultiModelIntelligence {
       id: randomUUID(),
       taskType: input.taskType,
       selectedModel: selected.model.modelId,
-      reason: `Best measured score (${((selected.taskCap?.successRate ?? 0) * 100).toFixed(0)}% success) for ${input.taskType}`,
+      reason: `Best measured positive-outcome rate (${((selected.taskCap?.successRate ?? 0) * 100).toFixed(0)}%) for ${input.taskType}`,
       alternatives: scored.slice(1, 4).map((s) => s.model.modelId),
       confidence: selected.score,
       timestamp: new Date().toISOString(),
@@ -172,6 +184,7 @@ export class MultiModelIntelligence {
     score?: number;
     latencyMs?: number;
     costDollars?: number;
+    evidenceRef?: string;
   }): void {
     const model = this.modelCache.get(input.modelId);
     if (!model) return;
@@ -212,11 +225,12 @@ export class MultiModelIntelligence {
     // Store outcome
     this.db.prepare(`
       INSERT INTO model_execution_outcomes
-      (id, model_id, task_type, success, score, latency_ms, cost_dollars, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (id, model_id, task_type, success, score, latency_ms, cost_dollars, evidence_ref, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       randomUUID(), input.modelId, input.taskType, input.success ? 1 : 0,
       input.score ?? null, input.latencyMs ?? null, input.costDollars ?? null,
+      input.evidenceRef ?? null,
       new Date().toISOString(),
     );
   }
@@ -224,13 +238,14 @@ export class MultiModelIntelligence {
   /**
    * Get the best models for a specific task type.
    */
-  getBestModels(taskType: string, limit = 5): Array<{
+  getBestModels(taskType: string, limit = 5, allowedModelIds?: string[]): Array<{
     modelId: string;
     modelName: string;
     successRate: number;
     sampleCount: number;
   }> {
     const models = Array.from(this.modelCache.values());
+    const allowed = allowedModelIds ? new Set(allowedModelIds) : undefined;
     return models
       .map((m) => ({
         modelId: m.modelId,
@@ -238,9 +253,13 @@ export class MultiModelIntelligence {
         successRate: m.capabilities.find((c) => c.taskType === taskType)?.successRate || 0,
         sampleCount: m.capabilities.find((c) => c.taskType === taskType)?.sampleCount || 0,
       }))
-      .filter((m) => m.sampleCount > 0)
+      .filter((m) => m.sampleCount > 0 && (!allowed || allowed.has(m.modelId)))
       .sort((a, b) => b.successRate - a.successRate)
       .slice(0, limit);
+  }
+
+  getMinimumSampleCountForRouting(): number {
+    return this.getCascadeProfile().minSampleCount;
   }
 
   // ─── Cascade Profile Configuration ─────────────────────────────────────
@@ -438,9 +457,11 @@ export class MultiModelIntelligence {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private getEligibleModels(taskType: string, minSuccessRate?: number, maxCost?: number): ModelCapability[] {
+  private getEligibleModels(taskType: string, minSuccessRate?: number, maxCost?: number, allowedModelIds?: string[]): ModelCapability[] {
+    const allowed = allowedModelIds ? new Set(allowedModelIds) : undefined;
     return Array.from(this.modelCache.values()).filter((model) => {
       if (model.status !== 'active') return false;
+      if (allowed && !allowed.has(model.modelId)) return false;
 
       const taskCap = model.capabilities.find((c) => c.taskType === taskType);
       if (!taskCap || taskCap.sampleCount < 2) return false; // Need minimum samples
@@ -549,11 +570,18 @@ export class MultiModelIntelligence {
         score REAL,
         latency_ms INTEGER,
         cost_dollars REAL,
+        evidence_ref TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
       CREATE INDEX IF NOT EXISTS idx_model_outcomes_model ON model_execution_outcomes(model_id);
       CREATE INDEX IF NOT EXISTS idx_model_outcomes_task ON model_execution_outcomes(task_type);
     `);
+
+    const outcomeColumns = new Set((this.db.pragma('table_info(model_execution_outcomes)') as Array<{ name: string }>)
+      .map((column) => column.name));
+    if (!outcomeColumns.has('evidence_ref')) {
+      this.db.exec('ALTER TABLE model_execution_outcomes ADD COLUMN evidence_ref TEXT');
+    }
   }
 }
