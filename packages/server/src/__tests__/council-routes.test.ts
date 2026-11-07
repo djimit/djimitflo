@@ -110,6 +110,10 @@ describe('Council routes', () => {
     expect(modelRequests.every(request => request.options?.num_predict === 512)).toBe(true);
     expect(executed.body.session.status).toBe('completed');
     expect(executed.body.requires_human_approval).toBe(true);
+    expect(db.prepare(`SELECT COUNT(*) AS count FROM model_execution_outcomes
+      WHERE task_type = 'council-diverge-transport' AND success = 1`).get()).toEqual({ count: 3 });
+    expect(db.prepare(`SELECT COUNT(*) AS count FROM model_execution_outcomes
+      WHERE task_type = 'council-diverge-judge-rank'`).get()).toEqual({ count: 0 });
     expect((await request(`/sessions/${sessionId}/execute`, { method: 'POST' })).status).toBe(409);
     expect((await request(`/sessions/${sessionId}/outputs`)).body).toHaveLength(3);
     expect((await request(`/sessions/${sessionId}/evaluations`)).body.length).toBeGreaterThan(0);
@@ -138,6 +142,43 @@ describe('Council routes', () => {
     const reviewRequests = modelRequests.slice(requestOffset).filter(item => String(item.prompt).includes('Candidate '));
     expect(reviewRequests).toHaveLength(1);
     expect(reviewRequests[0].model).toBe('judge');
+    const firstJudgeOutcomes = db.prepare(`SELECT model_id, success, score, evidence_ref FROM model_execution_outcomes
+      WHERE task_type = 'council-diverge-judge-rank'`).all() as Array<{ model_id: string; success: number; score: number; evidence_ref: string }>;
+    expect(firstJudgeOutcomes).toHaveLength(3);
+    expect(firstJudgeOutcomes.every(outcome => outcome.evidence_ref === independent.body.id)).toBe(true);
+    expect(firstJudgeOutcomes.filter(outcome => outcome.success === 1)).toHaveLength(1);
+    expect(firstJudgeOutcomes.every(outcome => outcome.score > 0)).toBe(true);
+    expect((db.prepare('SELECT COUNT(*) AS count FROM model_routing_decisions').get() as { count: number }).count).toBe(0);
+
+    for (let run = 1; run < 5; run++) {
+      const repeated = await request('/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          task_description: `Independent routing evidence ${run}`,
+          mode: 'council',
+          custom_models: ['generalist', 'skeptic', 'expert'],
+          independent_judge: true,
+          judge_model: 'judge',
+        }),
+      });
+      expect((await request(`/sessions/${repeated.body.id}/execute`, { method: 'POST' })).status).toBe(200);
+    }
+    expect((db.prepare('SELECT COUNT(*) AS count FROM model_routing_decisions').get() as { count: number }).count).toBe(0);
+
+    const routed = await request('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        task_description: 'Route after enough independent judge comparisons',
+        mode: 'council',
+        custom_models: ['generalist', 'skeptic', 'expert'],
+        independent_judge: true,
+        judge_model: 'judge',
+      }),
+    });
+    expect((await request(`/sessions/${routed.body.id}/execute`, { method: 'POST' })).status).toBe(200);
+    const routingDecision = db.prepare('SELECT task_type, selected_model FROM model_routing_decisions').get() as { task_type: string; selected_model: string };
+    expect(routingDecision.task_type).toBe('council-diverge-judge-rank');
+    expect(['generalist', 'skeptic', 'expert'].some(name => routingDecision.selected_model === `council:${modelIds[['generalist', 'skeptic', 'expert'].indexOf(name)]}`)).toBe(true);
 
     expect((await request('/sessions/missing/outputs')).status).toBe(404);
     expect((await request('/sessions/missing/evaluations')).status).toBe(404);

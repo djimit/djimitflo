@@ -71,6 +71,8 @@ export interface CouncilResult {
 }
 
 const ANONYMOUS_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const COUNCIL_TRANSPORT_TASK = 'council-diverge-transport';
+const COUNCIL_JUDGE_RANK_TASK = 'council-diverge-judge-rank';
 
 export class CouncilOrchestrator {
   private registry: CouncilRegistry;
@@ -228,6 +230,7 @@ export class CouncilOrchestrator {
       swarmEventBus.emit('council:review:started', { session_id: sessionId });
 
       await this.executeReviewPhase(sessionId, session.task_description, selection, divergeOutputs, judge);
+      if (judge) this.recordIndependentJudgeOutcomes(sessionId, selection.models, divergeOutputs);
       this.updateSessionPhase(sessionId, 'synthesizing');
 
       swarmEventBus.emit('council:synthesize:started', { session_id: sessionId });
@@ -359,13 +362,12 @@ export class CouncilOrchestrator {
         result = await this.callModel(model, prompt);
         this.modelRouter.recordOutcome({
           modelId: `council:${model.id}`,
-          taskType: 'council-diverge',
+          taskType: COUNCIL_TRANSPORT_TASK,
           success: true,
-          score: model.avg_governance_score,
           latencyMs: result.latencyMs,
         });
       } catch (error) {
-        this.modelRouter.recordOutcome({ modelId: `council:${model.id}`, taskType: 'council-diverge', success: false });
+        this.modelRouter.recordOutcome({ modelId: `council:${model.id}`, taskType: COUNCIL_TRANSPORT_TASK, success: false });
         throw error;
       }
 
@@ -461,15 +463,54 @@ export class CouncilOrchestrator {
           modelName: model.model_name,
           provider: model.provider,
           costPerMtok: model.cost_per_1m_tokens,
-          capabilities: [{ taskType: 'council-diverge', successRate: 0.5 }],
+          capabilities: [{ taskType: COUNCIL_TRANSPORT_TASK, successRate: 0.5 }],
         });
       }
     }
-    const routed = this.modelRouter.routeWithCascade({ taskType: 'council-diverge' });
+    const measured = this.modelRouter.getBestModels(
+      COUNCIL_JUDGE_RANK_TASK,
+      selection.models.length,
+      selection.models.map(model => `council:${model.id}`),
+    );
+    const minimumSamples = this.modelRouter.getMinimumSampleCountForRouting();
+    if (!selection.models.every(model => measured.some(
+      entry => entry.modelId === `council:${model.id}` && entry.sampleCount >= minimumSamples,
+    ))) return selection;
+
+    const routed = this.modelRouter.routeTask({
+      taskType: COUNCIL_JUDGE_RANK_TASK,
+      allowedModelIds: selection.models.map(model => `council:${model.id}`),
+    });
     const preferred = selection.models.find(model => `council:${model.id}` === routed.selectedModel);
     return preferred
       ? { ...selection, models: [preferred, ...selection.models.filter(model => model.id !== preferred.id)] }
       : selection;
+  }
+
+  private recordIndependentJudgeOutcomes(
+    sessionId: string,
+    models: CouncilModelRecord[],
+    outputs: CouncilOutputRecord[],
+  ): void {
+    const modelByName = new Map(models.map(model => [model.model_name, model]));
+    const outputByCandidate = new Map(outputs.map(output => [output.anonymous_id, output]));
+    const evaluations = this.evaluator.aggregateScores(sessionId);
+
+    for (const evaluation of evaluations) {
+      const output = outputByCandidate.get(evaluation.candidate_id);
+      const model = output && modelByName.get(output.model);
+      if (!output || !model) continue;
+
+      this.modelRouter.recordOutcome({
+        modelId: `council:${model.id}`,
+        taskType: COUNCIL_JUDGE_RANK_TASK,
+        // Relative ranking among this session's candidates, not an absolute correctness claim.
+        success: evaluation.rank === 1,
+        score: evaluation.weighted_score,
+        latencyMs: output.latency_ms,
+        evidenceRef: sessionId,
+      });
+    }
   }
 
   private selectIndependentJudge(session: CouncilSession, selection: CouncilSelection): CouncilModelRecord | undefined {
