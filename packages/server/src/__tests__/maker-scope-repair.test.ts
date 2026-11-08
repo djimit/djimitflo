@@ -10,9 +10,10 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
 import { GoalService } from '../services/goal-service';
-import { scopeRepairPlan } from '../services/maker-scope-repair';
+import { scopeRepairPlan, repairMakerScope } from '../services/maker-scope-repair';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 import { experimentDefs } from '../services/experiment-registry';
+import type { LoopFinding, LoopRunRecord, WorkerLeaseRecord } from '../services/loop-types';
 
 /**
  * MAKER_SCOPE_REPAIR: an oracle-lane maker that wrote its test and also rewrote package.json / package-lock.json (prod: the
@@ -148,6 +149,107 @@ it('scopeRepairPlan: only tracked manifests outside the scope, nothing else', ()
   expect(scopeRepairPlan(TEST, ['package.json'], ['packages/new/package.json'])).toBeNull(); // a new manifest has no base
   expect(scopeRepairPlan(TEST, ['package.json.bak'], [])).toBeNull();
   expect(scopeRepairPlan(null, ['package.json'], [TEST])).toBeNull();
+  // a null scope with only a tracked manifest still repairs nothing (no scope to hold the maker to)
+  expect(scopeRepairPlan(null, ['package.json'], [])).toBeNull();
+  // a manifest under .djimitflo/ is inside-scope noise, never an outside manifest to restore
+  expect(scopeRepairPlan(TEST, [TEST, '.djimitflo/package.json'], [])).toBeNull();
+});
+
+// Direct unit tests of repairMakerScope exercise the guard, the allowedScope branches (auto-approved file, objective-mode
+// finding file, DB artifactPath fallback) and the git-failure catch that the integration fixture does not reach.
+const SCOPE_FILE = 'src/foo.ts';
+const ARTIFACT = 'src/foo.ts';
+
+function directDb(): Database.Database {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE goals (id TEXT PRIMARY KEY, improvement_id TEXT);
+    CREATE TABLE self_improvements (id TEXT PRIMARY KEY, evidence_refs_json TEXT, grounding_json TEXT);`);
+  dbs.push(db);
+  return db;
+}
+
+function seedLane(db: Database.Database, goalId: string, impId: string, lane: 'test-gap' | 'mutation', artifact = ARTIFACT): void {
+  db.prepare("INSERT INTO self_improvements (id, evidence_refs_json, grounding_json) VALUES (?, ?, ?)").run(
+    impId, lane === 'mutation' ? '"mutation-gap:x"' : '"test-gap:x"', JSON.stringify({ artifactPath: artifact }));
+  db.prepare('INSERT INTO goals (id, improvement_id) VALUES (?, ?)').run(goalId, impId);
+}
+
+function directRun(goalId: string | null, loopName = 'doc-drift-and-small-fix-loop', findings: LoopFinding[] = []): LoopRunRecord {
+  return { id: 'run-1', goal_id: goalId, loop_name: loopName, mode: 'closed', status: 'running', repository_path: null,
+    state_file: null, findings, plan: {}, gates: [], next_actions: [], metadata: {},
+    created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', completed_at: null };
+}
+
+function directLease(overrides: Partial<WorkerLeaseRecord> = {}): WorkerLeaseRecord {
+  return { id: 'lease-1', loop_run_id: 'run-1', role: 'maker', runtime: 'opencode', status: 'completed', finding_id: null,
+    worktree_path: '/tmp/worktree', branch_name: 'b', budget: {}, metadata: {}, created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z', parent_lease_id: null, spawn_tree_id: null, depth: 0, spawned_by_agent_id: null,
+    ...overrides };
+}
+
+/** A git stub that reports the scope file plus one root manifest as the only changes (all tracked, none untracked). */
+function manifestGit(): (cwd: string, args: string[]) => string {
+  return (_cwd: string, args: string[]) => {
+    if (args[0] === 'diff') return `${SCOPE_FILE}\npackage.json\n`;
+    if (args[0] === 'ls-files') return '';
+    if (args[0] === 'rev-parse') return 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+    return '';
+  };
+}
+
+describe('repairMakerScope guard', () => {
+  it('a non-maker lease is never repaired even when the rest of the setup would repair', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap');
+    expect(repairMakerScope(db, directRun('g1'), directLease({ role: 'checker', metadata: { auto_approved_scope: SCOPE_FILE } }), manifestGit())).toBeNull();
+  });
+
+  it('a maker lease without a worktree_path is never repaired', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap');
+    expect(repairMakerScope(db, directRun('g1'), directLease({ worktree_path: null, metadata: { auto_approved_scope: SCOPE_FILE } }), manifestGit())).toBeNull();
+  });
+
+  it('a tg-001 maker lease is never repaired', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap');
+    expect(repairMakerScope(db, directRun('g1', 'tg-001'), directLease({ metadata: { auto_approved_scope: SCOPE_FILE } }), manifestGit())).toBeNull();
+  });
+
+  it('an evolution-gym maker lease is never repaired', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap');
+    expect(repairMakerScope(db, directRun('g1', 'evolution-gym'), directLease({ metadata: { auto_approved_scope: SCOPE_FILE } }), manifestGit())).toBeNull();
+  });
+
+  it('a git failure leaves the tree untouched and returns null (not a throw)', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap');
+    const git = (): string => { throw new Error('git blew up'); };
+    expect(repairMakerScope(db, directRun('g1'), directLease({ metadata: { auto_approved_scope: SCOPE_FILE } }), git)).toBeNull();
+  });
+});
+
+describe('repairMakerScope allowedScope branches', () => {
+  it('falls back to the goal artifactPath when no auto_approved_scope and no objective finding, and repairs', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap', SCOPE_FILE);
+    const out = repairMakerScope(db, directRun('g1', 'doc-drift-and-small-fix-loop', []), directLease(), manifestGit());
+    expect(out).toMatchObject({ restored: ['package.json'], scope: SCOPE_FILE, lane: 'test-gap' });
+  });
+
+  it('keeps the auto_approved_scope when it differs from the artifact, so a non-manifest outside file blocks repair', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap', SCOPE_FILE);
+    // scope held to other.ts, but the changed files are the artifact (src/foo.ts) + a manifest; src/foo.ts is not a manifest
+    expect(repairMakerScope(db, directRun('g1'), directLease({ metadata: { auto_approved_scope: 'other.ts' } }), manifestGit())).toBeNull();
+  });
+
+  it('an objective-mode finding whose file differs from the artifact uses the finding file, so a non-manifest outside file blocks repair', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'mutation', SCOPE_FILE);
+    const finding: LoopFinding = { id: 'f1', type: 'test_gap', severity: 'info', file: 'other.ts', message: 'm', evidence: 'e', suggested_fix: 's', metadata: { objective_mode: true } };
+    expect(repairMakerScope(db, directRun('g1', 'doc-drift-and-small-fix-loop', [finding]), directLease({ finding_id: 'f1' }), manifestGit())).toBeNull();
+  });
+
+  it('a non-objective finding whose file differs from the artifact falls through to the artifact and repairs', () => {
+    const db = directDb(); seedLane(db, 'g1', 'imp-1', 'test-gap', SCOPE_FILE);
+    const finding: LoopFinding = { id: 'f1', type: 'test_gap', severity: 'info', file: 'other.ts', message: 'm', evidence: 'e', suggested_fix: 's', metadata: { objective_mode: false } };
+    const out = repairMakerScope(db, directRun('g1', 'doc-drift-and-small-fix-loop', [finding]), directLease({ finding_id: 'f1' }), manifestGit());
+    expect(out).toMatchObject({ restored: ['package.json'], scope: SCOPE_FILE, lane: 'test-gap' });
+  });
 });
 
 it('registered: an acting evolution flag and a treatment variable of every running oracle-population experiment', () => {
