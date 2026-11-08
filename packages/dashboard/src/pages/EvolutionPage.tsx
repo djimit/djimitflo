@@ -5,6 +5,7 @@ import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { ExperimentsSection } from './EvolutionExperiments';
 import { Pl001Card } from './EvolutionPl001';
+import { FitnessContractsCard } from './EvolutionFitness';
 import { DataTable } from '../components/ui';
 
 const fetchEvidence = () => api.getEvolutionEvidence();
@@ -84,6 +85,11 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
         <ExperimentsSection data={data} />
       </Section>
 
+      {data.fitness_contracts && (
+        <Section title="Fitness contracts — which components can learn">
+          <FitnessContractsCard data={data.fitness_contracts} />
+        </Section>
+      )}
       <Section title="Capability learning evidence">
         <p className="text-sm text-foreground-secondary">
           Reuse and selection are the current learning mechanisms; this page does not train model weights. Activity or a successful run is not, by itself, evidence of a durable improvement.
