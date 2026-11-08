@@ -62,7 +62,7 @@ it('RX-1: counts outcomes per source, loop PRs, genomes and gym tiers like hand 
     { domain: 'loop', skill: 'loop-maker:test-gap', n: 2, ok: 1 }, { domain: 'gym', skill: 'loop-maker:gym', n: 1, ok: 1 }, { domain: 'merge', skill: 'loop-maker:merge', n: 1, ok: 1 }]));
   expect(e.merge).toMatchObject({ merge_outcomes: 1, settled: [{ state: 'merged', survived: 1, n: 1 }] });
   expect(e.drafts).toMatchObject({ unsettled: 2, unsettled_open_or_recent: 2, anomalous: 0, age_days_max: 3 });
-  expect(e.gates.C.reason).toContain('open or merged < 14 d ago');
+  expect(e.gates.C.reason).toContain('inside the 14-d survival window, not counted');
   expect(e.genomes.by_status).toEqual([{ status: 'retired', origin: 'dream', n: 1 }]);
   expect(e.genomes.holdout).toEqual({ mined: 1, mutant: 0, write_test: 0 });
   expect(e.gym).toEqual(expect.arrayContaining([{ kind: 'mutant', tier: 4, status: 'failure', n: 1 }, { kind: 'mined', tier: null, status: 'success', n: 1 }]));

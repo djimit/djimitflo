@@ -331,6 +331,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   try { prs = loopPrSettlements(db, now, undefined, env); } catch { /* loop_runs absent: settlement unknown */ }
   // E1: not settled yet = OPEN_BLOCKED (not closed) + MERGED_SURVIVAL_PENDING; anomalies are reported apart, never as waiting
   const openDrafts = (prs ?? []).filter((p) => (p.settlement.state === 'OPEN_BLOCKED' && !p.settlement.terminal) || p.settlement.state === 'MERGED_SURVIVAL_PENDING');
+  const openNow = openDrafts.filter((p) => p.settlement.state === 'OPEN_BLOCKED').length;
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
   const q = (p: number) => (ages.length ? +ages[Math.min(ages.length - 1, Math.floor(p * ages.length))].toFixed(1) : null);
   // E1: survival only over SETTLED_SURVIVED / SETTLED_REGRESSED — pending and anomalous PRs are in neither numerator nor denominator
@@ -455,7 +456,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       const ok = total >= 30 && pos >= 8 && total - pos >= 8;
       return { state: ok ? 'green' : 'red', reason: `${total} settled loop PRs (${pos} survived, ${total - pos} not); needs ≥ 30 with ≥ 8 per class` } as Gate;
     })(),
-    C: { state: openDrafts.length <= 5 ? 'unknown' : 'red', reason: `${openDrafts.length} loop PRs open or merged < 14 d ago (an upper bound on open drafts; target ≤ 5 open on 14 consecutive days)` },
+    // only PRs still waiting on a human count: merged PRs inside the 14-d survival window are not queue
+    C: { state: openNow <= 5 ? 'unknown' : 'red', reason: `${openNow} loop PRs open (${openDrafts.length - openNow} merged and inside the 14-d survival window, not counted; target ≤ 5 open on 14 consecutive days)` },
     D: (() => {
       // RX-7: decision-grade needs >= 10 positives, n >= 100 and a bootstrap skill CI that excludes 0
       if (!forecasts_v2.scored) return { state: 'unknown', reason: 'no forecaster scored yet' } as Gate;
