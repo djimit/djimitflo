@@ -310,6 +310,21 @@ export class CitationResearchService {
     return report;
   }
 
+  getReport(id: string): ResearchReport {
+    const row = this.db.prepare('SELECT * FROM research_reports WHERE id = ?').get(id) as any;
+    if (!row) throw new Error('RESEARCH_REPORT_NOT_FOUND');
+    return {
+      id: row.id,
+      title: row.title,
+      summary: row.summary,
+      claims: JSON.parse(row.claims_json || '[]'),
+      sources: JSON.parse(row.sources_json || '[]'),
+      contradictions: JSON.parse(row.contradictions_json || '[]'),
+      overall_confidence: row.overall_confidence,
+      generated_at: row.generated_at,
+    };
+  }
+
   /**
    * Get sources by minimum trust score.
    */
