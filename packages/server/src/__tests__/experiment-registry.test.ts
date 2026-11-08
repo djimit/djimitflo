@@ -274,13 +274,14 @@ it('re-20261105 E14 / A M3: oracle-population changes (value gate, content safet
   const changes: Array<[string, string, string, string[]]> = [
     ['LOOP_AUTO_MERGE_VALUE_GATE', 'shadow', 'on', ORACLE], ['LOOP_AUTO_MERGE_VALUE_GATE_LANES', '', 'exports', ORACLE],
     ['CONTENT_SAFETY_MODEL', 'nvidia/nemoguard', 'meta/llama-guard-4-12b', ORACLE], ['CONTENT_SAFETY_IGNORE_CATEGORIES', '', 'S14', ORACLE],
+    ['CONTENT_SAFETY_CHUNKING', 'off', 'on', ORACLE], ['CONTENT_SAFETY_RATE_LIMIT', '', '4', ORACLE],
     ['KB_CONTEXT_ENABLED', 'false', 'true', ORACLE], ['CAPABILITY_FACTORY_MODE', 'off', 'on', ORACLE],
     ['MUTATION_GAP_MAX_PER_DAY', '2', '4', ORACLE], ['TEST_GAP_MAX_PER_DAY', '2', '3', ORACLE],
     ['MAKER_SCOPE_REPAIR', 'off', 'on', ORACLE],
     ['GYM_TIER_PROBE_ENABLED', 'true', 'false', ['PL-001']],
   ];
   let day = 1;
-  const boot = (env: NodeJS.ProcessEnv) => recordTreatmentEnvBoundaries(db, env, Date.parse(`2026-11-${String(day++).padStart(2, '0')}T00:00:00Z`));
+  const boot = (env: NodeJS.ProcessEnv) => recordTreatmentEnvBoundaries(db, env, Date.parse('2026-10-31T00:00:00Z') + (day++) * 86_400_000); // 3 boots per name
   for (const [name, before, after, ids] of changes) {
     boot({ [name]: before }); // baseline (first sight of the name is never a change)
     expect(boot({ [name]: after }).map((r) => [r.experiment_id, r.env_name, r.previous, r.current]), name).toEqual(ids.map((id) => [id, name, before, after]));

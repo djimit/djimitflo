@@ -148,3 +148,18 @@ it('kbContext does not serve a page whose safety verdict is unknown (also under 
   expect(row.reason).toBe(`${RETRY.path}@1.00`); // reason stays the hit list its readers parse
   expect(JSON.parse(row.answers_json)).toEqual({ pool: 1, safety_unknown_excluded: 1, safety_unsafe_excluded: 0 });
 });
+
+it('LaTeX survives the kb-sync → ingest path byte-exact: \\frac stays a backslash + "frac", never a form feed (U+000C)', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow');
+  const body = '# Perplexity\n\n$$\n\\text{PPL} = \\exp\\left(-\\frac{a}{b}\\sum_{i=1}^{N} \\log P\\right)\n$$\n';
+  // exactly what scripts/kb-sync.mjs sends (JSON.stringify) and what express.json() hands the route (JSON.parse)
+  const pages = JSON.parse(JSON.stringify({ pages: [{ path: 'summaries/latex.md', title: 'Perplexity', body }] })).pages;
+  expect((await ingestKbPages(db, 'workstation', pages, fake)).accepted).toEqual(['summaries/latex.md']);
+  const stored = (db.prepare('SELECT body FROM kb_pages WHERE path = ?').get('summaries/latex.md') as { body: string }).body;
+  expect(stored).toBe(body);
+  expect(stored).toContain('\\frac{a}{b}');
+  expect(stored).not.toContain('\f');
+  // prod 2026-11-07: the one stored page with U+000C (summaries/design-0e5113ca.md) has it in the wiki file itself
+  // (DjimitKBWiki 52487567, 2026-07-01, generated summaries; its source page has a correct \frac): fix it there, kb-sync re-sends it
+  expect(JSON.parse('"\\frac"')).toBe('\frac'); // the upstream bug: an unescaped \frac inside a JSON string decodes to FF + "rac"
+});

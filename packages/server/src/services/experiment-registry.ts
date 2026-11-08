@@ -76,6 +76,8 @@ const MAKER_SELECTION_ENV = ['LOOP_DAEMON_MAKER_RUNTIME', 'LOOP_BANDIT_ENABLED',
  * goals exist). Each is a treatment variable of every running oracle-population experiment.
  */
 const ORACLE_POPULATION_ENV = ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', 'CONTENT_SAFETY_MODEL', 'CONTENT_SAFETY_IGNORE_CATEGORIES',
+  // which KB pages have a verdict (and so are served): windows past char 4 000, and how many checks get through the provider
+  'CONTENT_SAFETY_CHUNKING', 'CONTENT_SAFETY_RATE_LIMIT',
   'KB_CONTEXT_ENABLED', 'CAPABILITY_FACTORY_MODE', 'MUTATION_GAP_MAX_PER_DAY', 'TEST_GAP_MAX_PER_DAY',
   // L1: the skill route changes what oracle-lane makers receive (shadow → on delivers the block to the treatment arm)
   'SKILL_ROUTE_MODE',
