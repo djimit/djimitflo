@@ -83,7 +83,9 @@ const ORACLE_POPULATION_ENV = ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VA
   'OPENCODE_BRAKE_CACHE_READ_WEIGHT',
   // evolve siblings (evolve-selection.ts) decide whose patch goes to review on oracle-lane goals; LOOP_EVOLVE_ENABLED=false at
   // 2026-11-08T00:00:02Z (EXP-2 close) wrote no boundary, so it is in each protocol's 2026-11-08 amendment
-  'LOOP_EVOLVE_ENABLED', 'LOOP_EVOLVE_SPECIES'];
+  'LOOP_EVOLVE_ENABLED', 'LOOP_EVOLVE_SPECIES',
+  // MAKER_SCOPE_REPAIR: restores an oracle-lane maker's out-of-scope package.json / lockfile, so the scope gate can pass a run it refused
+  'MAKER_SCOPE_REPAIR'];
 /** TG-001 closed by the operator: INCONCLUSIVE at 20 tasks, no extension to 40 (task supply). INCONCLUSIVE from the evidence
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
