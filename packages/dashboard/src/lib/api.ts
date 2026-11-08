@@ -363,6 +363,12 @@ export interface EvolutionEvidence {
   skill_route?: { mode: 'off' | 'shadow' | 'on'; since: string; note: string;
     by_arm_lane: Array<{ arm: string; lane: string; selected: number; delivered: number; invoked: number; passed: number; verified: number; credited: number }> | null;
     contrast: { treatment: { n: number; verified: number; rate: number | null }; holdout: { n: number; verified: number; rate: number | null }; difference: number | null; withheld: string | null } | null };
+  /** WEB-001 (WEB_RESEARCH_MODE): failure-driven web research → knowledge → dream genome → trial; null fields = no job yet (unknown) */
+  web_research?: { mode: 'off' | 'shadow' | 'on'; window_days: number; note: string;
+    questions: { asked: number; by_status: Record<string, number>; recent: Array<{ at: string; status: string; failure_class: string | null; lane: string | null; runtime: string | null; question: string | null }> } | null;
+    candidates: { returned: number; accepted: number; rejected_by_reason: Record<string, number> } | null; routed: number | null;
+    cited: { genomes: number; promoted: number; retired: number; inconclusive: number; pending: number;
+      list: Array<{ genome: string; status: string; knowledge: string[]; trial: { state: string; b: number | null; c: number | null; p: number | null; deciding_n: number | null } | null }> } | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;

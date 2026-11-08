@@ -59,6 +59,7 @@ import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
+import { webResearchEvidence } from './web-research';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -128,6 +129,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
+  { name: 'WEB_RESEARCH_MODE', acting: true },
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
@@ -586,5 +588,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
     capability_factory: capabilityFactoryEvidence(db, env),
     // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
-    skill_route: skillRouteEvidence(db, env, since) };
+    skill_route: skillRouteEvidence(db, env, since),
+    // WEB-001 (WEB_RESEARCH_MODE): failure-driven web research — questions asked, candidates returned/accepted/rejected by reason,
+    // knowledge routed (on), dream genomes citing it and their trial result; null = no job yet
+    web_research: webResearchEvidence(db, env, now) };
 }

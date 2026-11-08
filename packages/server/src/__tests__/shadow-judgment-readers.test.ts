@@ -59,6 +59,7 @@ const READERS: Record<string, Reader> = {
   'services/requeue-policy.ts': { policy: 'non_shadow', why: "attributionOf: outcome_attribution (annotation) picks the requeue class" },
   'services/skill-distillation.ts': { policy: 'non_shadow', why: 'skill cards from outcome_attribution (annotation)' },
   'services/knowledge-gaps.ts': { policy: 'non_shadow', why: "outcome_attribution (annotation) leaves runs out; knowledge_gap reads are the writer's own dedupe / list" },
+  'services/web-research.ts': { policy: 'non_shadow', why: "outcome_attribution (annotation) leaves runs out; web_research rows are the job's own bookkeeping (in flight, cap, re-ask); only web_research_knowledge rows (mode 'on', written under WEB_RESEARCH_MODE=on) reach the dream pack" },
   'services/improvement-requeue.ts': { policy: 'non_shadow', why: "prescreen_park is written 'enforce' (only when the prescreen actually parked)" },
   'services/self-improvement-service.ts': { policy: 'non_shadow', why: "panel_failed / prescreen_park are written 'enforce'" },
   'services/decisions-inbox.ts': { policy: 'non_shadow', why: "requeue_dismiss (enforce, operator) filters requeue candidates; prescreen rows and labels are shown to the operator" },
