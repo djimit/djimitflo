@@ -244,6 +244,11 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     outcome: { metric: 'none: expected vs observed effects are recorded, no analysis in the experiment registry', source: "worker_leases.metadata.asg / 'asg_route' events", independence: 'none' },
     cost: { ...NO_COST }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'unmeasured',
     note: 'No runtime has a macro adapter, so the executed route is always MICRO; on mode refuses to act while the oracle experiments run.' },
+  // gym-native-tools.ts (#1189): oracle_gate offered as an MCP tool on ordinary remote gym attempts; gymNativeToolsEvidence is descriptive
+  { component: 'gym_native_tools', class: 'skill', name: 'Native skill tool in the gym (oracle_gate)', unit: 'one ordinary remote gym attempt', flags: ['GYM_NATIVE_SKILL_TOOLS'],
+    outcome: { metric: 'offered / called / pass rate when called / stopped within N steps of a pass (descriptive)', source: 'gym_result.native_tools (gymNativeToolsEvidence)', independence: 'none' },
+    cost: { ...NO_COST }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'unmeasured',
+    note: 'Gym only, never TG/PL/trial/canary/probe/holdout attempts; a contrast needs a pre-registered protocol first.' },
   // ── memory and knowledge ────────────────────────────────────────────────────────────────────────────────────────────────
   // assignment-context.ts (sha256 memory-holdout:<goal> < rate; M5 rule fitness ordering); evolution-evidence.ts memoryHoldoutEvidence;
   // experiment-registry.ts MEMORY_HOLDOUT_CLOSED (EXP-3 FALSIFIED 2026-10-27 → LOOP_MEMORY_RULES_ENABLED=false); memory-template-dedup.ts

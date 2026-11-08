@@ -365,6 +365,9 @@ export interface EvolutionEvidence {
     contrast: { treatment: { n: number; verified: number; rate: number | null }; holdout: { n: number; verified: number; rate: number | null }; difference: number | null; withheld: string | null } | null };
   /** fitness-contract registry (services/fitness-contracts.ts): which components can learn — counts by status, acting-flag coverage, the list (static, read-only) */
   fitness_contracts?: FitnessContractsReport;
+  /** GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native gym tool — offered / called / pass rate when called / stopped within N steps of a pass; null = unreadable */
+  gym_native_tools?: { mode: string | null; stop_within_steps: number; offered: number; scored: number; reported: number; unknown: number; called: number; calls: number;
+    calls_passed: number; call_pass_rate: number | null; attempts_passed: number; attempt_pass_rate: number | null; stopped_within_n: number } | null;
 }
 export type FitnessStatus = 'closed_loop' | 'measured_no_selection' | 'unmeasured' | 'circular';
 export type FitnessContractRow = {
