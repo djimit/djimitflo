@@ -26,7 +26,7 @@ export function calibrated(db: Database, source: string, p: number): number {
     WHERE s.source = ? AND s.status IN ${RESOLVED} AND j.decision <> 'error' GROUP BY s.id`).all(source) as Array<{ status: string; answers_json: string | null }>;
   let k = 0; let n = 0;
   for (const r of rows) {
-    let a = {}; try { a = JSON.parse(r.answers_json || '{}'); } catch { continue; }
+    let a: Record<string, unknown>; try { a = JSON.parse(r.answers_json || '{}'); } catch { continue; }
     const q = forecastOf('proposal_prescreen', a as never);
     if (q === null || bucket(q) !== bucket(p)) continue;
     n += 1; if (r.status === 'verified' || r.status === 'applied') k += 1;
