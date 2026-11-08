@@ -363,6 +363,11 @@ export interface EvolutionEvidence {
   skill_route?: { mode: 'off' | 'shadow' | 'on'; since: string; note: string;
     by_arm_lane: Array<{ arm: string; lane: string; selected: number; delivered: number; invoked: number; passed: number; verified: number; credited: number }> | null;
     contrast: { treatment: { n: number; verified: number; rate: number | null }; holdout: { n: number; verified: number; rate: number | null }; difference: number | null; withheld: string | null } | null };
+  /** fitness-contract registry (services/fitness-contracts.ts): which components can learn — counts by status, acting-flag coverage, the list (static, read-only) */
+  fitness_contracts?: FitnessContractsReport;
+  /** GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native gym tool — offered / called / pass rate when called / stopped within N steps of a pass; null = unreadable */
+  gym_native_tools?: { mode: string | null; stop_within_steps: number; offered: number; scored: number; reported: number; unknown: number; called: number; calls: number;
+    calls_passed: number; call_pass_rate: number | null; attempts_passed: number; attempt_pass_rate: number | null; stopped_within_n: number } | null;
   /** WEB-001 (WEB_RESEARCH_MODE): failure-driven web research → knowledge → dream genome → trial; null fields = no job yet (unknown) */
   web_research?: { mode: 'off' | 'shadow' | 'on'; window_days: number; note: string;
     questions: { asked: number; by_status: Record<string, number>; recent: Array<{ at: string; status: string; failure_class: string | null; lane: string | null; runtime: string | null; question: string | null }> } | null;
@@ -370,6 +375,21 @@ export interface EvolutionEvidence {
     cited: { genomes: number; promoted: number; retired: number; inconclusive: number; pending: number;
       list: Array<{ genome: string; status: string; knowledge: string[]; trial: { state: string; b: number | null; c: number | null; p: number | null; deciding_n: number | null } | null }> } | null };
 }
+export type FitnessStatus = 'closed_loop' | 'measured_no_selection' | 'unmeasured' | 'circular';
+export type FitnessContractRow = {
+  component: string; class: string; name: string; unit: string; flags: string[]; judgment?: string; experiment?: string; mechanism?: string;
+  outcome: { metric: string; source: string; independence: 'independent' | 'circular' | 'none' };
+  cost: { tokens: string | null; kwh: string | null; operator_minutes: string | null };
+  comparison: { kind: 'randomised' | 'holdout' | 'benchmark' | 'none'; ref: string | null };
+  decision_rule: string | null; inheritance: string | null; status: FitnessStatus; note: string;
+  /** the learning ledger's status for the contract's mechanism; null = no mechanism named */
+  ledger_status: LearningStatus | null;
+};
+export type FitnessContractsReport = {
+  total: number; by_status: Record<FitnessStatus, number>;
+  coverage: { acting_flags: number; mapped: number; exempt: number; unmapped: string[] };
+  violations: string[]; contracts: FitnessContractRow[]; note: string;
+};
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
   rate_A: number | null; rate_B: number | null; p_one_sided: number | null; supported: boolean | null }
