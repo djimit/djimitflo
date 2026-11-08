@@ -64,7 +64,13 @@ describe('research HTTP contracts', () => {
     expect((await (await fetch(`${base}/research/contradictions/detect`, { method: 'POST' })).json())).toMatchObject({ count: 1 });
     const report = await fetch(`${base}/research/reports/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Fixture report', claim_ids: [positiveId] }) });
     expect(report.status).toBe(201);
-    expect((await report.json() as any)).toMatchObject({ title: 'Fixture report', overall_confidence: 0 });
+    const reportRecord = await report.json() as any;
+    expect(reportRecord).toMatchObject({ title: 'Fixture report', overall_confidence: 0 });
+    const reports = await fetch(`${base}/research/reports?limit=10`);
+    expect(reports.status).toBe(200);
+    expect((await reports.json() as any).reports).toMatchObject([{ id: reportRecord.id, claim_count: 1, verified_claim_count: 0, source_count: 1 }]);
+    const invalidLimit = await fetch(`${base}/research/reports?limit=101`);
+    expect(invalidLimit.status).toBe(400);
     expect((await (await fetch(`${base}/research/stats`)).json())).toMatchObject({ totalSources: 1, totalClaims: 2, totalCitations: 2, totalContradictions: 1, totalReports: 1 });
   });
 

@@ -78,6 +78,11 @@ export type KnowledgeOverview = {
   fitness?: KnowledgeFitness;
 };
 
+export type ResearchReportSummary = {
+  id: string; title: string; summary: string; claim_count: number; verified_claim_count: number;
+  source_count: number; contradiction_count: number; generated_at: string;
+};
+
 export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'unused' | 'insufficient';
 export type KnowledgeFitness = {
   at: string; window_days: number; half_life_days: number; min_n: number;
@@ -2174,6 +2179,14 @@ class ApiClient {
 
   async getKnowledgeOverview(): Promise<KnowledgeOverview> {
     return this.request('/health/knowledge');
+  }
+
+  async getResearchReports(limit = 25): Promise<{ reports: ResearchReportSummary[] }> {
+    return this.request(`/research/reports?limit=${encodeURIComponent(String(limit))}`);
+  }
+
+  async createResearchMemoryCandidate(reportId: string): Promise<MemoryCandidateRecord> {
+    return this.request(`/research/reports/${encodeURIComponent(reportId)}/memory-candidate`, { method: 'POST', body: JSON.stringify({}) });
   }
 
   /** K4: distilled skill / anti-pattern cards (record-only, never injected into a maker). */

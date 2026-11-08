@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { Library } from 'lucide-react';
-import { api, type KnowledgeFitness, type KnowledgeOverview, type SkillCardsView } from '../lib/api';
+import { api, type KnowledgeFitness, type KnowledgeOverview, type ResearchReportSummary, type SkillCardsView } from '../lib/api';
 import { useResource } from '../hooks/useResource';
+import { useAuthStore } from '../lib/auth-store';
 
 const fetchKnowledge = () => api.getKnowledgeOverview();
 const fetchSkills = () => api.getSkillCards();
+const fetchResearchReports = () => api.getResearchReports(25);
 
 const day = (value: string | null) => (value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—');
 
@@ -11,6 +14,8 @@ const day = (value: string | null) => (value ? new Date(value).toLocaleDateStrin
 export function KnowledgePage() {
   const { data, error } = useResource(fetchKnowledge);
   const skills = useResource(fetchSkills);
+  const reports = useResource(fetchResearchReports);
+  const canSubmitResearch = useAuthStore((state) => state.hasPermission('write:claim'));
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -19,14 +24,65 @@ export function KnowledgePage() {
         <h1 className="text-2xl font-bold">Knowledge</h1>
       </div>
       <p className="text-sm text-foreground-secondary">
-        Discoveries from the fleet, the scout, the knowledge base and the operator's reading list; jev's relevance verdict on each; and what reached the panels. Last 30 days, read-only.
+        Discoveries from the fleet, scout, knowledge base and reading list; relevance signals and reusable skill evidence. Research reports can be submitted for memory review; they never become active automatically.
       </p>
       {error && <p role="alert" className="text-status-error">{error}</p>}
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
       {data && <KnowledgeBody data={data} />}
+      <ResearchReportsSection data={reports.data?.reports} loading={!reports.data && !reports.error} error={reports.error} canSubmit={canSubmitResearch} />
       {skills.error && <p role="alert" className="text-status-error">{skills.error}</p>}
       {skills.data && <SkillCardsSection data={skills.data} />}
     </div>
+  );
+}
+
+export function ResearchReportsSection({ data, loading, error, canSubmit }: {
+  data: ResearchReportSummary[] | undefined; loading: boolean; error: string | null; canSubmit: boolean;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const submit = async (reportId: string) => {
+    setBusyId(reportId);
+    setNotice(null);
+    setActionError(null);
+    try {
+      const candidate = await api.createResearchMemoryCandidate(reportId);
+      setNotice(`Candidate ${candidate.id} is awaiting memory review. It is not active knowledge.`);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'Could not submit this report for review.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <section aria-labelledby="research-reports">
+      <h2 id="research-reports" className="text-lg font-semibold mb-2">Citation research reports</h2>
+      <p className="text-xs text-foreground-tertiary mb-2">Source trust is not claim verification. Unverified claims remain marked as such in any candidate.</p>
+      {error && <p role="alert" className="text-status-error">{error}</p>}
+      {loading && <p className="text-sm text-foreground-secondary">Loading research reports…</p>}
+      {!loading && !error && data?.length === 0 && <p className="text-sm text-foreground-secondary">No stored research reports yet.</p>}
+      {data && data.length > 0 && (
+        <ul className="space-y-3">
+          {data.map((report) => (
+            <li key={report.id} className="rounded border border-border p-3">
+              <h3 className="font-medium">{report.title}</h3>
+              <p className="text-sm text-foreground-secondary mt-1">{report.summary || 'No report summary provided.'}</p>
+              <p className="text-xs text-foreground-tertiary mt-1">
+                {report.source_count} sources · {report.verified_claim_count}/{report.claim_count} claims marked verified · {report.contradiction_count} contradictions · {day(report.generated_at)}
+              </p>
+              {canSubmit && <button type="button" className="mt-3 rounded border border-border px-3 py-1.5 text-sm hover:bg-background-secondary disabled:opacity-50" disabled={busyId !== null} onClick={() => void submit(report.id)}>
+                {busyId === report.id ? 'Submitting…' : 'Send to memory review'}
+              </button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {notice && <p role="status" className="mt-2 text-sm text-status-completed">{notice}</p>}
+      {actionError && <p role="alert" className="mt-2 text-sm text-status-error">{actionError}</p>}
+    </section>
   );
 }
 

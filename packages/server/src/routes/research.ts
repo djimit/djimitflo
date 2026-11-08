@@ -102,6 +102,16 @@ export function createResearchRoutes(db: Database, auth?: AuthMiddleware): Route
     }
   });
 
+  router.get('/reports', requirePermission('read:evidence'), (req, res) => {
+    const rawLimit = req.query.limit;
+    const limit = rawLimit === undefined ? 25 : typeof rawLimit === 'string' ? Number(rawLimit) : NaN;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      res.status(400).json({ error: { message: 'limit must be an integer between 1 and 100', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+    res.json({ reports: service.listReports(limit) });
+  });
+
   // Research is a candidate for learning, never a verified fact or active skill.
   router.post('/reports/:id/memory-candidate', requirePermission('write:claim'), (req, res, next) => {
     try {

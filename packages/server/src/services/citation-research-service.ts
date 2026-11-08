@@ -50,6 +50,17 @@ interface ResearchReport {
   generated_at: string;
 }
 
+export interface ResearchReportSummary {
+  id: string;
+  title: string;
+  summary: string;
+  claim_count: number;
+  verified_claim_count: number;
+  source_count: number;
+  contradiction_count: number;
+  generated_at: string;
+}
+
 export class CitationResearchService {
   constructor(private db: Database) {
     this.ensureTables();
@@ -323,6 +334,26 @@ export class CitationResearchService {
       overall_confidence: row.overall_confidence,
       generated_at: row.generated_at,
     };
+  }
+
+  listReports(limit = 25): ResearchReportSummary[] {
+    const capped = Math.max(1, Math.min(Math.trunc(limit), 100));
+    return (this.db.prepare('SELECT id, title, summary, claims_json, sources_json, contradictions_json, generated_at FROM research_reports ORDER BY generated_at DESC, id LIMIT ?').all(capped) as any[])
+      .map((row) => {
+        const claims = JSON.parse(row.claims_json || '[]') as Claim[];
+        const sources = JSON.parse(row.sources_json || '[]') as Source[];
+        const contradictions = JSON.parse(row.contradictions_json || '[]') as Contradiction[];
+        return {
+          id: row.id,
+          title: row.title,
+          summary: row.summary,
+          claim_count: claims.length,
+          verified_claim_count: claims.filter((claim) => claim.verified).length,
+          source_count: sources.length,
+          contradiction_count: contradictions.length,
+          generated_at: row.generated_at,
+        };
+      });
   }
 
   /**
