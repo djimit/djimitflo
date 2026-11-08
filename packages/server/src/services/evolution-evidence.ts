@@ -59,6 +59,7 @@ import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
+import { genomeApplyEvidence } from './genome-apply';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -77,7 +78,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },
   { name: 'LOOP_RESUME_INTERRUPTED', acting: true },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
-  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
+  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: true },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
@@ -586,5 +587,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
     capability_factory: capabilityFactoryEvidence(db, env),
     // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
-    skill_route: skillRouteEvidence(db, env, since) };
+    skill_route: skillRouteEvidence(db, env, since),
+    // GENOME_APPLY_MODE=on: promoted genomes in production makers — delivered vs 10 % holdout per genome (maker-clean), receipts, auto-retire decisions
+    genome_apply: genomeApplyEvidence(db, env) };
 }

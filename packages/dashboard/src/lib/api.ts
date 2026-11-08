@@ -363,6 +363,12 @@ export interface EvolutionEvidence {
   skill_route?: { mode: 'off' | 'shadow' | 'on'; since: string; note: string;
     by_arm_lane: Array<{ arm: string; lane: string; selected: number; delivered: number; invoked: number; passed: number; verified: number; credited: number }> | null;
     contrast: { treatment: { n: number; verified: number; rate: number | null }; holdout: { n: number; verified: number; rate: number | null }; difference: number | null; withheld: string | null } | null };
+  /** GENOME_APPLY_MODE=on: promoted genomes in production makers, delivered vs holdout per genome; null = unreadable (services/genome-apply.ts) */
+  genome_apply?: { mode: 'off' | 'shadow' | 'on'; holdout_rate: number; retire_rule: string; note: string;
+    leases: { delivered: number; holdout: number; undelivered: number } | null;
+    genomes: Array<{ genome_id: string; status: string | null; undelivered: number; difference: number | null; decision: 'retire' | 'keep' | 'insufficient'; reason: string;
+      treatment: { n: number; verified: number; rate: number | null; ci: [number, number] | null }; holdout: { n: number; verified: number; rate: number | null; ci: [number, number] | null } }> | null;
+    retire_decisions: Array<{ genome_id: string; at: string; reason: string | null }> | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
