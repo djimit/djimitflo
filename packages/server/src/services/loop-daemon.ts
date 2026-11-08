@@ -30,6 +30,7 @@ import { runSte001 } from './ste-001';
 import { extraRepoChecks, goalExtraRepo, goalRepoSlug, primaryRepo, repoSkillPrefix, type ExtraRepo } from './repo-registry';
 import { recordMakerCall } from './model-call-ledger';
 import { genomeDelivery, strategyGenomeFor } from './genome-registry';
+import { applyGenomeToLease, genomeApplyMode, genomeApplyRefs, genomeApplyRetireCheck } from './genome-apply';
 import { settleSkillRoute, skillRouteCreditable, skillRouteMode, skillRouteOutcomeState } from './skill-route';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFactorySpecialist } from './capability-factory';
@@ -664,14 +665,18 @@ export class LoopDaemon {
         }
       }
 
+      // GENOME_APPLY_MODE=on (genome-apply.ts): an active genome promoted by the gym rule gets its lines into this maker's
+      // LOOP_WORK.md — oracle lanes and its trialled species only, 10 % per-goal holdout, receipt on the lease. off/shadow: no-op.
+      const applyGenome = (leaseId: string) => { try { applyGenomeToLease(this.db, { runId: run.id, goalId: goal.id, loopName, leaseId }); } catch { /* never blocks a maker */ } };
+      if (!makerAlreadyDone) applyGenome(makerLease.id);
       // D2: attribute the maker to its strategy genome (lease stamp → outcomes, merge survival); GENOME_APPLY_MODE=shadow logs
-      // what an active genome would inject. Injecting is a separate, operator-owned flag (not built here).
+      // what an active genome would inject; =on injects (above), so its delivery is always checked (a holdout maker is undelivered).
       if (!makerAlreadyDone) try {
         const lease = this.db.prepare('SELECT runtime, json_extract(metadata, \'$.model\') AS model FROM worker_leases WHERE id = ?').get(makerLease.id) as { runtime: string; model: string | null } | undefined;
         const strategy = lease ? strategyGenomeFor(this.db, lease.runtime, lease.model) : null;
         // AG-trace gap A (SKILL_ROUTE_MODE shadow|on): the genome is this maker's strategy only if its lines are in the maker's
         // LOOP_WORK.md (the gym fire check); otherwise it is recorded as undelivered and earns no credit anywhere (off: today)
-        const delivery = strategy && skillRouteMode() !== 'off' ? genomeDelivery(this.db, strategy, this.assignmentText(makerLease.id)) : null;
+        const delivery = strategy && (skillRouteMode() !== 'off' || genomeApplyMode() === 'on') ? genomeDelivery(this.db, strategy, this.assignmentText(makerLease.id)) : null;
         if (strategy && delivery && !delivery.delivered) {
           this.db.prepare("UPDATE worker_leases SET metadata = json_set(json_remove(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome_id'), '$.genome_undelivered', json(?)) WHERE id = ?")
             .run(JSON.stringify({ genome_id: strategy.id, genome_lines: delivery.genome_lines, genome_lines_found: delivery.genome_lines_found, goal_sha256: delivery.goal_sha256, reason: delivery.reason }), makerLease.id);
@@ -716,6 +721,7 @@ export class LoopDaemon {
           try {
             const retry = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
             const retryMaker = retry.retry_maker;
+            applyGenome(retryMaker.id); // a fresh LOOP_WORK.md: same goal, same arm
             const retryInput = { lease_id: retryMaker.id, timeout_ms: makerTimeout, diff_max_lines: makerDiffMax, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
             try {
               await this.loops.executeWorker(run.id, retryInput);
@@ -757,6 +763,7 @@ export class LoopDaemon {
         for (const sp of species) {
           try {
             const sibling = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id, sibling: true, runtime: sp.runtime as never, ...(sp.model ? { model: sp.model } : {}) }).retry_maker;
+            applyGenome(sibling.id); // only when the sibling is the genome's trialled species
             // Ranked even if it crashes below: creating it superseded the first maker, and selection must be able to undo that.
             contenders.push(sibling.id);
             const siblingInput = { lease_id: sibling.id, timeout_ms: makerTimeout, diff_max_lines: makerDiffMax, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
@@ -957,7 +964,7 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const leaseMeta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; genome_undelivered?: { genome_id?: unknown }; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown; effective_runtime?: unknown; effective_model?: unknown } : {};
+        const leaseMeta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; genome_undelivered?: { genome_id?: unknown }; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown; effective_runtime?: unknown; effective_model?: unknown; genome_apply?: unknown } : {};
         // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback maker is its own species (loop-maker:<lane>:claude), tagged for experiment exclusion
         // P0-7: an engine fallback (effective_runtime on the lease) is attributed to the runtime that ran, with its model (unknown = none)
         const leaseRuntime = leaseMeta.runtime_fallback && maker ? maker.runtime : activeMakerLease.runtime;
@@ -1009,8 +1016,11 @@ export class LoopDaemon {
             ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : []),
             ...(ran.runtime !== leaseRuntime ? [`requested_runtime:${leaseRuntime}`] : []), ...capabilityIds.map((c) => `capability:${c}`),
             ...(typeof meta.genome_undelivered?.genome_id === 'string' ? [`strategy_genome_undelivered:${meta.genome_undelivered.genome_id}`] : []),
+            ...genomeApplyRefs(meta), // GENOME_APPLY_MODE=on: genome-apply:<treatment|holdout|undelivered>:<genome id>
             ...(skillRoute ? [`skill_route:${skillRoute.arm}:${skillRouteOutcomeState(skillRoute)}`, `skill:${skillRoute.capability_id}@${skillRoute.version}`] : [])],
         });
+        // GENOME_APPLY_MODE=on: a delivered genome far below its holdout goes back to 'retired' (never promotes; off/shadow: no-op)
+        if (firstPass) genomeApplyRetireCheck(this.db);
       } catch { /* best-effort learning */ }
 
       // 9a'''. K2 (KNOWLEDGE_GAP_MODE=shadow): a failure signature recurring >= 3x in 14 d becomes one knowledge gap (never throws)

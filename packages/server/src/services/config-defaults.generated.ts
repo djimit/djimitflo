@@ -58,7 +58,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   FLEET_REPAIR_MODE: 'off (`shadow`; `on` runs as shadow)',
   FLEET_SHELL_ENABLED: 'off (`1`)',
   FRONTIER_UNITS_REQUIRE_RELEVANCE: 'off',
-  GENOME_APPLY_MODE: 'unset (only `shadow` exists)',
+  GENOME_APPLY_MODE: 'off (`shadow`, `on`)',
   GENOME_FIRE_CHECK: 'off',
   GOVERNANCE_GATE_ENABLED: 'off',
   GRADED_CONTEST_MODE: 'off (`shadow`: when ≥ 2 evolve makers passed every gate, the graded winner — highest lease graded score, none = lowest,…',
