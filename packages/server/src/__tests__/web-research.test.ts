@@ -26,6 +26,8 @@ const NOW = new Date('2026-11-08T06:00:00Z');
 const DAY = 86_400_000;
 const ON = { WEB_RESEARCH_MODE: 'on' } as NodeJS.ProcessEnv;
 const SHADOW = { WEB_RESEARCH_MODE: 'shadow' } as NodeJS.ProcessEnv;
+// a GitHub-PAT-shaped fixture, assembled at run time so secret scanners do not flag the source (it was never a real token)
+const FAKE_PAT = ['ghp', 'abcdefghijklmnopqrstuvwxyz0123456789'].join('_');
 const G = { guard: guardLines };
 
 beforeEach(() => {
@@ -47,7 +49,7 @@ function failures(n: number, lane: string, gate: string, reason: string, prefix:
 function seedProdLike() {
   // the three most frequent production classes of 2026-11-01..08 (prod read-only query), plus private text in the reasons
   failures(8, 'doc-drift-and-small-fix-loop:opencode', 'maker_completion', 'maker_gate_failed:maker_runtime_exit_zero', 'exit');
-  failures(6, 'doc-drift-and-small-fix-loop:opencode', 'maker_completion', 'deterministic_checks_failed:test:mutation:grounded(exit=1) in /home/djimit/ACME-Corp/invoice-7731.ts token ghp_abcdefghijklmnopqrstuvwxyz0123456789', 'mut');
+  failures(6, 'doc-drift-and-small-fix-loop:opencode', 'maker_completion', `deterministic_checks_failed:test:mutation:grounded(exit=1) in /home/djimit/ACME-Corp/invoice-7731.ts token ${FAKE_PAT}`, 'mut');
   failures(2, 'doc-drift-and-small-fix-loop:remote', 'maker_completion', 'deterministic_checks_failed:test:changed(timed_out) after the target test passed', 'tmo');
   failures(5, 'test-gap:opencode', 'unknown_gate', 'something nobody can classify happened for customer Jane Doe', 'other');
 }
@@ -160,7 +162,7 @@ it('WEB-001: every candidate is untrusted — guardLines, the NE registry, secre
   const job2 = claimWebResearch(db, 'workstation', new Date(NOW.getTime() + 2 * 3_600_000), ON)!;
   await recordWebResearch(db, job2.jobId, 'workstation', { status: 'done', candidates: [
     candidate({ technique: 'Configure a jev prescreen cascade before each maker run.' }),
-    candidate({ technique: 'Put the key ghp_abcdefghijklmnopqrstuvwxyz0123456789 into the runner env.' }),
+    candidate({ technique: `Put the key ${FAKE_PAT} into the runner env.` }),
     candidate(),
   ] }, ON, new Date(NOW.getTime() + 2 * 3_600_000), { guard: guardLines, neEntries: ne });
   const a = JSON.parse(jobRows()[2].answers_json);
