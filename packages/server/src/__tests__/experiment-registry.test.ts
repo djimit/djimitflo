@@ -277,6 +277,7 @@ it('re-20261105 E14 / A M3: oracle-population changes (value gate, content safet
     ['CONTENT_SAFETY_CHUNKING', 'off', 'on', ORACLE], ['CONTENT_SAFETY_RATE_LIMIT', '', '4', ORACLE],
     ['KB_CONTEXT_ENABLED', 'false', 'true', ORACLE], ['CAPABILITY_FACTORY_MODE', 'off', 'on', ORACLE],
     ['MUTATION_GAP_MAX_PER_DAY', '2', '4', ORACLE], ['TEST_GAP_MAX_PER_DAY', '2', '3', ORACLE],
+    ['MAKER_SCOPE_REPAIR', 'off', 'on', ORACLE],
     ['GYM_TIER_PROBE_ENABLED', 'true', 'false', ['PL-001']],
   ];
   let day = 1;

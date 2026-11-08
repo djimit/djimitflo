@@ -89,7 +89,17 @@ export class WorktreeManager {
     try {
       this.git(repositoryRoot, ['worktree', 'prune']);
       this.git(repositoryRoot, ['worktree', 'add', '-B', branchName, worktreePath, 'HEAD']);
-      cpSync(aside, worktreePath, { recursive: true, force: true, verbatimSymlinks: true, filter: (src) => path.basename(src) !== '.git' });
+      // cpSync stats (follows) an existing destination symlink and throws ENOENT when it dangles (prod: the tracked
+      // `knowledge` link points outside the container), so drop the one `worktree add` just made and copy ours.
+      const isLink = (p: string) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
+      cpSync(aside, worktreePath, {
+        recursive: true, force: true, verbatimSymlinks: true,
+        filter: (src, dest) => {
+          if (path.basename(src) === '.git') return false;
+          if (isLink(src) && isLink(dest)) rmSync(dest);
+          return true;
+        },
+      });
     } finally {
       rmSync(aside, { recursive: true, force: true });
     }

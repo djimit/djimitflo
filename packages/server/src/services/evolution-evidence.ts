@@ -59,6 +59,7 @@ import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
+import { fitnessContractsReport } from './fitness-contracts';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -106,7 +107,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_FITNESS_MUTANTS_V2', acting: true }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
-  { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true }, { name: 'MAKER_UID_SEPARATION', acting: true },
+  { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true }, { name: 'MAKER_UID_SEPARATION', acting: true }, { name: 'MAKER_SCOPE_REPAIR', acting: true },
   { name: 'POLICY_VIOLATION_LOG', acting: false }, { name: 'HOST_TOKEN_WATCH_MODE', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
   { name: 'CHECKER_FAMILY_VERSION', acting: true },
@@ -144,13 +145,14 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
   { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
   { name: 'SKILL_ROUTE_MODE', acting: true },
+  { name: 'SKILL_VALIDATION_REQUIRES_TESTS', acting: true },
   { name: 'SKILL_ARTIFACT_EVOLUTION_MODE', acting: true },
   { name: 'EGRESS_CLASS_MODE', acting: false },
   // re-20261105 E17 / P1-8: acting flags that were in no registry, or filed as non-evolution although they steer the loop
   { name: 'PROPOSAL_GROUNDING_REQUIRED', acting: true }, { name: 'SELF_IMPROVEMENT_GOAL_ON_APPROVE', acting: true },
   { name: 'REMOTE_MAKER_ENABLED', acting: true }, { name: 'GOVERNANCE_GATE_ENABLED', acting: true }, { name: 'LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED', acting: true },
   { name: 'MUTATION_GAP_ENABLED', acting: true }, { name: 'MUTATION_GAP_MAX_PER_DAY', acting: true },
-  { name: 'TEST_GAP_SOURCE_ENABLED', acting: true }, { name: 'TEST_GAP_EXPORTS_ENABLED', acting: true }, { name: 'TEST_GAP_PACKAGES_ENABLED', acting: true }, { name: 'TEST_GAP_MAX_PER_DAY', acting: true },
+  { name: 'TEST_GAP_SOURCE_ENABLED', acting: true }, { name: 'TEST_GAP_EXPORTS_ENABLED', acting: true }, { name: 'TEST_GAP_PACKAGES_ENABLED', acting: true }, { name: 'TEST_GAP_DASHBOARD_ENABLED', acting: true }, { name: 'TEST_GAP_MAX_PER_DAY', acting: true },
   // judgmentMode() builds TYPESAFE_<judgment id>_MODE at run time (TYPESAFE_PROPOSAL_PRESCREEN_MODE is listed above)
   { name: 'TYPESAFE_KB_PASSAGE_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_DECISION_CONTEXT_MODE', acting: true },
   { name: 'TYPESAFE_DISCOVERY_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_REFLECTION_TRIAGE_MODE', acting: true },
@@ -491,6 +493,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
   const experiments = experimentsReport(db, env, now);
+  const ledger = learningLedger(db, experiments.experiments, ope);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -558,7 +561,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
     experiments,
     // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
-    learning_ledger: learningLedger(db, experiments.experiments, ope),
+    learning_ledger: ledger,
     // P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host (window) and the host key list, no secrets (read-only)
     fleet_signatures: fleetSignatureEvidence(db, env, since),
     // AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main, per agent; insufficient below n 5
@@ -586,5 +589,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
     capability_factory: capabilityFactoryEvidence(db, env),
     // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
-    skill_route: skillRouteEvidence(db, env, since) };
+    skill_route: skillRouteEvidence(db, env, since),
+    // fitness contracts (services/fitness-contracts.ts): which components can learn — counts by status, acting-flag coverage, the list (static)
+    fitness_contracts: fitnessContractsReport(EVOLUTION_FLAGS, ledger) };
 }
