@@ -41,3 +41,23 @@ it('re-registers a worktree whose runtime clone was replaced by a deploy, keepin
     expect(fs.readdirSync(path.dirname(worktree))).toEqual(['finding']); // nothing left aside
   } finally { delete process.env.LOOP_WORKTREE_ROOT; }
 });
+
+it('repairs a worktree that tracks a dangling symlink (prod: knowledge -> external dir absent in the container)', () => {
+  const origin = path.join(root, 'origin');
+  fs.symlinkSync('../not-here/knowledge', path.join(origin, 'knowledge'));
+  git(origin, 'add', '.'); git(origin, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'link');
+  const oldClone = path.join(root, 'runtime-source-old');
+  execFileSync('git', ['clone', '-q', origin, oldClone]);
+  process.env.LOOP_WORKTREE_ROOT = path.join(root, 'worktrees');
+  const wm = new WorktreeManager(new Database(':memory:'));
+  try {
+    const worktree = wm.createWorktree(oldClone, 'run', 'finding', 'agent/loop/run-finding', false);
+    fs.rmSync(oldClone, { recursive: true, force: true });
+    const newClone = path.join(root, 'runtime-source-new');
+    execFileSync('git', ['clone', '-q', origin, newClone]);
+
+    expect(wm.repairWorktree(newClone, worktree, 'agent/loop/run-finding')).toBe(true);
+    expect(fs.readlinkSync(path.join(worktree, 'knowledge'))).toBe('../not-here/knowledge');
+    expect(git(worktree, 'status', '--porcelain')).toBe('');
+  } finally { delete process.env.LOOP_WORKTREE_ROOT; }
+});

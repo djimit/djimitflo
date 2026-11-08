@@ -222,7 +222,7 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   // ── skills ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
   // skill-route.ts: sha256 skill-route-holdout:v1:<goal> 50/50; credit only on delivered ∧ invoked ∧ checks pass ∧ verified;
   // skillRouteEvidence contrast descriptive, withheld below n 30 per arm; validation is a manual operator API call
-  { component: 'skill_route', class: 'skill', name: 'Skill route', unit: 'one oracle-lane goal (skill delivered vs held out)', flags: ['SKILL_ROUTE_MODE'],
+  { component: 'skill_route', class: 'skill', name: 'Skill route', unit: 'one oracle-lane goal (skill delivered vs held out)', flags: ['SKILL_ROUTE_MODE', 'SKILL_VALIDATION_REQUIRES_TESTS'],
     outcome: { metric: `${VERIFIED}, treatment vs holdout`, source: "outcome_credits kind 'skill_invoked' + skill_route events (skillRouteEvidence)", independence: 'independent' },
     cost: { tokens: MAKER_TOKENS, kwh: null, operator_minutes: null },
     comparison: { kind: 'holdout', ref: 'skill-route-holdout:v1 (50 % per-goal sha256 split)' }, decision_rule: null, inheritance: null, status: 'measured_no_selection',
@@ -295,7 +295,9 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   // test-gap-source-service.ts run() (TEST_GAP_MAX_PER_DAY shared by test-gap / exports / packages); settlement-execution.ts survivalByLane
   // (informative null on test-only lanes: line retention cannot fail) and settlementValueEvidence (fresh-mutant kill share)
   { component: 'lane_test_gap', class: 'lane', name: 'Lane: test-gap (incl. packages, extra repos)', unit: 'one loop PR of the lane',
-    flags: ['TEST_GAP_SOURCE_ENABLED', 'TEST_GAP_PACKAGES_ENABLED', 'TEST_GAP_MAX_PER_DAY', 'EXTRA_REPOS_ENABLED'],
+    flags: ['TEST_GAP_SOURCE_ENABLED', 'TEST_GAP_PACKAGES_ENABLED', 'TEST_GAP_MAX_PER_DAY', 'EXTRA_REPOS_ENABLED',
+      // #1181: restores an out-of-scope package.json/lockfile before the unchanged gates (maker-scope-repair.ts)
+      'MAKER_SCOPE_REPAIR'],
     outcome: { metric: SETTLED_KILL, source: 'settlementValueEvidence by_lane test-gap', independence: 'independent' },
     cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'measured_no_selection',
     note: 'Survival cannot fail on test-only PRs (informative null). Packages-lane tests are never re-scored (re-run covers packages/server tests only).' },
@@ -310,9 +312,9 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'measured_no_selection',
     note: 'The maker-time score is circular (the Stryker check the maker aimed at); only the settlement re-score is independent.' },
   // no such lane: TEST_GAP_PACKAGES_ENABLED covers shared / agent-catalog / mcp-server; dashboard files are ORACLE_TEST_FILES auto-merge refuses
-  { component: 'lane_dashboard', class: 'lane', name: 'Lane: dashboard', unit: 'none (no dashboard goal source exists)', flags: [],
+  { component: 'lane_dashboard', class: 'lane', name: 'Lane: dashboard', unit: 'one dashboard test-gap proposal (TEST_GAP_DASHBOARD_ENABLED, #1182)', flags: ['TEST_GAP_DASHBOARD_ENABLED'],
     outcome: { metric: 'none', source: 'none', independence: 'none' }, cost: { ...NO_COST }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'unmeasured',
-    note: 'Does not exist in code: no goal source proposes dashboard work; PACKAGE_LANES are shared, agent-catalog and mcp-server.' },
+    note: 'Goal source since #1182 (discoverDashboardGaps in test-gap-source-service.ts); its PRs map to the test-gap lane, no own settled-outcome readout yet.' },
   // finding-fix-source.ts (scripts/finding-fix-gate.mjs is both the finding source and the oracle; refs map to lane 'other')
   { component: 'lane_finding_fix', class: 'lane', name: 'Lane: finding-fix', unit: 'one loop PR of the lane', flags: ['FINDING_FIX_LANE', 'FINDING_FIX_MAX_PER_DAY'],
     outcome: { metric: 'the finding is gone per finding-fix-gate.mjs — the same script that produced it', source: 'loop run checks (finding-fix-gate.mjs)', independence: 'circular' },
