@@ -4,7 +4,7 @@ import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { OutcomeLearningService } from './outcome-learning-service';
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
-import { checkContentSafety, contentSafetyApplies } from './content-safety';
+import { checkContentSafety, contentSafetyApplies, discoverySafetyText } from './content-safety';
 import { ensureFleetSignatureTables, fleetSignatureMode, pruneFleetNonces, recordFleetVerdict, verifyFleetEvent, type FleetVerification } from './fleet-event-signatures';
 import { fleetBusAuthHeaders } from './fleet-bus-auth';
 
@@ -249,7 +249,7 @@ export class ExternalEventIngestService {
         }
         // K1 (shadow): untrusted text from fleet agents is checked before it can reach any prompt
         if (eventType.startsWith('discovery.') && contentSafetyApplies('external_event')) {
-          void checkContentSafety(this.db, { type: 'external_event', id }, [normalizedEvent.title, normalizedEvent.note].filter((v) => typeof v === 'string').join('\n')).catch(() => undefined);
+          void checkContentSafety(this.db, { type: 'external_event', id }, discoverySafetyText(normalizedEvent)).catch(() => undefined);
         }
         if (eventType.startsWith('discovery.') && sourceUnits) {
           try {
