@@ -144,6 +144,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
   { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
   { name: 'SKILL_ROUTE_MODE', acting: true },
+  { name: 'SKILL_VALIDATION_REQUIRES_TESTS', acting: true },
   { name: 'SKILL_ARTIFACT_EVOLUTION_MODE', acting: true },
   { name: 'EGRESS_CLASS_MODE', acting: false },
   // re-20261105 E17 / P1-8: acting flags that were in no registry, or filed as non-evolution although they steer the loop
