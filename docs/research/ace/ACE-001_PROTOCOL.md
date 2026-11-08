@@ -138,3 +138,20 @@ This adds a period boundary to the analysis. Verdict rules are unchanged. The te
   this instant as two periods next to the registered whole-window analysis; the periods are never pooled silently.
 - **Unchanged:** the primary endpoint (`verified`), the secondary token reading as amended in Amendment 3, arm assignment
   (`sha256('ace-001:' + goal id) mod 4`), analysis window, target, stop_by, and the safety/harm stops.
+
+## Amendment 5 (2026-11-08): period boundary (evolve siblings off)
+
+This adds a period boundary to the analysis. Verdict rules are unchanged. The text above is frozen and is not edited.
+
+- **Period boundary: 2026-11-08T00:00:02Z.** Evolve siblings were switched off in production at this instant
+  (`LOOP_EVOLVE_ENABLED=false`, following the EXP-2 X1 result,
+  `docs/research/intelligence-metrics/EXP-2_RESULT.md`; operator decision 2026-11-07 "siblings off").
+  Until then an evolve-eligible oracle-lane goal in X1 arm `on` got sibling makers (`LOOP_EVOLVE_SPECIES`), and the fittest
+  maker's patch, sometimes a sibling's, went to review. From then on no goal gets a sibling, so which maker's work reaches
+  the checkers changed for every arm at once. The switch wrote no `experiment_period_boundaries` row, because
+  `LOOP_EVOLVE_ENABLED` was not a declared treatment variable; it is one now (`experiment-registry.ts`
+  `ORACLE_POPULATION_ENV`, with `LOOP_EVOLVE_SPECIES`), so a later change records its own boundary. The analysis reports
+  outcomes created before and from this instant as two periods next to the registered whole-window analysis; the periods
+  are never pooled silently.
+- **Unchanged:** the primary endpoint (`verified`), the secondary token reading as amended in Amendment 3, arm assignment
+  (`sha256('ace-001:' + goal id) mod 4`), analysis window, target, stop_by, the Amendment 4 boundary, and the safety/harm stops.

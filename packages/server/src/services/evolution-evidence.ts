@@ -59,6 +59,8 @@ import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
+import { fitnessContractsReport } from './fitness-contracts';
+import { gymNativeToolsEvidence } from './gym-native-tools';
 import { genomeApplyEvidence } from './genome-apply';
 
 /**
@@ -93,7 +95,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
   { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
   { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
-  { name: 'GYM_PROD_GATES', acting: false },
+  { name: 'GYM_PROD_GATES', acting: false }, { name: 'GYM_NATIVE_SKILL_TOOLS', acting: true },
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
   { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
   { name: 'INFERENCE_BUDGET_THROTTLE', acting: true }, { name: 'OLLAMA_WEEKLY_TOKEN_BUDGET', acting: true }, { name: 'OLLAMA_THROTTLE_AT', acting: true },
@@ -493,6 +495,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
   const experiments = experimentsReport(db, env, now);
+  const ledger = learningLedger(db, experiments.experiments, ope);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -560,7 +563,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
     experiments,
     // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
-    learning_ledger: learningLedger(db, experiments.experiments, ope),
+    learning_ledger: ledger,
     // P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host (window) and the host key list, no secrets (read-only)
     fleet_signatures: fleetSignatureEvidence(db, env, since),
     // AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main, per agent; insufficient below n 5
@@ -589,6 +592,11 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     capability_factory: capabilityFactoryEvidence(db, env),
     // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
     skill_route: skillRouteEvidence(db, env, since),
+    // fitness contracts (services/fitness-contracts.ts): which components can learn — counts by status, acting-flag coverage, the list (static)
+    fitness_contracts: fitnessContractsReport(EVOLUTION_FLAGS, ledger),
+    // GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native tool on ordinary remote gym attempts — offered / called / pass rate when called /
+    // stopped within N steps after a pass (descriptive; not an experiment)
+    gym_native_tools: gymNativeToolsEvidence(db, since, env),
     // GENOME_APPLY_MODE=on: promoted genomes in production makers — delivered vs 10 % holdout per genome (maker-clean), receipts, auto-retire decisions
     genome_apply: genomeApplyEvidence(db, env) };
 }
