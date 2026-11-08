@@ -27,7 +27,8 @@ export type MemoryPort = Pick<MemoryCandidateService, 'create'>;
 export interface CommonsReviewTick { collected: number; timedOut: number; posted: number }
 
 /** Failures of the platform, not of the proposal (prod 2026-09-23: root-owned .git after a deploy, expired approvals). */
-const INFRA_FAILURE_RE = /WORKTREE_CREATE_FAILED|cannot lock ref|RUNTIME_UNAVAILABLE|requested runtime is unavailable|ECONNREFUSED|ETIMEDOUT|ENOSPC|approval expired/i;
+// ponytail: matches the default worktree root name only; a custom LOOP_WORKTREE_ROOT needs its own pattern
+const INFRA_FAILURE_RE = /WORKTREE_CREATE_FAILED|cannot lock ref|RUNTIME_UNAVAILABLE|requested runtime is unavailable|ECONNREFUSED|ETIMEDOUT|ENOSPC|approval expired|ENOENT[^\n]*loop-worktrees\//i;
 export const isInfrastructureFailure = (detail: string): boolean => INFRA_FAILURE_RE.test(detail);
 const MAX_INFRA_RETRIES = 2;
 
