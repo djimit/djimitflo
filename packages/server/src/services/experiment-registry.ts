@@ -82,7 +82,9 @@ const ORACLE_POPULATION_ENV = ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VA
   // the A4 brake's cache-read weight decides which opencode makers are stopped (15 of 31 braked in 7 d to 11-07), so their outcomes
   'OPENCODE_BRAKE_CACHE_READ_WEIGHT',
   // GENOME_APPLY_MODE=on appends a promoted genome's strategy lines to oracle-lane LOOP_WORK.md (genome-apply.ts)
-  'GENOME_APPLY_MODE'];
+  'GENOME_APPLY_MODE',
+  // MAKER_SCOPE_REPAIR: restores an oracle-lane maker's out-of-scope package.json / lockfile, so the scope gate can pass a run it refused
+  'MAKER_SCOPE_REPAIR'];
 /** TG-001 closed by the operator: INCONCLUSIVE at 20 tasks, no extension to 40 (task supply). INCONCLUSIVE from the evidence
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
