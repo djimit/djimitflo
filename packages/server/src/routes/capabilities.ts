@@ -2,7 +2,7 @@
  * Capability factory, slice 1 (CAPABILITY_FACTORY_MODE=on): operator requests and the capability registry view.
  * Off: both routes answer 404 CAPABILITY_FACTORY_DISABLED and write nothing.
  * L1 skill route (SKILL_ROUTE_MODE=shadow|on, manage:config): register a skill from a repair (server-side digest) and validate it.
- * Off: 404 SKILL_ROUTE_DISABLED, nothing written.
+ * Off: 404 SKILL_ROUTE_DISABLED, nothing written. SKILL_VALIDATION_REQUIRES_TESTS=on: register needs `tests`, validate a `test_receipt`.
  */
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
@@ -32,9 +32,19 @@ const skillSchema = z.object({
   oracle: z.string().trim().min(5).max(300),
   applicability: z.object({ runtimes: z.array(z.string().trim().min(1).max(80)).max(10).optional() }).strict().optional(),
   provenance: z.object({ lease_ids: z.array(z.string().trim().min(1).max(100)).max(50).optional(), ref: z.string().trim().max(300).optional() }).strict().optional(),
+  // SKILL_VALIDATION_REQUIRES_TESTS: repo-relative test files that exercise the script (required when on); the server hashes them
+  tests: z.array(z.string().trim().min(1).max(300)).min(1).max(20).optional(),
 }).strict();
-const validateSchema = z.object({ evidence_refs: z.array(z.string().trim().min(1).max(300)).min(1).max(20) }).strict();
-const SKILL_STATUS: Record<string, number> = { SKILL_ROUTE_DISABLED: 404, SKILL_NOT_FOUND: 404, SKILL_DIGEST_CHANGED: 409, SKILL_NOT_CANDIDATE: 409 };
+// scripts/skill-test-receipt.mjs output; checked only with SKILL_VALIDATION_REQUIRES_TESTS=on (the server never runs tests)
+const testReceiptSchema = z.object({
+  commit: z.string().trim().regex(/^[0-9a-f]{7,64}$/i),
+  test_files: z.array(z.object({ path: z.string().trim().min(1).max(300), sha256: z.string().trim().min(1).max(80) }).strict()).min(1).max(20),
+  result: z.enum(['pass', 'fail']),
+  runner: z.string().trim().min(1).max(500),
+  ran_at: z.string().trim().min(1).max(40),
+}).strict();
+const validateSchema = z.object({ evidence_refs: z.array(z.string().trim().min(1).max(300)).min(1).max(20), test_receipt: testReceiptSchema.optional() }).strict();
+const SKILL_STATUS: Record<string, number> = { SKILL_ROUTE_DISABLED: 404, SKILL_NOT_FOUND: 404, SKILL_DIGEST_CHANGED: 409, SKILL_NOT_CANDIDATE: 409, SKILL_TESTS_UNPROVEN: 409 };
 
 export function createCapabilityRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -68,7 +78,7 @@ export function createCapabilityRoutes(db: Database, auth?: AuthMiddleware): Rou
       const actor = req.user?.sub || req.user?.email;
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const parsed = skillSchema.safeParse(req.body);
-      if (!parsed.success) throw createError(400, 'name, lanes, script_path and oracle are required (applicability, provenance optional; no digest)', 'VALIDATION_ERROR');
+      if (!parsed.success) throw createError(400, 'name, lanes, script_path and oracle are required (applicability, provenance, tests optional; no digest)', 'VALIDATION_ERROR');
       const result = registerSkillFromRepair(db, parsed.data, actor);
       res.status(result.status === 'registered' ? 201 : 200).json(result);
     } catch (error) { next(skillError(error)); }
@@ -80,7 +90,7 @@ export function createCapabilityRoutes(db: Database, auth?: AuthMiddleware): Rou
       const actor = req.user?.sub || req.user?.email;
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const parsed = validateSchema.safeParse(req.body);
-      if (!parsed.success) throw createError(400, 'evidence_refs (1–20) are required', 'VALIDATION_ERROR');
+      if (!parsed.success) throw createError(400, 'evidence_refs (1–20) are required (test_receipt optional: {commit, test_files [{path, sha256}], result, runner, ran_at})', 'VALIDATION_ERROR');
       res.json({ capability: validateSkillCapability(db, param(req, 'id'), parsed.data, actor) });
     } catch (error) { next(skillError(error)); }
   });
