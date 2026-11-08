@@ -959,6 +959,26 @@ export type WorkerLeaseRecord = {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  parent_lease_id?: string | null;
+  spawn_tree_id?: string | null;
+  depth?: number;
+};
+
+export type DelegationReceipt = {
+  spawn_id: string | null;
+  loop_run_id: string;
+  parent_lease_id: string;
+  child_lease_id: string | null;
+  proposed: boolean;
+  executed: boolean;
+  execution_outcome: 'not_started' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
+  verification_outcome: 'unknown' | 'pending' | 'accepted' | 'rejected' | 'inconclusive';
+  delivery_outcome: 'not_delivered' | 'pending' | 'delivered';
+  evidence_refs: string[];
+  checks: Array<{ name: string; status: string; evidence: string }>;
+  source_revision: string | null;
+  resource_usage: { reserved_tokens: number | null; measured_tokens: number | null; estimated_tokens: number | null; measured_wall_ms: number | null; cost_amount: number | null };
+  reason?: string;
 };
 
 export type LoopEventRecord = {
@@ -1442,7 +1462,7 @@ export type MissionDetail = {
   runs: Array<{ id: string; loop_name: string; status: string; created_at: string; updated_at: string; completed_at: string | null; failed_gates: string[]; next_actions: string[];
     closure: { eval_run_id: string; score_delta: number | null; created_at: string } | null;
     attribution: { outcome: string; reason: string | null; created_at: string; judgment_id: string } | null }>;
-  leases: Array<{ id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null }>;
+  leases: Array<{ id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; parent_lease_id: string | null; spawn_tree_id: string | null; depth: number; verdict: string | null; maker_lease_id: string | null; reserved_tokens: number | null; measured_tokens: number | null }>;
   tasks: Array<{ id: string; title: string; status: string; assigned_lease_id: string | null; capability_id: string | null }>;
   decisions: Array<{ id: string; task_id: string | null; decision_type: string; decision: string; reason: string; actor: string; blocked_reasons: string[]; created_at: string }>;
   blocker: { text: string; source: string } | null;
@@ -2389,6 +2409,10 @@ class ApiClient {
     return this.request('/loops/runtime-contracts');
   }
 
+  async getDelegationMode(): Promise<{ mode: 'off' | 'shadow' | 'execute' }> {
+    return this.request('/loops/delegation/mode');
+  }
+
   async getGymOutcome(runId: string): Promise<{ run_id: string; skill_outcome: GymSkillOutcome | null }> {
     return this.request(`/loops/runs/${encodeURIComponent(runId)}/gym-outcome`);
   }
@@ -2420,6 +2444,17 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ lease_id: leaseId, ...input }),
     });
+  }
+
+  async delegateTask(runId: string, input: { parent_lease_id: string; runtime: 'codex' | 'opencode' | 'claude' | 'gemini'; prompt: string; capability_ids?: string[]; idempotency_key: string }): Promise<DelegationReceipt> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}/delegate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': input.idempotency_key },
+      body: JSON.stringify({ parent_lease_id: input.parent_lease_id, runtime: input.runtime, prompt: input.prompt, capability_ids: input.capability_ids }),
+    });
+  }
+
+  async getDelegationReceipt(runId: string, spawnId: string): Promise<DelegationReceipt> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}/delegations/${encodeURIComponent(spawnId)}`);
   }
 
   async executeChecker(runId: string, leaseId: string, input: { runtime?: 'codex' | 'opencode' | 'mock'; timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {

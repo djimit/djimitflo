@@ -32,6 +32,8 @@ function mapSpawnError(error: unknown): never {
     case 'SPAWN_TREE_NOT_FOUND': throw createError(404, 'spawn tree not found', 'SPAWN_TREE_NOT_FOUND');
     case 'SPAWN_TREE_CLOSED': throw createError(409, 'spawn tree is closed', 'SPAWN_TREE_CLOSED');
     case 'SPAWN_TREE_MISMATCH': throw createError(400, 'parent lease does not belong to this spawn tree', 'SPAWN_TREE_MISMATCH');
+    case 'DELEGATION_RUN_NOT_EXECUTABLE': throw createError(409, 'The loop or parent lease is no longer accepting delegated work', 'DELEGATION_RUN_NOT_EXECUTABLE');
+    case 'SPAWN_CAPABILITY_ESCALATION': throw createError(403, 'A child cannot request capabilities outside its parent lease', 'SPAWN_CAPABILITY_ESCALATION');
     case 'PARENT_LEASE_NOT_FOUND': throw createError(404, 'parent lease not found', 'PARENT_LEASE_NOT_FOUND');
     case 'SPAWN_NOT_FOUND': throw createError(404, 'spawn not found', 'SPAWN_NOT_FOUND');
     case 'SPAWN_TOKEN_INVALID': throw createError(401, 'spawn token is invalid, expired, or not scoped to this lease/tree', 'SPAWN_TOKEN_INVALID');

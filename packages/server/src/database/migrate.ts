@@ -735,6 +735,12 @@ function createNestedSpawnTables(db: BetterSqlite3Database) {
 
     CREATE INDEX IF NOT EXISTS idx_spawn_trees_status ON spawn_trees(status);
   `);
+
+  addMissingColumns(db, 'sub_agent_spawns', [
+    { name: 'idempotency_key', definition: 'TEXT' },
+    { name: 'intent_digest', definition: 'TEXT' },
+  ]);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_agent_spawns_idempotency ON sub_agent_spawns(idempotency_key) WHERE idempotency_key IS NOT NULL`);
 }
 
 // Added in telegram-swarm: extend agents with machine/telegram/okf fields

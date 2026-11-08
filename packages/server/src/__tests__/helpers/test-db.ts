@@ -858,11 +858,14 @@ const SCHEMA = `
     reject_reason TEXT,
     token_budget_grant INTEGER,
     wall_budget_ms INTEGER,
+    idempotency_key TEXT,
+    intent_digest TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (parent_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
     FOREIGN KEY (child_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
     FOREIGN KEY (requested_by_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE
   );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_agent_spawns_idempotency ON sub_agent_spawns(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
   CREATE TABLE IF NOT EXISTS agents_md_files (
     id TEXT PRIMARY KEY,
