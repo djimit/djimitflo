@@ -100,16 +100,16 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   // ── gym ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   // genome-registry.ts nextTrialAttempt (parent + child on every frozen task), ELIGIBLE_GATED, fire check; dream-evolution.ts promotion
   // (b > c && McNemar p < DREAM_PROMOTION_ALPHA, mined c − b ≤ 1, scope not worse, one per day); genome-promotion.ts holdout reuse check;
-  // strategyGenomeFor = attribution only, GENOME_APPLY_MODE has only 'shadow' (no production injection); tg-001.ts transfer (INCONCLUSIVE)
+  // strategyGenomeFor = attribution only, GENOME_APPLY_MODE=on injects active promoted genomes (genome-apply.ts, 10 % holdout); tg-001.ts transfer (INCONCLUSIVE)
   { component: 'gym_genomes', class: 'gym', name: 'Maker genomes (dream evolution, gym)', unit: 'one candidate genome vs its parent on a frozen holdout epoch', mechanism: 'genomes',
     flags: ['DREAM_EVOLUTION_ENABLED', 'DREAM_TRIAL_MUTANTS', 'DREAM_TRIAL_MUTANT_TIERS', 'DREAM_PROMOTION_ALPHA', 'TRIAL_HEADROOM_PRECHECK', 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', 'DREAM_EVIDENCE_MUTATIONS',
       'GYM_HOLDOUT_EPOCH', 'GENOME_FIRE_CHECK', 'GYM_IRT_SELECTION', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', 'SUBSCRIPTION_GYM_SPECIES', 'SUBSCRIPTION_GYM_MAX_PER_DAY', 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS',
-      'GYM_ORPHAN_SWEEP', 'TG_001_MODE'],
+      'GYM_ORPHAN_SWEEP', 'TG_001_MODE', 'GENOME_APPLY_MODE'],
     outcome: { metric: 'gym oracle pass (tests green, source only) on production-gated eligible attempts, VOID attempts excluded', source: "loop_runs.metadata.gym_result.status (loop_name 'evolution-gym') / skill_outcomes 'loop-maker:gym:*'", independence: 'independent' },
     cost: { tokens: 'llm_model_calls (remote gym attempts) + gym_result usage where reported', kwh: null, operator_minutes: null },
     comparison: { kind: 'holdout', ref: 'gym_holdout / gym_mutant_holdout / gym_write_test_holdout (frozen epochs, paired parent vs child)' },
     decision_rule: 'promote when discordant wins b > c with one-sided exact McNemar p < DREAM_PROMOTION_ALPHA (0.05), mined regressions ≤ 1, scope violations not above the parent, ≤ 1 promotion per day; holdout reuse above the limit → inconclusive',
-    inheritance: 'inside the gym only: a new mutant starts from the newest active genome. No production path: strategyGenomeFor attributes, GENOME_APPLY_MODE only shadows',
+    inheritance: 'a new mutant starts from the newest active genome; GENOME_APPLY_MODE=on delivers active promoted genomes to oracle-lane production makers of the trialled species, with a 10 % per-goal holdout and auto-retire when the holdout does better (genome-apply.ts)',
     status: 'closed_loop',
     note: 'The one sound select-and-inherit loop, closed inside the gym only. Docs record 0 promotions to date, DREAM_EVOLUTION_ENABLED off in prod since 09-10, and TG-001 (gym → production transfer) closed INCONCLUSIVE.' },
   // pl-001.ts: frozen applicable repair set, paired A/B, one-sided exact McNemar; plLifecycle → procedure 'validated' / 'retired' / 'candidate'
