@@ -162,6 +162,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   TELEGRAM_QUIET_HOURS: 'unset',
   TELEGRAM_TRIAGE_ENABLED: 'off',
   TELEGRAM_TRIAGE_MAX_PER_PUSH: '3',
+  TEST_GAP_DASHBOARD_ENABLED: 'off',
   TEST_GAP_MAX_PER_DAY: '2',
   TEST_GAP_PACKAGES_ENABLED: 'off',
   TG_001_MODE: 'off (`on`)',
