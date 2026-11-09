@@ -21,6 +21,7 @@ import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
 import { TG_CAPABILITY, TG_GENERATION, TG_ID, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
 import { gatePolicyClaim, gatePolicyResult, type GatePolicyClaim } from './gym-gate-policy';
+import { nativeToolsForClaim, sanitizeNativeTools } from './gym-native-tools';
 import { PROCEDURE_ID, procedureSelectorMode, recordProcedureSelection } from './procedure-selector';
 import { PL_ID, PL_LOOP, PL_MUTANT_TIERS, PL_REQUIRED_CAPABILITIES, PL_SPECIES, applyPl001Lifecycle, claimPl001, freezePl001, lastPlFreezeRefusal, pl001On, plClaimMeta,
   plClaims24h, plManifest, plResult, plStartCondition, plState, plTaskKeys, plVoid, recordPl001, recordPlFreezeRefusal, type PlClaimMeta, type PlManifest } from './pl-001';
@@ -132,8 +133,8 @@ export function prepareGymDiff(raw: string): { diff: string; sha256: string; red
   return { diff, sha256: createHash('sha256').update(diff).digest('hex'), redacted: count, truncated };
 }
 
-export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; prompt_override?: string; tg?: { experiment: string; generation: string; arm: string }; pl?: { experiment: string; arm: string } } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number | null; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown }
+export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; native_skill_tools?: string[]; prompt_override?: string; tg?: { experiment: string; generation: string; arm: string }; pl?: { experiment: string; arm: string } } | { skipped: string };
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number | null; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown; native_tools?: unknown }
 
 /**
  * Tokens the worker reported: a positive count, or null = unknown. gym-worker.mjs before this change sent 0 for every attempt
@@ -315,7 +316,9 @@ export class RemoteGymService {
     const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
     const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
     const gates = gymProdGatesEnabled() && (opts.capabilities ?? []).map(String).includes(PROD_GATES_CAPABILITY) ? prodGatesConfig() : null;
-    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}), ...(pl ? { pl: plClaimMeta(pl) } : {}) };
+    // GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native tool, only on an ordinary attempt (no experiment, trial, canary, probe or holdout task)
+    const nativeTools = nativeToolsForClaim(caps, !tg && !pl && !trialGenome && !canary && !probe, () => holdoutKeys(this.db).includes(String(task!.commit)));
+    const gymMeta = { ...(nativeTools ? { native_skill_tools: nativeTools } : {}), ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}), ...(pl ? { pl: plClaimMeta(pl) } : {}) };
     // gate-policy binding (gym-gate-policy): non-TG/PL attempts only — a TG-001 / PL-001 run's metadata stays exactly as before
     if (!tg && !pl) Object.assign(gymMeta, { gate_policy: gatePolicyClaim(this.db, { gates: gates ?? prodGatesConfig(), gated: !!gates, attemptId: runId, claimedAt: now.toISOString(), task: String(task.commit), species: key }) });
     // B27 isolation by provenance: a TG-001 run is not an 'evolution-gym' run, so no gym statistic, breaker, IRT, hack rate,
@@ -328,7 +331,7 @@ export class RemoteGymService {
     if (procedureSelectorMode() === 'shadow' && !tg && !pl && !trialGenome && !canary && !holdoutKeys(this.db).includes(task.commit)) {
       recordProcedureSelection(this.db, runId, task, caps, key, now.toISOString());
     }
-    return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}),
+    return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}), ...(nativeTools ? { native_skill_tools: nativeTools } : {}),
       ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, generation: tg.generation, arm: tg.arm } } : {}),
       // PL-001 arm B: the procedure's lines, delivered as genome strategy lines are (the worker's gymGoal 'Strategy:'); arm A: none
       ...(pl ? { ...(pl.lines.length ? { genome: { id: PROCEDURE_ID, lines: pl.lines } } : {}), pl: { experiment: PL_ID, arm: pl.arm } } : {}) };
@@ -374,7 +377,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string }; pl?: PlClaimMeta; gate_policy?: GatePolicyClaim } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; native_skill_tools?: string[]; tg?: { attempt_id: string; experiment?: string }; pl?: PlClaimMeta; gate_policy?: GatePolicyClaim } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw this.settled(runId);
     // TG-001 generations: a result for a run claimed under another generation (e.g. before a restore) is never accepted
@@ -412,6 +415,8 @@ export class RemoteGymService {
     const tokens = reportedTokens(result.tokens);
     // gym gold agreement: the per-check production gate results of a proxy success (only on a run claimed with the gates)
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
+    // GYM_NATIVE_SKILL_TOOLS: tool calls of a run claimed with the tool; advertised but not reported = null (unknown), never 0
+    const native_tools = Array.isArray(gym.native_skill_tools) ? sanitizeNativeTools(result.native_tools, gym.native_skill_tools) : undefined;
     // PL-001: the fire check is mandatory in both arms and the oracle must have run the gates; otherwise the attempt is VOID
     const plVoided = gym.pl ? plVoid(gym.pl, gym.prod_gates === 1, status, prod_gates, result.fire_check) : null;
     const plRec = gym.pl ? plResult({ runId, status, reason, void: plVoided, prodGates: prod_gates, hackFlags: hack_flags, graded: graded?.graded ?? null, gradedKind: graded?.graded_kind ?? null,
@@ -446,7 +451,7 @@ export class RemoteGymService {
       const boundResult = gym.tg || gym.pl ? undefined : gatePolicyResult(gym.gate_policy, now, prod_gates); const policyResult = boundResult ? { gate_policy: boundResult } : {};
       const settled = this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ? AND status = 'running'")
         .run(now, JSON.stringify({ status, reason, tokens, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
-          ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
+          ...(prod_gates ? { prod_gates } : {}), ...(native_tools !== undefined ? { native_tools } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
           ...(plRec?.fire_check ? { fire_check: plRec.fire_check } : fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : plVoided ? { void: plVoided } : {}), ...policyResult }), runId).changes;
       if (!settled) throw new GymRunSettledError(null); // settled since the read above: the outcome is rolled back
       if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }

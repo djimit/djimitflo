@@ -60,6 +60,7 @@ import { PROBE_INTERVAL_MS, startOllamaProbe } from './services/inference-failov
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
 import { CONTENT_DRAFTS_INTERVAL_MS, startContentDrafts } from './services/content-drafts';
+import { CONTENT_SAFETY_RETRY_INTERVAL_MS, startContentSafetyRetry } from './services/content-safety';
 import { buildProvenance } from './utils/build-provenance';
 import { recordTreatmentEnvBoundaries } from './services/experiment-registry';
 import { warnUnknownEnvFlags } from './services/env-flags';
@@ -385,6 +386,13 @@ async function main() {
   registerRestart('content_drafts', () => { stopContentDrafts?.(); stopContentDrafts = startContentDrafts(db); });
   if (noteScheduler('content_drafts', 'CONTENT_DRAFTS_MODE', !!stopContentDrafts, CONTENT_DRAFTS_INTERVAL_MS)) {
     console.log(`📝 Content drafts armed (${process.env.CONTENT_DRAFTS_MODE})`);
+  }
+
+  // Content-safety retry — discovery events whose checks only errored are re-checked through the rate limit (CONTENT_SAFETY_RATE_LIMIT, default unset = off)
+  let stopContentSafetyRetry = startContentSafetyRetry(db);
+  registerRestart('content_safety_retry', () => { stopContentSafetyRetry?.(); stopContentSafetyRetry = startContentSafetyRetry(db); });
+  if (noteScheduler('content_safety_retry', 'CONTENT_SAFETY_RATE_LIMIT', !!stopContentSafetyRetry, CONTENT_SAFETY_RETRY_INTERVAL_MS)) {
+    console.log(`🛡️  Content-safety retry armed (${process.env.CONTENT_SAFETY_RATE_LIMIT}/min)`);
   }
 
   // API routes
