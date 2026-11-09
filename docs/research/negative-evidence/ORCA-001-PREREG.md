@@ -1,8 +1,24 @@
-# ORCA-001 — bounded evaluation of Orca as a supervisor for workstation attempts (DRAFT, not frozen)
+# ORCA-001 — bounded evaluation of Orca as a supervisor for workstation attempts (CLOSED 2026-11-09: REJECT stands)
 
-Status: **draft**. NE-017 is `REOPEN_CANDIDATE` (operator decision 2026-11-07). This file is frozen, with its sha256
-recorded in `NEGATIVE_EVIDENCE.yaml` (`reopen.prereg_sha256`), only after step 2 below. Until then nothing about Orca
-runs on a DjimitFlo path, and NE-017's forbidden patterns stay enforced.
+Status: **closed on 2026-11-09, never frozen, no experiment run.** Step 1 (install + contract snapshot) was done;
+its finding met this protocol's own stop rule ("REJECT stands … when step 2 shows the arms cannot run the same
+agent"). The operator closed the reopen on 2026-11-09. NE-017 stays `REJECT`; the reopen is kept as `reopen_history`
+in `NEGATIVE_EVIDENCE.yaml`. The text below is the draft as it stood, unchanged.
+
+## Result (2026-11-09)
+
+- Pinned build `v1.4.251` installed by the operator on the workstation (user `djimit`, no root, telemetry env set).
+  Integrity: the publisher's sha512 and GitHub's upload sha256 `2661ff82…` both matched; there is no build-provenance
+  attestation. Snapshot: [`docs/orca/cli-snapshot-1.4.251.md`](../../orca/cli-snapshot-1.4.251.md).
+- **Open field "can a worker run the same agent as the in-house arm" → no.** `worker-start --agent` accepts only
+  Orca-known agents (claude, codex, cursor, antigravity, muse, zcode, opencode, opencode2). `atomic-agent` can run in
+  `orca terminal create --command …` and be bound with `worker-start --terminal`, but completion is reported by the
+  agent itself sending `worker_done`; an agent that does not speak Orca's protocol produces only an `escalation`.
+  Orca would therefore not supervise the workstation arm's attempts — the gap this protocol was about.
+- Not reached (no live test): headless `orca serve`, telemetry and network behaviour, live timeout/cancellation.
+- Consequence: condition (b) of the reopen condition cannot be met with the current workstation species, and (a)
+  was never tested. A future reopen needs a new protocol whose two arms run the same agent (e.g. opencode in both),
+  which first needs an in-house opencode arm in the workstation gym worker.
 
 ## Why it is reopened, and what would have to be true
 

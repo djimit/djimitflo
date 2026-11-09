@@ -331,7 +331,8 @@
         "PR #1002 (docs/research/orca/ORCA-ADOPTION-DECISION.md, EVALUATION-REPORT.md, ORCA-FORENSICS.md)",
         "docs/audits/djimitflo-aios-l4/README.md (Orca delta review 976fa11e -> 92fd257b, 2026-10-25)",
         "docs/research/negative-evidence/NE-017-orca-runtime-substrate.md (2026-11-04 substrate review, operator decision)",
-        "PRs #947 and #1088 (lease fencing and remote maker identity)"
+        "PRs #947 and #1088 (lease fencing and remote maker identity)",
+        "docs/orca/cli-snapshot-1.4.251.md (ORCA-001 step 1 contract snapshot, 2026-11-09: no worker_done for non-Orca agents)"
       ],
       "allowed_follow_up": "Individual Orca mechanisms may still be adapted in-house, without Orca code or a dependency, when a verified DjimitFlo defect needs them (precedent: ORCA-PG). Orca's MIT source remains a normal reference to read.",
       "forbidden_reuse": [
@@ -347,13 +348,24 @@
         "stablyai/orca"
       ],
       "reopen_condition": "Both: (a) a measured DjimitFlo gap that only Orca closes, and (b) Orca running inside the workstation pull worker behind remote_maker_jobs, at a pinned version with a contract snapshot. Permits a bounded, flagged evaluation, not adoption.",
-      "reopen": {
-        "state": "REOPEN_CANDIDATE",
-        "since": "2026-11-07",
-        "decision_ref": "operator decision 2026-11-07 (AskUserQuestion 'Reopen-pad starten' on the add-orca-runtime-adapter mission)",
-        "condition_status": "(a) not met yet: the only candidate gap is supervision of remote workstation attempts (30 d: 55/946 remote gym attempts lost as 'maker crashed or timed out without a change'; remote maker jobs 7 work_timeout + 9 cancelled without a reason); nothing shows yet that only Orca closes it. (b) not met yet: no Orca binary on any host; v1.4.251 pinned for the workstation install, contract snapshot pending.",
-        "prereg_ref": "docs/research/negative-evidence/ORCA-001-PREREG.md (draft; frozen with a sha256 only after the contract snapshot)"
-      }
+      "reopen_history": [
+        {
+          "state": "REOPEN_CANDIDATE",
+          "since": "2026-11-07",
+          "decision_ref": "operator decision 2026-11-07 (AskUserQuestion 'Reopen-pad starten' on the add-orca-runtime-adapter mission)",
+          "prereg_ref": "docs/research/negative-evidence/ORCA-001-PREREG.md (draft, never frozen)",
+          "closed_on": "2026-11-09",
+          "closed_by": "operator decision 2026-11-09 ('Kies optie 1: handhaaf NE-017 op REJECT en sluit ORCA-001 volgens de bestaande preregistratie af')",
+          "outcome": "REJECT stands. ORCA-001 step 1 (pinned v1.4.251, sha512 + GitHub sha256 verified, no provenance attestation) showed that Orca supervises only its own known agents (claude, codex, cursor, antigravity, muse, zcode, opencode, opencode2): atomic-agent, the in-house workstation arm, can run in an Orca terminal but cannot report worker_done, so Orca sees only an escalation. The draft prereg's rule 'REJECT stands when step 2 shows the arms cannot run the same agent' applies. No experiment was run, no adapter was built, condition (a) was never tested.",
+          "evidence_refs": [
+            "docs/orca/cli-snapshot-1.4.251.md",
+            "docs/research/negative-evidence/ORCA-001-PREREG.md",
+            "docs/research/negative-evidence/NE-017-orca-runtime-substrate.md",
+            "PR #1179",
+            "PR #1229"
+          ]
+        }
+      ]
     }
   ]
 }
