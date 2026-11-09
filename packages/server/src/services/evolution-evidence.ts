@@ -71,7 +71,7 @@ import { webResearchEvidence } from './web-research';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
-  { name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: true },
+  { name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: false }, // dashboard navigation UI only (routes/health.ts); no loop decision reads it
   { name: 'SKILL_FIRST_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_TRIGGERS', acting: true },
@@ -81,7 +81,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },
   { name: 'LOOP_RESUME_INTERRUPTED', acting: true },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
-  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: true },
+  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: true }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: true },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
@@ -107,7 +107,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'OUTCOME_ATTRIBUTION_ENABLED', acting: true },
   { name: 'EFFORT_CONTROLLER_MODE', acting: false }, { name: 'EFFORT_LAMBDA_TOK', acting: false }, { name: 'EFFORT_LAMBDA_KWH', acting: false }, { name: 'EFFORT_EXPLORATION', acting: false },
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
-  { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_FITNESS_MUTANTS_V2', acting: true }, { name: 'GRADED_CONTEST_MODE', acting: true },
+  { name: 'GRADED_FITNESS_MODE', acting: true }, { name: 'GRADED_FITNESS_MUTANTS_V2', acting: true }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
   { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true }, { name: 'MAKER_UID_SEPARATION', acting: true }, { name: 'MAKER_SCOPE_REPAIR', acting: true },
@@ -128,7 +128,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'COMMONS_FALSIFIER_MODE', acting: false },
   { name: 'COMMONS_INVESTIGATION_MODE', acting: false },
   { name: 'ASG_MODE', acting: true },
-  { name: 'SETTLEMENT_EXECUTION_MODE', acting: false },
+  { name: 'SETTLEMENT_EXECUTION_MODE', acting: true },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
