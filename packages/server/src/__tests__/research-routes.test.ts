@@ -1,9 +1,19 @@
 import express from 'express';
 import Database from 'better-sqlite3';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createResearchRoutes } from '../routes/research';
+
+function createMemoryCandidatesTable(db: Database.Database): void {
+  db.exec(`CREATE TABLE memory_candidates (
+    id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
+    memory_type TEXT NOT NULL, store TEXT NOT NULL, source_ref TEXT,
+    status TEXT NOT NULL, promotion_status TEXT NOT NULL, human_required INTEGER NOT NULL DEFAULT 0,
+    sensitivity TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`);
+}
 
 describe('research HTTP contracts', () => {
   let server: Server | undefined;
@@ -14,6 +24,7 @@ describe('research HTTP contracts', () => {
     db?.close();
     server = undefined;
     db = undefined;
+    vi.unstubAllEnvs();
   });
 
   it('rejects malformed trust thresholds at the route boundary', async () => {
@@ -53,8 +64,113 @@ describe('research HTTP contracts', () => {
     expect((await (await fetch(`${base}/research/contradictions/detect`, { method: 'POST' })).json())).toMatchObject({ count: 1 });
     const report = await fetch(`${base}/research/reports/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Fixture report', claim_ids: [positiveId] }) });
     expect(report.status).toBe(201);
-    expect((await report.json() as any)).toMatchObject({ title: 'Fixture report', overall_confidence: 0 });
+    const reportRecord = await report.json() as any;
+    expect(reportRecord).toMatchObject({ title: 'Fixture report', overall_confidence: 0 });
+    const reports = await fetch(`${base}/research/reports?limit=10`);
+    expect(reports.status).toBe(200);
+    expect((await reports.json() as any).reports).toMatchObject([{ id: reportRecord.id, claim_count: 1, verified_claim_count: 0, source_count: 1 }]);
+    const invalidLimit = await fetch(`${base}/research/reports?limit=101`);
+    expect(invalidLimit.status).toBe(400);
     expect((await (await fetch(`${base}/research/stats`)).json())).toMatchObject({ totalSources: 1, totalClaims: 2, totalCitations: 2, totalContradictions: 1, totalReports: 1 });
+  });
+
+  it('creates one review-gated procedural memory candidate from a report and preserves unverified provenance', async () => {
+    db = new Database(':memory:');
+    createMemoryCandidatesTable(db);
+    const app = express().use(express.json()).use('/research', createResearchRoutes(db, { requirePermission: () => (_req: any, _res: any, next: any) => next() } as any));
+    server = app.listen(0);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const post = (path: string, body: unknown) => fetch(`${base}/research${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const sourceResponse = await post('/sources', { url: 'https://arxiv.org/abs/2605.18421', title: 'EvoMemBench', source_type: 'document' });
+    const source = await sourceResponse.json() as any;
+    const claimResponse = await post('/claims', { text: 'Memory effects vary by task and memory type.', source_ids: [source.id], confidence: 0.8 });
+    const claim = await claimResponse.json() as any;
+    const reportResponse = await post('/reports/generate', { title: 'Memory learning evidence', claim_ids: [claim.id] });
+    const report = await reportResponse.json() as any;
+
+    const first = await post(`/reports/${report.id}/memory-candidate`, {});
+    expect(first.status).toBe(201);
+    const candidate = await first.json() as any;
+    expect(candidate).toMatchObject({
+      source_ref: `research_report:${report.id}`,
+      memory_type: 'engineering_rule',
+      store: 'procedural',
+      status: 'review_required',
+      promotion_status: 'blocked_pending_review',
+    });
+    expect(candidate.metadata).toMatchObject({
+      candidate_only: true,
+      candidate_origin: 'citation_research_report',
+      external_content_untrusted: true,
+      report_claims_verified: false,
+      independent_review_required: true,
+    });
+    expect(candidate.content).toContain('not instructions');
+    expect(candidate.content).toContain('"verified": false');
+
+    const duplicate = await post(`/reports/${report.id}/memory-candidate`, {});
+    expect(duplicate.status).toBe(200);
+    expect((await duplicate.json() as any).id).toBe(candidate.id);
+    expect((db.prepare('SELECT COUNT(*) AS count FROM memory_candidates').get() as any).count).toBe(1);
+  });
+
+  it('does not create a memory candidate for a missing report', async () => {
+    db = new Database(':memory:');
+    createMemoryCandidatesTable(db);
+    const app = express().use(express.json()).use('/research', createResearchRoutes(db, { requirePermission: () => (_req: any, _res: any, next: any) => next() } as any));
+    server = app.listen(0);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const response = await fetch(`${base}/research/reports/missing/memory-candidate`, { method: 'POST' });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ error: { code: 'RESEARCH_REPORT_NOT_FOUND' } });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM memory_candidates').get() as any).count).toBe(0);
+  });
+
+  it('rejects oversized reports instead of truncating candidate provenance', async () => {
+    db = new Database(':memory:');
+    createMemoryCandidatesTable(db);
+    const app = express().use(express.json({ limit: '100kb' })).use('/research', createResearchRoutes(db, { requirePermission: () => (_req: any, _res: any, next: any) => next() } as any));
+    server = app.listen(0);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const post = (path: string, body: unknown) => fetch(`${base}/research${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const source = await (await post('/sources', { url: 'https://example.org/research', title: 'Research source', source_type: 'document' })).json() as any;
+    const claimIds = [];
+    for (let index = 0; index < 3; index++) {
+      const claim = await post('/claims', { text: `${index} ${'claim '.repeat(1300)}`, source_ids: [source.id] });
+      claimIds.push((await claim.json() as any).id);
+    }
+    const report = await (await post('/reports/generate', { title: 'Large report', claim_ids: claimIds })).json() as any;
+    const response = await post(`/reports/${report.id}/memory-candidate`, {});
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ error: { code: 'RESEARCH_REPORT_CANDIDATE_TOO_LARGE' } });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM memory_candidates').get() as any).count).toBe(0);
+  });
+
+  it('does not bind a second report to a template-deduplicated candidate from another report', async () => {
+    db = new Database(':memory:');
+    createMemoryCandidatesTable(db);
+    vi.stubEnv('MEMORY_TEMPLATE_DEDUP_MODE', 'enforce');
+    const app = express().use(express.json()).use('/research', createResearchRoutes(db, { requirePermission: () => (_req: any, _res: any, next: any) => next() } as any));
+    server = app.listen(0);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const post = (path: string, body: unknown) => fetch(`${base}/research${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const source = await (await post('/sources', { url: 'https://arxiv.org/abs/2605.18421', title: 'EvoMemBench', source_type: 'document' })).json() as any;
+    const claim = await (await post('/claims', { text: 'Memory effects vary by task and memory type.', source_ids: [source.id], confidence: 0.8 })).json() as any;
+    const createReport = async () => await (await post('/reports/generate', { title: 'Memory learning evidence', claim_ids: [claim.id] })).json() as any;
+    const firstReport = await createReport();
+    const secondReport = await createReport();
+    const firstCandidate = await post(`/reports/${firstReport.id}/memory-candidate`, {});
+    expect(firstCandidate.status).toBe(201);
+    const secondCandidate = await post(`/reports/${secondReport.id}/memory-candidate`, {});
+    expect(secondCandidate.status).toBe(409);
+    expect(await secondCandidate.json()).toMatchObject({ error: { code: 'RESEARCH_REPORT_CANDIDATE_DUPLICATE' } });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM memory_candidates').get() as any).count).toBe(1);
   });
 
   it('ignores client trust scores and returns 4xx for invalid or unknown sources', async () => {
