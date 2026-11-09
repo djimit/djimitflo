@@ -100,16 +100,16 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   // ── gym ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   // genome-registry.ts nextTrialAttempt (parent + child on every frozen task), ELIGIBLE_GATED, fire check; dream-evolution.ts promotion
   // (b > c && McNemar p < DREAM_PROMOTION_ALPHA, mined c − b ≤ 1, scope not worse, one per day); genome-promotion.ts holdout reuse check;
-  // strategyGenomeFor = attribution only, GENOME_APPLY_MODE has only 'shadow' (no production injection); tg-001.ts transfer (INCONCLUSIVE)
+  // strategyGenomeFor = attribution only, GENOME_APPLY_MODE=on injects active promoted genomes (genome-apply.ts, 10 % holdout); tg-001.ts transfer (INCONCLUSIVE)
   { component: 'gym_genomes', class: 'gym', name: 'Maker genomes (dream evolution, gym)', unit: 'one candidate genome vs its parent on a frozen holdout epoch', mechanism: 'genomes',
     flags: ['DREAM_EVOLUTION_ENABLED', 'DREAM_TRIAL_MUTANTS', 'DREAM_TRIAL_MUTANT_TIERS', 'DREAM_PROMOTION_ALPHA', 'TRIAL_HEADROOM_PRECHECK', 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', 'DREAM_EVIDENCE_MUTATIONS',
       'GYM_HOLDOUT_EPOCH', 'GENOME_FIRE_CHECK', 'GYM_IRT_SELECTION', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', 'SUBSCRIPTION_GYM_SPECIES', 'SUBSCRIPTION_GYM_MAX_PER_DAY', 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS',
-      'GYM_ORPHAN_SWEEP', 'TG_001_MODE', 'DREAM_PROMOTION_RULE', 'GRADED_FITNESS_MODE'],
+      'GYM_ORPHAN_SWEEP', 'TG_001_MODE', 'DREAM_PROMOTION_RULE', 'GRADED_FITNESS_MODE', 'GENOME_APPLY_MODE'],
     outcome: { metric: 'gym oracle pass (tests green, source only) on production-gated eligible attempts, VOID attempts excluded', source: "loop_runs.metadata.gym_result.status (loop_name 'evolution-gym') / skill_outcomes 'loop-maker:gym:*'", independence: 'independent' },
     cost: { tokens: 'llm_model_calls (remote gym attempts) + gym_result usage where reported', kwh: null, operator_minutes: null },
     comparison: { kind: 'holdout', ref: 'gym_holdout / gym_mutant_holdout / gym_write_test_holdout (frozen epochs, paired parent vs child)' },
     decision_rule: 'promote when discordant wins b > c with one-sided exact McNemar p < DREAM_PROMOTION_ALPHA (0.05), mined regressions ≤ 1, scope violations not above the parent, ≤ 1 promotion per day; under DREAM_PROMOTION_RULE=graded a one-sided paired sign-flip permutation test on the gym graded: scores (written under GRADED_FITNESS_MODE=shadow, else 1/0) decides instead (p < α AND mean diff ≥ 0.05); holdout reuse above the limit → inconclusive',
-    inheritance: 'inside the gym only: a new mutant starts from the newest active genome. No production path: strategyGenomeFor attributes, GENOME_APPLY_MODE only shadows',
+    inheritance: 'a new mutant starts from the newest active genome; GENOME_APPLY_MODE=on delivers active promoted genomes to oracle-lane production makers of the trialled species, with a 10 % per-goal holdout and auto-retire when the holdout does better (genome-apply.ts)',
     status: 'closed_loop',
     note: 'The one sound select-and-inherit loop, closed inside the gym only. Docs record 0 promotions to date, DREAM_EVOLUTION_ENABLED off in prod since 09-10, and TG-001 (gym → production transfer) closed INCONCLUSIVE.' },
   // pl-001.ts: frozen applicable repair set, paired A/B, one-sided exact McNemar; plLifecycle → procedure 'validated' / 'retired' / 'candidate'
@@ -244,6 +244,11 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     outcome: { metric: 'none: expected vs observed effects are recorded, no analysis in the experiment registry', source: "worker_leases.metadata.asg / 'asg_route' events", independence: 'none' },
     cost: { ...NO_COST }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'unmeasured',
     note: 'No runtime has a macro adapter, so the executed route is always MICRO; on mode refuses to act while the oracle experiments run.' },
+  // gym-native-tools.ts (#1189): oracle_gate offered as an MCP tool on ordinary remote gym attempts; gymNativeToolsEvidence is descriptive
+  { component: 'gym_native_tools', class: 'skill', name: 'Native skill tool in the gym (oracle_gate)', unit: 'one ordinary remote gym attempt', flags: ['GYM_NATIVE_SKILL_TOOLS'],
+    outcome: { metric: 'offered / called / pass rate when called / stopped within N steps of a pass (descriptive)', source: 'gym_result.native_tools (gymNativeToolsEvidence)', independence: 'none' },
+    cost: { ...NO_COST }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'unmeasured',
+    note: 'Gym only, never TG/PL/trial/canary/probe/holdout attempts; a contrast needs a pre-registered protocol first.' },
   // ── memory and knowledge ────────────────────────────────────────────────────────────────────────────────────────────────
   // assignment-context.ts (sha256 memory-holdout:<goal> < rate; M5 rule fitness ordering); evolution-evidence.ts memoryHoldoutEvidence;
   // experiment-registry.ts MEMORY_HOLDOUT_CLOSED (EXP-3 FALSIFIED 2026-10-27 → LOOP_MEMORY_RULES_ENABLED=false); memory-template-dedup.ts

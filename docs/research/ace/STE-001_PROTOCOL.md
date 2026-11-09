@@ -94,3 +94,20 @@ is not edited.
   (`LOOP_MEMORY_RULES_ENABLED=false`, following the EXP-3 memory-holdout result). From then on no maker in either arm receives
   memory rules, so the maker context changed for both arms at once. The analysis reports outcomes created before and from
   this instant as two periods next to the registered whole-window analysis; the periods are never pooled silently.
+
+## Amendment 3 (2026-11-08): period boundary (evolve siblings off)
+
+A period boundary is added to the analysis; verdict rules are unchanged. The text above is frozen and is not edited.
+
+- **Period boundary: 2026-11-08T00:00:02Z.** Evolve siblings were switched off in production at this instant
+  (`LOOP_EVOLVE_ENABLED=false`, following the EXP-2 X1 result,
+  `docs/research/intelligence-metrics/EXP-2_RESULT.md`; operator decision 2026-11-07 "siblings off").
+  Until then an evolve-eligible oracle-lane goal in X1 arm `on` got sibling makers (`LOOP_EVOLVE_SPECIES`), and the fittest
+  maker's patch, sometimes a sibling's, went to review. From then on no goal gets a sibling, so which maker's work reaches
+  the checkers changed for both arms at once. The switch wrote no `experiment_period_boundaries` row, because
+  `LOOP_EVOLVE_ENABLED` was not a declared treatment variable; it is one now (`experiment-registry.ts`
+  `ORACLE_POPULATION_ENV`, with `LOOP_EVOLVE_SPECIES`), so a later change records its own boundary. The analysis reports
+  outcomes created before and from this instant as two periods next to the registered whole-window analysis; the periods
+  are never pooled silently.
+- **Unchanged:** the primary endpoint (verified rate, intent to treat), the out-of-scope share, the arms (parity of
+  sha256(`ste-001:` + goal id)), target, stop_by, the Amendment 2 boundary and the harm stop.

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { recordModelCall } from './model-selector';
 import { recordPolicyViolation } from './policy-violations';
+import { guardTick, markRun } from './scheduler-registry';
 
 /**
  * Plan K1: a fast content-safety check on text Djimitflo did not write (fleet/HF discoveries, replies from external
@@ -55,6 +56,50 @@ let pausedUntil = 0;
 export const resetContentSafetyPause = (): void => { pausedUntil = 0; };
 
 /**
+ * CONTENT_SAFETY_RATE_LIMIT (calls per minute; unset/invalid = no limit, the old behaviour): every provider call (each
+ * chunk, each 429 retry) takes a slot of one process-wide token bucket — burst N, then one per 60/N s, in arrival order
+ * (GCRA: `tat` is the theoretical arrival time of the next call). A caller whose slot is more than RATE_QUEUE_MAX_MS away is
+ * not queued: its check is recorded as error 'rate_limited (deferred)' (no verdict, never safe) and retried later
+ * (retryContentSafetyErrors / kb-sync's pending re-send). Measured prod 09-27..10-05 (nemotron, free tier): after an idle
+ * gap 62–94 calls pass before the first 429 (23–61 s); saturated, 574 verdicts in 137 min = 4.2/min. So 4 is the sustained rate.
+ * ponytail: per process, not per NVIDIA account; proposal-dedupe embeddings share the account outside this bucket.
+ */
+const RATE_QUEUE_MAX_MS = 120_000;
+let tat = 0;
+export const resetContentSafetyRateLimit = (): void => { tat = 0; };
+const rateLimit = (env: NodeJS.ProcessEnv): number => { const n = Number(env.CONTENT_SAFETY_RATE_LIMIT); return Number.isFinite(n) && n > 0 ? n : 0; };
+/** ms to wait before the call (0 = now), or null = deferred (queue bound exceeded). Reserves the slot. */
+export function reserveSafetySlot(env: NodeJS.ProcessEnv = process.env, now = Date.now()): number | null {
+  const rate = rateLimit(env);
+  if (!rate) return 0;
+  const interval = 60_000 / rate;
+  const start = Math.max(tat, now);
+  const wait = start - Math.max(0, Math.ceil(rate) - 1) * interval - now;
+  if (wait > RATE_QUEUE_MAX_MS) return null;
+  tat = start + interval;
+  return Math.max(0, wait);
+}
+
+/**
+ * CONTENT_SAFETY_CHUNKING=on (default off = the first 4 000 chars, unchanged): the whole text is checked in 4 000-char windows
+ * with a 200-char overlap, at most 8 (30 600 chars); a longer text gets its verdict on the first 8 and `truncated=true`.
+ * Unsafe if any window is unsafe; a window without a verdict leaves the whole text without one. Callers hash and check
+ * `safetyWindow(text)`: a text of ≤ 4 000 chars keeps its hash (and verdict) when the flag flips; a longer one is unknown
+ * until re-checked (KB: kb-sync re-sends it; not served meanwhile).
+ */
+const WINDOW = 4_000;
+const OVERLAP = 200;
+const MAX_CHUNKS = 8;
+const chunkingOn = (env: NodeJS.ProcessEnv = process.env): boolean => env.CONTENT_SAFETY_CHUNKING === 'on';
+export const safetyWindow = (text: string, env: NodeJS.ProcessEnv = process.env): string => (chunkingOn(env) ? text : text.slice(0, WINDOW));
+export function safetyChunks(text: string, env: NodeJS.ProcessEnv = process.env): { chunks: string[]; total: number } {
+  if (!chunkingOn(env) || text.length <= WINDOW) return { chunks: [text.slice(0, WINDOW)], total: 1 };
+  const step = WINDOW - OVERLAP;
+  const total = 1 + Math.ceil((text.length - WINDOW) / step);
+  return { chunks: Array.from({ length: Math.min(total, MAX_CHUNKS) }, (_, i) => text.slice(i * step, i * step + WINDOW)), total };
+}
+
+/**
  * P0-11: the row's mode is the regime the verdict is used under, not a fixed label. `acting` = the caller acts on the verdict
  * whatever CONTENT_SAFETY_MODE says (KB ingest quarantines a page on 'unsafe'); a prompt-bound check acts under enforce.
  */
@@ -63,6 +108,8 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
   const model = process.env.CONTENT_SAFETY_MODEL || 'nvidia/nemotron-3.5-content-safety';
   const started = Date.now();
   const mode = acting || (promptBound && process.env.CONTENT_SAFETY_MODE === 'enforce') ? 'enforce' : 'shadow';
+  const { chunks, total } = safetyChunks(text);
+  let sentChars = 0;
   // prod 2026-09-27: 1 241 of 1 312 KB pages got no verdict and nothing said why; failures are recorded as 'error' now
   const record = (decision: string, reason: string) => {
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, latency_ms, model, created_at)
@@ -70,31 +117,50 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
       createHash('sha256').update(text).digest('hex').slice(0, 16), mode, decision, reason, Date.now() - started, model, new Date().toISOString());
     // UX-18: one ledger row per recorded verdict (consumer 'content_safety'); sizes only, never the text
     recordModelCall(db, { consumer: 'content_safety', model, provider: 'nvidia', ok: decision !== 'error', latencyMs: Date.now() - started, outChars: 0, shadow: 0, agree: null,
-      tokensIn: Math.ceil(Math.min(text.length, 4_000) / 4), taskKind: 'safety', status: reason.slice(0, 80), dataSource: subject.type });
+      tokensIn: Math.ceil((sentChars || chunks[0].length) / 4), taskKind: 'safety', status: reason.slice(0, 80), dataSource: subject.type });
   };
+  const rate = rateLimit(process.env);
+  // rate limited: each attempt (nvidiaFetch retries included) waits for its slot; the timeout starts when the call does
+  const call: typeof fetch = rate ? async (url, init) => {
+    const wait = reserveSafetySlot(process.env);
+    if (wait === null) throw new Error('rate_limited (deferred)');
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    return fetchFn(url, { ...init, signal: AbortSignal.timeout(60_000) });
+  } : fetchFn;
+  const ignore = new Set((process.env.CONTENT_SAFETY_IGNORE_CATEGORIES || '').split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase()));
+  const unsafeCats: string[] = []; const ignoredCats: string[] = []; const ignoredRaw: string[] = [];
+  let checked = 0; let unsafe = false;
   try {
-    const res = await nvidiaFetch(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST', signal: AbortSignal.timeout(60_000),
-      headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages: [{ role: 'user', content: text.slice(0, 4_000) }], max_tokens: 60 }),
-    }, fetchFn);
-    if (res.status === 429) {
-      // prod 02-10 07:21Z: a bus burst fired 600+ checks at once; 531 came back 429 after the first one paused → one row, not 531
-      if (Date.now() < pausedUntil) return null;
-      pausedUntil = Date.now() + (Number(process.env.CONTENT_SAFETY_429_PAUSE_MS) || 600_000);
+    for (const chunk of chunks) {
+      if (checked > 0 && Date.now() < pausedUntil) return null; // another check paused mid-text: no verdict, no row
+      const res = await nvidiaFetch(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST', signal: AbortSignal.timeout(60_000),
+        headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: chunk }], max_tokens: 60 }),
+      }, call);
+      sentChars += chunk.length;
+      if (res.status === 429) {
+        // prod 02-10 07:21Z: a bus burst fired 600+ checks at once; 531 came back 429 after the first one paused → one row, not 531
+        if (Date.now() < pausedUntil) return null;
+        pausedUntil = Date.now() + (Number(process.env.CONTENT_SAFETY_429_PAUSE_MS) || 600_000);
+      }
+      if (!res.ok) { record('error', `http_${res.status}${res.status === 429 ? ' (pausing checks)' : ''}`); return null; }
+      const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const parsed = parseSafety(body.choices?.[0]?.message?.content ?? '');
+      if (!parsed.verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
+      checked++;
+      // prod 2026-10-31: Llama Guard flags plain technical text S14 (code interpreter abuse) → CONTENT_SAFETY_IGNORE_CATEGORIES=S14
+      // makes an 'unsafe' whose categories are ALL ignored count as safe; the categories stay in the reason
+      const cats = parsed.categories.split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase());
+      const ignored = parsed.verdict === 'unsafe' && cats.length > 0 && cats.every((c) => ignore.has(c));
+      if (ignored) { ignoredRaw.push(parsed.categories); ignoredCats.push(...cats); }
+      if (parsed.verdict === 'unsafe' && !ignored) { unsafe = true; if (parsed.categories) unsafeCats.push(parsed.categories); break; } // one unsafe window decides
     }
-    if (!res.ok) { record('error', `http_${res.status}${res.status === 429 ? ' (pausing checks)' : ''}`); return null; }
-    const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const parsed = parseSafety(body.choices?.[0]?.message?.content ?? '');
-    const { categories } = parsed;
-    if (!parsed.verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
-    // prod 2026-10-31: Llama Guard flags plain technical text S14 (code interpreter abuse) → CONTENT_SAFETY_IGNORE_CATEGORIES=S14
-    // makes an 'unsafe' whose categories are ALL ignored count as safe; the categories stay in the reason
-    const ignore = new Set((process.env.CONTENT_SAFETY_IGNORE_CATEGORIES || '').split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase()));
-    const cats = categories.split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase());
-    const ignored = parsed.verdict === 'unsafe' && cats.length > 0 && cats.every((c) => ignore.has(c));
-    const verdict = ignored ? 'safe' : parsed.verdict;
-    record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}${ignored ? ` ignored=${cats.join(',')}` : ''}`);
+    const verdict = unsafe ? 'unsafe' : 'safe'; // reached only when every window answered
+    const categories = [...new Set(verdict === 'unsafe' ? unsafeCats : ignoredRaw)].join(',');
+    const chunkInfo = chunkingOn() ? ` chunks=${checked}/${total}${total > MAX_CHUNKS ? ' truncated=true' : ''}` : '';
+    const ignoredInfo = verdict === 'safe' && ignoredCats.length ? ` ignored=${[...new Set(ignoredCats)].join(',')}` : '';
+    record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${chunkInfo}${categories ? ` categories=${categories}` : ''}${ignoredInfo}`);
     // §16 step 8 (shadow, POLICY_VIOLATION_LOG): untrusted input judged unsafe is counted; nothing is blocked (still shadow)
     if (verdict === 'unsafe') {
       const stateHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
@@ -110,9 +176,49 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
       try { record('error', 'timeout (pausing checks)'); } catch { /* never break the caller */ }
       return null;
     }
-    try { record('error', (error instanceof Error ? error.name === 'TimeoutError' ? 'timeout' : error.message : String(error)).slice(0, 120)); } catch { /* never break the caller */ }
+    try { record('error', (error instanceof Error ? error.message : String(error)).slice(0, 120)); } catch { /* never break the caller */ }
     return null;
   }
+}
+
+/** The text a fleet discovery event is checked on (bus ingest and retryContentSafetyErrors: same text, same hash). */
+export const discoverySafetyText = (event: Record<string, unknown>): string => [event.title, event.note].filter((v) => typeof v === 'string').join('\n');
+
+/**
+ * Persisted retry (with CONTENT_SAFETY_RATE_LIMIT only): prod to 11-07, 3 506 discovery events have only 'error' rows (bus
+ * bursts 09-27..10-05) and nothing re-checked them. Each tick re-checks at most `limit` (default one minute of the budget)
+ * discovery events whose rows are all errors, least recently failed first, through the same bucket; it stops at the first
+ * check without a verdict. KB pages are re-sent by kb-sync (kbPendingSafety); prompt-bound subjects are re-checked on their
+ * next prompt (gateUntrustedForPrompt); a social reply's checked text is not stored, so it is not retried.
+ */
+export async function retryContentSafetyErrors(db: Database, fetchFn: typeof fetch = fetch, limit?: number): Promise<{ checked: number; verdicts: number; reason?: string }> {
+  const rate = rateLimit(process.env);
+  if (!rate) return { checked: 0, verdicts: 0, reason: 'rate_limit_unset' };
+  if (!contentSafetyApplies('external_event')) return { checked: 0, verdicts: 0, reason: contentSafetyEnabled() ? 'scope_excludes_external_event' : 'content_safety_disabled' };
+  const due = db.prepare(`SELECT e.id, e.payload FROM judgments j JOIN external_events e ON e.id = j.subject_id
+    WHERE j.judgment = 'content_safety' AND j.subject_type = 'external_event' AND j.decision = 'error' AND e.event_type LIKE 'discovery.%'
+      AND NOT EXISTS (SELECT 1 FROM judgments v WHERE v.judgment = 'content_safety' AND v.subject_id = j.subject_id AND v.subject_type = 'external_event' AND v.decision IN ('yes', 'no'))
+    GROUP BY e.id ORDER BY MAX(j.created_at), e.id LIMIT ?`).all(Math.max(1, Math.floor(limit ?? rate))) as Array<{ id: string; payload: string }>;
+  let checked = 0; let verdicts = 0;
+  for (const row of due) {
+    let event: Record<string, unknown> = {};
+    try { event = JSON.parse(row.payload) as Record<string, unknown>; } catch { /* no text: checked as empty, skipped below */ }
+    const text = discoverySafetyText(event);
+    if (!text.trim()) continue;
+    checked++;
+    if (!(await checkContentSafety(db, { type: 'external_event', id: row.id }, text, fetchFn))) break;
+    verdicts++;
+  }
+  return { checked, verdicts };
+}
+
+/** Scheduler `content_safety_retry` (every 5 min) while CONTENT_SAFETY_RATE_LIMIT is set and content safety is on; null otherwise. */
+export const CONTENT_SAFETY_RETRY_INTERVAL_MS = 5 * 60_000;
+export function startContentSafetyRetry(db: Database, intervalMs = CONTENT_SAFETY_RETRY_INTERVAL_MS): (() => void) | null {
+  if (!rateLimit(process.env) || !contentSafetyEnabled()) return null;
+  const tick = guardTick('content_safety_retry', async () => { await retryContentSafetyErrors(db); markRun('content_safety_retry'); });
+  const timer = setInterval(tick, intervalMs); timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 /**
@@ -126,7 +232,7 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
  */
 export async function gateUntrustedForPrompt(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch): Promise<{ include: boolean; verdict: 'safe' | 'unsafe' | null }> {
   const mode = process.env.CONTENT_SAFETY_MODE === 'enforce' ? 'enforce' : process.env.CONTENT_SAFETY_MODE === 'shadow' ? 'shadow' : 'off';
-  const body = text.slice(0, 4_000);
+  const body = safetyWindow(text);
   if (mode === 'off' || !body.trim()) return { include: true, verdict: null };
   const hash = createHash('sha256').update(body).digest('hex').slice(0, 16);
   const latest = (decisions: string) => db.prepare(`SELECT decision, reason FROM judgments WHERE judgment = 'content_safety' AND subject_type = ? AND subject_id = ? AND state_hash = ?

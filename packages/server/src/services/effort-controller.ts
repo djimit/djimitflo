@@ -191,8 +191,11 @@ export function assignSiblingArm(db: Database, runId: string, goalId: string): '
   return arm;
 }
 
-/** evolution-evidence `effort_x1`: goals per arm and their proposal outcome; infra = a maker outcome tagged infra_failed. */
-export function effortX1Evidence(db: Database, since: string, env: NodeJS.ProcessEnv, fisher: (a: number, b: number, c: number, d: number) => number) {
+/** evolution-evidence `effort_x1`: goals per arm and their proposal outcome; infra = a maker outcome tagged infra_failed.
+ *  Goals created in [since, until) (until null = open-ended). goals.created_at is SQLite 'YYYY-MM-DD HH:MM:SS', so both sides
+ *  compare as julianday(): a string compare with an ISO since dropped every start-day goal (EXP-2 readout, #1191). */
+export function effortX1Evidence(db: Database, since: string, env: NodeJS.ProcessEnv, fisher: (a: number, b: number, c: number, d: number) => number,
+  until: string | null = null) {
   let rows: Array<{ arm: string; goals: number; verified: number; regressed: number; infra: number }> = [];
   try {
     rows = db.prepare(`SELECT json_extract(g.metadata, '$.effort_arm') AS arm, COUNT(*) AS goals,
@@ -200,7 +203,8 @@ export function effortX1Evidence(db: Database, since: string, env: NodeJS.Proces
         COALESCE(SUM(EXISTS (SELECT 1 FROM loop_runs r JOIN skill_outcomes o ON o.task_id = r.id WHERE r.goal_id = g.id
           AND o.evidence_refs_json LIKE '%"outcome_class:infra_failed"%')), 0) AS infra
       FROM goals g LEFT JOIN self_improvements s ON s.id = g.improvement_id
-      WHERE json_extract(g.metadata, '$.effort_arm') IN ('on', 'off') AND g.created_at >= ? AND ${notFallbackGoalSql('g.id')} GROUP BY 1`).all(since) as typeof rows;
+      WHERE json_extract(g.metadata, '$.effort_arm') IN ('on', 'off') AND julianday(g.created_at) >= julianday(?)
+        AND (? IS NULL OR julianday(g.created_at) < julianday(?)) AND ${notFallbackGoalSql('g.id')} GROUP BY 1`).all(since, until, until) as typeof rows;
   } catch { /* missing tables */ }
   const arm = (name: string) => {
     const r = rows.find((x) => x.arm === name) ?? { goals: 0, verified: 0, regressed: 0, infra: 0 };

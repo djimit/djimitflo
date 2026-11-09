@@ -60,6 +60,8 @@ import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
 import { fitnessContractsReport } from './fitness-contracts';
+import { gymNativeToolsEvidence } from './gym-native-tools';
+import { genomeApplyEvidence } from './genome-apply';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -78,7 +80,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },
   { name: 'LOOP_RESUME_INTERRUPTED', acting: true },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
-  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: true }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
+  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: true }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: true },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
@@ -93,7 +95,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
   { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
   { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
-  { name: 'GYM_PROD_GATES', acting: false },
+  { name: 'GYM_PROD_GATES', acting: false }, { name: 'GYM_NATIVE_SKILL_TOOLS', acting: true },
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
   { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
   { name: 'INFERENCE_BUDGET_THROTTLE', acting: true }, { name: 'OLLAMA_WEEKLY_TOKEN_BUDGET', acting: true }, { name: 'OLLAMA_THROTTLE_AT', acting: true },
@@ -591,5 +593,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
     skill_route: skillRouteEvidence(db, env, since),
     // fitness contracts (services/fitness-contracts.ts): which components can learn — counts by status, acting-flag coverage, the list (static)
-    fitness_contracts: fitnessContractsReport(EVOLUTION_FLAGS, ledger) };
+    fitness_contracts: fitnessContractsReport(EVOLUTION_FLAGS, ledger),
+    // GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native tool on ordinary remote gym attempts — offered / called / pass rate when called /
+    // stopped within N steps after a pass (descriptive; not an experiment)
+    gym_native_tools: gymNativeToolsEvidence(db, since, env),
+    // GENOME_APPLY_MODE=on: promoted genomes in production makers — delivered vs 10 % holdout per genome (maker-clean), receipts, auto-retire decisions
+    genome_apply: genomeApplyEvidence(db, env) };
 }

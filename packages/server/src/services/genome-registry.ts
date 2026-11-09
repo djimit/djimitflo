@@ -315,13 +315,16 @@ export function genomeDelivery(db: Database, g: Genome, assignmentText: string):
  * D2 (Darwin engine): which strategy genome a production maker runs with. Genomes evolve for one gym species
  * (DREAM_EVOLUTION_SPECIES, default atomic@llama-router); a real maker of that species — directly or as
  * `remote@<host>/<rt>@<model>` — is attributed to the newest active non-baseline genome, else to the baseline. Other
- * species have no strategy genome (null). Attribution only: injecting the lines is a separate, operator-owned step.
+ * species have no strategy genome (null). Attribution only: injecting the lines is GENOME_APPLY_MODE=on (genome-apply.ts).
  */
+/** The gym species key of a maker (`remote@<host>/<rt>@<model>` → `<rt>@<model>`), as gym runs record `gym.species`. */
+export function makerSpeciesKey(runtime: string, model: string | null | undefined): string {
+  const remote = runtime === 'remote' ? /^[^/]+\/(.+)$/.exec(model ?? '') : null;
+  return remote ? remote[1] : model ? `${runtime}@${model}` : runtime;
+}
 export function strategyGenomeFor(db: Database, runtime: string, model: string | null | undefined, env: NodeJS.ProcessEnv = process.env): Genome | null {
   const species = env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
-  const remote = runtime === 'remote' ? /^[^/]+\/(.+)$/.exec(model ?? '') : null;
-  const key = remote ? remote[1] : model ? `${runtime}@${model}` : runtime;
-  if (key !== species) return null;
+  if (makerSpeciesKey(runtime, model) !== species) return null;
   const row = db.prepare("SELECT id FROM maker_genomes WHERE status = 'active' AND id <> ? ORDER BY updated_at DESC LIMIT 1").get(BASELINE_GENOME) as { id: string } | undefined;
   return genome(db, row?.id ?? BASELINE_GENOME);
 }

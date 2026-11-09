@@ -58,6 +58,7 @@ const READERS: Record<string, Reader> = {
   'services/outcome-attribution.ts': { policy: 'non_shadow', why: "outcome_attribution is mode 'annotation'; the gating list filters mode = 'enforce'; attribution_audit is operator_label" },
   'services/requeue-policy.ts': { policy: 'non_shadow', why: "attributionOf: outcome_attribution (annotation) picks the requeue class" },
   'services/skill-distillation.ts': { policy: 'non_shadow', why: 'skill cards from outcome_attribution (annotation)' },
+  'services/genome-apply.ts': { policy: 'non_shadow', why: "auto-retire reads outcome_attribution (annotation, via nonMakerRunSql); evidence and the stall detector read its own genome_apply_retire records (enforce)" },
   'services/knowledge-gaps.ts': { policy: 'non_shadow', why: "outcome_attribution (annotation) leaves runs out; knowledge_gap reads are the writer's own dedupe / list" },
   'services/improvement-requeue.ts': { policy: 'non_shadow', why: "prescreen_park is written 'enforce' (only when the prescreen actually parked)" },
   'services/self-improvement-service.ts': { policy: 'non_shadow', why: "panel_failed / prescreen_park are written 'enforce'" },
