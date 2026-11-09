@@ -61,3 +61,25 @@ it('repairs a worktree that tracks a dangling symlink (prod: knowledge -> extern
     expect(git(worktree, 'status', '--porcelain')).toBe('');
   } finally { delete process.env.LOOP_WORKTREE_ROOT; }
 });
+
+it('repair does not revert tracked files that changed on main since the worktree was made (prod 2026-11-08: diff_under_threshold)', () => {
+  const origin = path.join(root, 'origin');
+  const oldClone = path.join(root, 'runtime-source-old');
+  execFileSync('git', ['clone', '-q', origin, oldClone]);
+  process.env.LOOP_WORKTREE_ROOT = path.join(root, 'worktrees');
+  const wm = new WorktreeManager(new Database(':memory:'));
+  try {
+    const worktree = wm.createWorktree(oldClone, 'run', 'finding', 'agent/loop/run-finding', false);
+    fs.mkdirSync(path.join(worktree, '.djimitflo')); fs.writeFileSync(path.join(worktree, '.djimitflo', 'LOOP_WORK.md'), 'assignment');
+    // main moves on, then a deploy mounts a fresh clone of it
+    fs.writeFileSync(path.join(origin, 'a.txt'), 'a2'); git(origin, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'main moved');
+    fs.rmSync(oldClone, { recursive: true, force: true });
+    const newClone = path.join(root, 'runtime-source-new');
+    execFileSync('git', ['clone', '-q', origin, newClone]);
+
+    expect(wm.repairWorktree(newClone, worktree, 'agent/loop/run-finding')).toBe(true);
+    expect(fs.readFileSync(path.join(worktree, 'a.txt'), 'utf8')).toBe('a2');
+    expect(git(worktree, 'diff', '--name-only')).toBe('');
+    expect(fs.readFileSync(path.join(worktree, '.djimitflo', 'LOOP_WORK.md'), 'utf8')).toBe('assignment');
+  } finally { delete process.env.LOOP_WORKTREE_ROOT; }
+});

@@ -70,12 +70,12 @@ beforeEach(() => {
 afterEach(() => { db.close(); fs.rmSync(wt, { recursive: true, force: true }); });
 
 describe('execution-based settlement (SETTLEMENT_EXECUTION_MODE, shadow)', () => {
-  it('off by default: nothing runs and nothing is recorded; the flag is in EVOLUTION_FLAGS (non-acting)', async () => {
+  it('off by default: nothing runs and nothing is recorded; the flag is in EVOLUTION_FLAGS (acting: LOOP_AUTO_MERGE_SETTLEMENT_REVOKE reads its rows)', async () => {
     seedPr('r1', 101);
     const { deps, ran } = fakeDeps({ verdicts: {} });
     expect((await settlementExecutionTick(db, deps, now, {})).skipped).toBe('off');
     expect(ran).toEqual([]); expect(rows()).toEqual([]);
-    expect(EVOLUTION_FLAGS).toContainEqual({ name: 'SETTLEMENT_EXECUTION_MODE', acting: false });
+    expect(EVOLUTION_FLAGS).toContainEqual({ name: 'SETTLEMENT_EXECUTION_MODE', acting: true });
   });
 
   it('re-runs a settled PR\'s tests at main and re-scores the kill share on FRESH mutants; one shadow judgment per PR', async () => {
