@@ -155,6 +155,12 @@ export type IntelligenceMetric = {
   version: string; status: 'ok' | 'INSUFFICIENT_EVIDENCE' | 'UNDEFINED';
   value: number | null; ci: [number, number] | null; n: number; blocker: string | null; detail: Record<string, unknown>;
 };
+export interface BenchmarkPoint { started_at: string; status: 'ok' | 'failed' | 'insufficient'; value: number | null; ci_low: number | null; ci_high: number | null; n: number;
+  catches: number | null; false_rejects: number | null; tokens: number | null; models: string[]; prompt_sha256: string | null; reason: string | null }
+export interface BenchmarkSeries { id: string; title: string; metric: 'auc' | 'pass_rate'; cadence: 'monthly' | 'weekly'; execution: 'operator_runner' | 'in_process';
+  due: boolean | null; overdue: boolean | null; owed_at: string | null; regression: { regressed: boolean; drop: number | null; threshold: number | null; basis: 'ci' | 'margin' | null };
+  series: BenchmarkPoint[] }
+export interface BenchmarkEvidence { mode: 'off' | 'on'; token_cap: number; margin: number; benchmarks: BenchmarkSeries[] }
 export interface EvolutionEvidence {
   at: string; window_days: number;
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
@@ -342,6 +348,8 @@ export interface EvolutionEvidence {
     top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
   /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
   pl_001?: Pl001Evidence;
+  /** Periodic fixed benchmarks (BENCHMARK_SCHEDULE_MODE, services/benchmark-schedule.ts): series per benchmark, due / overdue, regression; null = not computed */
+  benchmarks?: BenchmarkEvidence | null;
   /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
   memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
     by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };

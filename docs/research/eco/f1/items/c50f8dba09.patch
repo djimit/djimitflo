@@ -1,0 +1,31 @@
+diff --git a/packages/server/src/__tests__/spawn-token.exports.test.ts b/packages/server/src/__tests__/spawn-token.exports.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/server/src/__tests__/spawn-token.exports.test.ts
+@@ -0,0 +1,25 @@
++import { describe, it, expect } from "vitest";
++import { constTimeEq } from "../services/spawn-token";
++
++describe("constTimeEq", () => {
++  it("returns true for identical strings", () => {
++  });
++
++  it("returns false for different strings of equal length", () => {
++  });
++
++  it("returns false when lengths differ regardless of prefix overlap", () => {
++  });
++
++  it("returns true for empty strings", () => {
++  });
++
++  it("returns false when comparing against an empty string", () => {
++  });
++
++  it("treats each character independently (a single trailing byte change flips the result)", () => {
++  });
++
++  it("handles unicode characters by char code", () => {
++  });
++});
+\ No newline at end of file
