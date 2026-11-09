@@ -188,6 +188,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `MODEL_SELECTOR_MODE` | off (`shadow` samples a cheaper candidate per panel review and discards it; `enforce` uses the cheapest qualified model) | yes in enforce | shadow → act | operator; candidates `MODEL_CANDIDATES_PANEL_REVIEW` and (MS-2, Frontier Experts reviews / technique cards / council) `MODEL_CANDIDATES_FRONTIER_EXPERTS`, weights `MODEL_COST_WEIGHTS`, sample `MODEL_SELECTOR_SHADOW_RATE` (0.1) |
 | `COUNCIL_JUDGE_ROUTING_MODE` | off (`shadow` records independent-judge relative-rank outcomes and a candidate routing decision without changing council order; `enforce` applies that decision only after every selected model has the existing cascade minimum sample count; otherwise falls back to the legacy council route). Unknown values behave as off. Relative rank is not an absolute correctness claim. | yes in enforce | shadow → enforce | operator |
 | `EVOLUTION_ESTIMATORS_ENABLED` | off (on: once per UTC day writes delays, discriminability, trial blindness, gym pass rate per tier, model ok rates and Gates A–D to `evolution_estimates`; stall `estimates` after 36 h without a row) | no | measure | operator |
+| `BENCHMARK_SCHEDULE_MODE` | off (`on`: hourly scheduler `benchmark_schedule`. Weekly (Monday 03:00Z) it writes one `benchmark_runs` row with the gym frozen holdout readout: pass rate of `DREAM_EVOLUTION_SPECIES` with its current genome on the current epoch's deciding holdouts (newest eligible gated result per task, no new attempts), Wilson 95 %, `insufficient` below 10 eligible tasks. Monthly (the 1st 02:00Z) SEC-F1 and F1-R are due; they never run in the prod container: when one is due and no real lease runs, the stall watch raises `benchmark:due:<id>` naming `bash scripts/benchmark-run.sh <id> --apply` (see "Periodic benchmarks" below). Stalls `benchmark:overdue:<id>` (> 7 d after the owed slot) and `benchmark:regression:<id>` (latest ok AUC / pass rate below the previous ok run on the same item set by more than max(previous CI half-width, `BENCHMARK_REGRESSION_MARGIN`)). `BENCHMARK_TOKEN_CAP` (default 6 000 000) is the hard cap per reviewer run. Evidence `benchmarks`, Evolution page card "Fixed benchmarks". Not a treatment variable: it changes no maker, checker, panel or gate input) | no | measure | operator |
 | `DEPENDENCY_LANE_MODE` | off (`shadow`: records the Dependabot queue and `would_merge`/`would_rebase`, no GitHub writes; `act`: one `@dependabot rebase` per PR per 24 h when behind, squash-merges ONE green, mergeable, up-to-date npm patch/minor PR per tick after the previous lane merge is green on main; main red after a lane merge revokes act (persisted) until `POST /api/loops/dependency-lane/re-enable` (manage:config, audited). Majors, grouped updates touching a major and red checks stay human; never update-branch) | yes in act | shadow → act | operator |
 | `DEPENDENCY_LANE_MAX_PER_DAY` | 4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h) | yes | act (budget) | operator |
 | `DEAD_CODE_LANE_ENABLED` | off | yes (proposes deletions; each one needs the panel, a human maker approval and a human merge) | act | operator |
@@ -278,6 +279,50 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `TYPESAFE_RISK_ATOMIC_MODE` | off (`shadow`) | no (jev risk answers recorded next to the keyword risk class per approval wait) | shadow | operator |
 | `TYPESAFE_COMMONS_IDEA_MODE` | off (`shadow`) | no (records whether a Commons reply's idea is a Djimitflo change) | shadow | operator |
 | `FLEET_SHELL_ENABLED` | off (`1`) | yes in on (fleet host agent, `fleet-commands.ts`): the server kill switch for `kind=shell` fleet commands, read from process env only. Unset or any value other than exactly `1`: `poll()` hands out diagnostics only and marks every queued shell row `refused` with `shell_disabled_on_server` (kept, never delivered), whatever its approval columns or audit rows say. `1`: the existing checks apply (sha match, live expiry inside the 15-min approval window, the `fleet_command_approved` audit record), and each host still refuses shell unless it opted in with `DJIMIT_AGENT_ALLOW_SHELL=1` | off → on | operator |
+
+## Periodic benchmarks (operator runner)
+
+`BENCHMARK_SCHEDULE_MODE=on` (code: `services/benchmark-schedule.ts`). Three fixed series, one `benchmark_runs` row per run
+(benchmark id, manifest sha, prompt hash, models, runtime, started/finished, tokens, AUC or pass rate with its CI, catches /
+false rejects, status `ok | failed | insufficient`):
+
+| Benchmark | When | Where it runs | Items |
+|---|---|---|---|
+| `sec-f1` | monthly, 1st 02:00Z | VPS host, throwaway containers on the prod image (operator runner) | 46 SEC-F1 items, `docs/research/eco/sec-f1` |
+| `f1` | monthly, 1st 02:00Z | same | 40 F1-R items, `docs/research/eco/f1` (`scripts/f1-build-items.mjs`) |
+| `gym-holdout` | weekly, Monday 03:00Z | in-process (read-only query) | the current holdout epoch |
+
+Why an operator runner and not the prod container: SEC-F1 / F1 fetch upstream repos into throwaway checkouts and run a real
+opencode reviewer in them; that does not belong next to the prod DB and the live loop. The remote pull-worker route (a job
+for the workstation) would need the prod opencode/Ollama credentials on another host, a new job kind and new routes; it is
+not built. `ponytail:` upgrade trigger: when two monthly slots in a row go overdue because nobody ran the command, move the
+runner to an approved host-agent shell job.
+
+When the stall watch reports `benchmark:due:<id>` (only while no real lease runs), on the VPS host as root:
+
+```bash
+bash scripts/benchmark-run.sh sec-f1            # dry run: prints every command
+bash scripts/benchmark-run.sh sec-f1 --apply    # the run (repeat for f1)
+```
+
+What `--apply` does: `benchmark-cli.js plan` (read-only; exit 5 = a real lease runs, nothing starts) → depth-1 fetch of the prod
+build (`DJIMITFLO_BUILD_SHA`; `--ref` overrides) → prepare → baseline (SEC-F1) → the reviewer (`sec-f1-run.mjs --benchmark
+--role security_checker|checker --cap <BENCHMARK_TOKEN_CAP>`: the prod checker prompt and `OpenCodeExecutor`, in-memory DB,
+prompt hash recorded instead of enforced) → every `--poll` s (30) `benchmark-cli.js idle`; a real lease starting stops the
+reviewer and records the reason (`failed`, the slot stays due) → score → `benchmark-cli.js ingest --apply` (the only prod DB
+write: one `benchmark_runs` row). The work dir is `/var/tmp/djimitflo-bench/<id>-YYYY-MM`: rerunning the same command in the
+same month resumes (finished items are skipped, the token total carries over). `--opencode-auth <file>` mounts an opencode
+auth file read-only when prod uses one.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `BENCHMARK_TOKEN_CAP` | 6 000 000 | hard cap per reviewer run (sum of opencode step totals); no item starts once it is reached, the running item's brake is lowered to what is left; a capped run is `insufficient` |
+| `BENCHMARK_REGRESSION_MARGIN` | 0.05 | the smallest drop that alarms; the threshold is max(this, the previous run's CI half-width below its value) |
+
+Seed the series with the 21-10 SEC-F1 run (optional, operator): `docker cp` `docs/research/eco/sec-f1/result/{results.jsonl,score.json}`
+into the container and run `node dist/scripts/benchmark-cli.js ingest --benchmark sec-f1 --results <f> --score <f> --manifest-sha
+29e591e4a75371aa4b81081c0889e57b373e6be2cc72b0db6755c6ef2a897a6f` (dry run), then add `--apply`. F1 has no comparable history: the
+09-10 / 14-10 case files are lost and F1-R is a rebuild, so its first run is its baseline.
 
 ## Freeze a holdout epoch from a manifest (operator only)
 

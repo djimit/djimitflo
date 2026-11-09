@@ -7,6 +7,7 @@ import { ExperimentsSection } from './EvolutionExperiments';
 import { Pl001Card } from './EvolutionPl001';
 import { Cv001Card } from './EvolutionCv001';
 import { FitnessContractsCard } from './EvolutionFitness';
+import { BenchmarksCard } from './EvolutionBenchmarks';
 import { DataTable } from '../components/ui';
 
 const fetchEvidence = () => api.getEvolutionEvidence();
@@ -116,6 +117,12 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
       {data.pl_001 && (
         <Section title="PL-001 — procedure with vs without (gym repair)">
           <Pl001Card data={data.pl_001} />
+        </Section>
+      )}
+
+      {data.benchmarks && (
+        <Section title="Fixed benchmarks">
+          <BenchmarksCard data={data.benchmarks} />
         </Section>
       )}
 

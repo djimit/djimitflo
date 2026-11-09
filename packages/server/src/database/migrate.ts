@@ -1359,6 +1359,14 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS evolution_estimates (id TEXT PRIMARY KEY, estimator TEXT NOT NULL, scope TEXT NOT NULL, as_of_day TEXT NOT NULL, window_days INTEGER,
       value REAL, ci_low REAL, ci_high REAL, n INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}', computed_at TEXT NOT NULL,
       UNIQUE(estimator, scope, as_of_day));
+    -- periodic fixed benchmarks (benchmark-schedule.ts): one row per run of SEC-F1 / F1 / the gym holdout readout; status ok |
+    -- failed (aborted, harness fault: the slot stays due) | insufficient (partial or too few scored items); value null = unknown
+    CREATE TABLE IF NOT EXISTS benchmark_runs (id TEXT PRIMARY KEY, benchmark_id TEXT NOT NULL, slot TEXT, manifest_sha256 TEXT, prompt_sha256 TEXT,
+      models_json TEXT NOT NULL DEFAULT '[]', runtime TEXT, started_at TEXT NOT NULL, finished_at TEXT, tokens INTEGER, metric TEXT NOT NULL, value REAL,
+      ci_low REAL, ci_high REAL, n INTEGER NOT NULL DEFAULT 0, positives INTEGER, negatives INTEGER, catches INTEGER, false_rejects INTEGER,
+      status TEXT NOT NULL CHECK(status IN ('ok', 'failed', 'insufficient')), reason TEXT, source TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_benchmark_runs_series ON benchmark_runs(benchmark_id, started_at);
     -- shipped-code scan (shadow): one row per new content hash of an installed runtime package — report, diff vs the previous row
     CREATE TABLE IF NOT EXISTS shipped_code_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, package TEXT NOT NULL, version TEXT, runtime_id TEXT NOT NULL,
       scanned_path TEXT NOT NULL, report_hash TEXT NOT NULL, prev_report_hash TEXT, report_json TEXT NOT NULL, diff_json TEXT NOT NULL,
