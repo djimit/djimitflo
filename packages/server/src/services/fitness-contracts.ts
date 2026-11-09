@@ -122,6 +122,15 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     decision_rule: 'at the protocol stop (60 pairs or day 14): one-sided exact McNemar SUPPORTED → procedure validated; NOT_SUPPORTED / harm → retired + negative-evidence draft; INCONCLUSIVE → stays candidate',
     inheritance: null, status: 'closed_loop',
     note: 'The lifecycle rule acts automatically, but validated is not promoted: any production delivery is an operator decision. Registered 2026-10-26, decide start or close by 2026-11-25.' },
+  // cv-001.ts: frozen mutant-repair set (tiers 3–6), paired A (qwen38-27b) / B (qwen38-27b-cvd15, discipline vector 1.5) per task × repeat,
+  // one-sided exact McNemar; applyCv001Verdict writes ADOPT / REJECT / INCONCLUSIVE once (REJECT → negative-evidence draft), promoted: false
+  { component: 'control_vector', class: 'gym', name: 'Control-vector arm (CV-001)', unit: 'one frozen mutant-repair task × repeat, baseline vs steered router preset', experiment: 'CV-001',
+    flags: ['CV_001_MODE', 'CV_001_WINDOW_UTC'],
+    outcome: { metric: 'clean gated gym success per arm (VOID without the model_check delivery proof or the oracle gates)', source: "loop_runs loop_name 'cv-001' gym_result (cv001Evidence)", independence: 'independent' },
+    cost: { tokens: 'cv001Evidence arms tokens (known / unknown counted apart)', kwh: null, operator_minutes: null },
+    comparison: { kind: 'randomised', ref: 'CV-001' },
+    decision_rule: null, inheritance: null, status: 'measured_no_selection',
+    note: 'The verdict (ADOPT / REJECT / INCONCLUSIVE) is recorded once, with a negative-evidence draft on REJECT, but nothing acts on it: no preset is switched and no production maker ever gets the vector (gym-only arm). Registered 2026-11-07, decide start or close by 2026-12-07.' },
   // ── reviewers ───────────────────────────────────────────────────────────────────────────────────────────────────────────
   // loop-daemon.ts (checker on the maker's own runtime: "self-review"); loop-verification-service.ts checker_verdict hard gate;
   // checker-family.ts F2 (primary outcome_survival from pr_outcome settlement at >= target, else outcome_wo_checker; secondary circular)

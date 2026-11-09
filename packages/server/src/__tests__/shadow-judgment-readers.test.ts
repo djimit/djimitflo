@@ -99,6 +99,7 @@ const READERS: Record<string, Reader> = {
   'services/operator-cockpit.ts': { policy: 'measurement', why: 'cockpit' },
   'services/panel-calibration-shadow.ts': { policy: 'measurement', why: 'own dedupe' },
   'services/pl-001.ts': { policy: 'measurement', why: 'last freeze refusal (display)' },
+  'services/cv-001.ts': { policy: 'measurement', why: 'last freeze refusal (display)' },
   'services/procedure-selector.ts': { policy: 'measurement', why: 'evidence' },
   'services/provenance-dag.ts': { policy: 'measurement', why: 'provenance report' },
   'services/resource-scheduler.ts': { policy: 'measurement', why: 'own shadow dedupe + evidence' },

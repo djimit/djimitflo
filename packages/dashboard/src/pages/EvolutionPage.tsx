@@ -5,6 +5,7 @@ import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { ExperimentsSection } from './EvolutionExperiments';
 import { Pl001Card } from './EvolutionPl001';
+import { Cv001Card } from './EvolutionCv001';
 import { FitnessContractsCard } from './EvolutionFitness';
 import { BenchmarksCard } from './EvolutionBenchmarks';
 import { DataTable } from '../components/ui';
@@ -122,6 +123,12 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
       {data.benchmarks && (
         <Section title="Fixed benchmarks">
           <BenchmarksCard data={data.benchmarks} />
+        </Section>
+      )}
+
+      {data.cv_001 && (
+        <Section title="CV-001 — discipline control vector (gym repair)">
+          <Cv001Card data={data.cv_001} />
         </Section>
       )}
 

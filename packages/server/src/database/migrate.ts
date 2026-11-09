@@ -1382,6 +1382,12 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS pl_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, arm TEXT NOT NULL, seq INTEGER NOT NULL,
       status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT, first_claimed_at TEXT, updated_at TEXT NOT NULL,
       UNIQUE(experiment_id, task_key, arm));
+    -- CV-001 (control vector, step 2): the frozen manifest (tasks, treatment, block schedule, analysis) with its sha256 and the
+    -- recorded verdict, and one row per (task, repeat, arm) slot in the frozen block order; history_json keeps every physical attempt
+    CREATE TABLE IF NOT EXISTS cv_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL, manifest_sha256 TEXT NOT NULL, verdict_json TEXT);
+    CREATE TABLE IF NOT EXISTS cv_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, repeat INTEGER NOT NULL, arm TEXT NOT NULL,
+      block INTEGER NOT NULL, seq INTEGER NOT NULL, status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT,
+      first_claimed_at TEXT, updated_at TEXT NOT NULL, UNIQUE(experiment_id, task_key, repeat, arm));
     CREATE INDEX IF NOT EXISTS idx_shipped_code_scans_package ON shipped_code_scans(package, id);
     -- MS-1: every model call of a consumer (incumbent and shadow candidates): did it parse, did it agree, how long, how long the answer
     CREATE TABLE IF NOT EXISTS llm_model_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, consumer TEXT NOT NULL, model TEXT NOT NULL, ok INTEGER NOT NULL,
