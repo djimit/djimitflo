@@ -227,6 +227,17 @@ it('L6-04: a server without the experiment registry renders an honest empty stat
   expect(renderToStaticMarkup(<EvolutionBody data={EMPTY} />)).toContain('Experiment registry not reported by this server.');
 });
 
+it('capability learning evidence marks absent agent, swarm, memory and knowledge comparisons as unproven', () => {
+  const html = renderToStaticMarkup(<EvolutionBody data={EMPTY} />);
+  expect(html).toContain('matched, per-agent task comparison');
+  expect(html).toContain('completion is not verified task success');
+  expect(html).toContain('watt-hours are not measured here');
+  expect(html).toContain('No readable skill-route funnel in this response.');
+  expect(html).toContain('Memory holdout evidence not reported.');
+  expect(html).toContain('ACE-001 evidence not reported.');
+  expect(html).toContain('insufficient samples unknown');
+});
+
 // UXE-00: value-gate decision card + settlement value (visibleText: shared helper, test/visible-text.ts)
 const AM: NonNullable<EvolutionEvidence['auto_merge']> = { mode: 'act', max_per_day: 10, audit_sample_pct: 10, class: { state: 'active' },
   counts: { merged: 25, merged_24h: 1, would_merge: 0, audit_samples: 10, audit_samples_open: 2, waiting: 0, ineligible: 79 },
