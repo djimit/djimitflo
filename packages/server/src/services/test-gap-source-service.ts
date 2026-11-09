@@ -108,6 +108,57 @@ export function discoverPackageGaps(repoPath: string): TestGap[] {
 }
 
 /**
+ * The dashboard lane (TEST_GAP_DASHBOARD_ENABLED=true, default off). packages/dashboard keeps its tests colocated
+ * (`<dir>/<Name>.test.tsx`, run by its vite.config.ts in jsdom), so a module is tested when a test file in its directory
+ * carries its name (`Name.test.tsx`, `Name.render.test.tsx`) or any dashboard test imports it (relative or `@/` path).
+ * Candidates: src/**\/*.ts(x) minus tests, stories, index barrels, .d.ts, generated files, src/test*\/ helpers, the entry
+ * points (main.tsx, App.tsx), type-only files (no runtime export) and files outside 30..800 lines.
+ * Rule for pages (keep it simple): a module that needs the router or the app shell is skipped — it imports
+ * react-router-dom or the WebSocket provider/hook — as is every route-level `*Page.tsx` (their tests need route and API
+ * fixtures). Sections and sub-components under pages/ stay. Pure lib helpers first, then hooks, components, pages.
+ * Same contract as the other lanes: one new colocated test file, one command run from packages/dashboard.
+ */
+const DASHBOARD_MAX_LOC = 800;
+const DASHBOARD_SHELL = /from\s+['"](?:react-router-dom|[^'"]*\/(?:WebSocketProvider|useWebSocket))['"]/;
+export function discoverDashboardGaps(repoPath: string): TestGap[] {
+  const src = path.join(repoPath, 'packages/dashboard/src');
+  if (!fs.existsSync(src)) return [];
+  const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory()
+    ? (e.name === 'node_modules' || e.name === 'dist' ? [] : walk(path.join(dir, e.name))) : /\.tsx?$/.test(e.name) ? [path.join(dir, e.name)] : []);
+  const files = walk(src);
+  const isTest = (f: string) => /\.(test|spec)\.tsx?$/.test(f);
+  const noExt = (f: string) => f.replace(/\.tsx?$/, '');
+  const tested = new Set<string>(); // absolute paths without extension
+  for (const t of files.filter(isTest)) {
+    tested.add(path.join(path.dirname(t), path.basename(t).split('.')[0])); // colocated by name
+    for (const m of fs.readFileSync(t, 'utf8').matchAll(/(?:from|import)\s*\(?\s*['"]((?:\.{1,2}|@)\/[^'"]+)['"]/g)) {
+      const spec = m[1].replace(/\.(js|tsx?)$/, '');
+      const target = spec.startsWith('@/') ? path.join(src, spec.slice(2)) : path.resolve(path.dirname(t), spec);
+      tested.add(target); tested.add(path.join(target, 'index')); // a directory import names its barrel
+    }
+  }
+  // a tested barrel covers the modules it re-exports
+  for (const barrel of files.filter((f) => /^index\.tsx?$/.test(path.basename(f)) && tested.has(noExt(f)))) {
+    for (const m of fs.readFileSync(barrel, 'utf8').matchAll(/from\s+['"](\.{1,2}\/[^'"]+)['"]/g)) tested.add(path.resolve(path.dirname(barrel), m[1].replace(/\.(js|tsx?)$/, '')));
+  }
+  const tier = (g: TestGap) => ['lib', 'hooks', 'components', 'pages'].indexOf(g.sourcePath.split('/')[3]) + 1 || 5;
+  const gaps: TestGap[] = [];
+  for (const f of files) {
+    const rel = path.relative(src, f).split(path.sep).join('/'); const name = path.basename(f).replace(/\.tsx?$/, '');
+    if (isTest(f) || /\.(d|stories|generated)\.tsx?$/.test(f) || name === 'index' || /^test(-utils)?\//.test(rel) || rel === 'main.tsx' || rel === 'App.tsx') continue;
+    if (tested.has(noExt(f)) || (rel.startsWith('pages/') && /Page$/.test(name))) continue;
+    const text = fs.readFileSync(f, 'utf8'); const loc = text.split('\n').length;
+    if (/^\s*\/[/*].*(?:@generated|\bgenerated\b.*do not edit)/i.test(text.split('\n', 1)[0]) || DASHBOARD_SHELL.test(text)) continue;
+    const exports = [...text.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+    if (loc < MIN_LOC || loc > DASHBOARD_MAX_LOC || !exports.length) continue; // no runtime export = type-only
+    const ext = f.endsWith('.tsx') || name.startsWith('use') ? '.test.tsx' : '.test.ts';
+    gaps.push({ service: `dashboard/${noExt(rel)}`, pkg: 'dashboard', sourcePath: `packages/dashboard/src/${rel}`,
+      testPath: `packages/dashboard/src/${path.posix.dirname(rel) === '.' ? '' : `${path.posix.dirname(rel)}/`}${name}${ext}`, exports, loc });
+  }
+  return gaps.sort((a, b) => tier(a) - tier(b) || a.loc - b.loc || a.service.localeCompare(b.service));
+}
+
+/**
  * Multi-repo (EXTRA_REPOS_ENABLED): plain node:test JavaScript repos — tests in test/ (or tests/) as <name>.test.mjs, modules anywhere
  * under src/ (.mjs; also .js when package.json says "type":"module" — CommonJS .js stays out), one command `node --test <dir>/<name>.test.<ext>`
  * (the new test takes its module's extension). A module no test names (file name or import) is an untested gap; a tested
@@ -245,7 +296,7 @@ export class TestGapSourceService {
     const improvements = new SelfImprovementService(this.db);
     let created = 0;
     // Untested services first, then untested exports of tested services (J3: TEST_GAP_EXPORTS_ENABLED).
-    const gaps: Array<TestGap & { repo?: ExtraRepo }> = repo ? [...discoverTestGaps(repo), ...(process.env.TEST_GAP_EXPORTS_ENABLED === 'true' ? discoverExportGaps(repo) : []), ...(process.env.TEST_GAP_PACKAGES_ENABLED === 'true' ? discoverPackageGaps(repo) : [])] : [];
+    const gaps: Array<TestGap & { repo?: ExtraRepo }> = repo ? [...discoverTestGaps(repo), ...(process.env.TEST_GAP_EXPORTS_ENABLED === 'true' ? discoverExportGaps(repo) : []), ...(process.env.TEST_GAP_PACKAGES_ENABLED === 'true' ? discoverPackageGaps(repo) : []), ...(process.env.TEST_GAP_DASHBOARD_ENABLED === 'true' ? discoverDashboardGaps(repo) : [])] : [];
     // multi-repo: registered extra repos after the primary repo's candidates, inside the same caps
     for (const extra of extras) gaps.push(...discoverNodeTestGaps(extra.path).map((g) => ({ ...g, repo: extra })));
     for (const gap of gaps) {

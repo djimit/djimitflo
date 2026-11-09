@@ -30,7 +30,8 @@ import type { LoopService } from './loop-service';
  *   One `settlement_execution` judgments row (mode shadow) per PR, decision pass | fail | removed | unknown | no_test_files;
  *   unknown is retried on later ticks up to MAX_ATTEMPTS rows. ≤ MAX_PER_TICK executed PRs per tick (removed / no_test_files
  *   cost no execution and are not counted).
- * Nothing reads it for a decision: Gate B, merge-survival scoring, the bandit, auto-merge and R2 are unchanged.
+ * Gate B, merge-survival scoring, the bandit and R2 do not read it. LOOP_AUTO_MERGE_SETTLEMENT_REVOKE=on does: its lane revocation
+ * (loop-auto-merge.ts settlementRevocation) reads these rows via latestSettlements, so this flag is registered acting.
  * Evidence `settlement_execution` (evolution-evidence): counts, kill-share drift, insufficient below MIN_N; plus a read-only
  * graded-score vs verified / survived comparison so the operator can judge promoting graded to a primary label later.
  *   SETTLEMENT_EXECUTION_MODE=off (default) | shadow.

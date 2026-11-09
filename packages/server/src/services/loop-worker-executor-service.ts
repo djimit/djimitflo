@@ -37,6 +37,7 @@ import { buildExecutorEnv } from '../execution/executors/executor-env';
 import { makerUidSeparationMode, probeMakerContext, uidSeparationRefusal } from '../execution/executors/maker-uid-separation';
 import { recordLanePolicyShadow } from './lane-policy';
 import { observeSkillInvocation } from './skill-route';
+import { makerScopeRepairOn, repairMakerScope } from './maker-scope-repair';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -346,6 +347,13 @@ export class LoopWorkerExecutorService {
         this.riskAssessmentText(makerLease, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
+    // MAKER_SCOPE_REPAIR=on (default off: never called): an oracle-lane maker whose only out-of-scope changes are package.json /
+    // package-lock.json gets exactly those restored to the base commit, before changed_files, the gates and the checks below
+    const scopeRepair = makerScopeRepairOn() ? repairMakerScope(this.db, run, makerLease, (cwd, args) => this.loopService.git(cwd, args)) : null;
+    if (scopeRepair) {
+      this.loopService.recordLoopEvent(run.id, 'maker_scope_repaired', 'warning', `Restored ${scopeRepair.restored.join(', ')} to ${scopeRepair.base.slice(0, 12)} (only out-of-scope change; scope ${scopeRepair.scope}); gates and checks run on the repaired tree.`,
+        { maker_lease_id: makerLease.id, ...scopeRepair });
+    }
     // A lockfile rewrite without a dependency change is install noise (prod 2026-09-23: npm install flipped hasInstallScript),
     // never the intended change; restore it so a test-only diff stays test-only, and record that we did.
     const changed = this.loopService.git(makerLease.worktree_path!, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
@@ -408,6 +416,7 @@ export class LoopWorkerExecutorService {
       runtime_usage: runtimeUsage || { usage_source: 'unknown' }, token_accounting: tokenAccounting,
       // MAKER_DIFF_CAPTURE=on: the redacted, capped diff diff_lines was counted from (record-only; an error leaves only diff_capture_error)
       ...captureMakerDiff(diff),
+      ...(scopeRepair ? { scope_repair: scopeRepair } : {}),
       ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
       // structured failure capture (record-only; the gates above already decided)
       ...(failed || wasCancelled ? { failure: runtimeFailureHint(result, 'maker', tokenBudget.gate.status === 'fail') } : {}),

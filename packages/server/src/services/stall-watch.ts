@@ -10,6 +10,7 @@ import { panelInferenceStatus } from './ollama-outage-fallback';
 import { experimentsReport } from './experiment-registry';
 import { hostTokenStalls, hostTokenWatchMode } from './host-token-watch';
 import { gapLaneResults } from './test-gap-source-service';
+import { genomeApplyMode, recentGenomeRetirements } from './genome-apply';
 import { fleetDrift } from '../utils/fleet-drift';
 import { MIN_HOST_AGENT_VERSION } from '../routes/host-agent';
 
@@ -377,6 +378,11 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     const mine = vaShadow.filter((s) => s.subsystem.startsWith(`${name}:`));
     if (d && mine.length) d.detail = `shadow (VALUE_ANOMALY_ALARM=shadow, not raised): ${mine.map((s) => s.subsystem).join(', ')}`.slice(0, 500);
   }
+  // GENOME_APPLY_MODE=on: a promoted genome the auto-retire rule took out of production makers in the last 24 h (genome-apply.ts)
+  run('genome_apply', genomeApplyMode(env) === 'on', () => {
+    for (const r of recentGenomeRetirements(db, ago(now, 24))) out.push({ subsystem: `genome_apply:${r.genome_id}`, since: r.at,
+      detail: `genome ${r.genome_id} auto-retired from production makers: ${r.reason ?? 'delivered arm below the holdout'}`.slice(0, 500) });
+  });
   // Workstream B: the capability chain — an enabled capability with a disabled dependency, a misconfigured path, a ticking
   // scheduler without outcomes, or pending work without progress is a stall; idle by design (flag off, cap, no input) is not
   let capabilities: CapabilityVerdict[] = [];

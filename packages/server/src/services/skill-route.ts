@@ -7,6 +7,7 @@ import { CapabilityRequestError, FACTORY_OWNER, checkRepoPath, primaryRepoRoot }
 import { goalRepoSlug } from './repo-registry';
 import { swarmEventBus } from './swarm-event-bus';
 import { experimentDefs } from './experiment-registry';
+import { buildProvenance } from '../utils/build-provenance';
 
 /**
  * L1 skill route (M2–M8, operator 2026-11-06). SKILL_ROUTE_MODE=off|shadow|on (default off = nothing here runs; every caller
@@ -24,12 +25,25 @@ export type SkillRouteMode = 'off' | 'shadow' | 'on';
 export const skillRouteMode = (env: NodeJS.ProcessEnv = process.env): SkillRouteMode =>
   (env.SKILL_ROUTE_MODE === 'on' ? 'on' : env.SKILL_ROUTE_MODE === 'shadow' ? 'shadow' : 'off');
 
+/**
+ * SKILL_VALIDATION_REQUIRES_TESTS=off|on (default off = today for every request without `tests`). Skillware (arXiv 2611.07652):
+ * a skill bundle carries its own tests and validation proves they pass for the exact artifact. on: registration requires `tests`
+ * (repo-relative test files in the deployed tree; their sha256 is stored next to the artifact digest) and validation requires a
+ * `test_receipt` (scripts/skill-test-receipt.mjs, run by an operator/CI in a clean checkout) for the server's built commit whose
+ * test file shas equal the registered ones and the files on disk, while the script still hashes to its digest. The server
+ * never runs the tests itself.
+ */
+export type SkillValidationTestsMode = 'off' | 'on';
+export const skillValidationTestsMode = (env: NodeJS.ProcessEnv = process.env): SkillValidationTestsMode =>
+  (env.SKILL_VALIDATION_REQUIRES_TESTS === 'on' ? 'on' : 'off');
+
 export const SKILL_SOURCE = 'skill_from_repair';
 export const SKILL_LANES = ['mutation-gap', 'test-gap', 'test-gap-exports'] as const;
 export type SkillLane = typeof SKILL_LANES[number];
 export type SkillArm = 'treatment' | 'holdout';
 const SCRIPT_PATH = /^scripts\/skills\/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:mjs|cjs|js)$/;
 const NAME = /^[a-z0-9][a-z0-9-]{1,48}$/;
+const TEST_PATH = /\.(?:test|spec)\.(?:[cm]?js|tsx?)$/;
 const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
 const oneLine = (s: string, max: number) => s.replace(/\s+/g, ' ').trim().slice(0, max);
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : []);
@@ -49,7 +63,11 @@ function fileDigest(root: string, rel: string): string | null {
 // ─── M2: register from a repair ───────────────────────────────────────────────
 
 export interface SkillFromRepairInput { name: string; lanes: string[]; script_path: string; oracle: string;
-  applicability?: { runtimes?: string[] }; provenance?: Record<string, unknown> }
+  applicability?: { runtimes?: string[] }; provenance?: Record<string, unknown>;
+  /** repo-relative test files that exercise the script (required with SKILL_VALIDATION_REQUIRES_TESTS=on) */
+  tests?: string[] }
+export interface SkillTestFile { path: string; sha256: string }
+export interface SkillTestReceipt { commit: string; test_files: SkillTestFile[]; result: string; runner: string; ran_at: string }
 
 function assertOn(env: NodeJS.ProcessEnv): void {
   if (skillRouteMode(env) === 'off') throw new CapabilityRequestError('SKILL_ROUTE_DISABLED', 'skill route is off (SKILL_ROUTE_MODE)');
@@ -74,29 +92,71 @@ export function registerSkillFromRepair(db: Database, input: SkillFromRepairInpu
   if (!digest) throw new CapabilityRequestError('PATH_NOT_FOUND', `script_path ${script} is not readable`);
   const oracle = oneLine(String(input.oracle ?? ''), 300);
   if (oracle.length < 5) throw new CapabilityRequestError('INVALID_ORACLE', 'oracle must describe the executed check that decides');
+  const tests = [...new Set(strings(input.tests).map((t) => t.trim()))];
+  if (skillValidationTestsMode(env) === 'on' && !tests.length) throw new CapabilityRequestError('SKILL_TESTS_REQUIRED', 'tests (repo-relative test files that exercise the script) are required (SKILL_VALIDATION_REQUIRES_TESTS=on)');
+  const testFiles: SkillTestFile[] = tests.map((t) => {
+    if (!TEST_PATH.test(t)) throw new CapabilityRequestError('INVALID_PATH', `tests: ${t} is not a *.test|spec.(m|c)js|ts file`);
+    checkRepoPath(root, t, 'tests', false);
+    const d = fileDigest(root, t);
+    if (!d) throw new CapabilityRequestError('PATH_NOT_FOUND', `tests: ${t} is not readable`);
+    return { path: t, sha256: d };
+  });
   const runtimes = strings(input.applicability?.runtimes).map((r) => r.trim()).filter((r) => /^[\w@./-]{1,80}$/.test(r));
   const id = `skill:${name}`; const version = digest.slice('sha256:'.length, 'sha256:'.length + 12);
   const intel = new SwarmIntelligenceService(db);
-  const existing = db.prepare('SELECT version FROM swarm_capabilities WHERE id = ?').get(id) as { version: string } | undefined;
-  if (existing?.version === version) return { status: 'exists', capability: intel.getCapability(id) };
+  const existing = db.prepare('SELECT version, status FROM swarm_capabilities WHERE id = ?').get(id) as { version: string; status: string } | undefined;
+  if (existing?.version === version) {
+    // the test contract of a not-yet-validated skill can be (re)declared; a validated one keeps the contract it was proven with
+    if (testFiles.length && existing.status === 'candidate') {
+      db.prepare("UPDATE swarm_capabilities SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.tests', json(?)), updated_at = ? WHERE id = ?")
+        .run(JSON.stringify(testFiles), new Date().toISOString(), id);
+    }
+    return { status: 'exists', capability: intel.getCapability(id) };
+  }
   const capability = intel.createCandidate({
     id, kind: 'deterministic_harness', owner: FACTORY_OWNER, version, risk_ceiling: 'low',
     input_schema_ref: `lanes:${lanes.join(',')}`, output_schema_ref: `script:${script}`,
     allowed_actions: ['deliver_in_assignment'], forbidden_actions: ['deploy', 'push', 'merge'],
     required_evidence: ['transcript:invocation', 'checks:exit_0', 'run:verified'], removal_strategy: 'deprecate_on_digest_change',
     metadata: { source: SKILL_SOURCE, title: name, name, lanes, script_path: script, artifact_digest: digest, applicability: runtimes.length ? { runtimes } : {},
-      oracle, provenance: obj(input.provenance), registered_by: actor },
+      oracle, provenance: obj(input.provenance), registered_by: actor, ...(testFiles.length ? { tests: testFiles } : {}) },
   });
   swarmEventBus.emit('capability_transition', { capability_id: id, old_status: 'none', new_status: 'candidate', reason: `skill route: registered from repair by ${actor}` });
   return { status: 'registered', capability };
 }
 
 /**
+ * SKILL_VALIDATION_REQUIRES_TESTS=on: why `receipt` does not prove the registered tests pass for this exact artifact, or null.
+ * The receipt must name the server's built commit, cover exactly the declared test files with the registered sha256 (equal to
+ * the files on disk), say pass, and the script must still hash to the registered digest.
+ */
+export function testReceiptGap(meta: Record<string, unknown>, receipt: SkillTestReceipt | undefined, root: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  const declared = (Array.isArray(meta.tests) ? meta.tests : []).map(obj).filter((t) => typeof t.path === 'string' && typeof t.sha256 === 'string') as unknown as SkillTestFile[];
+  if (!declared.length) return 'the skill declares no tests: register it again with tests';
+  if (!receipt) return 'test_receipt is required (scripts/skill-test-receipt.mjs <tests…> in a clean checkout at the server built commit)';
+  const built = buildProvenance(env).built_commit;
+  if (!built) return 'the server built commit is unknown (DJIMITFLO_BUILD_COMMIT): no receipt can be tied to this artifact';
+  if (String(receipt.commit).toLowerCase() !== built.toLowerCase()) return `receipt commit ${String(receipt.commit).slice(0, 40)} is not the server built commit ${built}`;
+  if (receipt.result !== 'pass') return `receipt result is ${String(receipt.result).slice(0, 20)}, not pass`;
+  const got = new Map((Array.isArray(receipt.test_files) ? receipt.test_files : []).map((f) => [f.path, f.sha256]));
+  const missing = declared.filter((t) => !got.has(t.path)).map((t) => t.path);
+  if (missing.length || got.size !== declared.length) return `receipt test_files must be exactly the declared tests (${declared.map((t) => t.path).join(', ')})`;
+  for (const t of declared) {
+    if (!sameDigest(got.get(t.path), t.sha256)) return `receipt sha256 of ${t.path} is not the registered ${t.sha256}`;
+    if (!sameDigest(fileDigest(root, t.path), t.sha256)) return `${t.path} on disk no longer hashes to the registered ${t.sha256}`;
+  }
+  if (!sameDigest(fileDigest(root, String(meta.script_path ?? '')), meta.artifact_digest)) return `${String(meta.script_path)} no longer hashes to the registered digest ${String(meta.artifact_digest)}`;
+  return null;
+}
+
+/**
  * Validate (activate) a registered skill: the script must still hash to the registered digest, then the store's own promotion
  * path runs and (M8) one period-boundary row is written per oracle-population experiment, since what their makers receive
  * changes without any env change. Already validated: returned as is, no second boundary.
+ * SKILL_VALIDATION_REQUIRES_TESTS=on: first a test receipt must prove the declared tests pass for this artifact (testReceiptGap,
+ * else 409 SKILL_TESTS_UNPROVEN, nothing changes); the receipt is recorded as `validation_test_receipt`. Off: a receipt is ignored.
  */
-export function validateSkillCapability(db: Database, id: string, input: { evidence_refs: string[] }, actor: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()): SwarmCapabilityRecord {
+export function validateSkillCapability(db: Database, id: string, input: { evidence_refs: string[]; test_receipt?: SkillTestReceipt }, actor: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()): SwarmCapabilityRecord {
   assertOn(env);
   const row = db.prepare('SELECT status, version, metadata FROM swarm_capabilities WHERE id = ?').get(id) as { status: string; version: string; metadata: string } | undefined;
   const meta = parse(row?.metadata);
@@ -104,17 +164,28 @@ export function validateSkillCapability(db: Database, id: string, input: { evide
   const intel = new SwarmIntelligenceService(db);
   if (row.status === 'validated') return intel.getCapability(id);
   if (row.status !== 'candidate') throw new CapabilityRequestError('SKILL_NOT_CANDIDATE', `${id} is ${row.status}`);
+  const receipt = skillValidationTestsMode(env) === 'on' ? input.test_receipt : undefined;
+  if (skillValidationTestsMode(env) === 'on') {
+    const gap = testReceiptGap(meta, receipt, primaryRepoRoot(env), env);
+    if (gap) throw new CapabilityRequestError('SKILL_TESTS_UNPROVEN', gap);
+  }
   const now_ = fileDigest(primaryRepoRoot(env), String(meta.script_path ?? ''));
   if (!sameDigest(now_, meta.artifact_digest)) throw new CapabilityRequestError('SKILL_DIGEST_CHANGED', `${meta.script_path} no longer hashes to ${String(meta.artifact_digest)}`);
   const refs = strings(input.evidence_refs).map((r) => r.slice(0, 300)).slice(0, 20);
   const capability = db.transaction(() => {
     const promoted = intel.promoteCapability(id, { eval_score: 1, evidence_refs: refs, validation_report: `skill route: validated by ${actor}; digest ${String(meta.artifact_digest)}` });
     recordSkillBoundary(db, id, row.version, 'candidate', 'validated', now);
-    return promoted;
+    if (!receipt) return promoted;
+    db.prepare("UPDATE swarm_capabilities SET metadata = json_set(metadata, '$.validation_test_receipt', json(?)) WHERE id = ?").run(JSON.stringify(receiptRecord(receipt)), id);
+    return intel.getCapability(id);
   })();
-  swarmEventBus.emit('capability_transition', { capability_id: id, old_status: 'candidate', new_status: 'validated', reason: `skill route: validated by ${actor}` });
+  swarmEventBus.emit('capability_transition', { capability_id: id, old_status: 'candidate', new_status: 'validated', reason: `skill route: validated by ${actor}`,
+    ...(receipt ? { test_receipt: receiptRecord(receipt) } : {}) });
   return capability;
 }
+
+const receiptRecord = (r: SkillTestReceipt): SkillTestReceipt => ({ commit: r.commit, test_files: r.test_files.map((f) => ({ path: f.path, sha256: f.sha256 })),
+  result: r.result, runner: oneLine(String(r.runner), 200), ran_at: oneLine(String(r.ran_at), 40) });
 
 /** M8: one experiment_period_boundaries row per oracle-population experiment (env_name `capability:<id>`). */
 export function recordSkillBoundary(db: Database, id: string, version: string, from: string, to: string, now = Date.now()): number {
