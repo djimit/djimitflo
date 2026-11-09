@@ -62,6 +62,7 @@ import { skillRouteEvidence } from './skill-route';
 import { fitnessContractsReport } from './fitness-contracts';
 import { gymNativeToolsEvidence } from './gym-native-tools';
 import { genomeApplyEvidence } from './genome-apply';
+import { webResearchEvidence } from './web-research';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -131,6 +132,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
+  { name: 'WEB_RESEARCH_MODE', acting: true },
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
@@ -598,5 +600,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // stopped within N steps after a pass (descriptive; not an experiment)
     gym_native_tools: gymNativeToolsEvidence(db, since, env),
     // GENOME_APPLY_MODE=on: promoted genomes in production makers — delivered vs 10 % holdout per genome (maker-clean), receipts, auto-retire decisions
-    genome_apply: genomeApplyEvidence(db, env) };
+    genome_apply: genomeApplyEvidence(db, env),
+    // WEB-001 (WEB_RESEARCH_MODE): failure-driven web research — questions asked, candidates returned/accepted/rejected by reason,
+    // knowledge routed (on), dream genomes citing it and their trial result; null = no job yet
+    web_research: webResearchEvidence(db, env, now) };
 }

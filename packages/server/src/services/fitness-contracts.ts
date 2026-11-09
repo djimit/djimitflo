@@ -261,6 +261,12 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     note: 'Holdout falsified (EXP-3: 66/88 vs withheld 34/42, p 0.40); LOOP_MEMORY_RULES_ENABLED=false since 2026-10-27, so nothing is selected or served. Curator / candidate promotion have no outcome at all.' },
   // ace-001.ts R factor (maker-side top-3 kb_pages, randomised 2×2); kb-corpus.ts kbContext (panel side, KB_CONTEXT_ENABLED, no comparison);
   // knowledge-fitness.ts (read-only, confounded); retrieval-eval.ts with the E1 blind labels (0 eligible labelled queries)
+  // web-research.ts (#1197, WEB-001): failure-signature questions → screened web candidates → dream 'knowledge' evidence; a cited mutant genome
+  // is judged only by the existing paired gym trial, so the web source itself has no outcome of its own yet
+  { component: 'web_research', class: 'knowledge', name: 'Failure-driven web research (WEB-001)', unit: 'one research job (question → screened candidates)', flags: ['WEB_RESEARCH_MODE'],
+    outcome: { metric: 'none of its own: genomes citing a web candidate are judged by the paired gym trial (gym_genomes)', source: 'web_research evidence + maker_genomes.evidence_sources_json', independence: 'none' },
+    cost: { ...NO_COST }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'unmeasured',
+    note: 'Candidates are unverified web techniques; guardLines, the NE registry and content_safety screen them before any dream prompt.' },
   { component: 'kb_retrieval', class: 'knowledge', name: 'KB retrieval', unit: 'one oracle-lane goal (retrieval on vs off, ACE-001 R)', experiment: 'ACE-001', mechanism: 'kb_retrieval',
     flags: ['KB_CONTEXT_ENABLED', 'ACE_001_MODE'],
     outcome: { metric: `${VERIFIED}, R on − off (withheld until the readout)`, source: "skill_outcomes 'ace-001-arm' (ace001Evidence)", independence: 'independent' },

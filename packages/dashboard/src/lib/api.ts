@@ -374,6 +374,12 @@ export interface EvolutionEvidence {
     genomes: Array<{ genome_id: string; status: string | null; undelivered: number; difference: number | null; decision: 'retire' | 'keep' | 'insufficient'; reason: string;
       treatment: { n: number; verified: number; rate: number | null; ci: [number, number] | null }; holdout: { n: number; verified: number; rate: number | null; ci: [number, number] | null } }> | null;
     retire_decisions: Array<{ genome_id: string; at: string; reason: string | null }> | null };
+  /** WEB-001 (WEB_RESEARCH_MODE): failure-driven web research → knowledge → dream genome → trial; null fields = no job yet (unknown) */
+  web_research?: { mode: 'off' | 'shadow' | 'on'; window_days: number; note: string;
+    questions: { asked: number; by_status: Record<string, number>; recent: Array<{ at: string; status: string; failure_class: string | null; lane: string | null; runtime: string | null; question: string | null }> } | null;
+    candidates: { returned: number; accepted: number; rejected_by_reason: Record<string, number> } | null; routed: number | null;
+    cited: { genomes: number; promoted: number; retired: number; inconclusive: number; pending: number;
+      list: Array<{ genome: string; status: string; knowledge: string[]; trial: { state: string; b: number | null; c: number | null; p: number | null; deciding_n: number | null } | null }> } | null };
 }
 export type FitnessStatus = 'closed_loop' | 'measured_no_selection' | 'unmeasured' | 'circular';
 export type FitnessContractRow = {
