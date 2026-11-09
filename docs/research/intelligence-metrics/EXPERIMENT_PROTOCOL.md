@@ -174,3 +174,28 @@ are not edited.
   before and from this instant as two periods next to the registered whole-window analysis; the periods are never pooled
   silently.
 - **Unchanged:** arms (`checker-family:v2:` salt), endpoints, target 93 settled per arm, falsifier, stop_by 2027-01-15.
+
+## Amendment 2026-11-08: EXP-2 closed; period boundary (EXP-1 F2 v2)
+
+EXP-2 is closed and a period boundary is added to the EXP-1 F2 v2 analysis; verdict rules are unchanged. The registrations
+above are frozen and are not edited.
+
+- **EXP-2 (X1) closed: INSUFFICIENT_EVIDENCE**, decided 2026-11-07 by the operator. The single readout at stop_by
+  (`EXP-2_RESULT.md`, PR #1191) found on 56/79 settled verified (0.709) vs off 74/109 (0.679), two-sided Fisher exact
+  p 0.75. The on arm stopped below the registered ~94 settled, so the result is INSUFFICIENT_EVIDENCE, never "no effect".
+  Siblings did not beat no-siblings, so under the registered decision rule "no sibling" is the default: the operator
+  switched evolve siblings off (`LOOP_EVOLVE_ENABLED=false`) at 2026-11-08T00:00:02Z. No extension is registered.
+  Recorded in `experiment-registry.ts` as `X1_CLOSED`, so X1 is no longer reported overdue and no longer counts as active
+  on the oracle-goal population.
+- **Period boundary: 2026-11-08T00:00:02Z.** Evolve siblings were switched off in production at this instant
+  (`LOOP_EVOLVE_ENABLED=false`, following the EXP-2 X1 result,
+  `docs/research/intelligence-metrics/EXP-2_RESULT.md`; operator decision 2026-11-07 "siblings off").
+  Until then an evolve-eligible oracle-lane goal in X1 arm `on` got sibling makers (`LOOP_EVOLVE_SPECIES`), and the fittest
+  maker's patch, sometimes a sibling's, went to review. From then on no goal gets a sibling, so which maker's work reaches
+  the checkers changed for both checker arms at once. The switch wrote no `experiment_period_boundaries` row, because
+  `LOOP_EVOLVE_ENABLED` was not a declared treatment variable; it is one now (`experiment-registry.ts`
+  `ORACLE_POPULATION_ENV`, with `LOOP_EVOLVE_SPECIES`), so a later change records its own boundary. The analysis reports
+  outcomes created before and from this instant as two periods next to the registered whole-window analysis; the periods
+  are never pooled silently.
+- **Unchanged:** arms (`checker-family:v2:` salt), endpoints, target 93 settled per arm, falsifier, stop_by 2027-01-15, the
+  2026-10-27 boundary.
