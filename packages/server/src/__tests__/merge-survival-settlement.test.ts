@@ -151,7 +151,7 @@ describe('survival rates count SETTLED_SURVIVED / SETTLED_REGRESSED only', () =>
     seed(); prRun('r8', null); prRun('r9', { state: 'open', checked_at: iso(NOW - H) }); // r8: never polled for 30 d → anomaly
     const ev = buildEvolutionEvidence(db, {}, NOW);
     expect(ev.drafts).toMatchObject({ unsettled: 2, unsettled_open_or_recent: 2, anomalous: 3, age_days_max: 30 }); // main: 3 (r3, r8, r9), anomalies hidden
-    expect(ev.gates.C.reason).toMatch(/^2 loop PRs/);
+    expect(ev.gates.C.reason).toMatch(/^1 loop PRs open \(1 merged and inside the 14-d survival window, not counted/); // r9 open; r3 merged-pending is not queue
   });
 
   it('decisions inbox ranking and attribution summary', () => {
