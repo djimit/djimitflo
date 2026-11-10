@@ -131,16 +131,18 @@ describe('AC-02 record-only rooms and a stable selection', () => {
 describe('AC-01 runtime readiness', () => {
   const readiness = (state: 'ready' | 'degraded' | 'offline' | 'unknown', extra: Partial<NonNullable<SocialAgentPresence['readiness']>> = {}) => ({
     state, reason: `${state} because`, last_heartbeat_at: '2026-10-24T10:00:00Z', last_successful_reply_at: null,
-    last_failed_attempt: null, runtime_failures_reported: false as const, ...extra,
+    last_failed_attempt: null, runtime_failures_reported: false, runtime_failure_reporting_enabled: false, ...extra,
   });
 
-  it('shows heartbeat, last successful reply and last failed attempt separately, and never invents a runtime error', () => {
+  it('shows inferred lease lapse separately from a poller-reported failure class', () => {
     const html = renderToStaticMarkup(createElement(ReadinessTable, { agents: [
-      { ...agents[0], readiness: readiness('degraded', { last_failed_attempt: { at: '2026-10-24T09:00:00Z', message_id: 'm-1', observed: 'claim_lapsed_without_reply' } }) },
-      { ...agents[1], readiness: readiness('ready', { last_successful_reply_at: '2026-10-24T09:30:00Z' }) },
+      { ...agents[0], readiness: readiness('degraded', { last_failed_attempt: { at: '2026-10-24T09:00:00Z', message_id: 'm-1', observed: 'claim_lapsed_without_reply', failure_class: null }, runtime_failure_reporting_enabled: true }) },
+      { ...agents[1], readiness: readiness('degraded', { last_failed_attempt: { at: '2026-10-24T09:10:00Z', message_id: 'm-2', observed: 'runtime_reported', failure_class: 'runtime_timeout' }, runtime_failures_reported: true }) },
     ] }));
-    for (const text of ['degraded', 'ready', 'degraded because', 'claim lapsed without reply', 'failures not reported']) expect(html).toContain(text);
+    for (const text of ['degraded', 'degraded because', 'claim lapsed without reply', 'poller: runtime timed out', 'Updated pollers report bounded failure classes']) expect(html).toContain(text);
     expect(html).toContain('none recorded');
+    const disabled = renderToStaticMarkup(createElement(ReadinessTable, { agents: [{ ...agents[0], readiness: readiness('degraded') }] }));
+    expect(disabled).toContain('Runtime failure-class reporting is disabled');
   });
 
   it('says unknown when the server sent no readiness instead of treating a heartbeat as ready', () => {

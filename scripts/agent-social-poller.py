@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run one bounded Djimitflo peer-learning poll for a real runtime."""
-import ipaddress, json, os, re, shutil, signal, subprocess, sys, tempfile, urllib.error, urllib.parse, urllib.request
+import ipaddress, json, os, re, shutil, signal, subprocess, sys, tempfile, urllib.error, urllib.parse, urllib.request, uuid
 from pathlib import Path
 
 def api(method, path, body=None):
@@ -60,6 +60,15 @@ def provider_http_status(event):
     data = error.get('data') or {} if isinstance(error, dict) else {}
     status = data.get('statusCode') if isinstance(data, dict) else None
     return status if isinstance(status, int) and 400 <= status <= 599 else None
+
+def classify_failure(error, phase='runtime'):
+    if phase == 'reply': return 'reply_delivery_failed'
+    message = str(error).lower()
+    if 'timeout' in message or 'timed out' in message: return 'runtime_timeout'
+    if 'not installed' in message or 'not found' in message: return 'runtime_unavailable'
+    if 'no json object' in message or 'omitted a required' in message or 'must be an array' in message: return 'invalid_runtime_output'
+    if 'failed with exit' in message or 'error event' in message or 'returned an error' in message or 'provider http' in message: return 'runtime_process_failed'
+    return 'poller_error'
 
 def bounded_process(command, prompt, cwd, env, timeout=150):
     # Cancellation must also stop the detached CLI and all of its workers.
@@ -237,12 +246,27 @@ def main():
     for message in body.get('messages', []):
         if (message.get('payload') or {}).get('action') == 'social.invite':  # informational: the server marked it read; the next heartbeat is the bite
             print(json.dumps({'agent': agent, 'invite': message['payload'].get('thread_id')})); continue
+        phase, attempt_id = 'runtime', str(uuid.uuid4())
         try:
             output, run_id, usage = RUNTIMES[runtime](prompt_for(message))
             reply = extract_object(output); reply.update({'runtime': runtime, 'model_id': model, 'runtime_run_id': run_id, 'usage': usage, 'delivery_lease_token': message.get('deliveryLeaseToken', '')})
+            phase = 'reply'
             status, result = api('POST', f"/api/swarm-v2/social-runtime/{agent}/messages/{message['id']}/respond", reply)
             print(json.dumps({'agent': agent, 'input': message['payload']['action'], 'output': result['message']['payload']['action'], 'status': status, 'duplicate': result['duplicate']})); processed += 1
-        except Exception as error: failures += 1; print(json.dumps({'agent': agent, 'message_id': message.get('id'), 'error': str(error)[:500]}), file=sys.stderr)
+        except Exception as error:
+            failures += 1
+            error_class = classify_failure(error, phase)
+            reported = False
+            if message.get('id') and message.get('deliveryLeaseToken'):
+                try:
+                    _, result = api('POST', f"/api/swarm-v2/social-runtime/{agent}/messages/{message['id']}/failure", {
+                        'attempt_id': attempt_id, 'delivery_lease_token': message['deliveryLeaseToken'], 'failure_class': error_class,
+                    })
+                    reported = result.get('reported') is True
+                except Exception:
+                    pass
+            print(json.dumps({'agent': agent, 'message_id': message.get('id'), 'attempt_id': attempt_id,
+                              'failure_class': error_class, 'reported_to_server': reported, 'error': str(error)[:500]}), file=sys.stderr)
     print(json.dumps({'agent': agent, 'processed': processed, 'failures': failures}))
     if failures: raise SystemExit(1)
 if __name__ == '__main__': main()

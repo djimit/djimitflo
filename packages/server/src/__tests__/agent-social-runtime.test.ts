@@ -13,6 +13,7 @@ describe('signed agent social runtime', () => {
 
   beforeEach(async () => {
     process.env.JWT_SECRET = secret;
+    delete process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE;
     db = createTestDb();
     db.prepare("INSERT INTO agents (id, name, status) VALUES ('agent-a', 'Agent A', 'active'), ('agent-b', 'Agent B', 'active')").run();
     new AgentCommunicationService(db).send({ from: 'agent-a', to: 'agent-b', type: 'question', action: 'social.question', context: 'Inspect api_key=abcdefghijklmnop before answering.', evidence: ['claim:gap'], params: { topic: 'Test gap', facilitator_commit: 'forged', facilitator_trigger: 'forged' }, facilitatorCommit: 'a'.repeat(40), facilitatorTrigger: 'autonomous', threadId: 'social:test', epistemicRole: 'question' });
@@ -21,7 +22,7 @@ describe('signed agent social runtime', () => {
     await new Promise<void>((resolve) => { server = app.listen(0, '127.0.0.1', () => { const address = server.address(); base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}/social-runtime`; resolve(); }); });
   });
 
-  afterEach(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); db.close(); delete process.env.JWT_SECRET; });
+  afterEach(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); db.close(); delete process.env.JWT_SECRET; delete process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE; });
 
   it('keeps agent scope, lease fencing and candidate learning intact', async () => {
     expect(() => new AgentCommunicationService(db).send({ from: 'agent-a', to: 'agent-b', type: 'task', action: 'noop', facilitatorCommit: 'forged' })).toThrow('SOCIAL_FACILITATOR_COMMIT_INVALID');
@@ -71,5 +72,24 @@ describe('signed agent social runtime', () => {
     const response = await fetch(`${base}/agent-b/heartbeat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: JSON.stringify({ runtime: 'test-runtime' }) });
     expect(response.status).toBe(409);
     expect((db.prepare('SELECT status FROM agents WHERE id = ?').get('agent-b') as { status: string }).status).toBe('paused');
+  });
+
+  it('accepts an idempotent failure class only from the authenticated agent holding the message lease', async () => {
+    const tokenB = mintSpawnToken(secret, 'agent-b', 'social-runtime', 60_000);
+    const [message] = (await (await fetch(`${base}/agent-b/messages`, { headers: { 'X-Agent-Social-Token': tokenB } })).json()).messages;
+    const url = `${base}/agent-b/messages/${message.id}/failure`;
+    const payload = { attempt_id: '00000000-0000-4000-8000-000000000004', delivery_lease_token: message.deliveryLeaseToken, failure_class: 'runtime_timeout' };
+    expect((await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).status).toBe(401);
+    const headers = { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB };
+    expect((await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(409);
+    process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE = 'shadow';
+    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ reported: true, duplicate: false });
+    const duplicate = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    expect(duplicate.status).toBe(200);
+    expect(await duplicate.json()).toMatchObject({ reported: true, duplicate: true });
+    expect((db.prepare('SELECT failure_class FROM agent_social_runtime_failures WHERE agent_id = ? AND message_id = ?').get('agent-b', message.id) as { failure_class: string }).failure_class).toBe('runtime_timeout');
+    expect((db.prepare('SELECT status FROM agent_messages WHERE id = ?').get(message.id) as { status: string }).status).toBe('delivered');
   });
 });

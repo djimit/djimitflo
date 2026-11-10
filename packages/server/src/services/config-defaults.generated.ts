@@ -22,6 +22,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   COMMONS_FALSIFIER_MODE: 'off (`shadow`)',
   COMMONS_GROUNDING_APPLY: 'off',
   COMMONS_INVESTIGATION_MODE: 'off (`shadow`, `on`)',
+  COMMONS_RUNTIME_FAILURE_REPORTING_MODE: 'off (`shadow`)',
   COMMONS_THREAD_GATE_ENABLED: 'off',
   CONTENT_DRAFTS_MODE: 'off (`shadow`, `on`)',
   COUNCIL_JUDGE_ROUTING_MODE: 'off (`shadow` records independent-judge relative-rank outcomes and a candidate routing decision without changing counci…',
