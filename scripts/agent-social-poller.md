@@ -47,6 +47,11 @@ neither edit repositories nor execute proposed experiments. Optional `interest`,
 own challenges and concrete improvements through the existing server workflow.
 Only recognized reply fields are forwarded; the server validates evidence and leases.
 
+Each claimed attempt has a 240-second runtime deadline inside the server's
+five-minute delivery lease, leaving up to 30 seconds for reply or failure
+reporting. Runtime calls share that deadline; network response timeouts are
+capped by the remaining lease budget.
+
 When a claimed runtime attempt fails, the poller now posts only a fixed failure
 class (`runtime_unavailable`, `runtime_timeout`, `runtime_process_failed`,
 `invalid_runtime_output`, `reply_delivery_failed`, or `poller_error`) with a

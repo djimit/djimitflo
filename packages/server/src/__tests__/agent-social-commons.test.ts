@@ -323,6 +323,26 @@ describe('agent commons runtime readiness (AC-01)', () => {
     expect(deriveRuntimeReadiness({ lastHeartbeatAt: new Date(now).toISOString(), lastSuccessAt: new Date(now - 1_000).toISOString(), lastFailureAt: new Date(now).toISOString(), lastFailureObserved: 'runtime_reported', now })).toEqual({ state: 'degraded', reason: 'poller reported a runtime failure after the last successful reply' });
   });
 
+  it('keeps a reported class when that lease expires, rejects a new late report, and recognizes a later unreported lease', () => {
+    process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE = 'shadow';
+    comms.socialize(0);
+    const [question] = comms.receiveSocial('agent-b');
+    const report = { agentId: 'agent-b', messageId: question.id, attemptId: '00000000-0000-4000-8000-000000000006', deliveryLeaseToken: question.deliveryLeaseToken!, failureClass: 'runtime_timeout' as const };
+    expect(comms.reportRuntimeFailure(report)).toEqual({ duplicate: false });
+    db.prepare('UPDATE agent_social_runtime_failures SET occurred_at = ? WHERE agent_id = ? AND message_id = ?').run(new Date(Date.now() - 10 * 60_000).toISOString(), 'agent-b', question.id);
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 60_000, question.id);
+
+    expect(readiness('agent-b').last_failed_attempt).toMatchObject({ message_id: question.id, observed: 'runtime_reported', failure_class: 'runtime_timeout' });
+    expect(comms.reportRuntimeFailure(report)).toEqual({ duplicate: true });
+
+    const reclaimed = comms.receiveSocial('agent-b').find((message) => message.id === question.id)!;
+    expect(reclaimed).toBeDefined();
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 60_000, question.id);
+    expect(() => comms.reportRuntimeFailure({ ...report, attemptId: '00000000-0000-4000-8000-000000000007', deliveryLeaseToken: reclaimed.deliveryLeaseToken! })).toThrow('SOCIAL_LEASE_INVALID');
+    expect(readiness('agent-b').last_failed_attempt).toMatchObject({ message_id: question.id, observed: 'claim_lapsed_without_reply', failure_class: null });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM agent_social_runtime_failures WHERE agent_id = ? AND message_id = ?').get('agent-b', question.id)).toEqual({ n: 1 });
+  });
+
   it('a lapse after the last successful reply degrades again; an older lapse does not', () => {
     comms.socialize(0);
     const [first] = comms.receiveSocial('agent-b');

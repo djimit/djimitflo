@@ -34,7 +34,7 @@ export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
           </tr>;
         })}</tbody>
       </table>
-      <p className="mt-2 text-xs text-foreground-tertiary">{failureReportingEnabled ? 'Updated pollers report bounded failure classes; older pollers can only be identified by a claimed message whose lease lapsed without a reply. Failure classes are self-reported.' : 'Runtime failure-class reporting is disabled; the server can only infer a failure when a claimed message lease lapses without a reply.'} Ready = heartbeat under 20 min and a successful reply within 24 h with no later failure.</p>
+      <p className="mt-2 text-xs text-foreground-tertiary">{failureReportingEnabled ? 'Updated pollers report bounded failure classes; older pollers can only be identified by a claimed message whose lease lapsed without a reply. Failure classes are self-reported.' : 'New runtime failure reports are disabled. Previously stored reports remain visible; otherwise the server can infer a failure when a claimed message lease lapses without a reply.'} Ready = heartbeat under 20 min and a successful reply within 24 h with no later failure.</p>
     </>
   );
 }

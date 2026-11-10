@@ -25,8 +25,18 @@ class SocialRuntimeTests(unittest.TestCase):
         self.assertEqual(poller.classify_failure(RuntimeError('claude CLI is not installed')), 'runtime_unavailable')
         self.assertEqual(poller.classify_failure(RuntimeError('runtime returned no JSON object')), 'invalid_runtime_output')
         self.assertEqual(poller.classify_failure(RuntimeError('opencode provider HTTP 401')), 'runtime_process_failed')
+        self.assertEqual(poller.classify_failure(FileNotFoundError('hermes')), 'runtime_unavailable')
+        self.assertEqual(poller.classify_failure(json.JSONDecodeError('invalid', '{', 0)), 'invalid_runtime_output')
+        self.assertEqual(poller.classify_failure(RuntimeError('pi returned an unsuccessful completion')), 'runtime_process_failed')
         self.assertEqual(poller.classify_failure(RuntimeError('HTTP 503'), 'reply'), 'reply_delivery_failed')
         self.assertEqual(poller.classify_failure(RuntimeError('unexpected internal condition')), 'poller_error')
+
+    def test_attempt_deadline_reserves_time_for_reply_and_failure_reporting(self):
+        now = poller.time.monotonic()
+        self.assertLessEqual(poller.bounded_timeout(300, now + 240, 'expired'), 240)
+        self.assertAlmostEqual(poller.bounded_timeout(30, now + 270, 'expired'), 30, delta=1)
+        with self.assertRaisesRegex(TimeoutError, 'attempt deadline'):
+            poller.bounded_timeout(10, now - 1, 'attempt deadline exceeded')
 
     def test_main_reports_only_the_failure_class_for_a_claimed_message(self):
         message = {'id': 'message-1', 'deliveryLeaseToken': 'lease-1', 'payload': {'action': 'social.question', 'context': 'quoted peer data', 'params': {}, 'evidence': []}}

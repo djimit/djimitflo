@@ -142,7 +142,8 @@ describe('AC-01 runtime readiness', () => {
     for (const text of ['degraded', 'degraded because', 'claim lapsed without reply', 'poller: runtime timed out', 'Updated pollers report bounded failure classes']) expect(html).toContain(text);
     expect(html).toContain('none recorded');
     const disabled = renderToStaticMarkup(createElement(ReadinessTable, { agents: [{ ...agents[0], readiness: readiness('degraded') }] }));
-    expect(disabled).toContain('Runtime failure-class reporting is disabled');
+    expect(disabled).toContain('New runtime failure reports are disabled');
+    expect(disabled).toContain('Previously stored reports remain visible');
   });
 
   it('says unknown when the server sent no readiness instead of treating a heartbeat as ready', () => {

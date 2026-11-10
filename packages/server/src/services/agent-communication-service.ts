@@ -563,9 +563,11 @@ export class AgentCommunicationService {
     const reported = new Set<string>();
     if (!agentIds.length) return { successes, failures, reported };
     const ids = JSON.stringify(agentIds);
-    for (const row of this.db.prepare(`SELECT agent_id AS agent, message_id, failure_class, occurred_at FROM agent_social_runtime_failures
-      WHERE agent_id IN (SELECT value FROM json_each(?)) ORDER BY occurred_at DESC`).all(ids) as Array<{ agent: string; message_id: string; failure_class: SocialRuntimeFailureClass; occurred_at: string }>) {
+    const reportedLeases = new Set<string>();
+    for (const row of this.db.prepare(`SELECT agent_id AS agent, message_id, lease_token_hash, failure_class, occurred_at FROM agent_social_runtime_failures
+      WHERE agent_id IN (SELECT value FROM json_each(?)) ORDER BY occurred_at DESC`).all(ids) as Array<{ agent: string; message_id: string; lease_token_hash: string; failure_class: SocialRuntimeFailureClass; occurred_at: string }>) {
       reported.add(row.agent);
+      reportedLeases.add(JSON.stringify([row.agent, row.message_id, row.lease_token_hash]));
       if (!failures.has(row.agent)) failures.set(row.agent, { at: row.occurred_at, message_id: row.message_id, observed: 'runtime_reported', failure_class: row.failure_class });
     }
     for (const row of this.db.prepare(`
@@ -576,13 +578,14 @@ export class AgentCommunicationService {
       GROUP BY from_agent
     `).all(ids) as Array<{ agent: string; last: string }>) successes.set(row.agent, row.last);
     for (const row of this.db.prepare(`
-      SELECT id, to_agent AS agent, timestamp, ttl, delivery_lease_until AS lease FROM agent_messages
+      SELECT id, to_agent AS agent, timestamp, ttl, delivery_lease_until AS lease, delivery_lease_token AS token FROM agent_messages
       WHERE to_agent IN (SELECT value FROM json_each(?))
         AND json_extract(payload_json, '$.action') IN ('social.question', 'social.response')
         AND delivery_lease_token IS NOT NULL
         AND (status = 'expired' OR (status = 'delivered' AND delivery_lease_until <= ?))
       ORDER BY timestamp DESC LIMIT 200
-    `).all(ids, now) as Array<{ id: string; agent: string; timestamp: string; ttl: number; lease: number | null }>) {
+    `).all(ids, now) as Array<{ id: string; agent: string; timestamp: string; ttl: number; lease: number | null; token: string | null }>) {
+      if (row.token && reportedLeases.has(JSON.stringify([row.agent, row.id, createHash('sha256').update(row.token).digest('hex')]))) continue;
       const atMs = row.lease ?? Date.parse(row.timestamp) + Number(row.ttl) * 1000;
       if (!Number.isFinite(atMs)) continue;
       const previous = failures.get(row.agent);
@@ -751,9 +754,9 @@ export class AgentCommunicationService {
         if (previous.failure_class !== input.failureClass) throw new Error('SOCIAL_ATTEMPT_CONFLICT');
         return { duplicate: true };
       }
-      const message = this.db.prepare(`SELECT status, delivery_lease_token, payload_json FROM agent_messages WHERE id = ? AND to_agent = ?`).get(input.messageId, input.agentId) as { status: string; delivery_lease_token: string | null; payload_json: string } | undefined;
+      const message = this.db.prepare(`SELECT status, delivery_lease_until, delivery_lease_token, payload_json FROM agent_messages WHERE id = ? AND to_agent = ?`).get(input.messageId, input.agentId) as { status: string; delivery_lease_until: number | null; delivery_lease_token: string | null; payload_json: string } | undefined;
       if (!message) throw new Error('SOCIAL_MESSAGE_NOT_FOUND');
-      if (message.status !== 'delivered' || !message.delivery_lease_token || message.delivery_lease_token !== leaseToken) throw new Error('SOCIAL_LEASE_INVALID');
+      if (message.status !== 'delivered' || !message.delivery_lease_token || message.delivery_lease_token !== leaseToken || message.delivery_lease_until === null || message.delivery_lease_until <= Date.now()) throw new Error('SOCIAL_LEASE_INVALID');
       if (!['social.question', 'social.response'].includes(this.string(this.object(message.payload_json).action))) throw new Error('SOCIAL_MESSAGE_NOT_ACTIONABLE');
       if (this.db.prepare(`SELECT 1 FROM agent_messages WHERE from_agent = ? AND json_extract(payload_json, '$.reply_to') = ? LIMIT 1`).get(input.agentId, input.messageId)) throw new Error('SOCIAL_MESSAGE_ALREADY_REPLIED');
       const inserted = this.db.prepare(`INSERT OR IGNORE INTO agent_social_runtime_failures (agent_id, message_id, attempt_id, lease_token_hash, failure_class, occurred_at)

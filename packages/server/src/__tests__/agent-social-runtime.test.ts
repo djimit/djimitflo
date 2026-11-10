@@ -89,6 +89,15 @@ describe('signed agent social runtime', () => {
     const duplicate = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     expect(duplicate.status).toBe(200);
     expect(await duplicate.json()).toMatchObject({ reported: true, duplicate: true });
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 1, message.id);
+    const reclaimed = (await (await fetch(`${base}/agent-b/messages`, { headers: { 'X-Agent-Social-Token': tokenB } })).json()).messages[0];
+    expect(reclaimed.id).toBe(message.id);
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 1, message.id);
+    const lateDuplicate = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    expect(lateDuplicate.status).toBe(200);
+    const lateNewAttempt = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ ...payload, attempt_id: '00000000-0000-4000-8000-000000000008', delivery_lease_token: reclaimed.deliveryLeaseToken }) });
+    expect(lateNewAttempt.status).toBe(409);
+    expect(await lateNewAttempt.json()).toMatchObject({ error: { code: 'SOCIAL_LEASE_INVALID' } });
     expect((db.prepare('SELECT failure_class FROM agent_social_runtime_failures WHERE agent_id = ? AND message_id = ?').get('agent-b', message.id) as { failure_class: string }).failure_class).toBe('runtime_timeout');
     expect((db.prepare('SELECT status FROM agent_messages WHERE id = ?').get(message.id) as { status: string }).status).toBe('delivered');
   });
