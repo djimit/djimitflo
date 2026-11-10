@@ -12,8 +12,8 @@ import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import type { FailureTask } from '../services/gym-failure-tasks';
 import { mutantTask } from '../services/gym-mutants';
 import {
-  PROCEDURE_CONTRACT, PROCEDURE_ID, PROCEDURE_LINES, PROCEDURE_VERSION, ensureProcedures, linesSha256, procedure, procedureSelectionEvidence,
-  selectProcedure, taskFeatures, type ApplicabilityContract,
+  PROCEDURE_CONTRACT, PROCEDURE_ID, PROCEDURE_LINES, PROCEDURE_VERSION, ensureProcedures, globToRegExp, linesSha256, procedure,
+  procedureSelectionEvidence, recordProcedureSelection, selectProcedure, taskFeatures, type ApplicabilityContract,
 } from '../services/procedure-selector';
 
 // randomUUID is made sequential so two claims on two databases can be compared byte for byte (run ids included)
@@ -193,4 +193,103 @@ it('evidence procedure_selection: null without a decision (never 0), counts and 
   const e = procedureSelectionEvidence(db, process.env);
   expect(e).toMatchObject({ mode: 'shadow', procedure: { id: PROCEDURE_ID, version: 1, lines_sha256: PL001_LINES_SHA256 },
     window_24h: { applies: 1, does_not_apply: 1 }, window_7d: { applies: 1, does_not_apply: 2 }, top_failed_clauses_7d: [{ clause: 'file_patterns', n: 2 }] });
+});
+
+it('ensureProcedures stores the procedure sources (not an empty array)', () => {
+  ensureProcedures(db);
+  const ev = JSON.parse((db.prepare('SELECT evidence_sources_json FROM maker_genomes WHERE id = ?').get(PROCEDURE_ID) as { evidence_sources_json: string }).evidence_sources_json);
+  expect(ev.procedure.sources).toHaveLength(1);
+  expect(ev.procedure.sources[0]).toMatchObject({ source: 'ecc', licence: 'MIT', use: 'idea only, own wording' });
+});
+
+it('globToRegExp: ** spans directories, * stays in a segment, ? is one char, literals are escaped', () => {
+  // **/ as a prefix is an optional directory path: matches a bare file
+  expect(globToRegExp('**/x.ts').test('x.ts')).toBe(true);
+  expect(globToRegExp('**/x.ts').test('a/b/x.ts')).toBe(true);
+  // ** needs a / boundary before the filename, not just concatenation
+  expect(globToRegExp('**/x.ts').test('abcx.ts')).toBe(false);
+  // single * does NOT cross a /
+  expect(globToRegExp('*.ts').test('x.ts')).toBe(true);
+  expect(globToRegExp('*.ts').test('a/b.ts')).toBe(false);
+  // a non-* char must not be treated as **
+  expect(globToRegExp('a*').test('xyz')).toBe(false);
+  // ? matches exactly one character
+  expect(globToRegExp('x?.ts').test('xy.ts')).toBe(true);
+  expect(globToRegExp('x?.ts').test('x.ts')).toBe(false);
+  expect(globToRegExp('x?.ts').test('xyz.ts')).toBe(false);
+  // literal dot is escaped, not a wildcard
+  expect(globToRegExp('x.ts').test('x.ts')).toBe(true);
+  expect(globToRegExp('x.ts').test('xats')).toBe(false);
+  // ** without a following / becomes .* (crosses /)
+  expect(globToRegExp('a**b').test('axxb')).toBe(true);
+  expect(globToRegExp('a**b').test('ax/yb')).toBe(true);
+});
+
+const insertProc = (id: string, linesJson: string, evidence: string | null) =>
+  db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_sources_json)
+    VALUES (?, NULL, 'procedure', ?, 'procedure', 'candidate', '', datetime('now'), datetime('now'), ?)`).run(id, linesJson, evidence);
+const GOOD_EV = JSON.stringify({ procedure: { version: 1, applicability: { task_kinds: ['repair'], lanes: ['gym-repair'], file_patterns: ['*.ts'], required_capabilities: [], exclusions: [] } } });
+
+it('procedure: null for missing row, invalid JSON, empty lines, missing applicability, non-integer version, non-array lines', () => {
+  expect(procedure(db, 'no-such-procedure')).toBeNull();
+  // invalid JSON in lines_json → catch returns null (not undefined)
+  insertProc('bad-json', 'not valid json {', null);
+  expect(procedure(db, 'bad-json')).toBeNull();
+  // empty lines → null
+  insertProc('empty-lines', '[]', GOOD_EV);
+  expect(procedure(db, 'empty-lines')).toBeNull();
+  // missing applicability → null
+  insertProc('no-applic', '["line"]', JSON.stringify({ procedure: { version: 1 } }));
+  expect(procedure(db, 'no-applic')).toBeNull();
+  // non-integer version → null
+  insertProc('bad-ver', '["line"]', JSON.stringify({ procedure: { version: 1.5, applicability: { task_kinds: ['repair'] } } }));
+  expect(procedure(db, 'bad-ver')).toBeNull();
+  // null evidence_sources_json → null
+  insertProc('null-ev', '["line"]', null);
+  expect(procedure(db, 'null-ev')).toBeNull();
+  // non-array lines_json → null (strings returns [])
+  insertProc('non-array', '42', GOOD_EV);
+  expect(procedure(db, 'non-array')).toBeNull();
+});
+
+it('procedure: non-string elements in lines_json are filtered out', () => {
+  insertProc('mixed', '["a", 1, true, "b"]', GOOD_EV);
+  const p = procedure(db, 'mixed')!;
+  expect(p).not.toBeNull();
+  expect(p.lines).toEqual(['a', 'b']);
+});
+
+it('taskFeatures: lane from task, defaulted for repair, null for non-repair; capabilities sorted and deduped', () => {
+  expect(taskFeatures({ ...TASK('c'), kind: 'repair', lane: 'exports' }, []).lane).toBe('exports');
+  expect(taskFeatures({ ...TASK('c'), kind: 'write_test' }, []).lane).toBeNull();
+  expect(taskFeatures(TASK('c'), ['b', 'a', 'a']).capabilities).toEqual(['a', 'b']);
+  expect(taskFeatures({ ...TASK('c'), source: undefined } as never, []).file).toBe('');
+});
+
+it('selectProcedure: detail truncates long unknown kinds and long file paths; lane detail for null and non-matching lanes', () => {
+  const f = (kind: string, lane: string | null, file: string, caps = GATED) => selectProcedure(PROCEDURE_CONTRACT, { kind, lane, file, capabilities: caps });
+  // long unknown kind → truncated to 40 chars in detail
+  expect(f('x'.repeat(50), 'gym-repair', SRC).clauses.find((c) => c.clause === 'task_kind')?.detail).toBe(`unknown kind ${'x'.repeat(40)}`);
+  // lane null → detail 'lane none', clause fails
+  const laneNull = f('repair', null, SRC);
+  expect(laneNull.failed_clause).toBe('lane');
+  expect(laneNull.clauses.find((c) => c.clause === 'lane')?.detail).toBe('lane none');
+  // lane not in contract → clause fails
+  expect(f('repair', 'exports', SRC).failed_clause).toBe('lane');
+  // long file path → truncated to 120 chars in detail
+  const longFile = 'packages/other/src/' + 'x'.repeat(150) + '.ts';
+  const fileFail = f('repair', 'gym-repair', longFile);
+  expect(fileFail.failed_clause).toBe('file_patterns');
+  expect(fileFail.clauses.find((c) => c.clause === 'file_patterns')?.detail).toBe(`no pattern matched ${longFile.slice(0, 120)}`);
+});
+
+it('recordProcedureSelection: writes a 16-char state_hash, deterministic true, delivered false', () => {
+  ensureProcedures(db);
+  recordProcedureSelection(db, 'run-rec', TASK('c-rec'), GATED, 'atomic@llama-router');
+  const [j] = judgments(db);
+  expect(j).toBeDefined();
+  expect(j.state_hash).toHaveLength(16);
+  const answers = JSON.parse(j.answers_json);
+  expect(answers.delivered).toBe(false);
+  expect(answers.deterministic).toBe(true);
 });
