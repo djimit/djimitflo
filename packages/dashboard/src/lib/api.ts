@@ -155,6 +155,12 @@ export type IntelligenceMetric = {
   version: string; status: 'ok' | 'INSUFFICIENT_EVIDENCE' | 'UNDEFINED';
   value: number | null; ci: [number, number] | null; n: number; blocker: string | null; detail: Record<string, unknown>;
 };
+export interface BenchmarkPoint { started_at: string; status: 'ok' | 'failed' | 'insufficient'; value: number | null; ci_low: number | null; ci_high: number | null; n: number;
+  catches: number | null; false_rejects: number | null; tokens: number | null; models: string[]; prompt_sha256: string | null; reason: string | null }
+export interface BenchmarkSeries { id: string; title: string; metric: 'auc' | 'pass_rate'; cadence: 'monthly' | 'weekly'; execution: 'operator_runner' | 'in_process';
+  due: boolean | null; overdue: boolean | null; owed_at: string | null; regression: { regressed: boolean; drop: number | null; threshold: number | null; basis: 'ci' | 'margin' | null };
+  series: BenchmarkPoint[] }
+export interface BenchmarkEvidence { mode: 'off' | 'on'; token_cap: number; margin: number; benchmarks: BenchmarkSeries[] }
 export interface EvolutionEvidence {
   at: string; window_days: number;
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
@@ -342,6 +348,10 @@ export interface EvolutionEvidence {
     top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
   /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
   pl_001?: Pl001Evidence;
+  /** Periodic fixed benchmarks (BENCHMARK_SCHEDULE_MODE, services/benchmark-schedule.ts): series per benchmark, due / overdue, regression; null = not computed */
+  benchmarks?: BenchmarkEvidence | null;
+  /** CV-001 (CV_001_MODE): qwen38-27b vs the gym-only control-vector preset on frozen mutant-repair tasks (services/cv-001.ts); unknown is null, never 0 */
+  cv_001?: Cv001Evidence;
   /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
   memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
     by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
@@ -420,6 +430,25 @@ export interface Pl001Evidence {
   stop: { first_attempt_at: string | null; day_limit_at: string | null; stopped: boolean; reason: string | null } | null;
   verdict: Pl001Verdict | null;
   runs: Array<{ task_key: string; arm: 'A' | 'B'; run_id: string; status: string; reason: string; void: string | null; verified: boolean; at: string }>;
+}
+export interface Cv001Paired { n_pairs: number; both_clean: number; b_only_B: number; c_only_A: number; neither_clean: number; clean_rate_A: number | null; clean_rate_B: number | null;
+  p_one_sided: number | null; plain_rate_A: number | null; plain_rate_B: number | null; observed: { A: number; B: number }; degenerate_rate_A: number | null; degenerate_rate_B: number | null;
+  timeout_rate_A: number | null; timeout_rate_B: number | null; rules: Record<string, boolean> | null; adopt: boolean | null }
+export interface Cv001Evidence {
+  mode: 'off' | 'on'; experiment_id: string; protocol: string; prereg_sha256: string; loop_name: string;
+  status: 'not_frozen' | 'invalid_manifest' | 'waiting_window' | 'collecting' | 'exhausted' | 'stopped';
+  treatment: { aliases: { A: string; B: string }; vector_sha256: string; scale: number };
+  serving: { open: boolean; reason: string | null; window: string; maker_jobs: number | null };
+  targets: { tasks: number; repeats: number; units: number; block_size: number; alpha: number; max_days: number };
+  freeze_refused: { reason: string; at: string } | null;
+  manifest: { frozen_at: string; sha256: string; tasks: number; units: number; species: string; valid: boolean; reason: string | null; by_tier: Record<string, number> } | null;
+  pairs: { done: number; open: number; invalid_units: number; target: number } | null;
+  arms: Array<{ arm: 'A' | 'B'; name: string; alias: string; observations: number; clean: number; plain: number; timeouts: number; degenerate: number; loops: number; post_pass_edits: number;
+    censored: number; invalid: number; pending: number; physical_attempts: number; void_attempts: number; infra_attempts: number; maker_ms_median: number | null; tokens: { known: number; unknown: number } }>;
+  primary: Cv001Paired | null; sensitivity: Cv001Paired | null; repeat1: Cv001Paired | null;
+  stop: { first_attempt_at: string | null; day_limit_at: string | null; stopped: boolean; reason: string | null } | null;
+  verdict: 'ADOPT' | 'REJECT' | 'INCONCLUSIVE' | null;
+  runs: Array<{ task_key: string; repeat: number; arm: 'A' | 'B'; run_id: string; status: string; reason: string; void: string | null; clean: boolean; at: string }>;
 }
 export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
 export interface FalsifierEvidence {

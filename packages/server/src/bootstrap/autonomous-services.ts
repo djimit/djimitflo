@@ -50,6 +50,7 @@ import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { gymOrphanSweepMode } from '../services/remote-gym-service';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
+import { startBenchmarkSchedule } from '../services/benchmark-runner';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startLoopAutoMerge } from '../services/loop-auto-merge';
 import { startDraftPrRetry } from '../services/loop-draft-pr-service';
@@ -344,6 +345,16 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopEstimates) { lifecycleManager.register({ serviceName: 'EvolutionEstimators', stop: () => stopEstimates?.() }); console.log('🌡️  Evolution estimates on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Evolution estimates failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Periodic fixed benchmarks: weekly gym holdout readout in-process; monthly SEC-F1 / F1 due → stall + operator runner. BENCHMARK_SCHEDULE_MODE=on.
+  try {
+    let stopBenchmarks = startBenchmarkSchedule(db);
+    registerRestart('benchmark_schedule', () => { stopBenchmarks?.(); stopBenchmarks = startBenchmarkSchedule(db); });
+    noteScheduler('benchmark_schedule', 'BENCHMARK_SCHEDULE_MODE', !!stopBenchmarks, 3_600_000);
+    if (stopBenchmarks) { lifecycleManager.register({ serviceName: 'BenchmarkSchedule', stop: () => stopBenchmarks?.() }); console.log('📏 Benchmark schedule on (hourly tick; gym readout weekly, SEC-F1 / F1 monthly via the operator runner).'); }
+  } catch (error) {
+    console.warn('⚠️  Benchmark schedule failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // AR-W3: committee members evolve on real-outcome skill (extinction n >= 30, one child a day). COMMITTEE_SWARM_ENABLED=true.
