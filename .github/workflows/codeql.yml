@@ -4,6 +4,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # ready_for_review: a draft skips the analysis (below); it runs once the PR leaves draft
+    types: [opened, synchronize, reopened, ready_for_review]
   schedule:
     - cron: '0 6 * * 1'
 
@@ -11,11 +13,20 @@ permissions:
   security-events: write
   contents: read
 
+# A newer event on the same PR supersedes the analysis of its older head; push and schedule runs (run id) never cancel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 # Inlined rather than calling djimit/.github's reusable workflow: that repo is
 # private with Actions access_level "none", so a public repo like this one
 # cannot call its reusable workflow (the call fails at startup).
 jobs:
   analyze:
+    # Not a required check (branch protection requires only ci.yml + secret-scan.yml contexts), so draft PRs skip it: the
+    # loop opens many drafts and pushes to them repeatedly. A skipped run is neither red nor pending for loop-auto-merge.ts
+    # or scripts/merge-train.sh; after mark-ready both wait for the analysis that ready_for_review starts.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
