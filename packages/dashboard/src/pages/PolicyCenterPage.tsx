@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ExecutionPolicy } from '@djimitflo/shared';
 import { api } from '../lib/api';
 import { useDialog } from '../components/ConfirmDialog';
+import { fmtDate } from '../lib/format';
 import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 /** GET /policies adds the latest audit event per policy (null when the audit trail has none). */
@@ -69,7 +70,7 @@ export function PolicyCenterPage() {
                   </div>
                   <p className="text-xs text-foreground-secondary mt-2">
                     {policy.last_change
-                      ? `Last changed ${new Date(policy.last_change.at).toLocaleString()} by ${policy.last_change.email ? `${policy.last_change.email}${policy.last_change.role ? ` (${policy.last_change.role})` : ''}` : policy.last_change.user_id ?? 'unknown'} (${policy.last_change.action})`
+                      ? `Last changed ${fmtDate(policy.last_change.at)} by ${policy.last_change.email ? `${policy.last_change.email}${policy.last_change.role ? ` (${policy.last_change.role})` : ''}` : policy.last_change.user_id ?? 'unknown'} (${policy.last_change.action})`
                       : 'No change recorded in the audit trail'}
                   </p>
                 </div>
