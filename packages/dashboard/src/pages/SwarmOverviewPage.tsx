@@ -35,6 +35,8 @@ export interface UsageWindow {
   status: 'measured' | 'partial' | 'UNKNOWN';
 }
 
+const shownStatus = (a: Pick<Agent, 'status'> & { liveness?: string | null }) => (a.status === 'active' && a.liveness && a.liveness !== 'live' ? a.liveness : a.status);
+
 /** SW-01: "active" is current activity (liveness from heartbeat/registry), not the never-decaying agents.status */
 export function swarmActivity(agents: Array<Pick<Agent, 'status'> & { liveness?: string | null }>, fleetPools: Array<{ running_leases?: number }>) {
   return {
@@ -341,15 +343,16 @@ export function SwarmOverviewPage() {
                     <h3 className="font-semibold text-slate-900">{agent.name}</h3>
                     <p className="text-xs text-slate-500">{agent.model || "No model"}</p>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(agent.status)}`}>
-                    {agent.status}
+                  {/* truth audit 2026-11-12: a registered-active agent shows its liveness (same definition as /agents) */}
+                  <span data-testid="swarm-agent-status" className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(shownStatus(agent))}`}>
+                    {shownStatus(agent)}
                   </span>
                 </div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Lifetime reported (agents table)</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Tasks 30 d · tokens/time lifetime reported (agents table)</div>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div>
-                    <div className="text-lg font-bold text-slate-900">{agent.total_tasks || 0}</div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wider">Tasks</div>
+                    <div className="text-lg font-bold text-slate-900">{agent.counters_30d ? agent.counters_30d.tasks : 'not reported'}</div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wider">Tasks 30 d</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-slate-900">{agent.total_token_usage ? formatNumber(agent.total_token_usage) : 'not reported'}</div>

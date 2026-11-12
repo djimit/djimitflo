@@ -111,7 +111,8 @@ export interface RuntimeHealthRow {
   leases_30d: { n: number; completed: number; failed: number; cancelled: number; success_rate: number | null };
   leases_90d: number;
   last_success_at: string | null;
-  gym: { species: string[]; benched: boolean };
+  /** attempts_30d: gym outcomes of the runtime in 30 d (a gym-only runtime has no leases) */
+  gym: { species: string[]; benched: boolean; attempts_30d?: { n: number; ok: number } };
   readiness: 'ok' | 'reassess' | 'retire_unused' | 'keep_test_only' | 'hold' | 'rejected' | 'unknown_runtime';
 }
 
