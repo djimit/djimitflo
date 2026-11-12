@@ -212,7 +212,7 @@ describe('UX-005 exact run deep link (/goals-loops?run=)', () => {
     const fetch = vi.fn(async (url: string) => {
       const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
       if (url === '/api/goals') return ok({ goals: [] });
-      if (url === '/api/loops/runs') return ok({ runs: [newest] }); // the list holds only the newest runs; the linked run is older
+      if (url.split('?')[0] === '/api/loops/runs') return ok({ runs: [newest] }); // the list holds only the newest runs; the linked run is older
       if (url === '/api/loops/catalog') return ok({ loops: [] });
       if (url === '/api/loops/runs/older-run') return olderLookup === 'found' ? ok(older) : { ok: false, status: 404, json: async () => ({ error: 'not found' }) };
       if (url === '/api/loops/runs/older-run/review-bundle') return ok({ run: older, leases: [], events: [] });

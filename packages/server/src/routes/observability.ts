@@ -44,7 +44,7 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
           risk_level,
           COUNT(*) as count
         FROM risk_assessments
-        WHERE created_at >= datetime('now', '-' || ? || ' days')
+        WHERE julianday(created_at) >= julianday('now', '-' || ? || ' days')
         GROUP BY DATE(created_at), risk_level
         ORDER BY date ASC, risk_level ASC
       `).all(days) as any[];
@@ -108,7 +108,7 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
           status,
           COUNT(*) as count
         FROM tasks
-        WHERE created_at >= datetime('now', '-' || ? || ' hours')
+        WHERE julianday(created_at) >= julianday('now', '-' || ? || ' hours')
         GROUP BY DATETIME(created_at), status
         ORDER BY timestamp ASC
       `).all(hours) as any[];
