@@ -196,7 +196,9 @@ export class EvidenceService {
       approval_required: approvalRequired,
       approval_granted: approvalGranted,
       event_count: events.length,
-      error_count: errors.length,
+      // A failed task whose executor recorded no error-level event still ended in an error (e.g. an executor timeout,
+      // persisted only as error evidence); count that final failure once so "Errors 0" never sits beside a failure.
+      error_count: errors.length + (task.status === 'failed' && errors.length === 0 ? 1 : 0),
       warning_count: warnings.length,
       evidence_count: evidence.length,
       tool_call_count: toolCalls.length,
