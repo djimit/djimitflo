@@ -11,7 +11,7 @@ import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { serviceMap } from '../services/service-map';
-import { operatorCockpit } from '../services/operator-cockpit';
+import { needsYouSnapshot, operatorCockpit } from '../services/operator-cockpit';
 import { listSchedulers } from '../services/scheduler-registry';
 import { knowledgeOverview } from '../services/knowledge-overview';
 import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
@@ -133,6 +133,12 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
   router.get('/cockpit', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(operatorCockpit(db));
+  });
+
+  // W3: the cockpit's needs-you alone — the sidebar badge, tab title and /decisions header show the same number (read-only)
+  router.get('/needs-you', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    const { needs_you, warnings, errors } = needsYouSnapshot(db);
+    res.json({ at: new Date().toISOString(), needs_you, warnings, errors });
   });
 
   // funnel phase 3 / E2: outcome classes (maker / reviewer / environment failure, verified) and the top credited contributors (read-only)
