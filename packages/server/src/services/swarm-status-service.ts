@@ -12,6 +12,7 @@ import { messageBus, type SwarmMessage } from './message_bus';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
 import { RuntimeLeaseRegistry } from './loop-recovery-service';
 import { cancelFailure } from './lease-failure';
+import { agentsWithLiveness } from './agent-liveness';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
 type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -37,10 +38,6 @@ const SUPPORTED_LOOP_NAMES = new Set<LoopName>([
   'overwatch-policy-drift-loop',
 ]);
 
-interface SwarmStatusOptions {
-  staleAfterMs?: number;
-}
-
 export interface SwarmRealityStatus {
   registry_agent_count: number;
   live_agent_count: number;
@@ -53,7 +50,7 @@ export interface SwarmRealityStatus {
     total: number;
   };
   backlog_count: Record<BacklogStatus, number>;
-  stale_agents: Array<{ id: string; name: string; status: string; last_active_at: string | null }>;
+  stale_agents: Array<{ id: string; name: string; status: string; last_active_at: string | null; last_seen_at?: string | null; liveness_signal?: string | null }>;
   resource_snapshot: {
     cpu_threads: number;
     total_memory_bytes: number;
@@ -248,7 +245,7 @@ export class SwarmStatusService {
   private intelligence: SwarmIntelligenceService;
   private memoryCandidates: MemoryCandidateService;
 
-  constructor(private db: Database, private options: SwarmStatusOptions = {}) {
+  constructor(private db: Database) {
     this.workItems = new WorkItemService(db);
     this.loops = new LoopService(db);
     this.assurance = new AgentAssuranceService(db);
@@ -257,22 +254,19 @@ export class SwarmStatusService {
   }
 
   getStatus(): SwarmRealityStatus {
-    const staleAfterMs = this.options.staleAfterMs || 15 * 60 * 1000;
-    const cutoffMs = Date.now() - staleAfterMs;
-    const agents = this.db.prepare('SELECT id, name, status, last_active_at FROM agents ORDER BY name ASC').all() as any[];
-    const liveAgents = agents.filter((agent) => (
-      ['idle', 'active'].includes(agent.status)
-      && agent.last_active_at
-      && Date.parse(agent.last_active_at) >= cutoffMs
-    ));
+    // truth audit 2026-11-12: one "live agent" definition, the same as GET /api/agents (agent-liveness.ts) — before,
+    // this counted last_active_at < 15 min and showed 2 where /swarm showed 3
+    const agents = agentsWithLiveness(this.db, this.db.prepare('SELECT * FROM agents ORDER BY name ASC').all() as any[]);
+    const liveAgents = agents.filter((agent) => agent.liveness === 'live');
     const staleAgents = agents
-      .filter((agent) => ['idle', 'active'].includes(agent.status))
-      .filter((agent) => !agent.last_active_at || Date.parse(agent.last_active_at) < cutoffMs)
+      .filter((agent) => ['idle', 'active'].includes(agent.status) && agent.liveness !== 'live')
       .map((agent) => ({
         id: agent.id,
         name: agent.name,
         status: agent.status,
         last_active_at: agent.last_active_at || null,
+        last_seen_at: agent.last_seen_at,
+        liveness_signal: agent.liveness_signal,
       }));
 
     const workerLeases = this.db.prepare(`
@@ -784,7 +778,7 @@ export class SwarmStatusService {
       SELECT wl.*, lr.metadata AS run_metadata, ${syntheticRunSql('lr')} AS synthetic_run
       FROM worker_leases wl
       LEFT JOIN loop_runs lr ON lr.id = wl.loop_run_id
-      WHERE wl.status IN ('prepared', 'running', 'completed', 'failed')
+      WHERE wl.status IN ('prepared', 'running', 'completed', 'failed', 'cancelled')
     `).all() as any[];
     const runtimes = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'mock', 'manual'];
     const load = resourceSnapshot.load_average[0] || 0;
@@ -807,8 +801,9 @@ export class SwarmStatusService {
         const total = Number(metadata.runtime_usage?.total_tokens);
         return Number.isFinite(total) ? sum + total : sum;
       }, 0);
-      // real spend: a synthetic LLM review checker's tokens were consumed too
-      const tokensUsed24h = tokensOf(completedAll24h);
+      // real spend: a synthetic LLM review checker's tokens were consumed too, and so were a failed or cancelled
+      // lease's (truth audit 2026-11-12: 3 failed opencode leases used 1,373,091 tokens while "Tokens 24h" said 0)
+      const tokensUsed24h = tokensOf(leases.filter((row) => ['completed', 'failed', 'cancelled'].includes(row.status) && String(row.updated_at) >= since));
       const realTokens24h = tokensOf(completed24h);
       const tokensPerDiffSamples = completed24h
         .map((row) => {
