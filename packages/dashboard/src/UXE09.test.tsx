@@ -71,6 +71,7 @@ it('UXE-09: a failed task creation shows an inline notice, not a native alert', 
   vi.spyOn(api, 'getRuntimeContracts').mockResolvedValue({ runtimes: {} } as never);
   vi.spyOn(api, 'getRepositories').mockResolvedValue({ repositories: [] });
   vi.spyOn(api, 'createTask').mockRejectedValue(new Error('Task queue full'));
+  vi.spyOn(api, 'getTasks').mockResolvedValue({ tasks: [], total: 0, counts: {} });
   render(<MemoryRouter><TasksPage /></MemoryRouter>);
   fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
   fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Fixture task' } });

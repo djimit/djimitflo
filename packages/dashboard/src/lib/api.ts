@@ -1953,8 +1953,9 @@ class ApiClient {
   }
 
   // Tasks
-  async getTasks(params?: { status?: string; agent_id?: string }): Promise<{ tasks: Task[]; total: number }> {
-    const query = new URLSearchParams(params as Record<string, string>);
+  /** `total` = all tasks matching the filters (not the page size); `counts` = per-status totals ignoring `status`. */
+  async getTasks(params?: { status?: string; agent_id?: string; q?: string; limit?: number; offset?: number; view?: 'summary' }): Promise<{ tasks: Task[]; total: number; counts?: Record<string, number> }> {
+    const query = new URLSearchParams(Object.entries(params ?? {}).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
     return this.request(`/tasks?${query}`);
   }
 

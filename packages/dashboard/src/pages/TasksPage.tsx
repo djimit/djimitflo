@@ -1,25 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import { useStore } from '../lib/store';
+import { useResource } from '../hooks/useResource';
+import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { api, type RuntimeContract } from '../lib/api';
 import { TaskPriority, ExecutionMode } from '@djimitflo/shared';
 import type { Repository } from '@djimitflo/shared';
 
+const PAGE_SIZE = 50;
+const STATUS_OPTIONS: Array<[string, string]> = [
+  ['pending', 'Pending'], ['running', 'Running'], ['queued', 'Queued'], ['awaiting_approval', 'Awaiting Approval'],
+  ['completed', 'Completed'], ['failed', 'Failed'], ['cancelled', 'Cancelled'], ['paused', 'Paused'],
+];
+
 export function TasksPage() {
-  const tasks = useStore((state) => state.tasks);
   const agents = useStore((state) => state.agents);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [page, setPage] = useState(0);
 
-  // Filter tasks
-  const filteredTasks = tasks.filter((task) => {
-    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         task.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearchQuery(searchInput.trim()); setPage(0); }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Truth audit 2026-11-12: the list is read here (filtered + paged server-side), not from the first 100 rows of a global preload
+  const fetchTasks = useCallback(() => api.getTasks({
+    status: statusFilter === 'all' ? undefined : statusFilter, q: searchQuery || undefined,
+    limit: PAGE_SIZE, offset: page * PAGE_SIZE, view: 'summary',
+  }), [statusFilter, searchQuery, page]);
+  const { data, error, loading, refresh } = useResource(fetchTasks);
+  const tasks = data?.tasks ?? [];
+  const total = data?.total ?? 0;
+  const counts = data?.counts ?? {};
+  const allCount = Object.values(counts).reduce((sum, n) => sum + n, 0);
+  const filtered = Boolean(searchQuery) || statusFilter !== 'all';
 
   return (
     <div className="p-8 space-y-6">
@@ -46,37 +64,44 @@ export function TasksPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground-muted" />
           <input
             type="text"
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search tasks"
+            placeholder="Search tasks by title or id..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-background-secondary border border-border rounded-lg text-foreground placeholder:text-foreground-muted focus:outline-none focus:border-accent"
           />
         </div>
         <select
+          aria-label="Status filter"
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
           className="px-4 py-2 bg-background-secondary border border-border rounded-lg text-foreground focus:outline-none focus:border-accent"
         >
-          <option value="all">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="running">Running</option>
-          <option value="queued">Queued</option>
-          <option value="awaiting_approval">Awaiting Approval</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
+          <option value="all">All Status{data ? ` (${allCount})` : ''}</option>
+          {STATUS_OPTIONS.map(([value, label]) => (
+            <option key={value} value={value}>{label}{data ? ` (${counts[value] ?? 0})` : ''}</option>
+          ))}
         </select>
       </div>
+
+      {error && <LoadErrorNotice failed={[`tasks: ${error}`]} />}
       
       {/* Task List */}
-      <div className="space-y-3">
-        {filteredTasks.length === 0 ? (
+      <div className="space-y-3" aria-busy={loading}>
+        {!data ? (
+          <div className="bg-background-secondary border border-border rounded-lg p-12 text-center" aria-live="polite">
+            <p className="text-foreground-muted">
+              {error ? 'Task list unavailable — it could not be read, so it is unknown whether any tasks exist.' : 'Loading tasks…'}
+            </p>
+          </div>
+        ) : tasks.length === 0 ? (
           <div className="bg-background-secondary border border-border rounded-lg p-12 text-center">
             <p className="text-foreground-muted">
-              {searchQuery || statusFilter !== 'all' ? 'No tasks match your filters' : 'No tasks yet. Create one to get started!'}
+              {filtered ? 'No tasks match your filters' : 'No tasks yet. Create one to get started!'}
             </p>
           </div>
         ) : (
-          filteredTasks.map((task) => {
+          tasks.map((task) => {
             const agent = agents.find((a) => a.id === task.agent_id);
             
             return (
@@ -95,11 +120,22 @@ export function TasksPage() {
         )}
       </div>
 
+      {data && total > 0 && (
+        <div className="flex items-center justify-between text-sm text-foreground-secondary">
+          <span data-testid="tasks-range">Showing {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + tasks.length} of {total.toLocaleString()}</span>
+          <div className="flex gap-2">
+            <button type="button" disabled={page === 0 || loading} onClick={() => setPage((p) => p - 1)} className="px-3 py-1 border border-border rounded-lg disabled:opacity-50">Previous</button>
+            <button type="button" disabled={(page + 1) * PAGE_SIZE >= total || loading} onClick={() => setPage((p) => p + 1)} className="px-3 py-1 border border-border rounded-lg disabled:opacity-50">Next</button>
+          </div>
+        </div>
+      )}
+
       {/* Create Task Modal */}
       {showCreateModal && (
         <CreateTaskModal
           agents={agents}
           onClose={() => setShowCreateModal(false)}
+          onCreated={() => void refresh()}
         />
       )}
     </div>
@@ -167,9 +203,10 @@ function TaskCard({ id, title, description, status, priority, agent, owner }: Ta
 interface CreateTaskModalProps {
   agents: Array<{ id: string; name: string }>;
   onClose: () => void;
+  onCreated?: () => void;
 }
 
-function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
+function CreateTaskModal({ agents, onClose, onCreated }: CreateTaskModalProps) {
   const { addTask } = useStore();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -233,6 +270,7 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
       });
       
       addTask(task);
+      onCreated?.();
       onClose();
     } catch (error) {
       setCreateError(`Could not create task: ${error instanceof Error ? error.message : String(error)}`);

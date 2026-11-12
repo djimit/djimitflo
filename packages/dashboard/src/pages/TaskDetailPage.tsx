@@ -28,6 +28,7 @@ export function TaskDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [executor, setExecutor] = useState('');
   const [runtimes, setRuntimes] = useState<Record<string, RuntimeContract>>({});
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -199,6 +200,7 @@ export function TaskDetailPage() {
   }
 
   const agent = agents.find((a) => a.id === task.agent_id);
+  const failure = task.status === 'failed' ? taskFailure(task) : null;
   const statusConfig = getStatusConfig(task.status);
   const priorityConfig = getPriorityConfig(task.priority);
   const riskConfig = getRiskConfig(task.risk_level);
@@ -216,10 +218,24 @@ export function TaskDetailPage() {
         </Link>
         <div className="flex-1 min-w-0 break-words">
           <h1 className="text-3xl font-bold text-foreground">{task.title}</h1>
-          <p className="text-foreground-secondary mt-1">Task ID: {task.id.slice(0, 8)}</p>
+          <p className="text-foreground-secondary mt-1 flex flex-wrap items-center gap-2">Task ID: <code data-testid="task-id" className="select-all break-all text-sm">{task.id}</code>
+            <button type="button" onClick={() => void navigator.clipboard?.writeText(task.id).then(() => setCopied(true), () => setCopied(false))} className="text-xs px-2 py-0.5 border border-border rounded hover:bg-background-elevated">{copied ? 'Copied' : 'Copy'}</button>
+          </p>
           {typeof task.metadata?.model === 'string' && <p className="text-sm text-foreground-secondary mt-1">Model: {task.metadata.model}{typeof task.metadata.reasoningEffort === 'string' ? ` · Reasoning: ${task.metadata.reasoningEffort}` : ''}</p>}
         </div>
       </div>
+
+      {failure && (
+        <div role="alert" data-testid="task-failure" className="rounded-lg border border-status-error/30 bg-status-error/10 p-4 text-status-error">
+          <p className="font-semibold">Task failed</p>
+          <p className="mt-1 text-sm break-words">{failure.message ?? 'The executor recorded no failure reason.'}</p>
+          <p className="mt-1 text-xs">
+            Tokens: {failure.tokens === null ? 'not reported' : failure.tokens.toLocaleString()}
+            {task.execution_time_ms ? ` · Ran ${formatDuration(task.execution_time_ms)}` : ''}
+            {task.failed_at ? ` · Failed at ${new Date(task.failed_at).toLocaleString()}` : ''}
+          </p>
+        </div>
+      )}
 
       {recoveryHold && (
         <div role="alert" className="rounded-lg border border-status-paused/30 bg-status-paused/10 p-4 text-status-paused">
@@ -447,6 +463,18 @@ export function TaskDetailPage() {
       </div>
     </div>
   );
+}
+
+/** Truth audit 2026-11-12: the executor's failure reason lives in metadata.executionResult; tokens there when the column is empty. */
+function taskFailure(task: Task): { message: string | null; tokens: number | null } {
+  const result = task.metadata?.executionResult;
+  const record = result && typeof result === 'object' && !Array.isArray(result) ? result as Record<string, unknown> : {};
+  const metrics = record.metrics && typeof record.metrics === 'object' ? record.metrics as Record<string, unknown> : {};
+  const message = typeof record.message === 'string' && record.message ? record.message
+    : typeof record.error === 'string' && record.error ? record.error.split('\n')[0] : null;
+  const tokens = typeof task.token_usage === 'number' ? task.token_usage
+    : typeof metrics.tokenUsage === 'number' ? metrics.tokenUsage : null;
+  return { message, tokens };
 }
 
 function getStatusConfig(status: string) {
