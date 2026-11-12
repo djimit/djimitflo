@@ -19,10 +19,15 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
   const requireAuth = auth.requireAuth;
   const requireAdmin = auth.requirePermission('manage:config');
 
-  // GET /observability/metrics — admin-only
-  router.get('/metrics', requireAuth, requireAdmin, (_req: Request, res: Response, next: NextFunction) => {
+  // GET /observability/metrics?days=N — admin-only; windowed (default 7 days) so the dashboard never shows all-time counts unlabelled
+  router.get('/metrics', requireAuth, requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
-      const metrics = evidenceService.getObservabilityMetrics();
+      const days = parseWindow(req.query.days, 7, 3650);
+      if (days === null) {
+        res.status(400).json({ error: { message: 'days must be an integer between 1 and 3650', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      const metrics = evidenceService.getObservabilityMetrics(days);
       res.json(metrics);
     } catch (error) {
       next(error);

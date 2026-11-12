@@ -12,7 +12,7 @@ it('lists flags, masks secrets by name and by value, and skips system variables'
   expect(by.LOOP_EVOLVE_SPECIES).toMatchObject({ value: 'remote@workstation/atomic@llama-router', masked: false, group: 'LOOP' });
   expect(by.SOCIAL_COMPAT_BASE_URL.masked).toBe(false);
   for (const n of ['NVIDIA_API_KEY', 'GITHUB_TOKEN', 'LITELLM_URL_WITH_CREDS', 'SOME_NOTE']) {
-    expect(by[n].masked).toBe(true); expect(by[n].value).toMatch(/^set \(\d+ chars\)$/);
+    expect(by[n].masked).toBe(true); expect(by[n].value).toBe('set');
   }
   expect(JSON.stringify(entries)).not.toMatch(/nvapi-|ghp_x|user:pass|sk-abc/);
   expect(by.PATH).toBeUndefined(); expect(by.lower_case).toBeUndefined();
@@ -31,7 +31,7 @@ it('never exposes a secret value, whatever metadata the key gets', () => {
   const { by, entries } = view({ ...secrets, DJIMITFLO_BUILD_COMMIT: BUILD });
   for (const name of Object.keys(secrets)) {
     expect(by[name]).toMatchObject({ masked: true, source: 'env', overridden: null });
-    expect(by[name].value).toMatch(/^set \(\d+ chars\)$/);
+    expect(by[name].value).toBe('set');
   }
   // DJIMITFLO_PUBLIC_URL has a runbook default; masking still wins and no comparison is reported
   expect(by.DJIMITFLO_PUBLIC_URL.default).toBe('unset');
@@ -86,4 +86,35 @@ it('reports the running build identity and flags a stale DJIMITFLO_COMMIT_SHA en
   const unknown = view({ DJIMITFLO_COMMIT_SHA: 'a'.repeat(40), DJIMITFLO_BUILD_COMMIT: 'unknown' });
   expect(unknown.build.built_commit).toBeNull();
   expect(unknown.by.DJIMITFLO_COMMIT_SHA.stale).toBeNull();
+});
+
+// Dashboard truth audit 2026-11-12 (/configuration): `_TOKEN_`/`_KEY_` anywhere in a name masked plain mode flags
+// (HOST_TOKEN_WATCH_MODE=shadow showed as "set (6 chars)"), and the masked length leaked a hint about the secret.
+it('shows settings whose name only contains a secret word, keeps real secrets masked without their length', () => {
+  const { by, masked } = view({
+    HOST_TOKEN_WATCH_MODE: 'shadow', ATOMIC_AGENT_API_KEY_ENV: 'SOCIAL_COMPAT_API_KEY', SESSION_TOKEN_BUDGET: '50000', AUTH_KEY_ROTATION_ENABLED: 'true',
+    // secret-shaped names stay masked whatever the value looks like
+    JWT_SECRET: 'shadow', GITHUB_TOKEN: 'on', LITELLM_API_KEY: 'abc', AUTH_BOOTSTRAP_ADMIN_PASSWORD: 'x', QDRANT_WRITE_API_KEY: 'k',
+    // a setting suffix does not unmask a value that looks like a credential
+    HOST_TOKEN_WATCH_MODE_X: 'a', PANEL_TOKEN_MODE: 'ghp_abcdefghijklmnop', DEPLOY_KEY_ENV: 'f3a9c0d1e2b4a5968776a5b4c3d2e1f0', EVENT_TOKEN_LIMIT: '12ab34cd',
+  });
+  expect(by.HOST_TOKEN_WATCH_MODE).toMatchObject({ value: 'shadow', masked: false });
+  expect(by.ATOMIC_AGENT_API_KEY_ENV).toMatchObject({ value: 'SOCIAL_COMPAT_API_KEY', masked: false });
+  expect(by.SESSION_TOKEN_BUDGET).toMatchObject({ value: '50000', masked: false });
+  expect(by.AUTH_KEY_ROTATION_ENABLED).toMatchObject({ value: 'true', masked: false });
+  for (const n of ['JWT_SECRET', 'GITHUB_TOKEN', 'LITELLM_API_KEY', 'AUTH_BOOTSTRAP_ADMIN_PASSWORD', 'QDRANT_WRITE_API_KEY', 'HOST_TOKEN_WATCH_MODE_X', 'PANEL_TOKEN_MODE', 'DEPLOY_KEY_ENV', 'EVENT_TOKEN_LIMIT']) {
+    expect(by[n], n).toMatchObject({ masked: true, value: 'set' });
+  }
+  expect(masked).toBe(9);
+});
+
+it('lists the accepted values a mode flag documents', () => {
+  const { by } = view({ ASG_MODE: 'shadow' });
+  expect(by.ASG_MODE.accepted).toEqual(['off', 'shadow', 'on']);
+  expect(by.ACE_001_MODE.accepted).toEqual(['off', 'on']);
+  expect(by.CHECKER_FAMILY_VERSION.accepted).toEqual(['v1', 'v2']);
+  // a default with prose or a format in parentheses lists no modes
+  expect(by.CHECKER_FAMILY_TARGET_PER_ARM.accepted).toBeNull();
+  expect(by.CHECKER_CROSS_MODEL.accepted).toBeNull();
+  expect(by.CV_001_WINDOW_UTC.accepted).toBeNull();
 });

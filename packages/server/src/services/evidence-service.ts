@@ -273,30 +273,53 @@ export class EvidenceService {
     return rows.map((row) => this.mapFileChange(row));
   }
 
-  getObservabilityMetrics(): ObservabilityMetrics {
-    const totalTasks = (this.db.prepare('SELECT COUNT(*) as count FROM tasks').get() as any).count;
-    const activeTasks = (this.db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status IN ('running', 'queued', 'awaiting_approval')").get() as any).count;
-    const completedTasks = (this.db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'completed'").get() as any).count;
-    const failedTasks = (this.db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'failed'").get() as any).count;
-    const deniedTasks = (this.db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'cancelled'").get() as any).count;
-    const pendingApprovals = (this.db.prepare("SELECT COUNT(*) as count FROM approvals WHERE status = 'pending'").get() as any).count;
+  /**
+   * windowDays: count only what happened in the last N days (tasks by created_at, risk assessments by created_at, approvals
+   * by when they were decided or expired, errors by created_at); omitted = all time (the summary export). Active tasks and
+   * pending approvals are current state and never windowed. `policy_decisions` are the risk engine's recommendations;
+   * `approval_outcomes` is what actually happened to approvals (dashboard truth audit 2026-11-12).
+   */
+  getObservabilityMetrics(windowDays?: number): ObservabilityMetrics {
+    const since = windowDays ? new Date(Date.now() - windowDays * 86_400_000).toISOString() : null;
+    // julianday: rows carry both ISO-8601 and SQLite datetime('now') timestamps, which do not compare as strings
+    const inWindow = (column: string): [string, string[]] => (since ? [` AND julianday(${column}) >= julianday(?)`, [since]] : ['', []]);
+    const count = (table: string, where: string, column: string | null = 'created_at') => {
+      const [clause, params] = column ? inWindow(column) : ['', []];
+      return (this.db.prepare(`SELECT COUNT(*) as count FROM ${table} WHERE ${where}${clause}`).get(...params) as any).count as number;
+    };
+    const [taskWindow, taskParams] = inWindow('created_at');
 
-    const durationResult = this.db.prepare("SELECT AVG(execution_time_ms) as avg_ms FROM tasks WHERE execution_time_ms IS NOT NULL AND status = 'completed'").get() as any;
+    const totalTasks = count('tasks', '1 = 1');
+    const activeTasks = count('tasks', "status IN ('running', 'queued', 'awaiting_approval')", null);
+    const completedTasks = count('tasks', "status = 'completed'");
+    const failedTasks = count('tasks', "status = 'failed'");
+    const deniedTasks = count('tasks', "status = 'cancelled'");
+    const pendingApprovals = count('approvals', "status = 'pending'", null);
+
+    const durationResult = this.db.prepare(`SELECT AVG(execution_time_ms) as avg_ms FROM tasks WHERE execution_time_ms IS NOT NULL AND status = 'completed'${taskWindow}`).get(...taskParams) as any;
     const avgDurationMs = durationResult?.avg_ms || null;
 
-    const riskDist = this.db.prepare('SELECT risk_level, COUNT(*) as count FROM risk_assessments GROUP BY risk_level').all() as any[];
+    const riskDist = this.db.prepare(`SELECT risk_level, COUNT(*) as count FROM risk_assessments WHERE 1 = 1${taskWindow} GROUP BY risk_level`).all(...taskParams) as any[];
     const riskDistribution: Record<string, number> = { low: 0, medium: 0, high: 0, critical: 0 };
     for (const row of riskDist) {
       riskDistribution[row.risk_level] = row.count;
     }
 
-    const policyDecisions = this.db.prepare('SELECT recommended_decision, COUNT(*) as count FROM risk_assessments GROUP BY recommended_decision').all() as any[];
+    const policyDecisions = this.db.prepare(`SELECT recommended_decision, COUNT(*) as count FROM risk_assessments WHERE 1 = 1${taskWindow} GROUP BY recommended_decision`).all(...taskParams) as any[];
     const policyDecisionCounts: Record<string, number> = { allow: 0, deny: 0, require_approval: 0 };
     for (const row of policyDecisions) {
       policyDecisionCounts[row.recommended_decision] = row.count;
     }
 
-    const recentErrors = this.db.prepare("SELECT task_id, message, created_at as timestamp FROM execution_events WHERE level IN ('error', 'critical') ORDER BY created_at DESC LIMIT 10").all() as any[];
+    // an expiry has no decided_at; updated_at is when the expiry was processed
+    const [approvalWindow, approvalParams] = inWindow('COALESCE(decided_at, updated_at)');
+    const approvalRows = this.db.prepare(`SELECT status, COUNT(*) as count FROM approvals WHERE status IN ('approved', 'denied', 'expired')${approvalWindow} GROUP BY status`).all(...approvalParams) as any[];
+    const approvalOutcomes = { approved: 0, denied: 0, expired: 0 };
+    for (const row of approvalRows) approvalOutcomes[row.status as keyof typeof approvalOutcomes] = row.count;
+
+    // identical messages grouped: task_id is the latest occurrence's (SQLite takes bare columns from the MAX() row)
+    const recentErrors = this.db.prepare(`SELECT task_id, message, MAX(created_at) as timestamp, COUNT(*) as count FROM execution_events
+      WHERE level IN ('error', 'critical')${taskWindow} GROUP BY message ORDER BY timestamp DESC LIMIT 10`).all(...taskParams) as any[];
 
     return {
       total_tasks: totalTasks,
@@ -312,7 +335,10 @@ export class EvidenceService {
         task_id: e.task_id,
         message: e.message,
         timestamp: e.timestamp,
+        count: e.count,
       })),
+      window_days: windowDays ?? null,
+      approval_outcomes: approvalOutcomes,
     };
   }
 

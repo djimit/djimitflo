@@ -42,6 +42,8 @@ export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 
 export interface RuntimeConfigEntry {
   name: string; value: string | null; masked: boolean; group: string; area: string;
   source: 'env' | 'default' | 'unset'; default: string | null; overridden: boolean | null; takes_effect: 'restart'; stale?: boolean | null;
+  /** modes the runbook documents for this flag (default first); null/absent when it lists none */
+  accepted?: string[] | null;
 }
 export interface RuntimeConfig {
   entries: RuntimeConfigEntry[]; masked: number;
@@ -2347,8 +2349,8 @@ class ApiClient {
     return this.request(`/authority/trace/${encodeURIComponent(correlationId)}`);
   }
 
-  async getObservabilityMetrics(): Promise<ObservabilityMetrics> {
-    return this.request('/observability/metrics');
+  async getObservabilityMetrics(days = 7): Promise<ObservabilityMetrics> {
+    return this.request(`/observability/metrics?days=${days}`);
   }
 
   async getRiskTrends(days?: number): Promise<{ trends: Array<{ date: string; risk_level: string; count: number }> }> {

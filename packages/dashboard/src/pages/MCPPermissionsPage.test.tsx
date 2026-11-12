@@ -104,3 +104,18 @@ it('refresh is disabled without manage:config', async () => {
   expect(button.disabled).toBe(true);
   expect(button.title).toBe('Needs manage:config');
 });
+
+// Dashboard truth audit 2026-11-12 (/mcp-permissions): the runtime tool catalog is only written by the explicit
+// djimitflo_sync_mcp_catalog tool (never on boot or deploy), so tools added since the last sync were silently missing.
+it('says prominently how old the runtime tool catalog is and how to sync it', async () => {
+  const sqliteUtc = new Date(Date.now() - 42 * 86_400_000).toISOString().replace('T', ' ').slice(0, 19); // datetime('now') format
+  vi.spyOn(api, 'getMCPServers').mockResolvedValue({ servers: [{
+    ...STORED_SERVER, id: 'djimitflo-runtime', name: 'Djimitflo Runtime MCP', url: null, effective_status: 'catalog',
+    last_ping_at: sqliteUtc, metadata: { synced_from: 'djimitflo_sync_mcp_catalog' },
+  }] as never });
+  vi.spyOn(api, 'getMCPPermissions').mockResolvedValue({ permissions: [] });
+  render(<MCPPermissionsPage />);
+  const age = await screen.findByTestId('catalog-age');
+  expect(age.textContent).toMatch(/last synced 42 d ago/);
+  expect(age.textContent).toMatch(/djimitflo_sync_mcp_catalog/);
+});

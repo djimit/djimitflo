@@ -36,6 +36,12 @@ const STATUS_TEXT: Record<string, string> = {
   catalog: 'Catalog synced',
 };
 
+// mcp_servers timestamps are ISO or SQLite datetime('now') ("YYYY-MM-DD HH:MM:SS", UTC without a zone)
+const storedTime = (value: string) => {
+  const ms = Date.parse(/[zZ]$|[+-]\d\d:?\d\d$/.test(value) ? value : `${value.replace(' ', 'T')}Z`);
+  return Number.isFinite(ms) ? ms : null;
+};
+
 export function MCPPermissionsPage() {
   const canAdd = useCan(P.mcpCreateServer);
   const canRefresh = useCan(P.mcpRefreshServers);
@@ -106,6 +112,12 @@ export function MCPPermissionsPage() {
       .finally(() => setRefreshing(false));
   }
 
+  // Truth audit 2026-11-12: the runtime catalog is written only by the explicit djimitflo_sync_mcp_catalog MCP tool (not on
+  // boot or deploy), so tools added to the MCP server since then are missing here. Say how old it is.
+  const runtimeSync = servers.find((server) => server.id === 'djimitflo-runtime')?.last_ping_at;
+  const runtimeSyncedAt = runtimeSync ? storedTime(runtimeSync) : null;
+  const catalogAgeDays = runtimeSyncedAt === null ? null : Math.max(0, Math.floor((Date.now() - runtimeSyncedAt) / 86_400_000));
+
   const asOf = servers.map((server) => server.last_ping_at).filter((value): value is string => Boolean(value)).sort().pop();
 
   useEffect(() => {
@@ -134,6 +146,13 @@ export function MCPPermissionsPage() {
           Catalog only — not enforced. Djimitflo does not call external MCP tools, and its own MCP server checks user roles,
           not these decisions. &quot;Allowed&quot;, &quot;Requires approval&quot; and &quot;Denied&quot; are recorded here but gate no call.
         </p>
+        {catalogAgeDays !== null && (
+          <p data-testid="catalog-age" className={`mt-3 text-sm rounded-md px-3 py-2 border ${catalogAgeDays >= 7 ? 'border-status-warning/40 bg-status-warning/10 text-status-warning' : 'border-border text-foreground-secondary'}`}>
+            Runtime tool catalog last synced {catalogAgeDays === 0 ? 'today' : `${catalogAgeDays} d ago`}. It is written only by an explicit sync,
+            never on boot or deploy, so tools added to the Djimitflo MCP server since then are missing below. To sync, run
+            {' '}<code>djimitflo_sync_mcp_catalog</code> with <code>apply: true</code> (manage:config); it resets runtime tools&apos; catalogued decisions to their default classification.
+          </p>
+        )}
       </div>
 
       {/* MCP Servers */}
