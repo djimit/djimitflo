@@ -24,8 +24,8 @@ const sorted = <T,>(o: Record<string, T>) => Object.entries(o).sort(([a], [b]) =
 const arms = (n: Record<string, number> | null) => (n ? sorted(n).map(([a, k]) => `${a} ${k}`).join(' · ') : 'n unknown');
 
 /** which evidence section belongs to which experiment, and how that section is windowed (evolution-evidence.ts) */
-const SECTION: Record<string, { key: keyof EvolutionEvidence; window: 'window' | 'analysis_since' | 'whole' }> = {
-  'ACE-001': { key: 'ace_001', window: 'analysis_since' }, 'STE-001': { key: 'ste_001', window: 'window' },
+const SECTION: Record<string, { key: keyof EvolutionEvidence; window: 'window' | 'analysis_since' | 'experiment' | 'whole' }> = {
+  'ACE-001': { key: 'ace_001', window: 'analysis_since' }, 'STE-001': { key: 'ste_001', window: 'experiment' },
   'MAKER-DEPS-001': { key: 'maker_deps_001', window: 'window' }, X1: { key: 'effort_x1', window: 'window' }, F2: { key: 'checker_family', window: 'window' },
   'memory-holdout': { key: 'memory_holdout', window: 'window' }, 'TG-001': { key: 'tg_001', window: 'whole' }, 'PL-001': { key: 'pl_001', window: 'whole' }, 'CV-001': { key: 'cv_001', window: 'whole' }, 'D5-NO': { key: 'd5_no', window: 'whole' },
   'JEV-114': { key: 'jev_challenger', window: 'whole' },
@@ -71,6 +71,8 @@ function state(e: Exp, d: Data): string {
 
 function wip(e: Exp, d: Data): string {
   if (e.population !== 'oracle_goals') return `not on the oracle-goal population (${e.population})`;
+  // a recorded verdict closes the experiment: the registry's WIP (active = no verdict) no longer counts it
+  if (e.verdict !== null) return 'closed — not counted toward the WIP limit';
   if (e.approved_over_limit) return `grandfathered: ${e.approved_over_limit}`;
   return `counts toward WIP limit ${d.experiments?.wip.limit ?? '—'}`;
 }
@@ -79,15 +81,20 @@ function windowText(e: Exp, d: Data): string {
   const s = SECTION[e.id];
   if (!s) return 'no evidence section for this experiment';
   if (s.window === 'whole') return 'section is not windowed (whole experiment)';
+  // ACE-001 / STE-001: the server counts the section over the experiment's own window, the same as the registry row
+  if (s.window === 'analysis_since' && d.ace_001?.analysis_since) {
+    const from = d.ace_001.analysis_since > e.started_at ? d.ace_001.analysis_since : e.started_at;
+    return `section counts from ${day(from)} (the later of start and analysis_since, Amendment 1), as the registry row does; ${d.ace_001.delivery_invalid ?? 'unknown'} earlier outcomes excluded`;
+  }
+  if (s.window === 'experiment') return `section counts from the experiment start ${day(e.started_at)}, as the registry row does`;
   if (!d.at || !d.window_days) return 'section window unknown';
   const from = new Date(Date.parse(d.at) - d.window_days * DAY).toISOString();
-  if (s.window === 'analysis_since' && d.ace_001?.analysis_since && d.ace_001.analysis_since >= from) {
-    return `section counts from analysis_since ${day(d.ace_001.analysis_since)} (Amendment 1); ${d.ace_001.delivery_invalid ?? 'unknown'} earlier outcomes excluded`;
-  }
   return from <= e.started_at ? `section window (${d.window_days} d) covers the whole experiment`
     : `section counts the last ${d.window_days} d only (from ${day(from)}); the registry row counts from ${day(e.started_at)}`;
 }
 
+/** table cell spacing: the columns ran together without it */
+const CELL = 'px-2 py-1';
 const Line = ({ children }: { children: ReactNode }) => <li>{children}</li>;
 
 /** the experiment's own evidence section, only fields that section reports */
@@ -168,25 +175,25 @@ export function ExperimentsSection({ data }: { data: EvolutionEvidence }) {
       </p>
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead><tr className="text-left text-foreground-tertiary">{head.map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-foreground-tertiary">{head.map((h) => <th key={h} scope="col" className={CELL}>{h}</th>)}</tr></thead>
           <tbody>
             {reg.experiments.map((e) => {
               const v = version(e, d);
               const rows = ledger?.mechanisms.filter((m) => m.experiment === e.id) ?? [];
               return [
                 <tr key={e.id} data-experiment={e.id} className="border-t border-border align-top">
-                  <td className="font-medium">{e.id}</td>
-                  <td>{e.protocol}{v ? ` · version ${v}` : ' · version not reported'}</td>
-                  <td>{state(e, d)}</td>
-                  <td>{day(e.started_at)}</td>
-                  <td>{arms(e.n_per_arm)} / target {e.target_n ?? 'none registered'}</td>
-                  <td>{day(e.stop_by)}{e.power.days_to_stop !== null ? ` (${e.power.days_to_stop} d)` : ''}</td>
-                  <td className={e.overdue ? 'text-status-error' : undefined}>{e.overdue ? `overdue: ${e.overdue_reason ?? 'no reason recorded'}` : 'no'}</td>
-                  <td>{e.verdict ?? 'no verdict recorded'}</td>
-                  <td>{wip(e, d)}</td>
+                  <td className={`${CELL} font-medium whitespace-nowrap`}>{e.id}</td>
+                  <td className={CELL}>{e.protocol}{v ? ` · version ${v}` : ' · version not reported'}</td>
+                  <td className={CELL}>{state(e, d)}</td>
+                  <td className={`${CELL} whitespace-nowrap`}>{day(e.started_at)}</td>
+                  <td className={CELL}>{arms(e.n_per_arm)} / target {e.target_n ?? 'none registered'}</td>
+                  <td className={`${CELL} whitespace-nowrap`}>{day(e.stop_by)}{e.power.days_to_stop !== null ? ` (${e.power.days_to_stop} d)` : ''}</td>
+                  <td className={`${CELL}${e.overdue ? ' text-status-error' : ''}`}>{e.overdue ? `overdue: ${e.overdue_reason ?? 'no reason recorded'}` : 'no'}</td>
+                  <td className={CELL}>{e.verdict ?? 'no verdict recorded'}</td>
+                  <td className={CELL}>{wip(e, d)}</td>
                 </tr>,
                 <tr key={`${e.id}-detail`} data-experiment-detail={e.id}>
-                  <td colSpan={head.length}>
+                  <td colSpan={head.length} className={CELL}>
                     <details>
                       <summary className="cursor-pointer text-foreground-secondary">{e.id} evidence</summary>
                       <div className="space-y-1 py-2">

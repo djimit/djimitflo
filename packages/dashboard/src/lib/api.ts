@@ -111,7 +111,8 @@ export interface RuntimeHealthRow {
   leases_30d: { n: number; completed: number; failed: number; cancelled: number; success_rate: number | null };
   leases_90d: number;
   last_success_at: string | null;
-  gym: { species: string[]; benched: boolean };
+  /** attempts_30d: gym outcomes of the runtime in 30 d (a gym-only runtime has no leases) */
+  gym: { species: string[]; benched: boolean; attempts_30d?: { n: number; ok: number } };
   readiness: 'ok' | 'reassess' | 'retire_unused' | 'keep_test_only' | 'hold' | 'rejected' | 'unknown_runtime';
 }
 
@@ -830,7 +831,8 @@ type UsageQuota = {
 };
 
 export type UsageWindowId = '5h' | 'today' | '7d' | 'month';
-export type UsageWindowSum = { calls: number; tokens: number | null; calls_without_tokens: number };
+/** tokens = reported total incl. cache reads (what limits compare); fresh_tokens = uncached input + output; cache_read_tokens null = not reported */
+export type UsageWindowSum = { calls: number; tokens: number | null; fresh_tokens?: number | null; cache_read_tokens?: number | null; calls_without_tokens: number };
 export type UsageLimitView = {
   account: string; plan: string; window: '5h' | 'session' | 'weekly' | 'daily' | 'monthly' | 'none'; unit: 'tokens' | 'messages' | 'requests' | 'credits' | 'unknown';
   limit: number | null; limit_text: string; source_url: string | null; checked_at: string | null;
@@ -868,7 +870,7 @@ export type UsageAccount = {
   scope: 'djimitflo_ledger'; windows: Record<UsageWindowId, UsageWindowSum>; lease_sessions: Record<UsageWindowId, number>;
   /** ollama_cloud only */
   account_usage?: UsageAccountWide;
-  consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; calls_without_tokens: number }>;
+  consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; fresh_tokens?: number | null; cache_read_tokens?: number | null; calls_without_tokens: number }>;
   providers_seen: string[]; last_error: UsageEventBrief; last_limit_hit: UsageEventBrief;
   state: { state: 'limit_reached' | 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
   cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
@@ -1962,8 +1964,9 @@ class ApiClient {
   }
 
   // Tasks
-  async getTasks(params?: { status?: string; agent_id?: string }): Promise<{ tasks: Task[]; total: number }> {
-    const query = new URLSearchParams(params as Record<string, string>);
+  /** `total` = all tasks matching the filters (not the page size); `counts` = per-status totals ignoring `status`. */
+  async getTasks(params?: { status?: string; agent_id?: string; q?: string; limit?: number; offset?: number; view?: 'summary' }): Promise<{ tasks: Task[]; total: number; counts?: Record<string, number> }> {
+    const query = new URLSearchParams(Object.entries(params ?? {}).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
     return this.request(`/tasks?${query}`);
   }
 

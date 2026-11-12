@@ -62,12 +62,12 @@ describe('window sums', () => {
     provider: 'ollama', model: 'm', mirror, limit_hit: false, error: null, list_price_cost: null, cost_basis: null });
   it('sums per window, skips mirrors, keeps unknown tokens apart and null when all are unknown', () => {
     const s = windowSums([rec(1, 100), rec(2, null), rec(1, 999, true), rec(10, 50), rec(24 * 6, 7), rec(24 * 9, 1000)], NOW);
-    expect(s['5h']).toEqual({ calls: 2, tokens: 100, calls_without_tokens: 1 });
-    expect(s.today).toEqual({ calls: 3, tokens: 150, calls_without_tokens: 1 }); // 12:00Z → 10 h ago is still today
-    expect(s['7d']).toEqual({ calls: 4, tokens: 157, calls_without_tokens: 1 });
-    expect(s.month).toEqual({ calls: 5, tokens: 1157, calls_without_tokens: 1 }); // 9 d ago = 9 Oct, same month
-    expect(windowSums([rec(1, null)], NOW)['5h'].tokens).toBeNull();
-    expect(windowSums([], NOW)['5h']).toEqual({ calls: 0, tokens: 0, calls_without_tokens: 0 });
+    expect(s['5h']).toEqual({ calls: 2, tokens: 100, fresh_tokens: 100, cache_read_tokens: null, calls_without_tokens: 1 }); // no cache reported: total = fresh
+    expect(s.today).toEqual({ calls: 3, tokens: 150, fresh_tokens: 150, cache_read_tokens: null, calls_without_tokens: 1 }); // 12:00Z → 10 h ago is still today
+    expect(s['7d']).toEqual({ calls: 4, tokens: 157, fresh_tokens: 157, cache_read_tokens: null, calls_without_tokens: 1 });
+    expect(s.month).toEqual({ calls: 5, tokens: 1157, fresh_tokens: 1157, cache_read_tokens: null, calls_without_tokens: 1 }); // 9 d ago = 9 Oct, same month
+    expect(windowSums([rec(1, null)], NOW)['5h']).toMatchObject({ tokens: null, fresh_tokens: null });
+    expect(windowSums([], NOW)['5h']).toEqual({ calls: 0, tokens: 0, fresh_tokens: 0, cache_read_tokens: null, calls_without_tokens: 0 });
   });
 });
 
@@ -131,7 +131,7 @@ describe('usageAccounts', () => {
     call(d, { consumer: 'jev', model: 'jev-1', provider: 'typesafe', tokens_in: 10, list_price_cost: 0.5, cost_basis: 'metered', created_at: ago(3) });
     const r = usageAccounts(d, { now: NOW, planLimits: noLimits });
     const ollama = r.accounts.find((a) => a.id === 'ollama_cloud')!;
-    expect(ollama.windows['5h']).toEqual({ calls: 3, tokens: 5120, calls_without_tokens: 1 });
+    expect(ollama.windows['5h']).toEqual({ calls: 3, tokens: 5120, fresh_tokens: 5120, cache_read_tokens: null, calls_without_tokens: 1 });
     expect(ollama.consumers_7d.map((c) => c.consumer).sort()).toEqual(['lease:checker:self-improvement', 'lease:maker:self-improvement', 'panel:review']);
     expect(ollama.consumers_7d.find((c) => c.consumer === 'lease:checker:self-improvement')!.tokens).toBeNull();
     expect(ollama.state.state).toBe('no_limit_recorded');
@@ -170,5 +170,38 @@ describe('usageAccounts', () => {
     const res = await request(express().use('/usage', createUsageRoutes(d, auth)).use(errorHandler)).get('/usage/accounts');
     expect(res.status).toBe(200);
     expect(res.body.accounts.length).toBeGreaterThan(0);
+  });
+});
+
+describe('truth audit 2026-11-12', () => {
+  it('an opencode lease on the configured default model (model null) is Ollama Cloud, not Other / unmapped', () => {
+    const d = fresh();
+    // prod: DJIMITFLO_OPENCODE_MODEL=ollama/glm-5.2:cloud; the lease has no metadata.model, the dispatch identity recorded model_id
+    lease(d, 'opencode', { model_id: 'ollama/glm-5.2:cloud', token_accounting: { version: 1, total_tokens: 100, model_id: null } }, ago(1));
+    // an older lease without the dispatch identity: the configured default for the runtime
+    lease(d, 'opencode', { runtime_usage: { total_tokens: 50 } }, ago(2), 'checker');
+    const r = usageAccounts(d, { now: NOW, env: { DJIMITFLO_OPENCODE_MODEL: 'ollama/glm-5.2:cloud' }, planLimits: noLimits });
+    expect(r.accounts.find((a) => a.id === 'ollama_cloud')!.windows.month).toMatchObject({ calls: 2, tokens: 150 });
+    expect(r.accounts.some((a) => a.id === 'other')).toBe(false);
+    // no configured default and no recorded model: still unmapped (unknown is not guessed)
+    expect(usageAccounts(d, { now: NOW, env: {}, planLimits: noLimits }).accounts.find((a) => a.id === 'other')!.windows.month.calls).toBe(1);
+  });
+  it('fresh input + output is the headline; cache reads are counted apart and stay in the provider total', () => {
+    const d = fresh();
+    // prod lease 79272d20: 28,179 in + 2,389 out = 30,568 fresh; 322,465 cache reads; 353,033 total
+    lease(d, 'opencode', { model: 'ollama/glm-5.2:cloud', token_accounting: { version: 1, model_id: 'ollama/glm-5.2:cloud', input_tokens: 28179, output_tokens: 2389,
+      cache_read_tokens: 322465, cache_write_tokens: 0, reasoning_tokens: 0, total_tokens: 353033 } }, ago(1));
+    // a checker lease with only runtime_usage (opencode prompt_tokens exclude the cache): the rest of the total is cache
+    lease(d, 'opencode', { model: 'ollama/glm-5.2:cloud', runtime_usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 1000 } }, ago(1), 'checker');
+    call(d, { consumer: 'panel', model: 'kimi-k3:cloud', provider: 'ollama', tokens_in: 70, tokens_out: 30, created_at: ago(1) }); // no cache reported
+    const o = usageAccounts(d, { now: NOW, planLimits: noLimits }).accounts.find((a) => a.id === 'ollama_cloud')!;
+    expect(o.windows['5h']).toEqual({ calls: 3, tokens: 354133, fresh_tokens: 30568 + 120 + 100, cache_read_tokens: 322465 + 880, calls_without_tokens: 0 });
+    const maker = o.consumers_7d.find((c) => c.consumer === 'lease:maker:self-improvement')!;
+    expect(maker).toMatchObject({ tokens: 353033, fresh_tokens: 30568, cache_read_tokens: 322465 });
+    // a plan limit in tokens is compared with the provider total and says so
+    const v = limitView({ account: 'ollama_cloud', plan: 'P', window: '5h', unit: 'tokens', limit: 1_000_000, limit_text: 't', source_url: null, checked_at: null,
+      confidence: null, note: null, exceed_behaviour: null }, o.windows);
+    expect(v).toMatchObject({ used: 354133, used_pct: 35.4 });
+    expect(v.unit_note).toMatch(/total tokens incl\. 323[,.]?345 cache reads/);
   });
 });
