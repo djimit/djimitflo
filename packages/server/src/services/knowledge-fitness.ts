@@ -17,7 +17,7 @@ import { wilson } from './evolution-estimators';
  * (n_regressed); reviewer/environment failures and unattributed runs credit nobody. n < 5 → insufficient, never 0.
  */
 export type FitnessKind = 'kb_page' | 'expert_unit' | 'expert_claim' | 'discovery' | 'memory_rule' | 'knowledge';
-export type FitnessStatus = 'used_with_value' | 'used_no_value' | 'unused' | 'insufficient';
+export type FitnessStatus = 'used_with_value' | 'used_no_value' | 'inconclusive' | 'unused' | 'insufficient';
 export const FITNESS_KINDS: readonly FitnessKind[] = ['kb_page', 'expert_unit', 'expert_claim', 'discovery', 'memory_rule', 'knowledge'];
 export const FITNESS_MIN_N = 5;
 export const FITNESS_HALF_LIFE_DAYS = 30;
@@ -34,7 +34,7 @@ export interface FitnessItem {
   decayed_verified_rate: number | null;
   status: FitnessStatus;
 }
-export interface KindCounts { kind: FitnessKind; inventory: number | null; used_with_value: number; used_no_value: number; insufficient: number; unused: number | null }
+export interface KindCounts { kind: FitnessKind; inventory: number | null; used_with_value: number; used_no_value: number; inconclusive: number; insufficient: number; unused: number | null }
 export interface KnowledgeFitness {
   at: string; window_days: number; half_life_days: number; min_n: number;
   /** verified share of all maker-attributable runs in the window — the bar an item is compared with */
@@ -58,12 +58,16 @@ export function knowledgeItem(ref: string): { kind: FitnessKind; id: string } | 
   return { kind: 'knowledge', id: ref.trim() };
 }
 
-/** Pure: the status of one item from its counts (n = attributable uses). */
+/**
+ * Pure: the status of one item from its counts (n = attributable uses). Decided on the Wilson interval, never the point
+ * estimate: with value only when the lower bound is above the baseline, no value only when the upper bound is below it.
+ */
 export function fitnessStatus(nUsed: number, nVerified: number, nRegressed: number, baselineRate: number | null): FitnessStatus {
   if (nUsed === 0) return 'unused';
   const n = nVerified + nRegressed;
   if (n < FITNESS_MIN_N || baselineRate === null) return 'insufficient';
-  return nVerified > 0 && nVerified / n >= baselineRate ? 'used_with_value' : 'used_no_value';
+  const [lo, hi] = wilson(nVerified, n);
+  return lo > baselineRate ? 'used_with_value' : hi < baselineRate ? 'used_no_value' : 'inconclusive';
 }
 
 export function knowledgeFitness(db: Database, now = Date.now(), topN = 20): KnowledgeFitness {
@@ -161,7 +165,7 @@ export function knowledgeFitness(db: Database, now = Date.now(), topN = 20): Kno
   const by_kind: KindCounts[] = FITNESS_KINDS.map((kind) => {
     const mine = items.filter((i) => i.kind === kind); const inv = inventory[kind];
     const count = (s: FitnessStatus) => mine.filter((i) => i.status === s).length;
-    return { kind, inventory: inv ? inv.size : null, used_with_value: count('used_with_value'), used_no_value: count('used_no_value'), insufficient: count('insufficient'),
+    return { kind, inventory: inv ? inv.size : null, used_with_value: count('used_with_value'), used_no_value: count('used_no_value'), inconclusive: count('inconclusive'), insufficient: count('insufficient'),
       unused: inv ? [...inv].filter((id) => !uses.has(`${kind}\u0000${id}`)).length : null };
   });
 
@@ -181,7 +185,7 @@ export function knowledgeFitness(db: Database, now = Date.now(), topN = 20): Kno
     runs: { in_window: runs.size, maker_attributable: attributable, non_maker: nonMaker, unattributed: runs.size - attributable - nonMaker },
     by_kind, top,
     rule: `n = verified + maker_failure runs that used the item (reviewer/environment failures and unattributed runs count for nobody); n < ${FITNESS_MIN_N} → insufficient; `
-      + 'used_with_value when its verified rate ≥ the baseline rate, else used_no_value; decay 0.5^(age/30 d) is computed, never applied to data',
+      + 'used_with_value when the Wilson 95 % lower bound of its verified rate is above the baseline rate, used_no_value when the upper bound is below it, else inconclusive; decay 0.5^(age/30 d) is computed, never applied to data',
     writes: 0,
   };
 }

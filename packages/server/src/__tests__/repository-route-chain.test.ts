@@ -35,6 +35,14 @@ describe('repository route chain', () => {
 
   afterEach(() => { db.close(); fs.rmSync(root, { recursive: true, force: true }); if (previousJwtSecret) process.env.JWT_SECRET = previousJwtSecret; else delete process.env.JWT_SECRET; });
 
+  it('truth audit 2026-11-12: the list reports whether each path still exists on this server', async () => {
+    const scan = await request(app).post('/api/repositories/scan').auth(token, { type: 'bearer' }).send({ path: root });
+    expect(scan.status).toBe(200);
+    fs.rmSync(root, { recursive: true, force: true }); // e.g. an explainer cache checkout under /tmp that is gone after a redeploy
+    const list = await request(app).get('/api/repositories').auth(token, { type: 'bearer' });
+    expect(list.body.repositories[0]).toMatchObject({ path: root, path_exists: false });
+  });
+
   it('scans, persists, reopens and validates repository projections', async () => {
     const scan = await request(app).post('/api/repositories/scan').auth(token, { type: 'bearer' }).send({ path: root });
     expect(scan.status).toBe(200);
@@ -43,7 +51,7 @@ describe('repository route chain', () => {
 
     const list = await request(app).get('/api/repositories').auth(token, { type: 'bearer' });
     expect(list.status).toBe(200); expect(list.body.repositories).toHaveLength(1);
-    expect(list.body.repositories[0]).toMatchObject({ id, path: root });
+    expect(list.body.repositories[0]).toMatchObject({ id, path: root, path_exists: true });
     const detail = await request(app).get('/api/repositories/missing-repository').auth(token, { type: 'bearer' });
     expect(detail.status).toBe(404); expect(detail.body.error.code).toBe('REPOSITORY_NOT_FOUND');
 
