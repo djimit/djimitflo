@@ -9,6 +9,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ARENA_GATE_ENABLED: 'off',
   ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
+  BENCHMARK_SCHEDULE_MODE: 'off (`on`: hourly scheduler `benchmark_schedule`. Weekly (Monday 03:00Z) it writes one `benchmark_runs` row with the gy…',
   CAPABILITY_FACTORY_MODE: 'off (`on`)',
   CAPABILITY_FACTORY_REUSE_EXECUTE: 'off (`on`)',
   CAPABILITY_LIFECYCLE_V2: 'off (`on`)',
@@ -24,6 +25,8 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   COMMONS_THREAD_GATE_ENABLED: 'off',
   CONTENT_DRAFTS_MODE: 'off (`shadow`, `on`)',
   COUNCIL_JUDGE_ROUTING_MODE: 'off (`shadow` records independent-judge relative-rank outcomes and a candidate routing decision without changing counci…',
+  CV_001_MODE: 'off (`on`)',
+  CV_001_WINDOW_UTC: '`0-6` (`start-end`, whole UTC hours, start < end; invalid = nothing served)',
   DEAD_CODE_LANE_ENABLED: 'off',
   DEAD_CODE_MAX_PER_DAY: '2 (also the in-flight cap)',
   DEPENDENCY_LANE_MAX_PER_DAY: '4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h)',
@@ -184,12 +187,14 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   VALUE_ANOMALY_ALARM: 'off (`shadow`, `on`)',
   VECTOR_STRICT_DIM: 'off',
   WEAK_ASSERTION_CHECK_MODE: 'off (`shadow` / `enforce`: for a test-gap, exports or mutation-gap maker, the deterministic check `test:assertion-stren…',
+  WEB_RESEARCH_MODE: 'off (`shadow`, `on`; set on the server, and `on` in the workstation worker\'s unit env)',
   WORK_ITEM_OUTCOME_SYNC: 'off (`shadow`, `on`)',
 };
 
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */
 export const SCHEDULER_FLAGS: readonly string[] = [
   'ADVISORY_EXPOSURE_MODE',
+  'BENCHMARK_SCHEDULE_MODE',
   'COMMITTEE_SWARM_ENABLED',
   'COMMONS_FALSIFIER_MODE',
   'COMMONS_INVESTIGATION_MODE',

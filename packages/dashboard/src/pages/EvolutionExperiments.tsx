@@ -27,7 +27,7 @@ const arms = (n: Record<string, number> | null) => (n ? sorted(n).map(([a, k]) =
 const SECTION: Record<string, { key: keyof EvolutionEvidence; window: 'window' | 'analysis_since' | 'whole' }> = {
   'ACE-001': { key: 'ace_001', window: 'analysis_since' }, 'STE-001': { key: 'ste_001', window: 'window' },
   'MAKER-DEPS-001': { key: 'maker_deps_001', window: 'window' }, X1: { key: 'effort_x1', window: 'window' }, F2: { key: 'checker_family', window: 'window' },
-  'memory-holdout': { key: 'memory_holdout', window: 'window' }, 'TG-001': { key: 'tg_001', window: 'whole' }, 'PL-001': { key: 'pl_001', window: 'whole' }, 'D5-NO': { key: 'd5_no', window: 'whole' },
+  'memory-holdout': { key: 'memory_holdout', window: 'window' }, 'TG-001': { key: 'tg_001', window: 'whole' }, 'PL-001': { key: 'pl_001', window: 'whole' }, 'CV-001': { key: 'cv_001', window: 'whole' }, 'D5-NO': { key: 'd5_no', window: 'whole' },
   'JEV-114': { key: 'jev_challenger', window: 'whole' },
 };
 
@@ -38,6 +38,7 @@ function version(e: Exp, d: Data): string | null {
     case 'F2': return d.checker_family?.version ?? null;
     case 'TG-001': return d.tg_001?.generation ?? d.tg_001?.experiment_id ?? null;
     case 'PL-001': return d.pl_001?.manifest ? `manifest ${d.pl_001.manifest.sha256.slice(0, 12)}` : d.pl_001 ? `prereg ${d.pl_001.prereg_sha256.slice(0, 12)}` : null;
+    case 'CV-001': return d.cv_001?.manifest ? `manifest ${d.cv_001.manifest.sha256.slice(0, 12)}` : d.cv_001 ? `prereg ${d.cv_001.prereg_sha256.slice(0, 12)}` : null;
     case 'D5-NO': return d.d5_no?.prereg_sha256 ? `prereg ${d.d5_no.prereg_sha256.slice(0, 12)}` : null;
     case 'STE-001': return d.ste_001?.ste_template_hash ? `template ${d.ste_001.ste_template_hash.slice(0, 12)}` : null;
     default: return null;
@@ -53,6 +54,7 @@ function sectionState(e: Exp, d: Data): string | null {
     case 'F2': return d.checker_family?.stop.verdict ?? null;
     case 'TG-001': return d.tg_001?.status ?? null;
     case 'PL-001': return d.pl_001?.status ?? null;
+    case 'CV-001': return d.cv_001?.status ?? null;
     case 'D5-NO': return d.d5_no?.status ?? null;
     case 'JEV-114': return d.jev_challenger?.status ?? null;
     default: return null;

@@ -36,8 +36,8 @@ export type GymSpecies = Species & { subscription?: true };
  * discards (prod 2026-09-29: task 9b2fa2bf crashed/timed out three times in a row on atomic@llama-router and, being
  * re-offered after each infra discard, tripped the breaker for the whole species).
  */
-/** PL-001 attempts (loop_name 'pl-001', gym.pl) are an experiment: they never mark a task tried or trip the species breaker. */
-const NOT_PL = "json_extract(metadata, '$.gym.pl') IS NULL";
+/** PL-001 / CV-001 attempts (loop_name 'pl-001' / 'cv-001', gym.pl / gym.cv) are experiments: they never mark a task tried or trip the species breaker. */
+const NOT_PL = "json_extract(metadata, '$.gym.pl') IS NULL AND json_extract(metadata, '$.gym.cv') IS NULL";
 export function triedTasks(db: Database, speciesKey: string): Set<string | null> {
   return new Set((db.prepare(`SELECT c FROM (SELECT json_extract(metadata, '$.gym.commit') AS c,
       SUM(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') AS real,
