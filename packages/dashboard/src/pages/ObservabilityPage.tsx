@@ -226,7 +226,7 @@ export function ObservabilityPage() {
                     {long && (
                       <button type="button" className="text-xs underline text-foreground-secondary"
                         onClick={() => setExpandedErrors((prev) => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next; })}>
-                        {expanded ? 'Show less' : `Show full message (${error.message.length.toLocaleString()} chars)`}
+                        {expanded ? 'Show less' : `Show full message (${error.message.length} chars)`}
                       </button>
                     )}
                     <p className="text-xs text-foreground-secondary">

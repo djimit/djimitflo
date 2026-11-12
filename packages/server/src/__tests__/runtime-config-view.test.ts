@@ -96,7 +96,7 @@ it('shows settings whose name only contains a secret word, keeps real secrets ma
     // secret-shaped names stay masked whatever the value looks like
     JWT_SECRET: 'shadow', GITHUB_TOKEN: 'on', LITELLM_API_KEY: 'abc', AUTH_BOOTSTRAP_ADMIN_PASSWORD: 'x', QDRANT_WRITE_API_KEY: 'k',
     // a setting suffix does not unmask a value that looks like a credential
-    HOST_TOKEN_WATCH_MODE_X: 'a', PANEL_TOKEN_MODE: 'ghp_abcdefghijklmnop', DEPLOY_KEY_ENV: 'f3a9c0d1e2b4a5968776a5b4c3d2e1f0', EVENT_TOKEN_LIMIT: '12ab34cd',
+    HOST_TOKEN_WATCH_MODE_X: 'a', PANEL_TOKEN_MODE: 'ghp_abcdefghijklmnop', DEPLOY_KEY_ENV: 'f3a9c0d1'.repeat(4), EVENT_TOKEN_LIMIT: '12ab34cd',
   });
   expect(by.HOST_TOKEN_WATCH_MODE).toMatchObject({ value: 'shadow', masked: false });
   expect(by.ATOMIC_AGENT_API_KEY_ENV).toMatchObject({ value: 'SOCIAL_COMPAT_API_KEY', masked: false });
