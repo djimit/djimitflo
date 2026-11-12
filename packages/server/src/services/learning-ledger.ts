@@ -81,7 +81,8 @@ const excludesZero = (ci: [number, number] | null) => ci !== null && (ci[0] > 0 
 const fromVerdict = (v: string | null): LearningStatus => { const k = v?.trim().split(/[\s(]/)[0].toLowerCase() ?? null;
   return k === null ? 'RUNNING' : k === 'supported' ? 'ADOPTED' : k === 'falsified' || k === 'reversed' ? 'REJECTED' : 'INSUFFICIENT'; };
 
-export function learningLedger(db: Database, experiments: ExperimentRow[], ope: OpeResult | null) {
+/** `ope`: null = computed but unreadable; undefined = not computed (the default evidence build leaves banditOpe out) */
+export function learningLedger(db: Database, experiments: ExperimentRow[], ope: OpeResult | null | undefined) {
   const rows: LedgerRow[] = MECHANISMS.map((m) => {
     const base = { ...m, experiment: m.experiment ?? null, metric: null, estimate: null, ci: null, p: null };
     if (m.experiment) {
@@ -107,7 +108,7 @@ export function learningLedger(db: Database, experiments: ExperimentRow[], ope: 
     }
     if (m.mechanism === 'species_selection') {
       return { ...base, status: 'NOT_MEASURED' as const, closed: false,
-        note: `no estimate of the bandit vs no bandit. Related: off-policy value of the fitness-view policy − the logged bandit = ${ope ? `${ope.difference ?? 'null'} (95 % CI ${ope.ci ? `[${ope.ci.join(', ')}]` : 'null'}, ESS ${ope.ess}, ${ope.status})` : 'unknown'} — a different policy, not this mechanism's effect` };
+        note: `no estimate of the bandit vs no bandit. Related: off-policy value of the fitness-view policy − the logged bandit = ${ope ? `${ope.difference ?? 'null'} (95 % CI ${ope.ci ? `[${ope.ci.join(', ')}]` : 'null'}, ESS ${ope.ess}, ${ope.status})` : ope === undefined ? 'not computed in this build (GET /api/health/evolution-evidence?ope=1)' : 'unknown'} — a different policy, not this mechanism's effect` };
     }
     if (m.mechanism === 'skill_selection') {
       const skills = skillSelectionReading(db);
