@@ -620,6 +620,9 @@ export type RelevanceQueue = {
 export type E1BlindTask = { task_id: string; query: string; candidates: Array<{ handle: string; title: string; excerpt: string }> };
 export type E1LabelQueue = { task: E1BlindTask | null; progress: { labelled: number; tasks: number; target: number; max_tasks: number } };
 export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
+export type CockpitWarning = { subsystem: string; since: string | null; detail: string; due_in_days: number };
+/** GET /api/health/needs-you — the cockpit's needs_you alone (sidebar badge, tab title, /decisions header) */
+export type NeedsYouView = { at: string; needs_you: NonNullable<OperatorCockpit['needs_you']>; warnings: CockpitWarning[]; errors: Array<{ section: string; message: string }> };
 export type OperatorCockpit = {
   at: string;
   /** Cockpit 3.0: one id per snapshot; health = worst guardrail state (DEGRADED for a partial snapshot or open stall) */
@@ -632,10 +635,14 @@ export type OperatorCockpit = {
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
   guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null }; attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
+  /** a detector finding dated in the future (an admission that expires in 15 d): a deadline, not a stall (older servers: absent) */
+  warnings?: CockpitWarning[];
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched?: boolean; stale?: boolean }>;
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
   needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
+    /** stalls whose remedy is an operator act (counted in total); `stalls` is then the system-side rest */
+    operator_stalls?: number | null;
     join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null;
     /** human decisions only (server-side); labels, stalls and panel-reviewed proposals are not in it */
     total?: number | null;
@@ -647,7 +654,7 @@ export type OperatorCockpit = {
     optional_labelling?: { d5: number | null; car: number | null; e1: number | null; di001: number | null; total: number | null } | null;
     /** what the system handles (shown, never counted) */
     system?: { requeue_will_handle: number | null; requeue_mode: string | null; proposals_auto_reviewed: boolean };
-    system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
+    system_requeue?: Partial<Record<'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number;
     /** Cockpit 3.0: execution, not intent — armed_not_ticking / failing schedulers silently stopped working */
@@ -703,12 +710,14 @@ export type OperatorDigest = { at: string; text: string; data: Record<string, un
  */
 export type DraftPrs = { total: number | null; unsettled: number | null; by_settlement: Record<LoopPrSettlementState, number> | null; closed_unmerged: number | null;
   rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null;
-    settlement: LoopPrSettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null }> };
+    settlement: LoopPrSettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null;
+    /** open on GitHub (never polled = open): waits for the operator's merge or close; false = only waits or done (older servers: absent) */
+    needs_operator?: boolean }> };
 export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {
   requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null;
-    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+    queue_class?: 'operator' | 'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
     /** REQUEUE_AUTO_MODE policy verdict (absent when off): requeue / dismiss / wait = system will handle; hold = needs you */
     auto?: { mode: 'shadow' | 'on'; action: 'requeue' | 'dismiss' | 'wait' | 'hold'; cls: string; reason: string } | null }>;
   /** untruncated counts over the same filters as the paginated lists; null = the count failed */
@@ -2232,6 +2241,10 @@ class ApiClient {
 
   async getOperatorCockpit(): Promise<OperatorCockpit> {
     return this.request('/health/cockpit');
+  }
+
+  async getNeedsYou(): Promise<NeedsYouView> {
+    return this.request('/health/needs-you');
   }
 
   /** UX-13: the daily operator digest as it would be sent. */
