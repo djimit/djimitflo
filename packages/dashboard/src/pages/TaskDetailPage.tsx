@@ -9,6 +9,7 @@ import { ExecutionTimeline } from '../components/ExecutionTimeline';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { useDialog } from '../components/ConfirmDialog';
+import { fmt, fmtDate } from '../lib/format';
 
 export function TaskDetailPage() {
   const dialog = useDialog();
@@ -230,9 +231,9 @@ export function TaskDetailPage() {
           <p className="font-semibold">Task failed</p>
           <p className="mt-1 text-sm break-words">{failure.message ?? 'The executor recorded no failure reason.'}</p>
           <p className="mt-1 text-xs">
-            Tokens: {failure.tokens === null ? 'not reported' : failure.tokens.toLocaleString()}
+            Tokens: {failure.tokens === null ? 'not reported' : fmt(failure.tokens)}
             {task.execution_time_ms ? ` · Ran ${formatDuration(task.execution_time_ms)}` : ''}
-            {task.failed_at ? ` · Failed at ${new Date(task.failed_at).toLocaleString()}` : ''}
+            {task.failed_at ? ` · Failed at ${fmtDate(task.failed_at)}` : ''}
           </p>
         </div>
       )}

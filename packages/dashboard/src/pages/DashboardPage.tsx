@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { SpecComplianceWidget } from '../components/SpecComplianceWidget';
+import { fmt } from '../lib/format';
 
 // Truth audit 2026-11-12: counts come from the server's per-status totals, not from the first 100 rows in the store
 const fetchTaskOverview = () => api.getTasks({ limit: 5, view: 'summary' });
@@ -29,7 +30,7 @@ export function DashboardPage() {
   const counts = overview.data?.counts ?? {};
   const count = (...statuses: string[]) => statuses.reduce((sum, status) => sum + (counts[status] ?? 0), 0);
   const known = overview.data?.counts !== undefined;
-  const show = (value: number) => (known ? value.toLocaleString() : '…');
+  const show = (value: number) => (known ? fmt(value) : '…');
   const running = count('running');
   const active = count('running', 'queued', 'pending');
   const completed = count('completed');
@@ -85,7 +86,7 @@ export function DashboardPage() {
           title="Completed"
           value={show(completed)}
           icon={<CheckCircle2 className="w-6 h-6 text-status-completed" />}
-          trend={known ? `of ${total.toLocaleString()} tasks` : 'loading…'}
+          trend={known ? `of ${fmt(total)} tasks` : 'loading…'}
           trendUp={true}
         />
         <StatusCard

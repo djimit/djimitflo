@@ -22,7 +22,7 @@ it('shows Loading while the task list is in flight, never "No tasks yet"', async
   expect(screen.queryByText(/No tasks yet/)).toBeNull();
   await act(async () => resolve({ tasks: [row('a', 'failed') as never], total: 1463, counts }));
   expect(screen.getByText('Task a')).toBeTruthy();
-  expect(screen.getByTestId('tasks-range').textContent).toBe(`Showing 1–1 of ${(1463).toLocaleString()}`);
+  expect(screen.getByTestId('tasks-range').textContent).toBe('Showing 1–1 of 1,463');
 });
 
 it('shows a failed read as unavailable with the error, not as an empty task list', async () => {
@@ -56,7 +56,7 @@ it('task detail shows the executor failure reason, tokens and the full copyable 
   render(<MemoryRouter initialEntries={[`/tasks/${id}`]}><Routes><Route path="/tasks/:taskId" element={<TaskDetailPage />} /></Routes></MemoryRouter>);
   const banner = await screen.findByTestId('task-failure');
   expect(banner.textContent).toContain('OpenCode execution timed out after 600000ms');
-  expect(banner.textContent).toContain(`Tokens: ${(30579).toLocaleString()}`);
+  expect(banner.textContent).toContain('Tokens: 30,579');
   expect(screen.getByTestId('task-id').textContent).toBe(id);
   expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
 });

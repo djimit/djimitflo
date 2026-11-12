@@ -16,9 +16,9 @@ const recent = { id: 'fixture', title: 'Fixture task', description: 'Disposable 
 it('shows the server per-status totals, not counts over a loaded page', async () => {
   vi.mocked(api.getTasks).mockResolvedValue({ tasks: [recent], total: 1462, counts: { completed: 1137, failed: 302, cancelled: 17, paused: 7, running: 2, queued: 1 } });
   render(<DashboardPage />);
-  expect(await screen.findByText((1137).toLocaleString())).toBeTruthy();
+  expect(await screen.findByText('1,137')).toBeTruthy();
   expect(screen.getByText('302')).toBeTruthy();
-  expect(screen.getByText(`of ${(1462).toLocaleString()} tasks`)).toBeTruthy();
+  expect(screen.getByText('of 1,462 tasks')).toBeTruthy();
   expect(screen.getByText('2 running now')).toBeTruthy();
   expect(screen.getByText('Task: Fixture task')).toBeTruthy();
   expect(api.getTasks).toHaveBeenCalledWith({ limit: 5, view: 'summary' });

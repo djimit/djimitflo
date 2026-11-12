@@ -7,6 +7,7 @@ import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { api, type RuntimeContract } from '../lib/api';
 import { TaskPriority, ExecutionMode } from '@djimitflo/shared';
 import type { Repository } from '@djimitflo/shared';
+import { fmt } from '../lib/format';
 
 const PAGE_SIZE = 50;
 const STATUS_OPTIONS: Array<[string, string]> = [
@@ -122,7 +123,7 @@ export function TasksPage() {
 
       {data && total > 0 && (
         <div className="flex items-center justify-between text-sm text-foreground-secondary">
-          <span data-testid="tasks-range">Showing {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + tasks.length} of {total.toLocaleString()}</span>
+          <span data-testid="tasks-range">Showing {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + tasks.length} of {fmt(total)}</span>
           <div className="flex gap-2">
             <button type="button" disabled={page === 0 || loading} onClick={() => setPage((p) => p - 1)} className="px-3 py-1 border border-border rounded-lg disabled:opacity-50">Previous</button>
             <button type="button" disabled={(page + 1) * PAGE_SIZE >= total || loading} onClick={() => setPage((p) => p + 1)} className="px-3 py-1 border border-border rounded-lg disabled:opacity-50">Next</button>

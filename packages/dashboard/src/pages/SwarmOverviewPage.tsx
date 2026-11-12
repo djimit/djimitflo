@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { Users, Activity, Zap, Clock, AlertCircle, Brain, Server, TrendingUp, MessageSquare, Lightbulb } from "lucide-react";
 import type { Agent, Task } from "@djimitflo/shared";
 import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
+import { fmt } from '../lib/format';
 
 interface Discussion {
   id: string;
@@ -295,8 +296,8 @@ export function SwarmOverviewPage() {
             <Activity className="w-5 h-5 text-emerald-600" />
             <span className="text-sm font-medium text-slate-600">Total Tasks</span>
           </div>
-          <div data-testid="swarm-total-tasks" className="text-3xl font-bold text-slate-900">{totalTasks === null ? '—' : totalTasks.toLocaleString()}</div>
-          <div className="text-xs text-slate-500 mt-1">{totalTasks === null ? 'task totals not loaded' : `${completedTasks.toLocaleString()} completed · ${failedTasks.toLocaleString()} failed`}</div>
+          <div data-testid="swarm-total-tasks" className="text-3xl font-bold text-slate-900">{fmt(totalTasks)}</div>
+          <div className="text-xs text-slate-500 mt-1">{totalTasks === null ? 'task totals not loaded' : `${fmt(completedTasks)} completed · ${fmt(failedTasks)} failed`}</div>
         </div>
 
         <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
@@ -369,7 +370,7 @@ export function SwarmOverviewPage() {
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
           <TrendingUp className="w-5 h-5" />
-          Recent Tasks ({totalTasks === null ? localTasks.length : `latest ${localTasks.length} of ${totalTasks.toLocaleString()}`})
+          Recent Tasks ({totalTasks === null ? localTasks.length : `latest ${localTasks.length} of ${fmt(totalTasks)}`})
         </h2>
         {loading ? (
           <div className="text-center py-12 text-slate-500">Loading tasks…</div>

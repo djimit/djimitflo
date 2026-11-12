@@ -56,7 +56,7 @@ it('Total Tasks shows the server totals, not the number of rows loaded', async (
     { tasks: rows, total: 1462, counts: { completed: 1137, failed: 302, cancelled: 17, paused: 7 } });
   useStore.setState({ agents: agents as any, tasks: Array.from({ length: 100 }, (_, i) => ({ id: `s${i}`, status: 'completed' })) as any });
   render(<MemoryRouter><SwarmOverviewPage /></MemoryRouter>);
-  await waitFor(() => expect(screen.getByTestId('swarm-total-tasks').textContent).toBe((1462).toLocaleString()));
-  expect(screen.getByText(`${(1137).toLocaleString()} completed · 302 failed`)).toBeTruthy();
-  expect(screen.getByText(`Recent Tasks (latest 1 of ${(1462).toLocaleString()})`)).toBeTruthy();
+  await waitFor(() => expect(screen.getByTestId('swarm-total-tasks').textContent).toBe('1,462'));
+  expect(screen.getByText('1,137 completed · 302 failed')).toBeTruthy();
+  expect(screen.getByText('Recent Tasks (latest 1 of 1,462)')).toBeTruthy();
 });
