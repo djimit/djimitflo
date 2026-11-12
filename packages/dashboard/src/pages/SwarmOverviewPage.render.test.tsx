@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useStore } from '../lib/store';
@@ -11,13 +11,13 @@ const agents = [
   { id: 'a2', name: 'Stale two', status: 'active', liveness: 'stale', total_token_usage: 0, total_execution_time_ms: 0, total_tasks: 0, capabilities: [] },
   { id: 'a3', name: 'Stale three', status: 'active', liveness: 'unknown', total_token_usage: 0, total_execution_time_ms: 0, total_tasks: 0, capabilities: [] },
 ];
-function stub(usage: Record<string, unknown>, list: unknown[] = agents) {
+function stub(usage: Record<string, unknown>, tasks: unknown = { tasks: [] }, list: unknown[] = agents) {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const body = url.startsWith('/api/swarms/usage-window') ? usage
       : url.startsWith('/api/swarms/status') ? { fleet_pools: [{ runtime: 'codex', running_leases: 2, prepared_leases: 5, recommended_concurrency: 1 }], resource_snapshot: {} }
       : url.startsWith('/api/swarms/intelligence/capabilities') ? { capabilities: [{ id: 'cap-1', status: 'candidate', kind: 'skill' }], registry_total: 512, loaded: 100, limit: 100 }
       : url.startsWith('/api/agents') ? { agents: list }
-      : url.startsWith('/api/tasks') ? { tasks: [] }
+      : url.startsWith('/api/tasks') ? tasks
       : url.startsWith('/api/discussions') ? { discussions: [] }
       : url.startsWith('/api/learning') ? { learnings: [{ id: 'l1', title: 'Old curated note', category: 'pattern', description: 'x', created_at: '2026-07-14T10:00:00Z' }] }
       : null;
@@ -51,9 +51,21 @@ it('SW-01: known windowed tokens are shown with the window and their coverage', 
 
 it('truth audit 2026-11-12: agent cards show liveness (not the never-decaying status) and 30-day tasks', async () => {
   const with30d = agents.map((a, i) => ({ ...a, counters_30d: i === 0 ? { window_days: 30, tasks: 240, completed: 155, failed: 80, outcomes: 0, outcomes_ok: 0 } : undefined }));
-  stub({ window_days: 7, events: 0, known_events: 0, total_tokens: null, coverage: null, status: 'UNKNOWN' }, with30d);
+  stub({ window_days: 7, events: 0, known_events: 0, total_tokens: null, coverage: null, status: 'UNKNOWN' }, undefined, with30d);
   useStore.setState({ agents: with30d as any });
   render(<MemoryRouter><SwarmOverviewPage /></MemoryRouter>);
   expect(await screen.findByText('240')).toBeTruthy();
   expect(screen.getAllByTestId('swarm-agent-status').map((n) => n.textContent)).toEqual(['active', 'stale', 'unknown']);
+});
+
+// Truth audit 2026-11-12: "Total Tasks 100" was the page size; the DB held 1,462 tasks (1,137 completed / 302 failed)
+it('Total Tasks shows the server totals, not the number of rows loaded', async () => {
+  const rows = [{ id: 't1', title: 'Recent one', status: 'completed', priority: 'medium', agent_id: 'a1' }];
+  stub({ window_days: 7, events: 0, known_events: 0, total_tokens: null, coverage: null, status: 'UNKNOWN' },
+    { tasks: rows, total: 1462, counts: { completed: 1137, failed: 302, cancelled: 17, paused: 7 } });
+  useStore.setState({ agents: agents as any, tasks: Array.from({ length: 100 }, (_, i) => ({ id: `s${i}`, status: 'completed' })) as any });
+  render(<MemoryRouter><SwarmOverviewPage /></MemoryRouter>);
+  await waitFor(() => expect(screen.getByTestId('swarm-total-tasks').textContent).toBe('1,462'));
+  expect(screen.getByText('1,137 completed · 302 failed')).toBeTruthy();
+  expect(screen.getByText('Recent Tasks (latest 1 of 1,462)')).toBeTruthy();
 });
