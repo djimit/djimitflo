@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c4fd57524965028758757f850fe48ac0db58ebedc0eccf0fd812207731749be2",
+  "pageVersion": "sha256:45289c2edc6f3eec089832137475a6cfef863a25ad75a61dfb05b9b721885acf",
   "claims": [
     {
       "id": "claim_ba0e430361374ce6868f5cd080fb4a7f",
-      "statement": "`ExecutorKind` enumerates every runtime the server can name — 'mock', 'opencode', 'codex', 'claude', 'hermes', 'gemini', 'editor', 'pi', 'docker', 'deep-agent', and 'custom' — and the ExecutionEngine constructor always registers the eight defaults mock/opencode/codex/claude/hermes/gemini/editor/pi while registering deep-agent only when DJIMIT_DEEP_ENABLED=true (also instantiating the DeepAgentContractIssuer).",
+      "statement": "`ExecutorKind` enumerates every runtime the server can name — 'mock', 'opencode', 'codex', 'claude', 'hermes', 'gemini', 'editor', 'pi', 'atomic', 'remote', 'docker', 'deep-agent', 'djimitsec', and 'custom' — and the ExecutionEngine constructor always registers the eleven defaults djimitsec/mock/opencode/codex/claude/hermes/gemini/editor/pi/atomic/remote, registering deep-agent only when DJIMIT_DEEP_ENABLED=true (also instantiating the DeepAgentContractIssuer).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L155-L167",
-          "version": "repo-lines-v1:sha256:000cad6260b63d8f59d8a63adbd959e684cb38c7f82f76eaeee37527423859a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L179-L194",
+          "version": "repo-lines-v1:sha256:305529f8332c9237b82fd8369c515d1e4755eb6f5365c6fd1efc3c344461dc76:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
         },
         {
           "resource": "repo://packages/server/src/execution/types.ts#L10-L10",
-          "version": "repo-lines-v1:sha256:289f831edb9b19faaaf7570444970546e9071a1ca1b9cd35b266f88c383d425f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjg5ZjgzMWVkYjliMTlmYWFhZjc1NzA0NDQ5NzA1NDZlOTA3MWExY2ExYjljZDM1YjI2NmY4OGMzODNkNDI1ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjg5ZjgzMWVkYjliMTlmYWFhZjc1NzA0NDQ5NzA1NDZlOTA3MWExY2ExYjljZDM1YjI2NmY4OGMzODNkNDI1ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI2NmVhN2MwNjIwMDgzMmFhYmM1OWI3MWVjMzE5YTA2ZDhhYmYwYWVmMjMyZjUyZDQ4MTZkOGFkYWU5OWZiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjk3MTU0NTQ0OWE0NDAwYTFhNDhjYWRiYWI2NzZiM2NiMmJkMWY1ZGJhZWMwNjIzOWE1YzU3ODczMGIyNWM2NyJ9"
+          "version": "repo-lines-v1:sha256:306110c3c5ca6c8e4f971c3a756fe30b5479a80acd431d0df30247497038082b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA2MTEwYzNjNWNhNmM4ZTRmOTcxYzNhNzU2ZmUzMGI1NDc5YTgwYWNkNDMxZDBkZjMwMjQ3NDk3MDM4MDgyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA2MTEwYzNjNWNhNmM4ZTRmOTcxYzNhNzU2ZmUzMGI1NDc5YTgwYWNkNDMxZDBkZjMwMjQ3NDk3MDM4MDgyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI2NmVhN2MwNjIwMDgzMmFhYmM1OWI3MWVjMzE5YTA2ZDhhYmYwYWVmMjMyZjUyZDQ4MTZkOGFkYWU5OWZiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjk3MTU0NTQ0OWE0NDAwYTFhNDhjYWRiYWI2NzZiM2NiMmJkMWY1ZGJhZWMwNjIzOWE1YzU3ODczMGIyNWM2NyJ9"
         }
       ]
     },
@@ -21,16 +21,12 @@
       "statement": "`docker` and `custom` are never registered by the constructor: 'docker' only appears as the kind reported by DockerSandboxExecutor when the engine wraps another executor at dispatch time, and 'custom' is the extension slot for out-of-tree implementations added via registerExecutor().",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L155-L167",
-          "version": "repo-lines-v1:sha256:000cad6260b63d8f59d8a63adbd959e684cb38c7f82f76eaeee37527423859a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L179-L203",
+          "version": "repo-lines-v1:sha256:e9a82645bf43fb01a45654c744c2ef3f639b3cfff5d4b9f38b23f30619e43405:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3ZDM4YTFkNDdkOWQyNTYzY2Y0NmJkNTBjZTM0MjMzYTE5NWUxYWJmMzUwMjc1MjY2OTUxNDgwZWNiOTkxYjEifQ"
         },
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L173-L176",
-          "version": "repo-lines-v1:sha256:a6e258aea0293f19e4fc991b44785e47392ecc2257c2e6aac217fe68c07c9d29:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjEyODNkMzlhMzQ2Y2JiZWQ4ODg3ZjMzMDA4MjYwMmU4YzU5NDZkY2E0NWVkZDM0NWZmZjkyYWU3YTJlOWQxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTg0NjZhYjBkYjdhNDIzYmE3NmZmZWU5ZTBhYjMwOTRlZDk0ZGEwZmIwNGVmNmU0MTVjNGJlNjE2ZGI0OGJmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDdkMzhhMWQ0N2Q5ZDI1NjNjZjQ2YmQ1MGNlMzQyMzNhMTk1ZTFhYmYzNTAyNzUyNjY5NTE0ODBlY2I5OTFiMSJ9"
-        },
-        {
-          "resource": "repo://packages/server/src/execution/executors/docker-sandbox-executor.ts#L56-L56",
-          "version": "repo-lines-v1:sha256:981cf2ad7f52b82acaaf648156aec793e64cef171d095c311ba29770a4f0678e:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTgxY2YyYWQ3ZjUyYjgyYWNhYWY2NDgxNTZhZWM3OTNlNjRjZWYxNzFkMDk1YzMxMWJhMjk3NzBhNGYwNjc4ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTgxY2YyYWQ3ZjUyYjgyYWNhYWY2NDgxNTZhZWM3OTNlNjRjZWYxNzFkMDk1YzMxMWJhMjk3NzBhNGYwNjc4ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmViZjY2Y2FmY2JjYTMzN2UzNDgxY2FhNjlhMDE3MjlmNmE3YzlhY2I2YTQ1M2VjZTNhMjkwMzQ5OTEyMjcwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI4ODQ5OGEwNjZiN2FkYzA2ODAwNDFjODBlYjMyNDIxNTQ4OWJjZjVjNDhmNjBkZjZmNDA0M2NiNjJjMTJmNCJ9"
+          "resource": "repo://packages/server/src/execution/executors/docker-sandbox-executor.ts#L48-L57",
+          "version": "repo-lines-v1:sha256:3e486ca84a696cb2d7d704c8086f958b4c7a72953b6a8365c65475dbc13624e9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NTZjOGRjMGFiZWNkZjEyNjVkMDgwMGYwOTc0NjE2OWIzZTRhZTE1NjJlOTU2NmNmYjgyMWM3NTgzMjkyYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyY2U1MTBhMzRjNDFiMTlmYzc1MmVkMzA0NjVhODdhMDJhOGJmODA3MjA5MjMxZDg3OGEyOTM1NzUzZTc0MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkZTJmNTE3ODAxMjQzNGE4ZjBkNmE0NjMzMDRkZTllYWQ0ZWRiYTU3MDllY2Y1ZGM1NmE4ZDU3NTYyMWM3MzMifQ"
         }
       ]
     },
@@ -46,15 +42,15 @@
     },
     {
       "id": "claim_3bae0a9712614145a278712276b678dc",
-      "statement": "ExecutionSession exposes `events: AsyncIterable<ExecutionEventCreateInput>` (persisted + broadcast by processEventStream), `result: Promise<ExecutionResult>`, `closed?: Promise<void>` (resolves only after the OS child and its streams close), mandatory `cancel()`, and optional, currently-unimplemented `pause()`/`resume()`.",
+      "statement": "ExecutionSession exposes `events: AsyncIterable<ExecutionEventCreateInput>` (persisted + broadcast by processEventStream), `result: Promise<ExecutionResult>`, `closed?: Promise<void>` (resolves only after the OS child and its streams close), mandatory `cancel()`, optional `exit?: { code, signal }` recording the OS child's own exit for resumed loop workers, and optional, currently-unimplemented `pause()`/`resume()`.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L958-L985",
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1047-L1074",
           "version": "repo-lines-v1:sha256:025402302ab72b9189a5b3ec7de980fbb57b5fbe434bb3cb9e91eca3e7f73404:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0N2E4OTM2NmI5ZDc0YjljMmI3NGNiMzllYmQwMTkwMGMzM2MwYTJkMTZkZjBiOTIxNjhhZDk3N2ExNDMwYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5OWQyMzJkMTdmODM4ZGI3NWJmZmU5YWNiZTk2ZTIzZjhhOTc5M2VjNWJiZmMyYzY3YTA3Yzk1NWQyMmM4ZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmYTVjNDcxY2NlZWJjZjdhNzdhM2FmYWZjYjQzYjhhMDVjNTY4NTUyMzJlMzhhY2I0MDQzMzM4MTNjOGRlMzEifQ"
         },
         {
-          "resource": "repo://packages/server/src/execution/types.ts#L78-L112",
-          "version": "repo-lines-v1:sha256:0c2da4c2aaa9e7aeaf5e36fadf64e0ec5c0fc52365e95a72560a87678cd7c62c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMDgyNzZiZmYxMWIzM2QxZDVhMTRlNjM3M2QxZjBmNzNlNTE5MDJiY2ZjMjJiZWJmYWQyNmFkNmU4MDRkY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzOTgzNDA3MDhjOTcxNTEyNGI4OWUxZWMzYzI4YjYxZDU1YzE1NzNiZjBhYWJhNTViNzc2MDFhMTgxZGZkMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlYzQ2NmIxMTIyM2M5MGEzMGM0MDdhYWQzZWMzNmI2ODZjMmRhNDg1OTUyOTJlYzAzYTUzM2MzZjQ0MDcxYTQifQ"
+          "resource": "repo://packages/server/src/execution/types.ts#L81-L117",
+          "version": "repo-lines-v1:sha256:c11e3d3e0b10d1476f1b49a23be08d491fc3a82f4ae26801f532bbd403d3bea2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMDgyNzZiZmYxMWIzM2QxZDVhMTRlNjM3M2QxZjBmNzNlNTE5MDJiY2ZjMjJiZWJmYWQyNmFkNmU4MDRkY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzOTgzNDA3MDhjOTcxNTEyNGI4OWUxZWMzYzI4YjYxZDU1YzE1NzNiZjBhYWJhNTViNzc2MDFhMTgxZGZkMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlYzQ2NmIxMTIyM2M5MGEzMGM0MDdhYWQzZWMzNmI2ODZjMmRhNDg1OTUyOTJlYzAzYTUzM2MzZjQ0MDcxYTQifQ"
         }
       ]
     },
@@ -74,19 +70,19 @@
     },
     {
       "id": "claim_c0f8cdf706514488ab4a35c4996b1291",
-      "statement": "All CLI adapters share runtime plumbing: runtime-process.ts (runtimeProcessClosed + SIGTERM→SIGKILL-after-5s stopRuntimeProcess that resolves on actual close), executor-env.ts (buildExecutorEnv allowlists safe env so server secrets stay out of spawned CLIs), captureExecutorOutput (5 MiB rolling stdout/stderr tail), and structured-runtime-event.ts (maps tool_use/tool_result/error/text JSON chunks from claude/gemini/editor/codex/opencode/pi into TOOL_CALL/TOOL_RESULT/ERROR/LOG events with usage).",
+      "statement": "All CLI adapters share runtime plumbing: runtime-process.ts (spawnRuntime as the single spawn point, runtimeProcessClosed, and SIGTERM→SIGKILL-after-graceMs stopRuntimeProcess that resolves on actual close; RUNTIME_PROCESS_GROUP_KILL=on makes the child a POSIX process-group leader so stops signal the group and an exit hook reaps orphaned descendants), executor-env.ts (buildExecutorEnv allowlists safe env so server secrets stay out of spawned CLIs), captureExecutorOutput (5 MiB rolling stdout/stderr tail), and structured-runtime-event.ts (maps tool_use/tool_result/error/text JSON chunks from claude/gemini/editor/codex/opencode/pi into TOOL_CALL/TOOL_RESULT/ERROR/LOG events with usage).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/executor-output.ts",
-          "version": "repo-file-v1:sha256:9b0aa238bb8e74f5e9bb7aa9ccf27831cf4b183e02db25c0f6a2a622f6e64875"
+          "resource": "repo://packages/server/src/execution/executor-output.ts#L3-L11",
+          "version": "repo-lines-v1:sha256:abdf21147a344c132afd9e19efb584d464236186b0908ccebbfc34e5d1d84e87:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWM2NTgyZTljZTE1MWI4NzhlYTAzYWY5YmIyNmU1MzUxZmUwYzk4MzY0ZWFjNjEzZGQ0YzczZTY0ZjQxM2Q3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTA2YWI0ZDUwZWY3M2QxY2M1N2NiZDAwNDI2NTBjMWQ0MGFhZDdhOWE2Y2NkMjAzYTI3ZTc2Zjg1ZTY1NDhjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
-          "resource": "repo://packages/server/src/execution/executors/executor-env.ts#L17-L25",
-          "version": "repo-lines-v1:sha256:2d1fa85a22f0d74861bf175ff37e0b49211f701bc3147b27d388f9d57d10c6d5:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRiNDM1MzhjYjgwZjU1ZWE2MTE0MjBmMzA2NDE2N2VkM2Y0YjE4MGIyODFlZjBiZWUzMzBhZmQ4NmQ3YjZjMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmIzZWI1MjkyNTliMTJmZWZmOGQ2ZjMwNWY3ZjY1ZWMwNTQ5M2MyNmI1MDdjNDVmNjU0YmJmNzdmYWMyMzQ1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "resource": "repo://packages/server/src/execution/executors/executor-env.ts#L6-L33",
+          "version": "repo-lines-v1:sha256:ddfceb11a285246cd83efe120c72f684caa05fa718696ca734b39d45933ebd28:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyZDA4ODk1Y2QxYjBkYmVmMjdjOTE1ZDRlMjMyZWFlNDVjZWM4ZTg3MTE5ODU2ZGY4OWRkMTJhNTEzZjk4MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjOGU5YTA4OGEyZGYzYTA0N2VlMDUwZGZlMmQxZjgyMzdkZjM3NjY5YWJlNWZlZTVlMTEyNzYyNDk4MTRiMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://packages/server/src/execution/executors/runtime-process.ts#L7-L31",
-          "version": "repo-lines-v1:sha256:3b1e973488ed6bdcb750a4e6ab2bc36651e93fe5e2d500638be75f7a8ebb7420:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNzVhMDg5N2RjYzE3NGM5ZTMzMWE2NGQ0Nzk1ZjU2M2RjMGViOTJhNTg1NWVmNjQ3NzhjYTc1ODAyMTBhNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5ODgxODQ0YWZiYTRjZGMzNDM4OGQ1NDdkYmRlMmUzOTcyMmVjOTgxYmExNTc5M2E2ZmYxODkwZDdkZmRmYWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlYThjZjdlOGM1Yjc0YmQyODcxMGU0ZTUyMmY5ZDgyNjdlZjdiZThkNmEyOTU2NGRkZjU3NzQ1MDExZGU2M2MifQ"
+          "resource": "repo://packages/server/src/execution/executors/runtime-process.ts#L12-L118",
+          "version": "repo-lines-v1:sha256:cc63fc93c4075bbccb919bc15c1b7ce9a16294d05b7c636c3d205edc047a0005:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ZWE3ZjU5MmNhOWE4NzNkMTRhNTdkZDEwNzY5MmQ4MDU2ZTQwY2VjYWZlNjhiZGI4ODZmODcxYTgwMzFjZGUzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjNDgxZDUzYTI4Nzk1ZDE3Yzg5M2FlOWNjYTE1NTdkYzNkNDc0Y2Q5NTU2NzBiOGIwZDU4OTRhMzU0OWMwZjU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyZWE4Y2Y3ZThjNWI3NGJkMjg3MTBlNGU1MjJmOWQ4MjY3ZWY3YmU4ZDZhMjk1NjRkZGY1Nzc0NTAxMWRlNjNjIn0"
         },
         {
           "resource": "repo://packages/server/src/execution/executors/structured-runtime-event.ts#L18-L39",
@@ -164,14 +160,14 @@
     },
     {
       "id": "claim_782793292ec54eeeafee16f6e3382329",
-      "statement": "deep-agent never participates in fallback: when its circuit breaker is open the engine throws instead of falling back, and nextRetryExecutor returns null for a failed deep-agent attempt — a contract-gated run is terminal by design.",
+      "statement": "deep-agent and djimitsec never participate in fallback: an open circuit breaker on either kind makes the engine throw 'Fixed runtime circuit breaker is open; fallback is forbidden', and nextRetryExecutor returns null for a failed deep-agent attempt — these fixed runtimes are intentionally terminal.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L603-L603",
-          "version": "repo-lines-v1:sha256:f579369b4e16603c0c181b84d5cac9623a59f8e1615e816bb94f1810b2dbdda8:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU3OTM2OWI0ZTE2NjAzYzBjMTgxYjg0ZDVjYWM5NjIzYTU5ZjhlMTYxNWU4MTZiYjk0ZjE4MTBiMmRiZGRhOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU3OTM2OWI0ZTE2NjAzYzBjMTgxYjg0ZDVjYWM5NjIzYTU5ZjhlMTYxNWU4MTZiYjk0ZjE4MTBiMmRiZGRhOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWY2NjQyMTBiNWNhMGQyNjBkMzA3NjM5YmYyYmI2NTEyMzlmYjRiYzFiMzZjY2IzYjI4MjBiYTY2YjYxZmJmYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmYzY2U5MjU4N2ZjMGNmMmRkODIxYmNiMzFjODU2OWI3ZTg2NzNmNTg2ODZiYzU0NjgxMDA1YmVmMTkxNWU0ZSJ9"
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L638-L639",
+          "version": "repo-lines-v1:sha256:4813494ca397de2119f59e8f1a0f9548a526e28edf6a90322b69f4274861de46:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWZmZjBlZTA0MjkwMGRlOTAxYWY4Y2RmYTRjN2QyMDNjNDdlNmE1MTUxOGM5OGEzMzI4ZGU4NDkzODEzODMyZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA0MDk1ZjAxOWZhMjZhZGYwZjQ5NjhhMTk1OTI0MDI5ODk4MzFjMjYwZGJkZTMzMGE2Njg0ZjgyZDAwNDVmNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5OWY3MDU5YWY5ZGUwYmZlNWExYTY1NzdhYjI4ZmM2NWRjZTRiOTQzZjE5ZmUyNjhjMWExZTM5ZmEyZDQ0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmYzY2U5MjU4N2ZjMGNmMmRkODIxYmNiMzFjODU2OWI3ZTg2NzNmNTg2ODZiYzU0NjgxMDA1YmVmMTkxNWU0ZSJ9"
         },
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L788-L788",
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L838-L838",
           "version": "repo-lines-v1:sha256:3dda4cce703e429c63e6663d535c09f9af589500c86c0c7d01168429938b0442:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2RkYTRjY2U3MDNlNDI5YzYzZTY2NjNkNTM1YzA5ZjlhZjU4OTUwMGM4NmMwYzdkMDExNjg0Mjk5MzhiMDQ0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2RkYTRjY2U3MDNlNDI5YzYzZTY2NjNkNTM1YzA5ZjlhZjU4OTUwMGM4NmMwYzdkMDExNjg0Mjk5MzhiMDQ0MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E3YzA3YTcyMjY2YzUyZmYwZWU4ODhhZTVmZWNhZjk0MjI2NzEyOWZiYjI0OTFiNTFjMzY5YTJjNjBhMzRiMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDkzODIxNmI2YjI3MmRiZTliODIwODkyNjkzM2NhY2FjMTdmZGEyMDkzMDM3ZTQzMmJiZjZjMzE4MTljZGQ1MyJ9"
         }
       ]
@@ -224,23 +220,23 @@
     },
     {
       "id": "claim_2bb4f236e5cb4b95ab0e6dbb9a969058",
-      "statement": "The production Dockerfile pins @openai/codex@0.146.0, opencode-ai@1.18.10, and @anthropic-ai/claude-code@2.1.282 globally and build-time-verifies them with git/codex/opencode/claude --version probes; the same layer installs the gh CLI as a static .deb pinned via ARG GH_CLI_VERSION=2.100.0 (verified with gh --version) for GithubPrReviewService, which shells out to gh for PR review comments and Check Runs. At runtime GET /swarms/runtime-readiness treats only codex and opencode as production runtimes, checks their binary contracts and provider credentials, returns ready/blocked_reasons per runtime, and never starts a worker (starts_workers: false).",
+      "statement": "The production Dockerfile pins @openai/codex@0.146.0, opencode-ai@1.18.10, and @anthropic-ai/claude-code@2.1.282 globally and build-time-verifies them with git/codex/opencode/claude --version probes; adjacent layers install the gh CLI as a static .deb pinned via ARG GH_CLI_VERSION=2.102.1 (for GithubPrReviewService) and Atomic Agent as a per-arch release tarball pinned by version and sha256 (ATOMIC_AGENT_VERSION=0.6.5). At runtime GET /swarms/runtime-readiness treats only codex and opencode as production runtimes, checks their binary contracts and provider credentials, returns ready/blocked_reasons per runtime, and never starts a worker (starts_workers: false).",
       "evidence": [
         {
-          "resource": "repo://Dockerfile#L66-L74",
-          "version": "repo-lines-v1:sha256:e950cde6e523b22154160a441a952852374affa3addddcbfd63284e68533a8bb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRmYWRjZGM4YTRiZWI0MzE4Y2ExMmU2MTA5ZTliYmQ0ZTdhZDI1Zjk1ZTM2ZjVkMzBjMmU0YTAwMGUwM2VkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZjOWY0NWVhOGI1Y2I1MmIyMTc2OWQyNmM1ZjYxMmIwZTc3NzAwOWUyNmU2MjlhNGM5ZGQ3MTFiZmQwYmVmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjc3ODhhNWMwZjA3YWZlMTM5YzY2NWU0ZTFhNzNiODZjMTM3YjY2OTQ4MDJhM2ViNmQ0ZDRkZDdlZjlhNTM1OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGEwNDRhMjE3YjI5Njg3ZjAyYjdhMDUwYWZiNzdjMDA1ZTgyYWNjODUwNTgwYzljYzM1MjI1YmY3MTVlYmZlNyJ9"
+          "resource": "repo://Dockerfile#L77-L94",
+          "version": "repo-lines-v1:sha256:9360b711bf2243ab8cca072b4e9e4b8bab16702df296c1d6fe576e1b2d6f19e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1YWQ1MmU5MjdlMzg3MzRjMmM4OGRiZDhkMWExMWFlMTc1OWFlZmEzZGQyZWQ0YjU1NDgzMGRjYmE1ZWRkZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMzE4OGQ0OTBlNGE0MTVmZWU3YTRhMTk3ODJlNzFiYjQyYzE0NzZjNDM5MWVlMTg4M2UwZGQ1MGViZjg5N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5OTRiMWUyOTgwZjgwZTZmNjZkMzUwOTk1ZDc2ZjNlYTFhNTdjZTExOWE4NGI0MGM0M2M4NGZhYjY3Mzg0YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMDQ0YTIxN2IyOTY4N2YwMmI3YTA1MGFmYjc3YzAwNWU4MmFjYzg1MDU4MGM5Y2MzNTIyNWJmNzE1ZWJmZTcifQ"
         },
         {
-          "resource": "repo://Dockerfile#L76-L79",
-          "version": "repo-lines-v1:sha256:6580f3f36d39ef20623f649d59aa29e7414a1bb0719d66f37aec09053f0ca3a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVmNjE0YTllNjQxMTJkMmZlZDE3NDlhNTJkYzVlMWRmMDg5ZWQ1ZjE2ZmJjYzFkZDVhNGU4NTBhMGZiNjNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzljOWUyN2E5OTI4YmZiYTJjMmU2MTk5YmMwNDhiYTZkOWJkNzNmYTdjYmY3Njc1NTZmMjI3NDlmMDcwNjE0OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE4NTc5ZDM2NjZiMmQ4NTBkMGIzZWNkOThmOWEzODU5OWFiNDE2NTZmOGFhYzAzMzE1MTQyYTM0MGIyY2JkYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY3MzkyMTJhM2QzM2FiOGUyMzcxZjA3MWI4N2QzNzFlM2UxYWU3YzdmMGYxMzZkY2Y0NTNmYThiYzNiYjgxZSJ9"
+          "resource": "repo://Dockerfile#L96-L99",
+          "version": "repo-lines-v1:sha256:6580f3f36d39ef20623f649d59aa29e7414a1bb0719d66f37aec09053f0ca3a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVmNjE0YTllNjQxMTJkMmZlZDE3NDlhNTJkYzVlMWRmMDg5ZWQ1ZjE2ZmJjYzFkZDVhNGU4NTBhMGZiNjNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzljOWUyN2E5OTI4YmZiYTJjMmU2MTk5YmMwNDhiYTZkOWJkNzNmYTdjYmY3Njc1NTZmMjI3NDlmMDcwNjE0OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIxYTkxMGYxZGE5MjU4MTlmODQzZWYyZWU2ODliYjhiYThlYmIwNGRkNDNmMGE1OTgxMDk0NWMxOTBiZTc1ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY3MzkyMTJhM2QzM2FiOGUyMzcxZjA3MWI4N2QzNzFlM2UxYWU3YzdmMGYxMzZkY2Y0NTNmYThiYzNiYjgxZSJ9"
         },
         {
           "resource": "repo://packages/server/src/routes/swarm-knowledge.ts#L26-L51",
           "version": "repo-lines-v1:sha256:260e13657b516e716a1b23c1f2b11dd8293a0ace544181882cf1c766710034d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZjMyYWViY2MyOGJmYzdlODNmNDljMGQ3ZWQ1NWJlYjkzMGYxZTJjNDdlNDM3NGIxN2ViODA4MTZmY2M5YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNTMzMzNiZjA0OGJlMmFjMTYzNmQ3MzFkY2U3ZWZkOGE1ZmJkODg5MTBhMTRlYmYzM2ZhOTg5YTk4ZjgzYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzMjkyMzJhYTY3NDY1YzUzZjM1YmZiN2Y5NWIwNmZlZDM0NzljOTgwNzI1NmEyZDE3N2Q5ZjY2NWE5N2I1MTMifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L215-L215",
-          "version": "repo-lines-v1:sha256:ea8cb93aee714379cdab282b5d879237808d4b65981c8e5235ca4de628a9ae9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE4Y2I5M2FlZTcxNDM3OWNkYWIyODJiNWQ4NzkyMzc4MDhkNGI2NTk4MWM4ZTUyMzVjYTRkZTYyOGE5YWU5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE4Y2I5M2FlZTcxNDM3OWNkYWIyODJiNWQ4NzkyMzc4MDhkNGI2NTk4MWM4ZTUyMzVjYTRkZTYyOGE5YWU5YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIzZDVhZjlhZDFmNzFjNzYxMGI3YmU0MDk5NjBmMDQyMjZkZWQ2YmExMmMwYWM0ZDcyY2NkODhmNGIwMzY3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTEwZWMzM2M1YTllMGI3YmI0N2Y2ZGY1OTExYjIyNWY2NjNlNzk1ZDgxOTExODYzMjg1NTZlOTNmN2U5MDVjYSJ9"
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L287-L302",
+          "version": "repo-lines-v1:sha256:82fb27e73abad9c23da2817e4a08ff6735e46772ad8138b05dc3fb628e1d2356:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmYjNlYWQxYTFmNjZkMTMyNWI3OTczN2JjYTAyNGVhNTdmNTIyNzRjNTRjNGFjOGQyYWIwMjc1MDY3YmRhNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzMTFkYWZkZDkxNmIwODI4ZTQwMjkyODliMTg0ZmRiMWQxZTYyZDJmNWVlZTZiZTY0ZjBhYTZiNmQzZDlkNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkNTM4MDk3MzZhZDVkNWU4MTI5M2Q2YTgxZTIzMDgyMDU3YjdiMjlkNWEzOTViYWI4YmJjODY2ZmZjMTNlNGIifQ"
         }
       ]
     },
@@ -249,22 +245,22 @@
       "statement": "Before spawning a loop worker, LoopWorkerExecutorService probes the lease runtime via LoopService.getRuntimeContract(), records a start worker manifest with the contract, and if the contract is unavailable or status is not ok records a fail manifest with blocked_reasons runtime_contract_drift, fails the lease with runtime_contract_unavailable_or_drifted, and throws RUNTIME_CONTRACT_DRIFTED — no provider process is spawned against a drifted contract.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L234-L256",
-          "version": "repo-lines-v1:sha256:b28c027ff4d65c8bc1a4b3dc8e2b1dfa74e70addc976342fac5cc9a7786812c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YWM5MzQ2ODgzMTBkZGM2NmVmYWYwN2M2NTZiNzdhYmJjNzM0YTM1YzY4NmZiNjBjYWEyMjUyYmNjYTE2NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5ODQ1ODE0MWQyYTI5MWIzM2U3NzgyMWE3ZmZmNmQ5ODUxMDA3YWJlNjlkMWIzNzNmZTVmYTdmYzA3ZmQ1MGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkMjNkZjMzMDJiM2ZmOTllMmFkMDBhZjkxZWVkMDgwZWQ2YmQyZmViODQ3MTg1N2NiNmE4MmFkOTI1YTUwOTAifQ"
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L260-L287",
+          "version": "repo-lines-v1:sha256:a95b92a235741dbe844587b2930c69604d21895b76cb7c3883c4bea47f6243be:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOGU1NTU3NjQyNzVmMzM2MDRiM2JmYzg3M2EwY2EyNjIzZWY5MGI3Y2M1MmMwNzdhODFkNzAxYjEyOGIyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YjlhMGIxNmI5OTEwYmFhNWQwYTRkY2FmZjhhNjBjNDI5NjMzYmYyYWUzY2JhY2M4MjAyOTA3NTgwZDEwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ZjNlOTA0MGZiM2NiZWY0NDRjNTljNWVkOGNkNzdhN2RmMTU4OWY5Zjk3YjU5MzMzYjAwYmNkOWRlNjVjYjAifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L98-L125",
-          "version": "repo-lines-v1:sha256:70e7878109b32163ed778bcff4beff299d66c7c18b61683dac5ee6b3780ec469:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOGU1NTU3NjQyNzVmMzM2MDRiM2JmYzg3M2EwY2EyNjIzZWY5MGI3Y2M1MmMwNzdhODFkNzAxYjEyOGIyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YjlhMGIxNmI5OTEwYmFhNWQwYTRkY2FmZjhhNjBjNDI5NjMzYmYyYWUzY2JhY2M4MjAyOTA3NTgwZDEwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1NTJmMWQyMjY4ZDE2MTk2MjIxNjYyYmRlZDQ4ODA0MWM2YWU5M2Y4NjI0OGYxYjVmMWM0ZTAyM2VkYTA0ZGQifQ"
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L518-L540",
+          "version": "repo-lines-v1:sha256:fb17ade08892838986c781bc05baaf3338ac06755131d5d98ebdcaf7e2d27554:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YWM5MzQ2ODgzMTBkZGM2NmVmYWYwN2M2NTZiNzdhYmJjNzM0YTM1YzY4NmZiNjBjYWEyMjUyYmNjYTE2NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3NmFmZGRjODdmN2I0NzU1MmU3MzJhNjI1ZDE2YmVhNWY2OGQ3OTVmZWJjZmNhZDFmMDA2NWEyYWU5MDE2ZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkMjNkZjMzMDJiM2ZmOTllMmFkMDBhZjkxZWVkMDgwZWQ2YmQyZmViODQ3MTg1N2NiNmE4MmFkOTI1YTUwOTAifQ"
         }
       ]
     },
     {
       "id": "claim_f9046342e3a34922ac01c230f29ac466",
-      "statement": "RuntimeCommandService.getRuntimeContract probes each CLI runtime with <bin> --version plus a --help probe, marks the contract drifted when required json/cwd/headless flags are missing from the help output, stamps a sha256 conformance contract_hash with named checks (runtime_available, contract_not_drifted, structured_events, usage_accounting, bounded_lifecycle), caches contracts for LOOP_RUNTIME_CONTRACT_CACHE_MS (default 5s), and persists probes to the runtime_contract_probes table.",
+      "statement": "RuntimeCommandService.getRuntimeContract probes each CLI runtime with <bin> --version plus a --help probe (the probe table also covers atomic; manual/mock/remote use static contracts, remote's gated on REMOTE_MAKER_ENABLED), marks the contract drifted when required json/cwd/headless flags are missing from the help output, stamps a sha256 conformance contract_hash with named checks (runtime_available, contract_not_drifted, structured_events, usage_accounting, bounded_lifecycle), caches contracts for LOOP_RUNTIME_CONTRACT_CACHE_MS (default 5s), and persists probes to the runtime_contract_probes table.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L148-L236",
-          "version": "repo-lines-v1:sha256:7cc5d1beff2a63eb88994d24b7c28641a70344b49bbfb75cafc71ea084157be8:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2YmE0NjI0ZjMxYzIzMWNjMTZhNDIyZTk5YjI1MmRmNGI1NmIxYmEzNjU3MTU0MGFjYTU1NDVkNjRkOGVlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYTQyMWMyZGFlNDBlY2E5MmFhNTU0ZjBjMDYzODBkN2VlOTk1NWU1YmI2MzUwMTA4NjYyNDI0NzdkMTU0MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4N2M4NGU3N2U4Y2ZhZGExOGYxNDIwNDBhZWRmMmNjMTYzYzUwNDBkOGNhMzVlMmVlZTg0ZDZjNTExYTA1Y2UifQ"
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L149-L244",
+          "version": "repo-lines-v1:sha256:3a45ee397ef6295be2a320b80759aef70626b8e57e00ccb5cb91f3ca5d04ff6c:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2YmE0NjI0ZjMxYzIzMWNjMTZhNDIyZTk5YjI1MmRmNGI1NmIxYmEzNjU3MTU0MGFjYTU1NDVkNjRkOGVlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYTQyMWMyZGFlNDBlY2E5MmFhNTU0ZjBjMDYzODBkN2VlOTk1NWU1YmI2MzUwMTA4NjYyNDI0NzdkMTU0MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4N2M4NGU3N2U4Y2ZhZGExOGYxNDIwNDBhZWRmMmNjMTYzYzUwNDBkOGNhMzVlMmVlZTg0ZDZjNTExYTA1Y2UifQ"
         }
       ]
     },
@@ -273,20 +269,20 @@
       "statement": "The LoopService runtime contract set covers manual, mock, codex, opencode, claude, gemini, editor, and pi, exposed via getRuntimeContracts() at GET /loops/runtime-contracts; the manual runtime is always available (status ok, proof_class static) but LoopWorkerExecutorService.executeMaker rejects manual maker leases with MANUAL_MAKER_REQUIRES_HUMAN, and manual checkers require an explicit non-manual runtime to dispatch (CHECKER_RUNTIME_REQUIRED).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/loops.ts#L81-L83",
-          "version": "repo-lines-v1:sha256:bfa55793501157be57f6f7e0d2189e8c5bc472a18c8dafea4a3277de2d4ae76a:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmRjZTMxZDlkMDUzYjg5ZWE3YTExOTFmM2ZkODE4NjlmMWNmOGViMDg1MzVlYjFmNGY2ODgwZGZiN2RlM2M0NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDA5NGQzNzEwNmYxN2E2N2E5MjM0NWVmYWM0NGM4ZGY0YzYwNzllNjU5NDBmMDU2NDFiN2VkMGI1OGNlOTJkMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIwZmM5ZTY3ZGIwN2VkMjM5YmIzYWQyMzEyZWFhYjlhNzBlMWY2ZmJhMDEyODhiMGJhNmU2MWQ3ZjhlZTc4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWFiZjJkMTE0ZTFjZjgwNDg3ZmYyOWM1MzJjMjIyOGNiZTZiOTE5NTUxMWU5Y2IyZWVjY2RkZTFlZmI5MGJiOSJ9"
+          "resource": "repo://packages/server/src/routes/loops.ts#L94-L97",
+          "version": "repo-lines-v1:sha256:a88eb8316178f141d49557340c6e59edfdd13ca9e9a8f09c657a6e6c3255d015:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmRjZTMxZDlkMDUzYjg5ZWE3YTExOTFmM2ZkODE4NjlmMWNmOGViMDg1MzVlYjFmNGY2ODgwZGZiN2RlM2M0NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhkYjc0NjA4MTgyY2I3Y2E0ZDlmYmE0OWEzOTQ5OWE3ZjM5MDdiNGVhMDMzYjE0OTJhZDVjZjBiZWVlZWNlZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIwZmM5ZTY3ZGIwN2VkMjM5YmIzYWQyMzEyZWFhYjlhNzBlMWY2ZmJhMDEyODhiMGJhNmU2MWQ3ZjhlZTc4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWQzMTA1NGZiN2ZlNGI5ZDM2Y2VhZGYzOWJjNDg5YjVjNjBhM2IyNzFiZTQyYzI3MGNjMDdmMTU5NWI3YTk0OCJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L1228-L1241",
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1373-L1386",
           "version": "repo-lines-v1:sha256:384d100d5a76ee9ad78c13e7b27dd9c25cee11fc45aab6228f0b78a9d5f849cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZDNkZDk0NGNkYjQ2ZjA4OWFmYThhODc5MjQxMTcxZTY3NzU1YmZhMWI1ZDI3NjNhOTk1YzFjYjYwMTdhMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxYTVjZDI0OTMwOThlNzhiMmM5OWQwMWI2MDEwZDAwY2Y4YTE5OTAyYTdmYTJmMmI3ZGU5YTU2MmY2ZmQ5MWEifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L229-L233",
-          "version": "repo-lines-v1:sha256:e5551e3695f4db57811eac374cf2a6cc7793837e9ea4bec568dd0d7e4c27d1bd:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZjNTJlZGFiNWJhMzFmM2FlNjUwMWM2YjczMTYzNjQxNmE0ZWRkOWYzNDk5YmFiOTUwNzFhMWY3ZTlmYzVjMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTliZTY4ZjRjODdhZmI3MTcwOWQxYWM2OWVkYmZlZTJiOGYxZDU2YjcxMzAzNzE0M2U1Y2ZkYzVlMzA0YmVlNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGExNDM0ODcxNWZkMDRjMTk2NzQ0NGQyY2E1YzkxOTU1N2UxZTZjOTNlM2ZlN2JiNDU1Y2RiOWQ4OWJlY2I0YSJ9"
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L234-L237",
+          "version": "repo-lines-v1:sha256:287cd93aca6780593ece253ae265f740e9b0f72ae6b85a3032819f9d296ee612:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2QxZWY4NDFmZWM0MDg4OGJhYTRkNWQ2NWUxMmFkZTgzNmE1N2Y1NjU2YTYzZTdkZDMxMTRlYmM5MzYzYzRiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWNlOTIzYTQzOThiYzExODMzMTgyYjE3M2EyYzk5NTk1NjQ2YjBkNzY2NjJiNGMxZjI4NDkyMDgzN2E4ZTFiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzQ4ZjI4MzVhNDFlNjVlOGE3MjUyNWI3M2YxZWI1ZWFhYThkZjc0YzY0MGRlZGZiOGY5ZDQyYTVmODZkNDA2ZSJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L75-L78",
-          "version": "repo-lines-v1:sha256:287cd93aca6780593ece253ae265f740e9b0f72ae6b85a3032819f9d296ee612:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2QxZWY4NDFmZWM0MDg4OGJhYTRkNWQ2NWUxMmFkZTgzNmE1N2Y1NjU2YTYzZTdkZDMxMTRlYmM5MzYzYzRiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWNlOTIzYTQzOThiYzExODMzMTgyYjE3M2EyYzk5NTk1NjQ2YjBkNzY2NjJiNGMxZjI4NDkyMDgzN2E4ZTFiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2Y4YzJkOTAzMjc5ZjJjNjAyY2I3N2IwYjc3ZWNhMTcyNTNlMGFmNmM1YmFjMDc4N2YzOTQ1YWEwZmI0M2VkNiJ9"
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L510-L513",
+          "version": "repo-lines-v1:sha256:85df0261b408aa16d56604d1d958367ff92cf978d670c5a71386655886c49035:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2M5NTY4NWZhOGI5NjA0NjdlMGY5YTIzMTkyZjg3ZDI4MmE4ZDRlNzNjODA2YmRiZTQ0NjE5MGNiOGRjZWE0OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDRkZDc3MWUyYjc2MzUwMjdkNjFjMzU2YTE2YzRmNzRjNjdhMDU4MTkxNWNjZmZlZDNhMTVlMzg1N2MzZmZkNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTliZTY4ZjRjODdhZmI3MTcwOWQxYWM2OWVkYmZlZTJiOGYxZDU2YjcxMzAzNzE0M2U1Y2ZkYzVlMzA0YmVlNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODk4NDU4MTQxZDJhMjkxYjMzZTc3ODIxYTdmZmY2ZDk4NTEwMDdhYmU2OWQxYjM3M2ZlNWZhN2ZjMDdmZDUwYSJ9"
         }
       ]
     },
@@ -295,12 +291,12 @@
       "statement": "OpenCodeExecutor reports token usage and cost collected from NDJSON step_finish parts as tokenUsage/costDollars metrics on the ExecutionResult, and resolves an exit-0 run as failed with code VERIFICATION_FAILED (retryable: false, sideEffectsPossible: true) when a verification tool step (build_check/lint/test/typecheck or a bash command matching tsc/eslint/vitest/jest/pytest/…) reports failure.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L282-L346",
-          "version": "repo-lines-v1:sha256:b50b49355002fc2b8d704fb9f7677155e93c40aae264282229cbe6081ee68bce:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWMwZDkzMDcyZGMzMjMxNmUwNzc3Mjk0MzFkMTE2MGMyZDU2ZTM3N2RkNjYwNzM4NzQxNTU3NjliZTkyN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYjE3ODUyYTIzOTk1ZGYwODUzY2MwMTNkMzkzMTM5MDkzZGIyOGVhYzYzZDJiMjQwN2Y3MDRhYjQzNDJjYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNWMzOTJhYTAzNzM0OTcyMzZjZDk1ZWZiYzgxYjk1MWE2MDZlMGUwMzg4NzUwMTE4ZDkyYWM5ZWQ3NGU4MTcifQ"
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L351-L380",
+          "version": "repo-lines-v1:sha256:11dc810a9724f728c2fb90471598073b79e87178ecb4c3659d9fbb4306de1e56:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWMwZDkzMDcyZGMzMjMxNmUwNzc3Mjk0MzFkMTE2MGMyZDU2ZTM3N2RkNjYwNzM4NzQxNTU3NjliZTkyN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYjE3ODUyYTIzOTk1ZGYwODUzY2MwMTNkMzkzMTM5MDkzZGIyOGVhYzYzZDJiMjQwN2Y3MDRhYjQzNDJjYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjZDg4NDQ5M2Y3NWI5YmIzMjMyOTQ0NzYzYTY2ZTUzZGJiZmQ5ZjgxZGJjZGZlM2VhZmI1M2U1ZWEzNGVmMTgifQ"
         },
         {
-          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L633-L658",
-          "version": "repo-lines-v1:sha256:ef07d8ea535a3b99a483a766ab04d55f5dc86d0ce4486d023e5868a71caba351:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYjRhYzg5NzJjYmYwN2FiMTI5YzcyZWMwZTZlM2U1YzUwNzU3ZWE0ZmI1NjMyMzY2ZDQ5NTViZDA2NjZjMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhMzdlM2MwOTQxZDE1NzdjMDM5OGUzYjY3ODRlZjNiM2YwMTI4OGJjZGVjOWE0YmJhMWFiZmFhNzQwYWI2ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNjdkMDM2NTc5MGY1Y2EzZDlmMmRkMWY1NjYwMTY2OTQxMjQ1OTNiZjYxYWMxZWVkYmQ5Mzc5YTNiMzZmNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNjI0NmJhMDBkN2ZiMjUzNzcwMmM5NDA4NmNmMTUwYThmOTcyYzNiZjA1NTdiNTJjYWExN2NkNGUzMDU0ZGQifQ"
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L707-L726",
+          "version": "repo-lines-v1:sha256:d348b4ce7c87bb22f5fb66e026516a1ed6b402f3e58ed9a6f1e300ff56f80462:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYjRhYzg5NzJjYmYwN2FiMTI5YzcyZWMwZTZlM2U1YzUwNzU3ZWE0ZmI1NjMyMzY2ZDQ5NTViZDA2NjZjMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMTBkODc1YTIxNTU4NmI1OThjMzU0NjY2NzUzNzQ2Y2U5YzM3NmM2ZjFhYzY0NzVkYTY0N2Q2MTYwNjI5ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNjdkMDM2NTc5MGY1Y2EzZDlmMmRkMWY1NjYwMTY2OTQxMjQ1OTNiZjYxYWMxZWVkYmQ5Mzc5YTNiMzZmNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmZGFjOGFkZDgwZWVmZTk0ODJlMzFjZWVhZjUxYmY2ZDg0YTU4ZDMyYzEzYTBlMWE1ZDAzYmI3YjJjYjBhNWMifQ"
         }
       ]
     },
@@ -313,10 +309,110 @@
           "version": "repo-lines-v1:sha256:b2ff7dcbba9aeb75be73d08b7eb64ea38b4587eeec86e5d4d47152ed0d48de7b:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ3MDMzZGMzZWQ1ODhmMjdjZDQ4MGI2OTgyNjZlYjg3MGQ4MDZiZGQ4MjFmMzZhMmRlNjQwMDIwYzExMTE2MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI0MjYzMDIyZjZjODhkZDBjZTk0NjJlNjY0NTEwYzIzMTFiZDg3NjM2OTJlZWFhNDM2MmE3NGMxYTdlMDNjZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E5N2FmY2MxNDEzMjA5Njk2YzAzNDdhOTgzMjdmYjg0MjFhMjU0NzYyNTlkZWUzODRkNDFjN2YyZmQwNTdlOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjViZTc2MDIyNzlkNjVmN2QzZDgxOWE3ZDg2YjBjNjQ2YjY1YWY5NTY0N2M2ZjIxMWNlMDAzZWIzZmJmMjdmNCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_c8f1559e39a64e3699674c5d74a32148",
+      "statement": "Runtime admission is a separate pre-policy gate: `checkAdmission()` evaluates a repo-committed RUNTIME_ADMISSIONS ledger whose eight gates (licensing, reproducibility, interface, containment, lifecycle, evidence, supply_chain, gym_evidence), authority map, child_agents, capability_gap, legacy block, and expiry decide ADMIT/CONDITIONAL/HOLD/REJECT/LEGACY_ADMITTED deterministically — a critical-gate FAIL, self-attestation, or runtime-owned authority always rejects; ExecutionEngine.admitRuntime() reads the observed version from the freshest runtime_contract_probes row since engine boot, binds the decision to the task as an event, records a runtime_admission policy violation on refusal, and lets RUNTIME_ADMISSION_MODE=shadow record-but-allow.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L862-L887",
+          "version": "repo-lines-v1:sha256:c028e5644c5dff9203f9da4e5e2d47bb01add3e98e8c875a0069d5e9e6211216:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3OTk2MzQ4ZTBlMzNkMGM3YjMzMzA1Y2Y2MjEwZDVlZmI2ZTcxODdjYmRhY2JiYzlhOGFmZmUzZmUzYmRiYTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5N2EyY2U3NDQ4NWQ5MjU0OWEwOGRjYTMyM2JlMTczYTZkYTAwNmMxMWFkMzA2ZDkwODEyYTRkYzgxZWQ5NzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/runtime-admission.ts#L151-L205",
+          "version": "repo-lines-v1:sha256:c70733c12e51cf4ac26f04ae972e00a73d67f92856b3d9e532a3de8b90162341:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ODZlZWRjNGMxZDFkNGE2MTQwZGJjMmY2Mjg3Zjc3YTJmNzgyMmMxZTRiZmE3NzI5NjQ5M2NmN2Y5OGRiZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZGExMTRhNzE5ZTFhYjNkYTMxMjBiNzg4ZjI5ZWZjZjg2NDk5ZjY5M2ExOTY2ZTdkNWU5Nzg0OTg3ZjhhN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NGFmMDU5OTYzMjAwNzNlOWU4ZmJjYzFhMjM3ZTEyNTc2ZWFiNWQ0MGMwZjZhNzUzODM2ZjYxOWE1M2Q4ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ZWVkYzc0OWRjNTgxOWU2ZDg5Y2Y2MWI4NWI5YzczNDhjNTE0NDI2MzAzN2UwNjE4ZmYxYWZhZWFmYjNiNGMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/runtime-admission.ts#L48-L131",
+          "version": "repo-lines-v1:sha256:7f30eb66ca315fd700d30afff6b6a230ff10ff0b050266f7cfd2cee714e1c579:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyYzdmZDJmYzk2OTA5ZWY0MjZjNDg1MDhjYTIzNDcxZDc0Zjk0MjczZDM2Zjg3MmU1NWZjMTUyMDMxM2FkZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkOTBjNTkwYTAxMzExMjU3YTdmZmRkNzdkYzNlN2EzOTNmNWJjNjgwMzY2YjJiYTE0OTc2NTZkMDA3ZmY1MzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyOTI5MzgzN2E3MTEzMjVhMzBjZWFlZTYyMDRkMjMxYzg4MmYzYTY3MmY1Yjg1MzFiOWZmNmZlYTA4OGQzZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiMmU3Y2ZlYTlhNWNmZGY5YjVlOTllNDliZTc3ZmVlMjJjNTc2N2I5ODIwZDRhNDBjNzIyYTk0YmM0NjE0NmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bdff53ec510146c9a333fcfb6c1ce499",
+      "statement": "A loop worker lease binds to the engine through executeViaEngine(): it materializes a real `tasks` row (loop-worker-<lease>-<id>), records the lease's execution_task_id, and calls ExecutionEngine.executeTask(taskId, runtime); when the session starts the engine back-fills lease metadata (requested_runtime, effective_runtime, effective_model) and registers the lease in RuntimeLeaseRegistry whose stop callback cancels the engine session, so operator/lease stops reach the provider process whether the direct-command path or the engine path spawned it.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L703-L722",
+          "version": "repo-lines-v1:sha256:58118b2cdfc071cc27cfcddba05856394aaf2aeed378384194b8af1f479da453:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNThjN2NmMmJhYTlmNDdjMTk5NGE3NjIwNDQxMjAxM2NkYWJjOTk2Y2ZmYWQ0MDRjYjQ5NGU0OGFiYjVlMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1ZjYxNWU5ZGI1ZWY2OTQxMDUxZjQ0YTA0YzE5ZmZiNDQ3ZGIwMDg2NTZhYmVhNjVhNjM4OTdlMTYwZWVkYmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiMmJhMDQ5MDQ3M2VkOWJjYWY0OGJmNzdmYWU0YjM2MDc4ZTZhNmNmOGQ4ODI2YWNjYjU5NTc5OTdlZjI1NTQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-recovery-service.ts#L48-L82",
+          "version": "repo-lines-v1:sha256:0152937872e3b7024bd8d0b722345f16b51869bfa97bf40256b7434648f6022b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZGJiODFmZGFmMzYxZjNmZTllNjBmMTNmZWJmMjFiMzg2OWE2MDcyZjRhNGI0OGU2MDBhMzQ4ZDcyOGE3ZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2Nzk0NzgyNjc2MjFiYzgxZGIwYTg2YmNjMzRiZDE2OTY3OTU2ZTkzN2I5NGU0NTlmNzY1NTAzM2MyODBhZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxMzY5NTgxNDVjODI0ZWNiNjY3MzJiZDhlNmJkYjBlZjc3MmJiZWE3M2JhNDczODQ0M2E5YjZiODEyZWFjMmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L719-L805",
+          "version": "repo-lines-v1:sha256:e3d8fc1ae4ddec1b538114cc556b5daa9c1cca7fafdf0af9ab41fabcb4862f77:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4ODhkZjU3ZjMzMWM5OGY5MGQzYTNjZWYwMzZlOTFhNjg2NGZlZWY2Yzg3YWU3ZmRkY2Q0OGJiMTU0MTU3MzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzNmYyYTdlN2IyYmZlYTQ2NjQ1YWEzOTJhMTljOGY4ZGMzNTEyMWIwMzQyNTc2YzYzNTM3YzlmODA5OTM5N2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDc2N2Y3MGYwNzJmMjUzZmZkM2Q4YzA0NjYxZDA1ZTk4NWMwNTNiY2ZkMDUzNDg3N2RiZGZjOTc2NzEwMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b67031199fbf4cd1892213f3f4968785",
+      "statement": "MAKER_UID_SEPARATION (default off) probes an in-container maker lease's process context before the CLI starts — in shadow it only records, in on it refuses the maker unless the probe proves the context cannot write the DB or its directory and cannot read the server's environ, failing closed on probe error or unknown answer; the Dockerfile reserves uid/gid 1002 `maker` for the follow-up run-as-maker work, and remote makers are exempt.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L164-L168",
+          "version": "repo-lines-v1:sha256:34b199c83ce64641dddeec4992a49cdf53d6f6db0f3285dad74082c598becef1:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGIxMWUwMWEzYzAxZjk5OGJkNTYyZDM1NGY2NTU0YTE5OGZkZWE0Yjk2NTFiMGJkNTY3YjcwNmMwYzI4YmYyOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDgxYjVhZTAwYmZhZjZlZmY5NDNjM2NjOTIyNjQ3ODMxNmRjZWJlY2MwMTFkZDlkYjkxZGU3MTcyYzU3YjM2MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmJhZDUyZTdmMDFjMTJlN2YxMDZjMTA4ZmFiMjZjN2QxOGE2NWFiOTJmOGM3OGEwYzMwZjYyYjEwOTdhNWU1ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGU0ODNjZmY4M2YyNmZkOGM0YmI1NTRkYTJjM2Q3N2E4NDZhNjczOWQzZTQ5NjUwMmFhYzIwZTk1NTMzMDU1YyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/maker-uid-separation.ts#L17-L23",
+          "version": "repo-lines-v1:sha256:b8a7ab80d9234973299ca4c33a589ac4917f7f5244321307598c185e377f4e89:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyYTQyOTM4MmIyZTE0NzE4ZTBlMzdiMDU3MGE4YTE3MDI5OTFmY2Q4NDk4Y2Q4NDA2MGE4YmY0ZjA1MDE3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGZjZDNmMGM5YjQyOTQ2OTdmNDkwNzNhNjMzOWEyZTY1MGFhNjk4NGIyYmU0NWI4NjRiMDFkNmEwNWU0ODYwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzhmYzFkMTBkZTRiNWU0YzlmNGUxMmE3OWUyZTUxYzE1MWQ1MTM1ZTU3Nzg1NWNhZmZlYmMzOTM2NzRlZWMyMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/maker-uid-separation.ts#L32-L103",
+          "version": "repo-lines-v1:sha256:0ce74857a42cfb4c4b6135964742a01d030ca408785637cfc79e3891f3fb027e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwODc0ZDFkYmIwMmI1ZDY4MTVlNWQ2NmE3YmIyZjMzMTM1Y2M1ODg1M2FhODI0NzZmNmRjOTIyYWNkNzgxMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjYjAyMmMzNDQ4ZmIzOWU5YTRiMWExNWFiYzExMDBmNTNlYjVlMWFiNWMwZDg2NjVkYWViOTUxNGU3NDg4MTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L291-L302",
+          "version": "repo-lines-v1:sha256:956a4b1e79a7d974870315291fbb30fb60c091b7e506c7ce06386e62f1fda8cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwYzQzYjBjMTE0YWJlOGY0NjBhMjI5YjU1YzM5NGM3ZjYyYTJlOWY4NTYxNWJjYWE1ZDFjMjEwMjNmOWIyYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2ZjNlOTA0MGZiM2NiZWY0NDRjNTljNWVkOGNkNzdhN2RmMTU4OWY5Zjk3YjU5MzMzYjAwYmNkOWRlNjVjYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1NTJmMWQyMjY4ZDE2MTk2MjIxNjYyYmRlZDQ4ODA0MWM2YWU5M2Y4NjI0OGYxYjVmMWM0ZTAyM2VkYTA0ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_90692d16e6244d11a5cca3541b7389c1",
+      "statement": "DjimitSecExecutor is a fixed, operator-configured scanner, not a prompt runtime: it runs only when DJIMITSEC_SCAN_MODE=execute, validates a fixed origin/token file/repositoryIds/implementationDigest/timeoutMs config read with O_NOFOLLOW file checks, rejects generic execution controls (model/environment/workingDirectory/timeoutMs/skipPermissions/sandbox/reasoningEffort/codexSandbox) with DJIMITSEC_CALLER_EXECUTION_OPTIONS_DENIED, health-checks the worker's version and digest before dispatch, and treats every ambiguous or uncancelled state as a terminal DJIMITSEC_SCAN_HELD failure with retryable=false — automatic replay/fallback is forbidden. A task carrying metadata.djimitsecScan is pinned to this executor by executeTask.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L296-L298",
+          "version": "repo-lines-v1:sha256:33f86c1aa766b7e458631d2e5b58f26e217f10889a690a84eaf69521da55606e:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDA5NGIyZDE2N2VjNDUyMzI1NjEyMzhhYWExYmEyNmVhODk5MDI4MjRlODBkMGRhYWM2NGUwY2M0YWJjZmNjMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTRiZmQ0ZjNmYzhiY2MzYjE3OGYwNDliOThhYjkwM2NlOTljMGQwMGZlOWRhYmJlZDEwNzdhODJhZjVkN2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmU3MTVhMzFmOTExZjg1ODAzODVkNTgzNjNmMGE4Mzg3MDNjZDhhZTM3ODg2OWI0NWI2Njc4Mzg1MDhiZGIwYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/djimitsec-executor.ts#L103-L124",
+          "version": "repo-lines-v1:sha256:fd3d5d6db18e0bd8128694512c3b2b3f074b97f18448a1ed455a7a40de50a15b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNWMyNGViYWJhOGNkMWM2NTA5NDI2YmMxZmE0NzkwMDEwZWE0Yjk1OWJiNWI5Njc2YWIzMmM0N2I0NWZiOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjYmZmMTg5NDY4NGVjNmIwMzNiODRhNWE4YWEwMjZhOTVlZGJkOTNjNjJkMjEyMmVjNzQ0MDJhOGU1Y2U0NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/djimitsec-executor.ts#L32-L101",
+          "version": "repo-lines-v1:sha256:f23d3b1acaf647a6cb72063d60e551a60dc5c55c102c2c7f544368da24cc7c97:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyZTZhMTNhNzA2YTg2OGQxYjk4NmFmYmI1OTRmNGEzZGE3MWY0ZmNlMThkNWE3ODliZTJmNTFjOGMzY2U4YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NzhlMjUwM2I4Y2YzN2EwNmY3ZDZmMGEzYTZiNmZlMzU2OTFmYmNhYjUwYjg3NzVjYWI2ZmFiYzcxYzU5MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3NjBhNzczYWUwMDdjMDQwOTMwMWExYzA3ZmJhNzlmYWJjNTUyZmVmMTlhZTZhMjU3NmQwYzRjNjg2ODc5M2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0ODFiZGQ1NDE5NTBmY2VkMDU1NzgwNDVlOTRlNDY1OTE4Yzc1YTY2NDI2NzE1NTNhYTQ0N2U0Yjg3NGQxYmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_47981be6db524b04ae3dcea663776faf",
+      "statement": "Atomic and Remote are gym/self-hosted makers rather than interactive CLIs: AtomicExecutor shells out to the pinned atomic-agent binary (`run --cwd --max-steps`, goal on stdin, plain-text output, provider JSON rewritten into a Djimitflo-owned state dir each run) and RemoteMakerExecutor queues a job on RemoteMakerQueue for a host to claim, applies the returned patch to the local worktree with git apply, times unclaimed jobs out via REMOTE_MAKER_QUEUE_TIMEOUT_MS, and never applies a result whose lease is no longer active.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/executors/atomic-executor.ts#L40-L98",
+          "version": "repo-lines-v1:sha256:c3b3277f180d86b4599715878bdbf9b108e226339743620ac872e0f3e114b240:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0ZWZlNmZmYzNmY2E2ODhjZGNjNjEwNDkyMDMwYmFlYTFjODllOTZlZDg5MDQxZTZlMjEzMGNkMDhiMGEzZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkMGYyZDNhM2FhZGEyNzU4NjQ1NzhkMGE0MzkxNTYzOGQ1NDNmZWNhMmM5NDg1OGRiOTQxMjExZTg2Y2VmMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0YzVhNGE4MTFmZmE3MGY1MTk3NzIwMWQxMmI5MDFmYWZmYzBhZmQ0MTdmN2M5Njk4NmRhNzc5YzVjYmM1MTcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/remote-maker-executor.ts#L30-L99",
+          "version": "repo-lines-v1:sha256:db3fb25d300da366d0c7a8e75bcd76182f569c1f305b231d28451d7a84fcfa8c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ZTE0MzM3ZTgwYjBjMmRmZjI3ZjAzODUwNzY1ODUxYTRkODQ1Zjk2MjgyMTljOWU3N2IyNWY0Y2JlM2MwN2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlNjlhNmE4MDdkZmFjNzYxZDhjZDBkNzQ1MGI2ZDAwY2M3YTMwNGI0MGI0NDUxNjVlZWUyMTQ0YjNhMTk3MWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxMzExZTMwZTFmMDkxMGYzYWExMmViYjA1YmU5MDI4MDcwMzMxMmI1NTUyMzAyMDg5ODQ2ZGY5MDgwOTZiODIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_094918977e3844cdacb278699712e381",
+      "statement": "A completed deep-agent run does not complete its task: the engine sets metadata.deep_agent_assurance_hold and moves the task to awaiting_approval with reason EVE_V_ADAPTER_REQUIRED because executor success is not promotion authority.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1156-L1181",
+          "version": "repo-lines-v1:sha256:17683f14dffc15e6e247fa98ecb1e456a631b49293a4648284872ec5dc462cad:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmM2I5YzI3ZjVjNjkwNDM5ODc0MzU1ZjAxNDJlOWY4MDVmMzU4ODllNjBmMjU1OWNkM2Q5OGYzNzAyNThhMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OTJmODQ3YmIyMWNiMjkyZGQwOWY3ZmE2ZTdjYWM0YThjMTRkOTdkMzg5NjMzYjNkMTUyMGVhMTRiNWIxZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1NjE3ZTQyN2EzZWExM2VlMzc4ZWZjZTU5MGU5MGQ4MDlmYTBhOTlhMzQzMmU0YWY1MDY4N2E1MWM0YzVhZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkYzAxNjY0ZmU5NWZmYjFkYWFmYWM1M2UyZGQ1YjVjOTJkMWZiMTJmOTk2OTg0ZDVjOWM0NTA0MDQ4NjU2ZjMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-11-13T16:00:27.211Z"
   }
 }

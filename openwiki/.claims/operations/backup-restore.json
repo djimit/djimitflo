@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3cbd81150f11940c3650cfc6966e94761d1b5282361eaad3cf7da7b006fea5e7",
+  "pageVersion": "sha256:b959944398765f1cc58f6ac2c6637264b445c444e930b1f4e463fc5210df8849",
   "claims": [
     {
       "id": "claim_7f4916f472fc45d886af493824967638",
@@ -112,15 +112,19 @@
     },
     {
       "id": "claim_2c4e69825f4e41fd8045f728af00e8c6",
-      "statement": "The backup HTTP surface (createBackupRoutes) is mounted under /api/backups behind requireAuth plus the manage:backups permission, exposing POST / (create, 201), GET / (list newest-first), GET /:filename (metadata, 404), GET /:filename/download (streams application/gzip), POST /:filename/validate, and POST /:filename/restore (maps confirmation/validation/invalid-name errors to 400, not-found to 404).",
+      "statement": "The backup HTTP surface (createBackupRoutes) is mounted under /api/backups (createRoutes is mounted at /api and mounts createBackupRoutes at /backups with requireAuth) and every endpoint additionally requires the manage:backups permission, exposing POST / (create, 201), GET / (list), GET /:filename (metadata, 404), GET /:filename/download (streams application/gzip), POST /:filename/validate, and POST /:filename/restore (maps confirmation/validation/invalid-name errors to 400, not-found to 404).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/backup.ts#L7-L93",
-          "version": "repo-lines-v1:sha256:a05ee3f4c171209589198299964451af9093764c70de5fac618491f89228533d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZWI2NmExY2Q0YWYzODkxM2JlZGU4OTY3OWZkNTBlODQyMDBiYTg3MDY2OGZkZTk5OWJmZGYwYzg3MjA0ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OWZlZjE2ZWRkY2YxY2E3NTlhOWEzOTc0NTc4NzkyMzUwZTE0Zjg3NjQxYzI1NDI2MDgxMzU4NDQwMzRiNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNzAxZGY3MTRkODUwYWQ3MGY1ODY2NWVjYjA5NTYzZjJmMjZkOTBjYmIwZjkwODM1MTE1NTU3Y2NiYTZkOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxMGIzNmFhNzRhNTliY2Y0YTg4MTg1ODM3ZjY1OGFmYWYzNjQ2ZWZmMmJiMTZjMzkyOGQwZTkzMzVlOTQ1ZDIifQ"
+          "resource": "repo://packages/server/src/index.ts#L399-L399",
+          "version": "repo-lines-v1:sha256:e8fb4dc9754eeb01db9eae8350b6a6b5997e16d01390ce12f573600e4cd3e569:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZThmYjRkYzk3NTRlZWIwMWRiOWVhZTgzNTBiNmE2YjU5OTdlMTZkMDEzOTBjZTEyZjU3MzYwMGU0Y2QzZTU2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZThmYjRkYzk3NTRlZWIwMWRiOWVhZTgzNTBiNmE2YjU5OTdlMTZkMDEzOTBjZTEyZjU3MzYwMGU0Y2QzZTU2OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmY3YjY1YmE4YmFjYTU1ZWFhY2UzMjYwY2U4ZDU1ZGYyM2RhYzBjYzkwZDU0NTVhNWUzMmY1OTg2ZGMzOWUxOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjFmYTdjNjQ1OTU5YTJkMzczZTNmYzk3OGZmZTE0YWRiZjAwMWNhNTBiMWM4ZjkzMTc4OWNjN2MzMDBiMGE5OSJ9"
         },
         {
-          "resource": "repo://packages/server/src/routes/index.ts#L201-L201",
-          "version": "repo-lines-v1:sha256:03286ef4c7d229a2ce2654e4cb80bd25f8533ffa9d290248fc870a23db364e9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMyODZlZjRjN2QyMjlhMmNlMjY1NGU0Y2I4MGJkMjVmODUzM2ZmYTlkMjkwMjQ4ZmM4NzBhMjNkYjM2NGU5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMyODZlZjRjN2QyMjlhMmNlMjY1NGU0Y2I4MGJkMjVmODUzM2ZmYTlkMjkwMjQ4ZmM4NzBhMjNkYjM2NGU5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGQyMjNjODE5ZGZkOTg3MmE1ZTEyYzlkMTkyZWUwZTNjMjhjZjQ5NzBlN2ZkZTgwNWYyMzMwM2FjM2JjNWFiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGM1ZjA5MDM4ZWQzZTk0MGQ3ZGE3Zjk0MjM3YTNmMTY1ZGJiOWRiMmE5OWY3NTY1NzJiZjFkOTk2NmZhZTY3NyJ9"
+          "resource": "repo://packages/server/src/routes/backup.ts#L8-L95",
+          "version": "repo-lines-v1:sha256:7d68604bbc09e4ab4683033553b6b2101c0fa2acaf554b8c612d210611cae6b4:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZWI2NmExY2Q0YWYzODkxM2JlZGU4OTY3OWZkNTBlODQyMDBiYTg3MDY2OGZkZTk5OWJmZGYwYzg3MjA0ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMGIzNmFhNzRhNTliY2Y0YTg4MTg1ODM3ZjY1OGFmYWYzNjQ2ZWZmMmJiMTZjMzkyOGQwZTkzMzVlOTQ1ZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjNWQ2YmE4YTkyNDk3NDY2YjQ0MDgxNzBiNWEwNmNmNTUzZWRlODk3OGEzYjM3MTliMGM0ZTEyODEyYjU1NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L188-L188",
+          "version": "repo-lines-v1:sha256:03286ef4c7d229a2ce2654e4cb80bd25f8533ffa9d290248fc870a23db364e9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMyODZlZjRjN2QyMjlhMmNlMjY1NGU0Y2I4MGJkMjVmODUzM2ZmYTlkMjkwMjQ4ZmM4NzBhMjNkYjM2NGU5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMyODZlZjRjN2QyMjlhMmNlMjY1NGU0Y2I4MGJkMjVmODUzM2ZmYTlkMjkwMjQ4ZmM4NzBhMjNkYjM2NGU5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGQyMjNjODE5ZGZkOTg3MmE1ZTEyYzlkMTkyZWUwZTNjMjhjZjQ5NzBlN2ZkZTgwNWYyMzMwM2FjM2JjNWFiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTEzZjlkZjFlY2IzMjhkYTdjMmQxYzA3YTNjYmUxMTRiMDI1MDdhMWU0ZTMyNmZiMzMwNTRlY2I0NTFhODJkZSJ9"
         }
       ]
     },
@@ -148,33 +152,41 @@
     },
     {
       "id": "claim_aa1f762ad84440cea9c6e447ddc8f86e",
-      "statement": "RetentionService is the scheduled purge counterpart to backups: gated by RETENTION_ENABLED (default true), it purges rows older than RETENTION_DAYS (default 90) from experience_embeddings, trajectory_steps, vector_memories (only rows with ttl IS NULL), cognitive_episodes, and cognitive_patterns, while llm_provider_metrics, model_routing_decisions, and model_execution_outcomes use a fixed 30-day cutoff; it runs at startup when RETENTION_RUN_ON_STARTUP is not 'false' and recurs every RETENTION_INTERVAL_HOURS (default 24), treating missing tables as zero deletions.",
+      "statement": "RetentionService is the scheduled purge counterpart to backups: gated by RETENTION_ENABLED (default true), it purges rows older than RETENTION_DAYS (default 90) from experience_embeddings, trajectory_steps, vector_memories (only rows with ttl IS NULL), cognitive_episodes, and cognitive_patterns, while llm_provider_metrics, model_routing_decisions, and model_execution_outcomes use a fixed 30-day cutoff; start() runs a purge at boot when RETENTION_RUN_ON_STARTUP is not 'false' and recurs every RETENTION_INTERVAL_HOURS (default 24). Per OBS-003 each table outcome is explicit: only a 'no such table' failure is the known no-op ('missing', 0 deletions), other errors record status 'error' with deleted null; every tick reports via noteScheduler/markRun so a failing purge marks the 'retention' scheduler 'failing' in the cockpit scheduler registry.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/retention-service.ts#L179-L190",
-          "version": "repo-lines-v1:sha256:b5cf921347a1fb870fbf0c674c2f7f9cd276bea8e9d6f4d28932a7791569e0b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlNmRkOTNlNDlkYjBjZmFmZjBiNWZmYzM4MGNlM2EyOWQyZGJmMDc3MWU5MGVhYzFhZDk2OTI4NmE0MGIzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5NDBhMTQ1ZGVmMjkyMGNmYzg0M2Q0MDdjMDAzZTM0MTI4N2YwMTlmMWIzNjdmMGI1MjhjNmI2NDUwMmUwM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "resource": "repo://packages/server/src/__tests__/retention-errors.test.ts#L13-L61",
+          "version": "repo-lines-v1:sha256:422167d5faf89521e45af164f045259c8af4db121753d162f1686752512811a1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlYTIyZDdmOTFhNzJmZTc3NDg5MGIwNTNmMzM2YTc5ZDk0ZDQ4YWFiODkxZGE5ZDIxNGIwOGM4MDliNjI4ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3YzYxNzNhOTZkMjJjNDM0OTljZGQ1N2NkOTU4M2MyMzFkNjhkMjA5YmU5ZDYwOGNiZDI2MTBmYTQ4YzBlMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxOTYwMGFjMDJhOGVjYTQ3MmJlODUzN2Y0YjgyZTBmOWI2MzdhMDJlNTE0ZjM3ZjkxODk4MjJmZTVjOTU2MTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4MTdmYmI3M2M5MmIzNmQ1ZTQ4OTZmZjUxYzFiNThlZWMzMzBiYmU5NjFiYTA1ZmM2MjA1Zjg2N2VhMWJjZjYifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/retention-service.ts#L34-L152",
-          "version": "repo-lines-v1:sha256:a15b839a12e8d3e1552507ef2f52410222b6f2a97cb725e6faa3dea81456bb7c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZWZhMTgyZWQwODU3YTE3NjcwOWI5OTg1OTRmYmRiYTg0ZDVmYTQ3NjBhNWY2ZDY2MjAyZTU2ZjgwMGRmODc4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwMTI2MzZhZThiMTQ2YmIwNDhkMjI4Y2UwYzE1NTA3NDM0ZDVjZDRjZWQzMTY4YTlhZmFjMTQ3MjIwNjNhZmFjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYTM2YzJmMjZjMDU0Yjc2ZTJlYTUxMTc1MjAxYmNmOTkwMTM1NTk5ZDRiYmFjZDA4MmRhYTUxYTRmOWQ1Y2ZmIn0"
+          "resource": "repo://packages/server/src/services/retention-service.ts#L158-L171",
+          "version": "repo-lines-v1:sha256:0f941dc5cdc063fa44deab0ea230a7533c20cea08dfd6567de83a375433a2f37:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlNWE4YWZmNTk1NzQyOTQ3NDQ2NjA3ZGY1ZDM2NjZlZmRhM2VjNzdiNzdjNmY3OTVjMmYxOWFlOTVmZDFjMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5NDBhMTQ1ZGVmMjkyMGNmYzg0M2Q0MDdjMDAzZTM0MTI4N2YwMTlmMWIzNjdmMGI1MjhjNmI2NDUwMmUwM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/retention-service.ts#L43-L154",
+          "version": "repo-lines-v1:sha256:8d812dd4ad5693421f76e1e7830f4108b21a8155566b1b019aeac7185e20adc4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOWM2MTA0ZWI4YTI5NjU3M2I4ZjU5YTc3NTkzZDA5YzY3NDkyZjZlODQ0ZTY0OTczZWQ1YThjODEwZTUyYTU2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwZTIwMzM5NzE5OWViYWI2NjEwNTBlMGFkODU5ODE1MTI4MTgyOTIwOWVhMzAyZTRiNGQ3YzI3Yzc0NDM4YWNlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzOTQwYTE0NWRlZjI5MjBjZmM4NDNkNDA3YzAwM2UzNDEyODdmMDE5ZjFiMzY3ZjBiNTI4YzZiNjQ1MDJlMDNjIn0"
         }
       ]
     },
     {
       "id": "claim_e35569b5e073484b87a6f1766ad12940",
-      "statement": "RetentionService is started only in operator/autonomous runtime profiles (the operatorRuntime branch of index.ts main), and DiskGuardService is started only from initAutonomousServices, which index.ts invokes only in the autonomous profile — so disk alerting requires the autonomous runtime profile and DISK_GUARD_ENABLED=true.",
+      "statement": "RetentionService is started only in operator-enabled runtime profiles (the operatorRuntime branch of index.ts main, paired with CognitiveLoopClosureService) and is not registered with the lifecycle manager, while DiskGuardService is constructed and started only from initAutonomousServices, which index.ts invokes only in the autonomous profile — so disk alerting requires the autonomous runtime profile and DISK_GUARD_ENABLED=true, and lifecycle-managed shutdown applies only to DiskGuard.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L155-L165",
-          "version": "repo-lines-v1:sha256:de9d84ded848dd1e7348135f69412bf3f75ca6e7d4e0e80a092b50a0860afd9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5MTA0YzliMmQxNGE2ZWE2ZmNhNmM1MjRjZjZiZmZlOTM2MDIxNWY4MWJjOGUzMjI5YThhYjY4YjJmOTQ5YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwZTJlYTFmMTY0ZmUyZTZkNmFkMDQ3MTNjZDU5NDFiNWYzNWU5ZDYzMmIyNDAxNGQ4YzgyNDJkOGE1MjcyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxYWFjMTM5ZGRjOWJmYmFjZGZlYjk1OTY5OTJiZDY3ZDY2YTUzYWY5ZjMwMzkzYWNhNTY2ZmI2ZDM3Nzg3MGMifQ"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L249-L259",
+          "version": "repo-lines-v1:sha256:de9d84ded848dd1e7348135f69412bf3f75ca6e7d4e0e80a092b50a0860afd9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5MTA0YzliMmQxNGE2ZWE2ZmNhNmM1MjRjZjZiZmZlOTM2MDIxNWY4MWJjOGUzMjI5YThhYjY4YjJmOTQ5YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwZTJlYTFmMTY0ZmUyZTZkNmFkMDQ3MTNjZDU5NDFiNWYzNWU5ZDYzMmIyNDAxNGQ4YzgyNDJkOGE1MjcyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3ZDYyNzFlMzdiMTdkODdjYzk1NjNmOWIxYzliZWExOWQ0MWNkYzMzMTNjNWJmZDIzNmYyNTRmMDYzZTVjMDQifQ"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L104-L106",
-          "version": "repo-lines-v1:sha256:c94c19ea30ad181ef04743863d31ecc826f1b43179b6d2c0f11af3ba21c3d6c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWVmYjEzZjFkYmU1NTU5NTkwODUwNWY0ZWVkNGRhNGNjNmQ4ZTc3YTQ3YTI0MmM0NzRmOWEzYjBkZTA4ZThmNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJlOWY0NWZjOWUyNmNhNDkyN2RmMTA2Yjc5Zjk1MDk0YTk1ZDQ3NzgxMjViNTYwNTQxNWM5MDQwMDRmOTE4YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmYyMmE0MjBlNTEyMDYwNjA3NWVlMDU5ZDE4OGRiNjEwMzE4NWNmZTZlZTliNmIyNWM0MTkxMmY5ODgyMjdmZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTk4YTEzZDJhMjhhYzE3NzRiM2E5ZjZjN2IzODA2YzM1ZWQ1MDc3Njg0MjliMzQ0NzIyN2JiZjA4M2I5NDUyZiJ9"
+          "resource": "repo://packages/server/src/index.ts#L130-L137",
+          "version": "repo-lines-v1:sha256:9630732f1a4a8f44df65ef2a12765418733eea530bef6c77bf9334b3c89155fe:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmRhOTJjYzVhOWUxYzVmNjVhMjgwMjdjOWJiZjRkOWIzOGNlOTEzMDA1YTg0MzQ3N2U2OWU1ZTUyYmQ3MWQ4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJlOWY0NWZjOWUyNmNhNDkyN2RmMTA2Yjc5Zjk1MDk0YTk1ZDQ3NzgxMjViNTYwNTQxNWM5MDQwMDRmOTE4YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjliOWQzYzg2YzhjMWFlMTA1ZTYyYzZmYzk3ZmY2ODQ4ODExNWE0ZjA4MjBjZDJhNWY2ZGVmZWM5YzMwNDNlMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTk4YTEzZDJhMjhhYzE3NzRiM2E5ZjZjN2IzODA2YzM1ZWQ1MDc3Njg0MjliMzQ0NzIyN2JiZjA4M2I5NDUyZiJ9"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L227-L233",
+          "resource": "repo://packages/server/src/index.ts#L269-L275",
           "version": "repo-lines-v1:sha256:801604ab23554733db67ac9f7bd825ec7f6bf6d55a06d7c568c38ec8781ca1ac:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjEyNGU1ZDZkNDk2ZjQ2ODUyYTA1MDVjMTRkODI4Zjk2Mzk3MDUyZTQzM2U0NWZmNjFmNDk1YjkxYzE4NmM1ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2U4OTM2NjZmMDE0NmJkZTlkMmJmMjQzZDViZDVjM2Y5ODg2ODU2OTEzZmM4MmFjYjkzODc1OTFlZjdhZTQ3OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzNiNGEyZjQxMTUwN2NhZjk5MGU1Mzg5MzViZjk0ZjJjZjUxZjFmYzVmMmJiNDAwZDk0ZWY3OWZkNzBmNmU0YyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L99-L101",
+          "version": "repo-lines-v1:sha256:9d3720e041a26e746edde95879ef4efc7ac974bb12201204d66c2866b82d07e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjViMjk4ZjMyNGNhZTlhZDhkNjg4YzczMDA3YmYwYTJkYzIyODljNjViYTRkZTgwODczZDEyZTY1MzAxMzRhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2U3YzU3NDkzNjYxZjNkMDUyNjdlM2VjZmMzMGY1YTE4ZWU5Zjk5MGQ4ZWZlNjY5Zjg3MTRlY2NiOTBkOGZiMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODdjMzZjNTFiZjM2ZWMzMmVjYmY4MjJhYzBmNzA0ZDkxOTE2MGJhMzk0NGRiOTVlYzU0YWJmN2EwOGRjM2Y2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjdiNTcxMTc2YjQ0MTAyNzhlOWFiMDI3NDFjYzdlNzE3NmY1MzQ4NDAwZTkyNTc3Njg1MDY4MTk2ODFiMDdlMyJ9"
         }
       ]
     },
@@ -188,7 +200,7 @@
         },
         {
           "resource": "repo://packages/server/src/services/disk-guard-service.ts#L6-L48",
-          "version": "repo-lines-v1:sha256:fa1c8322ed113dc93f274598f723556128301e582c56a89805dc9763c16e09f4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2ZTFjMTFkNzhjOTE1NzIyNThjNDM0NWRhYjBhOTU1YTU4MzA0Y2MwODAzMWM2OThiNWI4OGMyYzgzODVlZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "version": "repo-lines-v1:sha256:a9f79a414276c759a4495ebf9936e2d89a29bc1a9e717e493bcb7ddf451446c5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2ZTFjMTFkNzhjOTE1NzIyNThjNDM0NWRhYjBhOTU1YTU4MzA0Y2MwODAzMWM2OThiNWI4OGMyYzgzODVlZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         }
       ]
     },
@@ -209,6 +221,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-11-13T16:00:27.211Z"
   }
 }

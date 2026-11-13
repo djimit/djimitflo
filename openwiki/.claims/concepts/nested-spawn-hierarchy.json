@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d47546cfc9963e2fc25349a166cc460f2167570b3a556f38fdc873be5b13fe36",
+  "pageVersion": "sha256:3796f3ef6cf4cc8520ad97923de4cb42418231f00282b4078228189d29625991",
   "claims": [
     {
       "id": "claim_4814f19743814e92a38aaa0783302339",
@@ -18,11 +18,15 @@
     },
     {
       "id": "claim_4140fc6b14b5492483f971f1c13560f6",
-      "statement": "Actual worktree and lease materialization is delegated to LoopService.prepareNestedLease, which reuses createWorktree/writeWorkAssignment/writeAssignmentPacket/insertWorkerLease unchanged, so a nested child is a real worker_leases row carrying parent_lease_id/spawn_tree_id/depth lineage rather than a parallel structure.",
+      "statement": "Actual worktree and lease materialization is delegated to LoopService.prepareNestedLease, which reuses createWorktree/writeWorkAssignment/writeAssignmentPacket unchanged and inserts the row through WorkerLeaseRepo.insert persisting parent_lease_id/spawn_tree_id/depth/spawned_by_agent_id, so a nested child is a real worker_leases row carrying lineage rather than a parallel structure.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L1628-L1724",
-          "version": "repo-lines-v1:sha256:fae6730c8bc7799c09a1ef42f1e37ddb7b778d43dcf38b75875e2460ced30648:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyNjcyNDYzODVhNTE1NmUxYTRmM2Y1YWYzOTBmOWFiMTBkZjBmNWMxOTdkZDFjNmNmMjI2YWRmNjlmNjA2NmYifQ"
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1951-L1960",
+          "version": "repo-lines-v1:sha256:3afb85ef4e60358a21854f4b3f6904c7921ea5b8594075a77e62c81f14d6b8ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmNzQzNWJiNTNlZjhhN2Y1MTliZWJmOTFiNjQ4NTQ2ZWEyNjFjZjkxYjNlMWVkZGNlYWQ4MGQ3N2Y2Y2IzYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkZmU3YTI4NDA5YTc3NDIyZGVhN2ZjYTYyMzE0MTQ1NTAyNzVhZjQ4MzNjMWUwNmQwNjcwN2E2ZGNkMWFlOTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxMWJhNTg5NWNiNWEwYWI3ZDE4ZTIyNzBkMTkzMmM4ODM1ZDE0YThhNjNlMmNhNWZhMzY3NGQ5ODkzYWY5YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-lease-repo.ts#L48-L73",
+          "version": "repo-lines-v1:sha256:3e2de34b3757507f25854a941f15f17f76e898223b04745fc82ff1054a013dab:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1YzBhMThmYzQ2MDNmNzgxYjY0YzcxNmQ4YzZmZjRlNjg3MjA2NWFlMzE1ODkyMjM2N2IyM2U4NjViNzUzMjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzYzA5ZDQ1MmQyMWFkN2NhZjUxM2MzZDlhYmQ2OWYxM2U3YWMxMDNjMWNmNmM4YmYyOGFhMmIzZWI2NDM5MmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4OTdlZGQwZjk3YzA4MGY2NWUzZGI1YjMyMGEyNjljODc2YzNkN2U1NDJkZmQyNzM2ODJjNWJmYmExMDc2NmEifQ"
         },
         {
           "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L19-L22",
@@ -78,11 +82,15 @@
     },
     {
       "id": "claim_e4252d369b3d4066a5111bacbbf08d70",
-      "statement": "requestSpawn applies an ordered gate chain — token/scope, operator pause, depth budget, cycle guard, cumulative token/wall budget, capability routing, then concurrency cap — and the first failure short-circuits into gateOut, writing an audited gated_out row with a reject_reason and emitting SWARM_SPAWN_GATED_OUT without materializing a lease.",
+      "statement": "requestSpawn applies an ordered gate chain — token/scope and principal-is-parent checks (which THROW SPAWN_TOKEN_INVALID before any audit row), then operator pause, depth budget, cycle guard, cumulative token/wall budget, capability routing, and concurrency cap — and each post-credential failure short-circuits into gateOut, writing an audited gated_out row with a reject_reason and emitting SWARM_SPAWN_GATED_OUT without materializing a lease.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L260-L340",
           "version": "repo-lines-v1:sha256:9331e622c218f0d1fda3d97ff2c09db9cf6fc7dd35c248c3c14aa351a6ccde1c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmZWMxNDI3ODZlZTRmMmJlYjEyMWE2ZmEwMTA4MTAxOTUyZjUwZjM4YmI2OWQwZTY5YzA3NzM1ZTZhNmFkY2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzNjFhNGFkYzgzMjE5ZWEyNjBlZmY2YWYzODQ3YTZmOTcwYmQxMmJiNTY5ZjRjOTAzYjY2YTQ4NThjYTFkZmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L273-L282",
+          "version": "repo-lines-v1:sha256:a6dcffdcb4a8845f5479a23df72d211990b22a554e9ecd76ba9e2599f4c11af8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmNTg2MmVhMmRlMDk0NGNlZGJkZTVhOGNlYWE2NWZmZTVjOWJhZjk5ZDVlNGE1OGM3YmNkMzI0OTM3N2YzMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlMjllMDU0MTFhNDJjODdiMzM5OWY2YzYyYzQ2NWY3Y2RhNzlkNjg0OWIxNTlkMWViMjY4NGY1YzgzMmNjYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0MmFmN2Y4MTI0Njg2ZjUwZWEyMTg1MDYzYjQ4ZTY2NWJmZjU0YjczZTkxODdhNjQxNWRiNTA0ZjFjYjQ4NTYifQ"
         },
         {
           "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L481-L525",
@@ -154,19 +162,23 @@
     },
     {
       "id": "claim_f7d22959cca1427ba62d07df160342a3",
-      "statement": "Spawn tokens are HMAC-scoped credentials of shape base64url(\"leaseId|spawnTreeId|expiresAt\").sig with a 30-minute TTL; validation is constant-time on the signature and never throws, returning false for malformed/expired/wrong-scope tokens which surfaces as SPAWN_TOKEN_INVALID (HTTP 401).",
+      "statement": "Spawn tokens are HMAC-scoped credentials of shape base64url(\"leaseId|spawnTreeId|expiresAt\").sig with a 30-minute default TTL (SPAWN_TOKEN_TTL_MS); spawnTokenRejection never throws and returns null or a typed reason (malformed/bad_mac/wrong_subject/wrong_scope/expired) checked shape→MAC→subject→scope→expiry with constant-time constTimeEq, and validateSpawnToken (= rejection===null) maps any rejection to false, which requestSpawn surfaces as SPAWN_TOKEN_INVALID (HTTP 401).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L475-L477",
-          "version": "repo-lines-v1:sha256:b592e86ec8d6005ab4085a0573334a90d912f0ecaec6a892da5ae1fd0af11258:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNmMjg1M2I3YjQ1OTk3MDgwMDhkMTU0ZjI3OGJhMjBlZmE0MmU3ODQwNWFhZmRhZTZlMmNmOGQwZWI5NTdhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI4MDI2MTI2MGQ3MGVmNDMzMDk0MDcwMjBlYTQyM2YxYWUxODQ4ZmMzYWE3YThiZDYyZWU4NzY5OWZmNWMwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTI0NTc3MmRjMjc5MmMxZTU0Y2ZjNDk0MTY2MjRhZDEzOWI1OTI1MGU3MDNjNzUyZGUxMzkyZWY0YTQ3NTFkMiJ9"
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L273-L277",
+          "version": "repo-lines-v1:sha256:c96d74e19d127b0688b502a6afd5aa257dafd30ba97ece1449133674168ef943:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Y1ODYyZWEyZGUwOTQ0Y2VkYmRlNWE4Y2VhYTY1ZmZlNWM5YmFmOTlkNWU0YTU4YzdiY2QzMjQ5Mzc3ZjMxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWUyOWUwNTQxMWE0MmM4N2IzMzk5ZjZjNjJjNDY1ZjdjZGE3OWQ2ODQ5YjE1OWQxZWIyNjg0ZjVjODMyY2NhYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzEyZDU3NjdhNWZjMjAyM2RlMzI5MDFlZTQxNDA2YjY5MjFiN2VlMjgyOTljZDMxNzkzOTVmZjc2ZmFjZjg3OCJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/spawn-token.ts#L11-L19",
-          "version": "repo-lines-v1:sha256:6df0c182486a4b9e16f2169af995a452e8760e6d654f7b11f1227123f510230f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWE5ZmQ2NTBlODMyZDYyODU4M2Y1MTRlODA4NWNlNDA2MjM4MGFmZjMwYjc3NDk4YjY2YWEwYzlhNjIyZGJiMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFhNDc3NjI5N2Q3MTVmY2ZmMjMyNTYwNDk2ZTgxOTA1ZWUyYWYwMjg1Mjk3Y2NiZTIxMDVhZDQzMWM1MzQwYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjQ0MDFkMTVjOGE5ZGI5OTQyN2M1NTYyMDQ2NmQ1NTEzYWI4MjRlZjFiMjA3MGJiY2U3NDAzZDBiY2Y3MzAzMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDllYTM2OTAzYjdjOGU4OGFkNDk3ZGUzZjUwNjA3YmZlNjYxNjY1NmI2ZTA1OTRlN2VjNzY0Njk1NWUyMTJiYSJ9"
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L19-L19",
+          "version": "repo-lines-v1:sha256:41a4776297d715fcff232560496e81905ee2af0285297ccbe2105ad431c5340c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFhNDc3NjI5N2Q3MTVmY2ZmMjMyNTYwNDk2ZTgxOTA1ZWUyYWYwMjg1Mjk3Y2NiZTIxMDVhZDQzMWM1MzQwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFhNDc3NjI5N2Q3MTVmY2ZmMjMyNTYwNDk2ZTgxOTA1ZWUyYWYwMjg1Mjk3Y2NiZTIxMDVhZDQzMWM1MzQwYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDk3NDY2ZjQ3MDUyOWZmMGE1Y2Q4ZjI3NTVhYzZjNTNhMzc5YmE3MWYzN2Q5ZDg5YjM2MmRmMTNhZjUxMzEyMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDllYTM2OTAzYjdjOGU4OGFkNDk3ZGUzZjUwNjA3YmZlNjYxNjY1NmI2ZTA1OTRlN2VjNzY0Njk1NWUyMTJiYSJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/spawn-token.ts#L43-L82",
-          "version": "repo-lines-v1:sha256:bccfe7f3c45c5e5e2c5a114169b7cea485db5d613ee252f2b17ce0b2956fbc49:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MDI5NTQwODExMzM4OTM2MWEyNDUwYThjNTIxZWI3OGY0NzU1ZDI0M2I5NjQxZGQ2N2Y2ODkxNDllNTAwNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliZDA5OTI4MzExZDA5NzgxNTA0YjNjNTc1OGU3YzYwOTBiZmUzOTFlM2I0NjA4ZGZlNTM1NmIzMGMxZWYzNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L43-L49",
+          "version": "repo-lines-v1:sha256:f1477c49df6345aff78edddd8678399e9fccd392685ba9864deecc79a1a9368a:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTkwMjk1NDA4MTEzMzg5MzYxYTI0NTBhOGM1MjFlYjc4ZjQ3NTVkMjQzYjk2NDFkZDY3ZjY4OTE0OWU1MDA1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWJkMDk5MjgzMTFkMDk3ODE1MDRiM2M1NzU4ZTdjNjA5MGJmZTM5MWUzYjQ2MDhkZmU1MzU2YjMwYzFlZjM2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2ExY2U4Nzk1YWM5MWU1NDg3NjI5YzQ0YmMyMGVmYjdiZDI2YzIxOWYxMmQ4ZmMyYmE4YTIwOTI5MWI5ZTdkMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L51-L93",
+          "version": "repo-lines-v1:sha256:816bd8c1d23e165abb16d9882e934d2cd8fab5237664bee85b76f22396b483cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYWI2MWUzY2UyMjI4MDk1MTk3Yjg5MjNmZDlmMmUyYjZhMzI4M2Y1OTdmYmQ4MDliMTc3OWFiNzk4NzUyYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2OTlmYjFmMmUwOGM1YTQ3MTFkYTBmNTYyMzI1OWMxY2U3NWE5MzI2NWQ2NWEzZTNmZmQzNzRiMzdkY2VjZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlZWViYWI5YmYyNTZlY2IyMGFjODc3Nzc2ZDZkOTczM2FmOTlhMzcwNzU2ODU0NmYyYjhmZWE2MGY0ZjI3MmQifQ"
         }
       ]
     },
@@ -314,15 +326,19 @@
     },
     {
       "id": "claim_266d6fcb026c434fad98c3732aa8adc1",
-      "statement": "The control URL is derived at server startup (127.0.0.1 when binding 0.0.0.0/localhost) so a same-host runtime child can call back without operator config, and operators override DJIMITFLO_CONTROL_URL for Docker or remote children.",
+      "statement": "The default nested-spawn control URL is derived at startup in packages/server/src/index.ts (the only site — bootstrap/constants.ts no longer exists) as http://<dialHost>:<PORT>/api/swarms/spawns where dialHost is 127.0.0.1 when the bind host is 0.0.0.0 or localhost, so a same-host child can call back without operator config; operators override DJIMITFLO_CONTROL_URL for Docker or remote children, and NestedSpawnService consumes it via options.controlUrl || process.env.DJIMITFLO_CONTROL_URL || '' (wired with the env value in bootstrap/autonomous-services.ts).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/bootstrap/constants.ts#L12-L15",
-          "version": "repo-lines-v1:sha256:82756846d17726037e83da0470aa1f4e0fd89998e04bd07e8398f3caaee2529b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZlNjM1MzUzMjgyOTY3YTg3MGRmMGVkNTJmZTVkY2NlNTQyZTg2MmM1MTljZjhmNGIyMzg4ZmY1ZWNlMDMzZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjIwNThmZDllM2MyYWE2Y2U1Nzk4ZmJmYzM2OGFiOWIxZTcwNjBkMDk2MmZiMzVhNTdlOWFmN2JkMjNkNjhjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI1ZmU4ODA0MGZmNjM3OGYwYTc2ZjRlNDg3Y2UxZGQxMjA4MTljNzUwYThmY2FjNTA0MmNjNmRmNjNmNjZmNiJ9"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L456-L456",
+          "version": "repo-lines-v1:sha256:e9a646a6fed2d60e8a302f5a573486ffa52d614202949f6162ea509d6c53e5e8:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTlhNjQ2YTZmZWQyZDYwZThhMzAyZjVhNTczNDg2ZmZhNTJkNjE0MjAyOTQ5ZjYxNjJlYTUwOWQ2YzUzZTVlOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTlhNjQ2YTZmZWQyZDYwZThhMzAyZjVhNTczNDg2ZmZhNTJkNjE0MjAyOTQ5ZjYxNjJlYTUwOWQ2YzUzZTVlOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTAwMzU4ZDBkZTZiZTZlNjJkMGMxNTdkN2NlZGRhZmViNzg4N2ZhODBmMTY4OWFjODVhMTY0NTg0MmJjNmI2ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzQyNmZmYmE2OTJmZWJkOGIzNzU4ZWRiZWI0ZDIwNDRjNGQ5NmJiMzQ0MjAyZTEyYjNhYjQyZjk3MTQwYjVlOCJ9"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L65-L73",
+          "resource": "repo://packages/server/src/index.ts#L87-L95",
           "version": "repo-lines-v1:sha256:6f7614b08f336bbf65fe2f0a896a988cf1e99c6034770b50b8643cd2cd7115ba:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU2NzlmMzg3ZjRhZDYzMmYzNjcwNGI2MzdhMWY5ZWRjOGMzZGIzODgwMWU4ZjgxYTY2MWFmM2IxZTQ3ZTBiNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDZkOTIwMGQxY2M4MDdiMTA0YTdmMjIzMWNiYzI3NWIyM2EwNDI3NTlhOWYyYTQ1NzUxODI1MzcyMjE4ZDA2MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODdjMzZjNTFiZjM2ZWMzMmVjYmY4MjJhYzBmNzA0ZDkxOTE2MGJhMzk0NGRiOTVlYzU0YWJmN2EwOGRjM2Y2MSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L156-L158",
+          "version": "repo-lines-v1:sha256:938cbeba3b0615c400ec4af327a7cac37ef3c73da2de9c000246a41beea5d468:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmE0Y2MyZDU2OTU5NmYxOGY0OGZjZGY5ZmVkY2UzY2QxMTAzZjk1NDY4YzU2NDIzMDdkZWM2YmJlMTU4YmZjNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDgzNDIyYWZhZWUwZGU1NDMwMWI3OTFkOTI4MjUzODU1ZTI1YzRmZGM3NTAxMzZlN2YzYTVmNzBlZGIyYWQyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjc1MTVlNTcyMzQzZDE5NWEyZTQ4MDA5MmJhZjMwYmQ3NzcwMDk1NDFiMzM5NWM4ZjAxMGQwNmM2NjNjMzU4MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjE4ZmI1ZTcxN2NlMDU5YjViNDE3MjRiZjE4YzNmNGI0MzhhYzE1MTA5NWEwOGEzNGU3MjdiMGRhYjBjMzk0OCJ9"
         }
       ]
     },
@@ -359,36 +375,62 @@
       ]
     },
     {
-      "id": "claim_6feabd3bbcd548959526936eda23f99c",
-      "statement": "The nested-spawn page's related pages retarget the security-model concept to AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth (concepts/roles-and-permissions.md), which documents the requireAuth/requirePermission middleware and RBAC default-deny posture that nested spawning mirrors.",
+      "id": "claim_7a1ee8ca966a4090baffebee5b089a9d",
+      "statement": "The spawn-token module is a shared scoped-HMAC credential beyond nested spawns: the same mintSpawnToken/resolveSpawnTokenSecret/spawnTokenRejection stack (minted with custom TTLs) authenticates host agents (scope 'host-agent', X-Host/X-Host-Token, minted via POST /host-agent/tokens with manage:tokens), remote gym workers (scope 'gym-worker', X-Gym-Host/X-Gym-Worker-Token), and social-runtime agents (scope 'social-runtime', X-Agent-Social-Token), each returning a flat 401 to the caller while logging the precise rejection reason server-side.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/middleware/auth.ts#L107-L139",
-          "version": "repo-lines-v1:sha256:5604cbdf011d8d476531857af85590603c319759fdfc9ca2fdc85a121494ce99:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNmFjMDUxODFhM2Q2Y2IxNDM0NzFjNjZmNTgwZjkwNWQ4ZWI5MzQ2MDBkMzVjMTEwYmU2YWZlYWRkOWIxMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTNkNzY0ZTViMDAwYWQ4MGMxODI2MDZlNjU4ZDFhOTlkMjZhNDRhYTZkM2M5NzczNDI4ZDkyNmFmZmQ4NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5MGVmZGM2OWEwYzc5ODA1YWJkNzdiNDZlNjNlM2VlODFkMTNiMmVmZjZkMzk2MzliMGRlMzY2YWY0ZmZmZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkYjRjMjZjOThkNWM5ZDkzNjVlNzBhMTEwMDgyNGM4MTIyNzI3YTVhNjI4Y2MwZjJhNDY3YjJlYmMzNzI0MjUifQ"
+          "resource": "repo://packages/server/src/routes/host-agent.ts#L29-L75",
+          "version": "repo-lines-v1:sha256:a906f4086e71233f1459433249c9eb60da2937a96b7e8f8de91b7e9529f06510:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0N2UzYmMyNWRkMDcyZTM4Y2Q2MDdlZmE5ZjliMTQzOWNjNmM0ZDJmN2Q4YmRiNmFlZTZjMDI4NzA3OTgwMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5MjgxODE5NjZiMmE2NDM0YjA4MzYzNzAzMGVkNGY5MzQyYWI1ODhlMzg0ZDY0N2Q1ODljMjcwYTQ0Y2EzZGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlNjZmMDkxMDNlN2IyMjI2YmU1MDc4NWMzNzQ4MDdjOTg3ZDZlNzNhN2Y4MzNiMGY3YWM4MmZiNDA2MDcwYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhNTdmZmQ2ZDAzMzQ2MTk3NmZiYTUxZGY5NGZhOWRjZTViOWY5NmRjODc2MzQ4N2Y3Y2Y5MzM5MzM0ZmE4NmIifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L137-L141",
-          "version": "repo-lines-v1:sha256:938fb514a75aa0b981b76569954d2d2a1068acf40b4e1a06e213e2e5581562bb:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg4YjI2NGEyNWUzOTk2NTYwOTEzZjNlODNmMjZkNzUzODU1YWEyZWRhMzJhZTVkMmJjNTQyNTI2OGIxNmNjMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGVhOThlNTc4YWRmNjU1ZTgwMGNmMTI1M2Y5ZGI2YjljODE3OTYyMmNlZjdhMmM5ODkxYmU5ZTU1ZTkwOGM2OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmQ2OGUyMzFkOGZlY2NlNGZkZjAyMDM4MmY4MWNmMGIzNDA2YWQ0NjliMThiZmU2NDMxNzQ3YzA3OTRkMmJjNyJ9"
+          "resource": "repo://packages/server/src/routes/remote-gym.ts#L23-L35",
+          "version": "repo-lines-v1:sha256:15b8e3c58dd53130a7853d13c8fcab3703a8eb46894750e3c29679a7fd931b08:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNGQzZGI4NTYxNDk3OTIxNmExYWM1M2RiZTBlZmFhZTFlOWExZTdjZGI4NzJmNTdhOWMzNWNiZmIyNjkwZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwN2QxODZlZTM2MzNjMjEzNzNlMDI0ZjhjYTE4MWUyZWEyNmNlZDY1NGU3NzE3YTlmODYzZmM1ZDUwNmI2MjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjOGZlZDQ1YjI5NDJjNDA3ZTEzMWQ5OTBjYzU1ZDBmZTQ4MjkwNjc0MzVjZTYxNjg4NjQ4M2E0MWMwMjE3YTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/swarm-orchestration.ts#L372-L390",
+          "version": "repo-lines-v1:sha256:09b387904052b82afd363c9e0d2d6eeac1226254250faa9ae9c64203f5e26fec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiZmRjOTYwYjE1MmY4ZjliMGQ0NWRlZjkxZjUyZmMwMDIwNGFmMWIxNGJmM2M2ZWRjNWYwMzYyMTIyMGIzZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMjYyY2QzZGY4MzZiZTAzODk4ZWRjODM5YjY3NWNiNjYwMGI5NjEyYWE2ZTczYzQ3NTc1YWEyMTJlZmM2N2IifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L51-L82",
+          "version": "repo-lines-v1:sha256:b701fcce04a6812d793886d538265e114294da6fb22e6a4d91a1aae8ef6f6a67:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYWI2MWUzY2UyMjI4MDk1MTk3Yjg5MjNmZDlmMmUyYjZhMzI4M2Y1OTdmYmQ4MDliMTc3OWFiNzk4NzUyYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzZDg4NjljYmEyMjJlMDAwM2IwZjI1YmExODMxM2I1Nzc3YTU1MDkxZDdmZjE4NjA5OTZkODg3NzY1OTI0ODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2OTlmYjFmMmUwOGM1YTQ3MTFkYTBmNTYyMzI1OWMxY2U3NWE5MzI2NWQ2NWEzZTNmZmQzNzRiMzdkY2VjZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgifQ"
         }
       ]
     },
     {
-      "id": "claim_07734e9b08b24028ab9b3b648d83caf2",
-      "statement": "The nested-spawn page's related pages retarget the swarm control-plane concept to the Maker–Checker Loop Execution workflow (workflows/maker-checker-loop.md), which documents the goal/daemon queue under which the /api/swarms/spawns control routes are mounted.",
+      "id": "claim_18cc63fc75294798bdf16c2545453f9d",
+      "statement": "spawnTokenExpiresAt reads a token's stated expiry without trusting/validating it (null when unparseable) and exists only to feed the host-token watch: host-agent and remote-gym routes record token OK/rejection streaks per (host, scope) into host_token_auth so the shadow-mode HOST_TOKEN_WATCH stall detector alarms on >=3 rejections from a previously-authenticated host.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/index.ts#L185-L187",
-          "version": "repo-lines-v1:sha256:360765ee5630fb3800806c55837014f247d4c5d441c294b19e04277b18f1b562:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxNTQ0N2FjMzc2NTk3NDUzOThiNjY1NjAyOTQ2YTM2NDkxOWMzMDI1ZjUzNjE2MDJkMjgxNWIwNGU5NzY0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTY5MTI3NmY4YzBmMzk0MjBlNWU4N2IyYTVkMDFlZWMzZjc0YmVmOGQ5ZDY1NzcyZmYzNDRhNWMwY2RmZGM1NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmRjMGI5ZTNlNzk0Mjc4OWVlZTdjYzRkM2QwOWY2ZjY0OGUwYzRjZTM0NjA1NTAwZGNjY2Q0ZDAwZjE1ODNmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDFlMzMxNTJiNDU5ZDdjNmMzOGI1NjMwMjBhN2FhYzliYzMxOTY5MDQ1MjlmNTJhMDQyYmY2ODViMTljMDI3OCJ9"
+          "resource": "repo://packages/server/src/routes/host-agent.ts#L35-L42",
+          "version": "repo-lines-v1:sha256:56a2b78f31ad28465c13242e22c8627ed5f8bd78413683f0f4b3c6e3400058a0:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWY1YWI0N2Q4YWYwYjlmYzZjMDg4OWZiZGMyNzZhZGQ2ZjQ0YTczYTc5NmRjZjljYTk0NmRmMjI2NWIwNDhjOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTU3NDdlNjhhYTY2OTY4NmE1Y2U2NzJlYjA0NjkzZTkxNWZmN2JiYTEyNWNjNjhmODBhN2UyM2ZhZjA3Yjc5NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzZiYjM1MmEwY2ExNWFmN2RiYTU5MzBiMmM4MjEzZTNjOWFhYjY0OWM5NGM1MDQyZjgxN2NhNDA2ZTdiZTNjZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTE3N2U3ZjZlZjBhZDQyNWY2Y2YyZDc2NmQ4ZGI4YTJjZjYyYjhiNTE3Njg5NDFkNzZhNjRmZGJhYzJlZjAyOCJ9"
         },
         {
-          "resource": "repo://packages/server/src/routes/spawns.ts#L1-L16",
-          "version": "repo-lines-v1:sha256:603393ab966c60c65ce436a0ee10e2333c73644a7055d104a31dd9c7671dca77:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MDM1NTE2MzgyZGI2M2M3ZWU2NDBlNWNmYzI1OGI2ODM3ZTIzZDE1ZGUxZGZkOGZmZmRjNDgyNTdjNmY4MjkifQ"
+          "resource": "repo://packages/server/src/services/host-token-watch.ts#L23-L48",
+          "version": "repo-lines-v1:sha256:d482f07c91f5c7c77eae734a3c608b965bc210386823b9ea4423840c128fc6f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3ZjQyODI4MjczZmViMWU2NWNhZDdjYjY0MzFlZDgxNzQ0YTYyMTk2YTRkZTIxNTI3MzYzNGJhM2Y3ZTcxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyYWViNWUzMzM1ODQyNTVlMWJhZGU2YWViMzkxYTVhZWY4MzFiZWY2NDRmMDI3YTUxNTIwMDU3NDg5YTM1NTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViMWRiOTFmZjVmZmJiMTNhMzU1NGJhMTc0YjFmZDBmMWFiOGMzZTYwMGE3ZmViMDBmNTJhZDkyZDkyNTY3ODcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L95-L100",
+          "version": "repo-lines-v1:sha256:ca65ec264a04211b96370a8ef5b87824cb22dfbee19871c1ddfd68f199ec8474:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzdlMzJmOTczMWM1MGEyZjljNDZmYTJiZjE0MDUyYWNjMWZmOGVmMDU5NTIyNGIwMzgyYzkxNmIxNzhhODhmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTk2NTJjZDgyNDQyNzY0YTM2MDNlYTFmNDFlZjBmN2U0YzdlMTkwOGM1ODg3OTI2MzJkZmI3MGU2YmU3MzYzNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e4b7d004c2624d48ba0599b9ddb28339",
+      "statement": "LoopService.buildNestedSpawnEnv mints a per-lease spawn token at execution time only for armed leases (mintLeaseSpawnToken checks metadata.allow_nested_spawn === true) and returns the MERGED runtime env — the static allowlist (PATH/HOME/model keys plus DJIMITFLO_CONTROL_URL/DJIMITFLO_SPAWN_TOKEN) PLUS DJIMITFLO_LEASE_ID/DJIMITFLO_SPAWN_TREE_ID/DJIMITFLO_DEPTH — because executeRuntimeCommand replaces rather than merges env, so returning only the DJIMITFLO_* vars would strip PATH and break the child runtime.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2028-L2041",
+          "version": "repo-lines-v1:sha256:da5e353818d73d957d88f254cc292e31e790d7a3e6fa28e9457dfbbce1230399:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZjU4M2RhNzFjMGVmYTc5OTE3NGE4Y2EzZTdkOWQ0Y2Y5YzIzYjQzMDBjNDU0YTFlOTkwYzk5YWM0ZGVkYWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0MDE5MGEzMDU4ZDliMWU3NmIzYzU1MzdlNzI3YjViYzM2ZGIwNTU0Yjg3MWU1MGRiYjhkYzk1Yjg2OTgyNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmNWMxOTFjMTNkYjY1ZTg4OTAxNjdkMTA2NjRiOTIzZWY2M2Q2NTVmNDU2OTBkNGRmMDczMWQyMzIyYjYxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMDY4MGY0OWYxMjIxYmJjNTc5MTI2YzAxNmQ5MjNiODU3NGM0YjdkNzQzZDgzMTc5MTVjNjcyOGI2NDRmNTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2142-L2177",
+          "version": "repo-lines-v1:sha256:e2c71bd8b79ee6c7d4d4ae8c0fac88b74f290b576ee4e29aa466f8e18011b25d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNDVkODc2MjUzYzBiN2UzNjExNTZmMDI0NDE5NDMwN2QwMDlhMWNhODZlZTJmMjdlN2M5N2Q5Mzc0NDNkM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4OTJmNjZhNDEyODAzMWUwNjU2OGFlMmQ4ZTM1YTRkMjkzMjQ4NDUyOTFjNGRkNWRiYzllYTY2YjcyMTYzYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0OThkYzZkYzJjMWNiNzRiM2E2M2NhOGFlZjcwZjNmZTM5OTFkNThjMTk1YWQ3NzNjYzRjZGFiNTMzYTQ0ODIifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-11-13T16:00:27.211Z"
   }
 }

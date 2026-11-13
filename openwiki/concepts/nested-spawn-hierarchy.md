@@ -1,11 +1,8 @@
 ---
 type: security-gated-mechanism
 title: Nested Spawn & Swarm Trees
-description: How NestedSpawnService gives running runtime children a gated, budget-accounted path to spawn sub-agents — depth budgets (default 0 = off), cycle guards, cumulative token/wall budgets, capability routing, per-tree concurrency caps, scoped spawn tokens, and the /api/swarms/spawns control endpoint.
+description: How NestedSpawnService gives running runtime children a gated, budget-accounted path to spawn sub-agents — depth budgets (default 0 = off), cycle guards, cumulative token/wall budgets, capability routing, per-tree concurrency caps, scoped HMAC spawn tokens (now shared across host/gym/social surfaces), and the /api/swarms/spawns control endpoint.
 tags: [nested-spawn, spawn-trees, worker-leases, spawn-tokens, default-deny, budgets, capability-routing, auth-middleware, control-endpoint, audit]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-c0941a928920f2167e6565c3
     resource: repo://packages/server/src/__tests__/loop-routing-continuation.test.ts
@@ -13,29 +10,42 @@ sources:
     resource: repo://packages/server/src/__tests__/nested-spawn-loop.test.ts
   - id: openwiki-source-2e6c86fd020200014c5adbb2
     resource: repo://packages/server/src/__tests__/nested-spawn.test.ts
-  - id: openwiki-source-6b4f1fcbf14aab8839ec85c7
-    resource: repo://packages/server/src/bootstrap/constants.ts
+  - id: openwiki-source-289072797fee700b24a8a1d3
+    resource: repo://packages/server/src/bootstrap/autonomous-services.ts
   - id: openwiki-source-34dcb5fad537d29b30c58bda
     resource: repo://packages/server/src/database/migrate.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
     resource: repo://packages/server/src/index.ts
   - id: openwiki-source-a40039ae355451b2b0bf2d41
     resource: repo://packages/server/src/middleware/auth.ts
+  - id: openwiki-source-71021f8dd8ee22ee3952bea0
+    resource: repo://packages/server/src/routes/host-agent.ts
   - id: openwiki-source-13e7bffe2fd4d8b2a22e195d
     resource: repo://packages/server/src/routes/index.ts
+  - id: openwiki-source-5ae743f194dee8dcc975b1df
+    resource: repo://packages/server/src/routes/remote-gym.ts
   - id: openwiki-source-d1ad81b770ebea131df09b62
     resource: repo://packages/server/src/routes/spawns.ts
+  - id: openwiki-source-ed77ca70dca4c6d85e518c1e
+    resource: repo://packages/server/src/routes/swarm-orchestration.ts
+  - id: openwiki-source-cfce6d0bb03993d7e3684fd9
+    resource: repo://packages/server/src/services/host-token-watch.ts
   - id: openwiki-source-22994df3300631f173246b0b
     resource: repo://packages/server/src/services/loop-service.ts
   - id: openwiki-source-3a769a6d8998bdc53fa8b70d
     resource: repo://packages/server/src/services/loop-worker-executor-service.ts
+  - id: openwiki-source-c0fc6c5c8304349645b0a8e8
+    resource: repo://packages/server/src/services/loop-worker-lease-repo.ts
   - id: openwiki-source-70ed66716f0f1e6ad06b18e3
     resource: repo://packages/server/src/services/nested-spawn-service.ts
   - id: openwiki-source-2b37e053dd4f4389d76de035
     resource: repo://packages/server/src/services/spawn-token.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-13T16:00:27.211Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-13T16:00:27.211Z
 ---
 
 # Nested Spawn & Swarm Trees
@@ -65,8 +75,9 @@ The service owns two public operations:
 
 - **`createRoot(input)`** — operator-armed root creation. Confirms the loop run
   exists and the operator has not paused it, resolves the tree budget envelope
-  from explicit input or operator env, mints the root's spawn token, and
-  materializes the root lease by delegation.
+  from explicit input or operator env, mints the root's spawn token scoped to
+  the invariant `(treeId, treeId)` (the spawn tree id *is* the root lease id),
+  and materializes the root lease by delegation.
 - **`requestSpawn(input, opts)`** — child spawn request. Runs the gate chain
   (below) and, on success, materializes the child lease and audit row.
 
@@ -76,15 +87,18 @@ Two deliberate boundaries keep the system coherent:
   lease creation is handed to `LoopService.prepareNestedLease`
   (`packages/server/src/services/loop-service.ts`), which reuses the existing
   spawn-bridge primitives (`createWorktree`, `writeWorkAssignment`,
-  `writeAssignmentPacket`, `insertWorkerLease`) unchanged. A nested child is
-  therefore a **real `worker_leases row** with real
-  `parent_lease_id / spawn_tree_id / depth` lineage — not a parallel structure.
+  `writeAssignmentPacket`) unchanged and inserts the row through
+  `WorkerLeaseRepo` (`packages/server/src/services/loop-worker-lease-repo.ts`),
+  which persists `parent_lease_id / spawn_tree_id / depth / spawned_by_agent_id`
+  directly. A nested child is therefore a **real `worker_leases` row** with real
+  lineage — not a parallel structure.
 - **Token logic lives in a leaf module** (`packages/server/src/services/spawn-token.ts`)
   shared by `NestedSpawnService` (validates tokens over HTTP) and
   `LoopService` (mints a child's own token to inject into that child's env so
   it can self-spawn). This breaks what would otherwise be a
   `LoopService → NestedSpawnService → LoopService` cycle: `LoopService` only
-  **mints**, `NestedSpawnService` only **validates**.
+  **mints**, `NestedSpawnService` only **validates**. The module has since been
+  generalized into the server's generic scoped-HMAC credential (see below).
 
 ## Data model: spawn trees and the sub_agent_spawns ledger
 
@@ -116,16 +130,18 @@ the insert stays backward-compatible.
 
 ## The gate chain (requestSpawn)
 
-`requestSpawn` applies six gates in order. The first failure short-circuits
-into `gateOut`, which writes the `gated_out` audit row, emits
-`SWARM_SPAWN_GATED_OUT`, and returns without materializing anything.
+`requestSpawn` applies the gates in order. All gates before materialization
+short-circuit into `gateOut`, which writes the `gated_out` audit row, emits
+`SWARM_SPAWN_GATED_OUT`, and returns without materializing anything; the token
+and principal-scope checks run *before* that, so a bad credential throws
+`SPAWN_TOKEN_INVALID` with no audit row at all.
 
 ```mermaid
 flowchart TD
   A["requestSpawn"] --> B{"token and principal scope"}
-  B -- "bad token or requester not parent" --> G["gateOut SPAWN_TOKEN_INVALID"]
+  B -- "bad token or requester not parent" --> X["throw SPAWN_TOKEN_INVALID"]
   B --> C{"tree open and parent in tree"}
-  C -- "not found, closed, or mismatch" --> G
+  C -- "not found, closed, or mismatch" --> G["gateOut audited gated_out row"]
   C --> D{"operator paused"}
   D -- "LOOP_OPERATOR_PAUSED" --> G
   D --> E{"depth <= depth_budget"}
@@ -141,7 +157,7 @@ flowchart TD
   J --> K["prepareNestedLease materializes child lease"]
 ```
 
-*Caption: the six requestSpawn gates short-circuit to an audited `gated_out` row; only a fully-clean request reaches `prepareNestedLease`.*
+*Caption: requestSpawn's token/principal checks throw before any audit write; every later gate short-circuits to an audited `gated_out` row, and only a fully-clean request reaches `prepareNestedLease`.*
 
 1. **Token gate.** External (HTTP) callers must present a valid, unexpired
    spawn token scoped to `(requested_by_lease_id, spawn_tree_id)`; a bad or
@@ -183,11 +199,13 @@ Only when all gates pass does the service call
 A child may spawn its own children only while still above the depth floor
 (`allowNestedSpawn = depth < depth_budget`), and only then is a real,
 child-scoped spawn token minted. Grants are committed by incrementing
-`spawn_trees.consumed_tokens` / `consumed_wall_ms`, the `prepared` audit row is
-inserted, and `SWARM_SPAWN_PREPARED` is broadcast (both events flow through
-`broadcastToAuthenticated` when a `WebSocketService` is wired).
+`spawn_trees.consumed_tokens` / `consumed_wall_ms` (the `requestSpawn` result
+carries the fresh `control_url` and `control_token` back to the caller), the
+`prepared` audit row is inserted, and `SWARM_SPAWN_PREPARED` is broadcast (both
+events flow through `broadcastToAuthenticated` when a `WebSocketService` is
+wired).
 
-## Spawn tokens: scoped, expiring, fail-closed
+## Spawn tokens: scoped, expiring, fail-closed — and now generic
 
 Because a spawned runtime child has no user session, it cannot present a Bearer
 JWT. The spawn-token module issues **HMAC-scoped** credentials of shape
@@ -195,9 +213,22 @@ JWT. The spawn-token module issues **HMAC-scoped** credentials of shape
 HMAC-SHA256(secret, payload). Scope is a single `(leaseId, spawnTreeId)` pair
 with a short TTL (`SPAWN_TOKEN_TTL_MS` = 30 minutes, a child lease's spawn
 window), so a leaked child token can only spawn children inside that one tree
-within its window. Validation is constant-time on the signature and never
-throws — any malformed, expired, or wrong-scope token returns `false`, which
-`requestSpawn` maps to `SPAWN_TOKEN_INVALID` → HTTP 401.
+within its window.
+
+Validation is layered:
+
+- `spawnTokenRejection(secret, token, expectedLeaseId, expectedTreeId)` never
+  throws and returns `null` for a valid token or one typed reason —
+  `malformed` (wrong shape, wrong field count, non-numeric expiry), `bad_mac`
+  (signature mismatch, compared with the constant-time `constTimeEq`),
+  `wrong_subject` (lease mismatch), `wrong_scope` (tree mismatch), or `expired`
+  — checked in the order shape → MAC → subject → scope → expiry.
+- `validateSpawnToken(...)` is the boolean wrapper (`rejection === null`); any
+  malformed, expired, or wrong-scope token returns `false`, which `requestSpawn`
+  maps to `SPAWN_TOKEN_INVALID` → HTTP 401.
+- `spawnTokenExpiresAt(token)` reads the payload's stated expiry **without
+  trusting or validating the token** (null when unparseable); it is advisory
+  and exists only to feed the host-token watch after validation has passed.
 
 The secret resolves through `resolveSpawnTokenSecret`: a dedicated
 `DJIMITFLO_SPAWN_TOKEN_SECRET` wins, otherwise `JWT_SECRET` is reused;
@@ -206,14 +237,34 @@ set, while local/test development gets a per-process ephemeral secret (with a
 one-time warning) so tokens stay scoped without a predictable value committed
 in the repo.
 
-Token flow is deliberately asymmetric: `LoopService.buildNestedSpawnEnv`
-mints a fresh token at execution time for an *armed* lease
-(`metadata.allow_nested_spawn === true`) and injects it into the child's
-process env as `DJIMITFLO_SPAWN_TOKEN` alongside `DJIMITFLO_CONTROL_URL`,
+**The module is no longer nested-spawn-specific.** The same mint/validate
+primitive now authenticates three other machine-to-host surfaces, each with its
+own scope string and an operator-chosen TTL (`mintSpawnToken(secret, id, scope,
+ttlMs)`):
+
+- **Host agents** (`packages/server/src/routes/host-agent.ts`) — scope
+  `host-agent`, headers `X-Host` / `X-Host-Token`; `POST /host-agent/tokens`
+  mints a 1–365-day token (operator `manage:tokens`).
+- **Remote gym workers** (`packages/server/src/routes/remote-gym.ts`) — scope
+  `gym-worker`, headers `X-Gym-Host` / `X-Gym-Worker-Token`.
+- **Social runtime agents** (`packages/server/src/routes/swarm-orchestration.ts`)
+  — scope `social-runtime`, header `X-Agent-Social-Token`.
+
+On those surfaces the precise rejection reason is logged and fed to the
+`host-token-watch` stall detector (`packages/server/src/services/host-token-watch.ts`,
+shadow-mode `HOST_TOKEN_WATCH_MODE=shadow`), while the client still gets a flat
+401 — so an operator can tell "expired token" apart from "forged signature"
+without leaking which check failed to the caller.
+
+Token flow for nested spawns is deliberately asymmetric:
+`LoopService.buildNestedSpawnEnv` mints a fresh token at execution time for an
+*armed* lease (`metadata.allow_nested_spawn === true`, checked by
+`mintLeaseSpawnToken`) and injects it into the child's process env as
+`DJIMITFLO_SPAWN_TOKEN` alongside `DJIMITFLO_CONTROL_URL`,
 `DJIMITFLO_LEASE_ID`, `DJIMITFLO_SPAWN_TREE_ID`, and `DJIMITFLO_DEPTH` (merged
 over the static runtime env so PATH/model keys survive; both vars are on the
-runtime env allowlist). The raw token is never persisted or written into the
-assignment file — the `## Nested Spawn Control` block rendered by
+runtime env allowlist). The raw token is **never persisted and never written
+into the assignment file** — the `## Nested Spawn Control` block rendered by
 `buildNestedSpawnControlBlock` shows `<redacted>` and instructs the runtime to
 read the token from its env.
 
@@ -258,11 +309,17 @@ so a child spawning is observable end-to-end. `getSpawnStatus` (a child polls
 its own lease) and `listSpawnTree` (the full ancestry ledger ordered by depth)
 read back from `sub_agent_spawns`.
 
-The default control URL is derived at server startup
-(`packages/server/src/index.ts`, mirrored in
-`packages/server/src/bootstrap/constants.ts`): when the server binds
-`0.0.0.0`/`localhost`, children dial `127.0.0.1`, and operators override
-`DJIMITFLO_CONTROL_URL` explicitly for Docker or remote children. A
+The default control URL is derived at server startup in
+`packages/server/src/index.ts` (there is **no** `bootstrap/constants.ts` — the
+derivation lives only here, and `NestedSpawnService` reads
+`options.controlUrl || process.env.DJIMITFLO_CONTROL_URL || ''`, wired with the
+env value in `bootstrap/autonomous-services.ts`): when the operator has not set
+`DJIMITFLO_CONTROL_URL`, the server computes
+`http://<dialHost>:<PORT>/api/swarms/spawns` where `dialHost` is `127.0.0.1`
+whenever the bind host is `0.0.0.0` or `localhost` — because `0.0.0.0` is a bind
+address, not a dial address — and otherwise the bind `HOST` itself. Operators
+override `DJIMITFLO_CONTROL_URL` explicitly for Docker or remote children (the
+child may need the container's reachable address rather than loopback). A
 control-plane outage is non-fatal for a cooperative runtime — the mock logs
 `control-plane call failed`, exits 0 (echo work done), holds no runtime
 semaphore permit, and creates no child.
@@ -280,6 +337,7 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
 | `SPAWN_CONTEXT_BUDGET` | `0` | per-sub-agent context isolation (0 = off) |
 | `DJIMITFLO_SPAWN_TOKEN_SECRET` | falls back to `JWT_SECRET` | HMAC secret; required in production |
 | `DJIMITFLO_CONTROL_URL` | derived from `HOST`/`PORT` | the callback URL children POST to |
+| `HOST_TOKEN_WATCH_MODE` | `off` | `shadow` records host-token auth/rejection streaks for the stall watch |
 
 ## Focused tests
 
@@ -304,6 +362,15 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
   operator pause blocks nested root creation and direct lease materialization,
   and a paused child is audited `gated_out/operator_paused` with no worktree,
   lease, or budget mutation.
+- `packages/server/src/__tests__/spawn-token-reasons.test.ts` — the typed
+  `spawnTokenRejection` reasons (`malformed`/`bad_mac`/`wrong_subject`/
+  `wrong_scope`/`expired`), that the boolean validator agrees on every
+  rejection, and that host-agent auth logs the reason without logging the token.
+- `packages/server/src/__tests__/spawn-token.exports.test.ts` — the
+  constant-time `constTimeEq` contract (length check, per-character compare).
+- `packages/server/src/__tests__/host-token-watch.test.ts` — the shadow
+  host-token watch: ≥3 rejections from a previously-authenticated host is a
+  stall, a re-minted token clears it, and an unknown caller is never recorded.
 - `packages/server/src/__tests__/auth.test.ts` and
   `auth-principal-chain.test.ts` — the `requireAuthOrSpawnToken` admit/deny
   matrix.
@@ -315,5 +382,7 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
   this service delegates to.
 - [AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth](/openwiki/concepts/roles-and-permissions.md) —
   the auth middleware and RBAC/default-deny posture nested spawning mirrors.
-- [Maker–Checker Loop Execution](/openwiki/workflows/maker-checker-loop.md) —
-  the goal/daemon queue and swarm control plane the spawn routes are mounted under.
+- [Exposed Surface Inventory](/openwiki/integrations/exposed-surface.md) —
+  where `/api/swarms/spawns` sits among the externally reachable endpoints.
+- [Configuration Reference](/openwiki/operations/configuration-reference.md) —
+  the wider env-flag surface the spawn knobs join.
