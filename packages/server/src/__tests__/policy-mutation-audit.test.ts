@@ -66,3 +66,27 @@ describe('policy mutation audit', () => {
     expect(db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action IN ('approval_policy.updated', 'approval_policy.deleted')").get()).toEqual({ count: 2 });
   });
 });
+
+describe('policy list (Policy Center showed only risk_levels[0] and no change history)', () => {
+  it('returns every risk level, the priority and who last changed the policy from the audit trail', async () => {
+    const db = new Database(':memory:');
+    db.exec(schema);
+    runMigrations(db);
+    db.prepare("INSERT INTO users (id, email, password_hash, role) VALUES ('admin-1', 'ops@example.test', 'x', 'admin')").run();
+    const app = express()
+      .use(express.json())
+      .use((req, _res, next) => { (req as any).user = { sub: 'admin-1' }; next(); })
+      .use('/api/policies', createPolicyRoutes(db))
+      .use(errorHandler);
+
+    const created = await request(app).post('/api/policies').send({ name: 'Require approval for medium+', priority: 50, decision: 'require_approval', risk_levels: ['medium', 'high', 'critical'] });
+    await request(app).patch(`/api/policies/${created.body.id}`).send({ description: 'touched' });
+    const list = await request(app).get('/api/policies');
+    const policy = list.body.policies.find((p: any) => p.id === created.body.id);
+    expect(policy).toMatchObject({ priority: 50, risk_levels: ['medium', 'high', 'critical'] });
+    expect(policy.last_change).toMatchObject({ action: 'approval_policy.updated', user_id: 'admin-1', email: 'ops@example.test', role: 'admin' });
+    expect(typeof policy.last_change.at).toBe('string');
+    expect(list.body.policies.find((p: any) => p.id === 'policy-low-task-allow').last_change).toBeNull();
+    db.close();
+  });
+});

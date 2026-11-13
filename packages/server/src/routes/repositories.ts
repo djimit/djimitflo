@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { rateLimit } from 'express-rate-limit';
 import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
@@ -36,7 +37,8 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
       const user = getUser(req);
       const isAdmin = AuthorizationService.isAdmin(user);
       const repositories = scanner.getRepositories();
-      res.json({ repositories: repositories.map((r: any) => sanitizeRepository(r, isAdmin)) });
+      // path_exists: registered checkouts (e.g. explainer cache dirs under /tmp) can vanish; only the boolean is exposed to non-admins
+      res.json({ repositories: repositories.map((r: any) => ({ ...sanitizeRepository(r, isAdmin), path_exists: typeof r.path === 'string' && existsSync(r.path) })) });
     } catch (error) { next(error); }
   });
 

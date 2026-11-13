@@ -28,6 +28,19 @@ describe('ImprovementFunnelService metric truth', () => {
     expect(queues.workItemGroups).toBe(13);
   });
 
+  it('truth audit 2026-11-12: hygiene counts in-flight work items untouched for more than 14 days (prod: 3 leased since 2026-09-08)', () => {
+    const aged = (id: string, status: string, daysAgo: number) => db.prepare(
+      "INSERT INTO work_items (id, title, description, source, risk_class, status, recommended_loop, created_at, updated_at) VALUES (?, 't', 'd', 'test', 'low', ?, 'l', ?, ?)")
+      .run(id, status, new Date(Date.now() - (daysAgo + 1) * 86_400_000).toISOString(), new Date(Date.now() - daysAgo * 86_400_000).toISOString());
+    aged('l1', 'leased', 65); aged('l2', 'leased', 64); aged('b1', 'blocked', 20); aged('p1', 'planned', 15);
+    aged('t-fresh', 'triaged', 2); aged('c-old', 'candidate', 100); aged('d-old', 'done', 100); // fresh, backlog and closed rows are not aged in-flight work
+    const { hygiene } = new ImprovementFunnelService(db).compute();
+    expect(hygiene.agedWorkItems).toBe(4);
+    expect(hygiene.agedWorkItemsByStatus).toEqual({ leased: 2, blocked: 1, planned: 1 });
+    expect(Date.parse(hygiene.agedWorkItemsOldest!)).toBeLessThan(Date.now() - 64.9 * 86_400_000);
+    expect(hygiene.agedWorkItemsDays).toBe(14);
+  });
+
   it('UX-003: the latency median states its 30-day current-status cohort and size, and is a true median', () => {
     proposal('a', 'verified', 24 * 20, 24 * 10); // updated 10 d ago: outside the 7-day yield window, inside the 30-day median window
     proposal('b', 'applied', 8, 6); // 2 h
