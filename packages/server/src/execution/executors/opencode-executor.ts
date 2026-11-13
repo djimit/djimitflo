@@ -162,7 +162,7 @@ export function stepOutcome(reason: string): OpenCodeStepOutcome {
 }
 
 interface OpenCodeRunOutcome {
-  verificationFailures: Array<{ tool: string; reason: string }>;
+  verificationFailures: Array<{ tool: string; reason: string; name?: string }>;
 }
 
 // ── Executor ────────────────────────────────────────────────────────────────
@@ -356,11 +356,15 @@ export class OpenCodeExecutor implements TaskExecutor {
     const event = this.parseJsonEvent(line.trim());
     if (!event) return;
 
-    const verificationFailure = this.getVerificationFailure(event);
-    if (outcome && verificationFailure
+    const verification = this.classifyVerification(event);
+    if (outcome && verification?.failure
       && !outcome.verificationFailures.some((failure) =>
-        failure.tool === verificationFailure.tool && failure.reason === verificationFailure.reason)) {
-      outcome.verificationFailures.push(verificationFailure);
+        failure.tool === verification.failure!.tool && failure.reason === verification.failure!.reason)) {
+      outcome.verificationFailures.push({ ...verification.failure, name: verification.name });
+    }
+    // the maker iterates: a later run of the same check that completed without a failure supersedes the earlier one
+    if (outcome && verification && !verification.failure) {
+      outcome.verificationFailures = outcome.verificationFailures.filter((failure) => failure.name !== verification.name);
     }
 
     if (event.type !== 'step_finish') return;
@@ -380,13 +384,18 @@ export class OpenCodeExecutor implements TaskExecutor {
   }
 
   private getVerificationFailure(event: OpenCodeEvent): { tool: string; reason: string } | null {
+    return this.classifyVerification(event)?.failure ?? null;
+  }
+
+  /** null = not a verification call; failure null = it ran and reported no failure; a refused call (isolation rule) is a failure until a later run of the same check passes */
+  private classifyVerification(event: OpenCodeEvent): { name: string; failure: { tool: string; reason: string } | null } | null {
     if (event.type !== 'tool_use') return null;
 
     const part = (event.part || event) as Partial<OpenCodeToolUse>;
     if (typeof part.tool !== 'string' || !part.state || typeof part.state !== 'object') return null;
     const command = typeof part.state?.input?.command === 'string' ? part.state.input.command : '';
     const tool = part.tool.toLowerCase();
-    const commandMatch = command.match(/\b(type-?check|tsc|eslint|vitest|jest|pytest|cargo test|go test|npm (?:run )?test)\b/i);
+    const commandMatch = command.match(/(?<![\w-])(type-?check|tsc|eslint|vitest|jest|pytest|cargo test|go test|npm (?:run )?test)(?![\w/-])/i);
     const isVerification = /^(build_check|lint|test|typecheck|type-check)$/.test(tool)
       || (tool === 'bash' && Boolean(commandMatch));
     if (!isVerification) return null;
@@ -394,10 +403,12 @@ export class OpenCodeExecutor implements TaskExecutor {
 
     if (/^(error|failed|rejected|cancelled)$/.test(part.state.status)) {
       const detail = part.state.error || `tool status: ${part.state.status}`;
-      return { tool: part.tool, reason: `${verificationName} verification: ${detail}` };
+      return { name: verificationName, failure: { tool: part.tool, reason: `${verificationName} verification: ${detail}` } };
     }
+    // only a finished call counts as a run without failure (pending / running prove nothing)
+    if (part.state.status !== 'completed') return null;
 
-    if (!part.state.output) return null;
+    if (!part.state.output) return { name: verificationName, failure: null };
     try {
       const output = JSON.parse(part.state.output) as {
         success?: boolean;
@@ -409,13 +420,13 @@ export class OpenCodeExecutor implements TaskExecutor {
         || (typeof output.exitCode === 'number' && output.exitCode !== 0)
         || output.verdict === 'fail'
         || (output.summary?.failed_count ?? 0) > 0) {
-        return { tool: part.tool, reason: `verification output reported failure${output.exitCode !== undefined ? ` (exit ${output.exitCode})` : ''}` };
+        return { name: verificationName, failure: { tool: part.tool, reason: `verification output reported failure${output.exitCode !== undefined ? ` (exit ${output.exitCode})` : ''}` } };
       }
     } catch {
       // Non-JSON tool output has no reliable machine-readable failure contract.
     }
 
-    return null;
+    return { name: verificationName, failure: null };
   }
 
   private mapJsonEventToExecutionEvent(taskId: string, event: OpenCodeEvent): ExecutionEventCreateInput | null {
