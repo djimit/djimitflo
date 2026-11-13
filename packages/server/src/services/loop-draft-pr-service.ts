@@ -362,12 +362,17 @@ export function startDraftPrRetry(db: Database, intervalMs = 15 * 60_000): (() =
 
 export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null;
   /** E1: evolutionary settlement state (merge-survival settlementState) — `outcome` stays the GitHub poll state */
-  settlement: SettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null }
+  settlement: SettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null;
+  /** open on GitHub as merge survival last saw it (never polled = open): waits for the operator's merge or close — the
+   *  cockpit's open_prs rule. false = the row only waits (survival window) or is done. */
+  needs_operator: boolean }
 /**
  * UX-7: the loop's draft PRs, read from loop_runs.metadata (no GitHub call). `outcome` is the GitHub state merge survival
  * last polled (open / merged / closed_unmerged); `settlement` is the evolutionary settlement state derived from it (E1).
  * unsettled = PRs that still wait for anything: not SETTLED_SURVIVED / SETTLED_REGRESSED and not a terminal (closed-unmerged)
  * OPEN_BLOCKED — open, merged and inside the survival window, or a pipeline anomaly. by_settlement counts every state.
+ * Rows (truth audit 11-12: a newest-50 table hid the five oldest open PRs the cockpit counts): every PR that needs the
+ * operator first, oldest first, never cut by `limit`; then merged PRs inside the survival window, then the rest, newest first.
  */
 /** Cockpit 3.0: a failed read gives total/unsettled/by_settlement null (unknown), not 0. */
 export function listDraftPrs(db: Database, limit = 50, now = Date.now(), env: NodeJS.ProcessEnv = process.env): { total: number | null; unsettled: number | null; by_settlement: Record<SettlementState, number> | null; closed_unmerged: number | null; rows: DraftPrRow[] } {
@@ -384,12 +389,17 @@ export function listDraftPrs(db: Database, limit = 50, now = Date.now(), env: No
     const o = parseOutcome(r.o);
     return { r, o, s: settlementState(r.created_at, o, now) };
   });
-  const rows = all.slice(0, n).map(({ r, o, s }) => ({
+  const open = (o: ReturnType<typeof parseOutcome>) => (o?.state ?? 'open') === 'open';
+  const waiting = all.filter(({ o }) => open(o)).reverse(); // raw is newest first
+  const rest = all.filter(({ o }) => !open(o));
+  const ordered = [...waiting, ...rest.filter(({ s }) => s.state === 'MERGED_SURVIVAL_PENDING'), ...rest.filter(({ s }) => s.state !== 'MERGED_SURVIVAL_PENDING')];
+  const rows = ordered.slice(0, Math.max(n, waiting.length)).map(({ r, o, s }) => ({
     run_id: r.id, lane: r.loop_name, pr_url: r.url, pr_number: Number(/\/pull\/(\d+)/.exec(r.url)?.[1]) || null,
     age_days: +((now - Date.parse(r.created_at)) / 86_400_000).toFixed(1), outcome: typeof o?.state === 'string' ? o.state : null,
     survived: typeof o?.survived === 'boolean' ? o.survived : null,
     auto_merge: r.auto_merge ?? null, // earned auto-merge decision ('audit_sample' = stays for the human)
     settlement: s.state, settlement_reason: s.reason, settlement_terminal: s.terminal, settlement_age_days: s.age_days,
+    needs_operator: open(o),
   }));
   const by = emptySettlementCounts();
   for (const { s } of all) by[s.state]++;

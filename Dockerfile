@@ -136,6 +136,8 @@ COPY --from=builder /build/packages/agent-catalog/dist packages/agent-catalog/di
 COPY packages/agent-catalog/src/schema packages/agent-catalog/dist/schema
 COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 COPY specs specs
+# /compliance (SDD Assurance) scans openspec/changes relative to dist; without it prod scored only the old specs/ (12-11)
+COPY openspec/changes openspec/changes
 # ExplainerCriticService reads packages/server/corpus/explainer.corpus.jsonl relative to dist; without it every explainer task fails with ENOENT.
 COPY packages/server/corpus packages/server/corpus
 # NE_GENERATOR_CHECK_MODE reads the negative-evidence registry relative to dist (packages/server/dist/services → /app/docs)

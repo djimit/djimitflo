@@ -43,7 +43,7 @@ import { extraRepos } from './repo-registry';
 import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { activeGatePolicyInput, currentPolicyIdentity, gatePolicyClause, policyKey, requireGatePolicyHash } from './gym-gate-policy';
-import { experimentsReport } from './experiment-registry';
+import { experimentDefs, experimentsReport } from './experiment-registry';
 import { learningLedger } from './learning-ledger';
 import { fleetSignatureEvidence } from './fleet-event-signatures';
 import { makerWarmDepsEvidence } from './maker-warm-deps';
@@ -308,7 +308,17 @@ export function gateRuleDisagreements(db: Database, since: string): number | nul
   return n;
 }
 
-export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
+/** the registered start of an experiment (experiment-registry.ts) — where its evidence section counts from; `fallback` if unregistered */
+function experimentSince(id: string, fallback: string): string {
+  return experimentDefs().find((d) => d.id === id)?.started_at ?? fallback;
+}
+
+/**
+ * `opts.ope` (default false): RX-15's off-policy value (banditOpe: one 10 000-draw Monte Carlo per logged bandit decision,
+ * ~4 s of the build on prod 2026-11-12) is report-only and no page reads it, so the default build leaves it out (ope: null,
+ * the ledger note says so); GET /api/health/evolution-evidence?ope=1 computes it.
+ */
+export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30, opts: { ope?: boolean } = {}) {
   const window = Math.min(90, Math.max(1, Math.floor(days) || 30));
   const since = new Date(now - window * 86_400_000).toISOString();
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
@@ -491,8 +501,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     if (!t || t.estimator !== r.estimator || t.scope !== r.scope) { t = { estimator: r.estimator, scope: r.scope, days: [] }; estimates.push(t); }
     t.days.push({ day: r.day, value: r.value, ci_low: r.ci_low, ci_high: r.ci_high, n: r.n, status: r.status });
   }
-  // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit
-  const ope = (() => { try { return banditOpe(db, env); } catch { return null; } })();
+  // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit; only on request (opts.ope)
+  const ope = opts.ope ? (() => { try { return banditOpe(db, env); } catch { return null; } })() : null;
   // Batch-8: loop PRs whose read set (configs, lockfile, imports) changed on main between the checks and the PR
   const freshness = {
     by_state: all<{ state: string; n: number }>(`SELECT json_extract(metadata, '$.evidence_freshness.state') AS state, COUNT(*) AS n FROM loop_runs
@@ -503,7 +513,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
   const experiments = experimentsReport(db, env, now);
-  const ledger = learningLedger(db, experiments.experiments, ope);
+  const ledger = learningLedger(db, experiments.experiments, opts.ope ? ope : undefined);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -531,8 +541,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
     fail_before_pass_after: failBeforePassAfterEvidence(db, env, fisherExact, now),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
-    ace_001: ace001Evidence(db, since, env, now),
-    ste_001: ste001Evidence(db, since, env),
+    // ACE-001 / STE-001 count over the experiment's own analysis window, as the registry row does (from started_at; ace001Evidence
+    // takes max(started_at, analysis_since)), not the page window — a 30-d window cut ACE-001's first days (55/45/57/54 vs 62/50/60/58)
+    ace_001: ace001Evidence(db, experimentSince('ACE-001', since), env, now),
+    ste_001: ste001Evidence(db, experimentSince('STE-001', since), env),
     // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
     // MAKER_WARM_DEPS (nested; blocked_by_experiment while MAKER-DEPS-001 runs): leases per deps_source
     maker_deps_001: { ...makerDeps001Evidence(db, since, env), warm_deps: makerWarmDepsEvidence(db, since, env) },
@@ -615,4 +627,22 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // WEB-001 (WEB_RESEARCH_MODE): failure-driven web research — questions asked, candidates returned/accepted/rejected by reason,
     // knowledge routed (on), dream genomes citing it and their trial result; null = no job yet
     web_research: webResearchEvidence(db, env, now) };
+}
+
+/**
+ * The evidence route's cache: one build per (db, window, ope) for EVIDENCE_CACHE_MS. A build reads ~2 500 statements and
+ * blocks the event loop for seconds; the page polls, the numbers move on the scale of minutes. `fresh` rebuilds now.
+ */
+export const EVIDENCE_CACHE_MS = 5 * 60_000;
+const evidenceCache = new WeakMap<Database, Map<string, { at: number; value: ReturnType<typeof buildEvolutionEvidence> }>>();
+export function cachedEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30,
+  opts: { ope?: boolean; fresh?: boolean } = {}): ReturnType<typeof buildEvolutionEvidence> {
+  const key = `${Math.min(90, Math.max(1, Math.floor(days) || 30))}|${opts.ope ? 1 : 0}`;
+  let byKey = evidenceCache.get(db);
+  if (!byKey) { byKey = new Map(); evidenceCache.set(db, byKey); }
+  const hit = byKey.get(key);
+  if (hit && !opts.fresh && now >= hit.at && now - hit.at < EVIDENCE_CACHE_MS) return hit.value;
+  const value = buildEvolutionEvidence(db, env, now, days, { ope: opts.ope });
+  byKey.set(key, { at: now, value });
+  return value;
 }

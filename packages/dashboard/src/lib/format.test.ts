@@ -18,6 +18,20 @@ describe('UX-5: one locale and shared formatters', () => {
     expect(fmtDate(undefined, { fallback: '—' })).toBe('—');
   });
 
+  it('truth audit: a zone-less SQLite timestamp is UTC, never browser-local time', () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'Europe/Amsterdam'; // an operator browser east of UTC: the same event showed 07:20 on one panel and 09:20 on another
+    try {
+      expect(fmtDate('2026-10-01 18:36:22', { timeZone: 'UTC' })).toBe('01/10/2026, 18:36');
+      expect(fmtDate('2026-10-01 18:36:22', { timeZone: 'UTC' })).toBe(fmtDate('2026-10-01T18:36:22.000Z', { timeZone: 'UTC' }));
+      expect(fmtDate('2026-10-01T18:36:22', { timeZone: 'UTC' })).toBe('01/10/2026, 18:36');
+      expect(fmtDate('2026-10-01T20:36:22+02:00', { timeZone: 'UTC' })).toBe('01/10/2026, 18:36'); // an explicit offset is kept
+      expect(since('2026-10-01 18:00:00', Date.parse('2026-10-01T23:00:00Z'))).toBe('5 h ago');
+    } finally {
+      if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+    }
+  });
+
   it('UX-5: since() reports age in hours, then days', () => {
     const now = Date.parse('2026-10-06T12:00:00Z');
     expect(since(null, now)).toBe('never');

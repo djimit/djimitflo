@@ -35,6 +35,7 @@ it('UXE-09: a failed policy toggle shows the error and keeps the shown state', a
   const update = vi.spyOn(api, 'updatePolicy').mockRejectedValue(new Error('Policy is locked'));
   render(<PolicyCenterPage />);
   fireEvent.click(await screen.findByRole('button', { name: 'Enabled' }));
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disable policy' }));
   expect(await alertText()).toContain('Could not update policy Block force push: Policy is locked');
   expect(update).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'Enabled' })).not.toBeNull();
@@ -71,6 +72,7 @@ it('UXE-09: a failed task creation shows an inline notice, not a native alert', 
   vi.spyOn(api, 'getRuntimeContracts').mockResolvedValue({ runtimes: {} } as never);
   vi.spyOn(api, 'getRepositories').mockResolvedValue({ repositories: [] });
   vi.spyOn(api, 'createTask').mockRejectedValue(new Error('Task queue full'));
+  vi.spyOn(api, 'getTasks').mockResolvedValue({ tasks: [], total: 0, counts: {} });
   render(<MemoryRouter><TasksPage /></MemoryRouter>);
   fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
   fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Fixture task' } });

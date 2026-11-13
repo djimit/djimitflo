@@ -60,15 +60,17 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
     return (req as any).user;
   }
 
-  // GET /api/tasks - List all tasks
+  // GET /api/tasks - List tasks. `total` is the full match count for the filters (not the page size) and `counts`
+  // the per-status totals for the same filters minus `status`. `view=summary` cuts descriptions for list pages.
   router.get('/', (req, res, next) => {
     try {
-      const { status, agent_id } = req.query;
+      const status = typeof req.query.status === 'string' && req.query.status ? req.query.status : undefined;
+      const agentId = typeof req.query.agent_id === 'string' && req.query.agent_id ? req.query.agent_id : undefined;
+      const search = typeof req.query.q === 'string' ? req.query.q.trim() : '';
       const user = getUser(req);
       const limit = boundedInteger(req.query.limit, 100, 1, 500, 'limit');
       const offset = boundedInteger(req.query.offset, 0, 0, 1_000_000, 'offset');
 
-      let query = 'SELECT * FROM tasks';
       const params: any[] = [];
       const where: string[] = [];
 
@@ -78,32 +80,38 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         params.push(...visibility.params);
       }
 
-      if (status) {
-        where.push('status = ?');
-        params.push(status);
-      }
-
-      if (agent_id) {
+      if (agentId) {
         where.push('agent_id = ?');
-        params.push(agent_id);
+        params.push(agentId);
       }
 
-      if (where.length > 0) {
-        query += ' WHERE ' + where.join(' AND ');
+      if (search) {
+        where.push("(title LIKE ? ESCAPE '\\' OR id LIKE ? ESCAPE '\\')");
+        const pattern = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        params.push(pattern, pattern);
       }
 
-      query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-      params.push(limit, offset);
+      const whereSql = (extra: string[]) => (extra.length ? ' WHERE ' + extra.join(' AND ') : '');
+      const counts = Object.fromEntries((db.prepare(`SELECT status, COUNT(*) AS n FROM tasks${whereSql(where)} GROUP BY status`)
+        .all(...params) as Array<{ status: string; n: number }>).map((row) => [row.status, row.n]));
+      const total = status ? counts[status] ?? 0 : Object.values(counts).reduce((sum: number, n) => sum + (n as number), 0);
 
-      const tasks = db.prepare(query).all(...params);
+      const pageWhere = status ? [...where, 'status = ?'] : where;
+      const pageParams = status ? [...params, status] : params;
+      const tasks = db.prepare(`SELECT * FROM tasks${whereSql(pageWhere)} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+        .all(...pageParams, limit, offset);
 
       const full = req.query.full === '1';
+      const summary = req.query.view === 'summary';
       const parsed = tasks.map((task: any) => {
         const t = parseTask(task);
-        return full ? t : { ...t, metadata: slimMetadata(t.metadata) };
+        if (full) return t;
+        const description = summary && typeof t.description === 'string' && t.description.length > 280
+          ? `${t.description.slice(0, 280)}…` : t.description;
+        return { ...t, description, metadata: slimMetadata(t.metadata) };
       });
 
-      res.json({ tasks: parsed, total: tasks.length });
+      res.json({ tasks: parsed, total, counts, limit, offset });
     } catch (error) {
       next(error);
     }
