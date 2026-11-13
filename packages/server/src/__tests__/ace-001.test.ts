@@ -7,7 +7,11 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { assignmentContext, assignmentContextMarkdown } from '../services/assignment-context';
-import { ACE_ARMS, ACE_001_STOP_BY, ace001Evidence, aceArm } from '../services/ace-001';
+import {
+  ACE_001_ANALYSIS_SINCE_DEFAULT, ACE_001_TARGET_PER_ARM, ACE_ARMS, ACE_001_STOP_BY,
+  ace001Evidence, ace001On, aceAnalysisSince, aceArm, aceDelivery, aceFallbackReason, aceLane,
+  similarExamples, similarKbPages,
+} from '../services/ace-001';
 import { daemonCheckOptions } from '../services/loop-daemon';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
@@ -107,4 +111,187 @@ it('evidence counts production outcomes per arm (gym outcomes and other refs exc
   // at the readout (stop_by, Amendment 2) the same data reads out
   const out = ace001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }, Date.parse(ACE_001_STOP_BY));
   expect(out.main_effects.retrieval).toMatchObject({ on_n: 2, off_n: 2, diff: 0.5, withheld: null });
+});
+
+it('ace001On is true only when ACE_001_MODE is exactly "on"', () => {
+  expect(ace001On({ ACE_001_MODE: 'on' })).toBe(true);
+  expect(ace001On({ ACE_001_MODE: 'off' })).toBe(false);
+  expect(ace001On({ ACE_001_MODE: 'ON' })).toBe(false);
+  expect(ace001On({})).toBe(false);
+});
+
+it('aceAnalysisSince returns the env value when set, otherwise the default', () => {
+  expect(aceAnalysisSince({ ACE_001_ANALYSIS_SINCE: '2025-06-01T00:00:00Z' })).toBe('2025-06-01T00:00:00Z');
+  expect(aceAnalysisSince({})).toBe(ACE_001_ANALYSIS_SINCE_DEFAULT);
+});
+
+it('aceLane returns null for a null goal id, and for a non-oracle goal', () => {
+  expect(aceLane(db, null)).toBeNull();
+  proposal('reflect', 'executing', ['reflection:x'], now); const g = goalIn('11'); goal(g, 'reflect');
+  expect(aceLane(db, g)).toBeNull();
+});
+
+it('aceLane detects the mutation lane and the test-gap lane by evidence_refs_json', () => {
+  proposal('mut-1', 'executing', ['"mutation-gap:svc"'], now); const gm = goalIn('10'); goal(gm, 'mut-1');
+  expect(aceLane(db, gm)).toEqual({ lane: 'mutation', improvementId: 'mut-1' });
+  proposal('tg-1', 'executing', ['"test-gap:svc"'], now); const gt = goalIn('01'); goal(gt, 'tg-1');
+  expect(aceLane(db, gt)).toEqual({ lane: 'test-gap', improvementId: 'tg-1' });
+});
+
+it('aceFallbackReason: no_embedding when no vector and no error judgment; embedding_failed on an error judgment; no_match when a vector exists', () => {
+  proposal('no-vec', 'executing', ['"test-gap:x"'], now);
+  expect(aceFallbackReason(db, 'no-vec')).toBe('no_embedding');
+  db.prepare("INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, created_at) VALUES (?, 'proposal_embedding', 'self_improvement', ?, '', 'auto', 'error', ?)")
+    .run(randomUUID(), 'no-vec', now);
+  expect(aceFallbackReason(db, 'no-vec')).toBe('embedding_failed');
+  // 'current' has a stored vector (from beforeEach) → no_match
+  expect(aceFallbackReason(db, 'current')).toBe('no_match');
+});
+
+it('similarExamples returns null when the proposal has no vector, and sorts by descending cosine score', () => {
+  proposal('no-vec-2', 'verified', ['"test-gap:no-vec"'], now, test('no-vec-2'));
+  expect(similarExamples(db, 'no-vec-2', 'test-gap', checkout)).toBeNull();
+  // 'current' proposal vector is [1,0,0]; 'similar' has [1,0.1,0] (closest), then recent-1 [0,1,0]
+  const ex = similarExamples(db, 'current', 'test-gap', checkout, 2)!;
+  expect(ex).toHaveLength(2);
+  expect(ex[0]).toContain('similar');
+  expect(ex[1]).toContain('recent-1');
+});
+
+it('similarExamples excludes rows whose artifact file does not exist and rows with a mismatched vector length', () => {
+  // proposal with an artifact path that does not exist on disk
+  proposal('ghost-art', 'verified', ['"test-gap:ghost"'], now, 'packages/server/src/__tests__/missing-file.test.ts');
+  embedding('ghost-art', [1, 0.1, 0]);
+  const ex = similarExamples(db, 'current', 'test-gap', checkout, 5)!;
+  expect(ex.every((e) => !e.includes('ghost-art'))).toBe(true);
+});
+
+it('similarExamples selects the mutation lane ref pattern for lane "mutation"', () => {
+  proposal('mut-ex', 'verified', ['"mutation-gap:svc"'], now, test('mut-ex')); embedding('mut-ex', [1, 0.05, 0]);
+  const ex = similarExamples(db, 'current', 'mutation', checkout, 2)!;
+  expect(ex[0]).toContain('mut-ex');
+  // test-gap examples must not appear in the mutation lane
+  expect(ex.every((e) => !e.includes('recent-1'))).toBe(true);
+});
+
+it('similarKbPages returns null when the proposal has no vector', () => {
+  expect(similarKbPages(db, 'no-such-proposal')).toBeNull();
+});
+
+it('similarKbPages skips quarantined pages and pages whose body sha no longer matches, and respects the min threshold', () => {
+  // add a quarantined_at column and a quarantined page that would otherwise be very close
+  db.exec('ALTER TABLE kb_pages ADD COLUMN quarantined_at TEXT');
+  db.prepare("UPDATE kb_pages SET quarantined_at = '2026-01-01T00:00:00Z' WHERE path = 'close.md'").run();
+  // corrupt the sha of far.md so it no longer matches its body
+  db.prepare("UPDATE kb_pages SET sha = 'deadbeef' WHERE path = 'far.md'").run();
+  // add a page that is close enough (score ~0.9 >= 0.3)
+  kb('near.md', [0.95, 0.05, 0]);
+  const pages = similarKbPages(db, 'current', 3, 0.3)!;
+  expect(pages.map((p) => p.path)).toEqual(['near.md']);
+});
+
+it('similarKbPages sorts by descending score and slices to k', () => {
+  kb('a.md', [0.8, 0.1, 0]); kb('b.md', [0.99, 0.01, 0]);
+  const pages = similarKbPages(db, 'current', 1, 0.3)!;
+  expect(pages).toHaveLength(1);
+  expect(pages[0].path).toBe('b.md');
+});
+
+it('similarKbPages returns [] when the kb_pages table is missing (lazy schema)', () => {
+  db.exec('DROP TABLE kb_pages');
+  expect(similarKbPages(db, 'current')).toEqual([]);
+});
+
+it('aceDelivery counts per-arm treated/delivered slots, rates, and fallback reasons from assignment_context events', () => {
+  const insertEvent = (runId: string, createdAt: string, ace: Record<string, unknown>) => db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), runId, JSON.stringify({ ace_001: ace }), createdAt);
+  const ts = (offset: number) => new Date(Date.now() - offset).toISOString();
+  // arm 11: r treated+delivered, s treated+delivered (no fallback)
+  insertEvent('r1', ts(5000), { arm: '11', lane: 'test-gap', examples_source: 'similarity', kb_paths: ['close.md'], fallback: [], fallback_reason: undefined });
+  // arm 10: r treated but fell back (r in fallback)
+  insertEvent('r2', ts(4000), { arm: '10', lane: 'test-gap', examples_source: 'recency', kb_paths: [], fallback: ['r'], fallback_reason: 'no_embedding' });
+  // arm 01: s treated but fell back (s in fallback)
+  insertEvent('r3', ts(3000), { arm: '01', lane: 'test-gap', examples_source: 'fallback_recency', kb_paths: [], fallback: ['s'], fallback_reason: 'embedding_failed' });
+  // arm 00: control, no treated factors
+  insertEvent('r4', ts(2000), { arm: '00', lane: 'test-gap', examples_source: 'recency', kb_paths: [], fallback: [] });
+  // a second event for r1 (older) should be ignored — only the latest per loop_run_id counts
+  insertEvent('r1', ts(8000), { arm: '11', lane: 'test-gap', examples_source: 'recency', kb_paths: [], fallback: ['r', 's'], fallback_reason: 'no_embedding' });
+
+  const d = aceDelivery(db, ts(10000));
+  expect(d.per_arm['11']).toMatchObject({ runs: 1, r_treated: 1, r_delivered: 1, s_treated: 1, s_delivered: 1 });
+  expect(d.per_arm['10']).toMatchObject({ runs: 1, r_treated: 1, r_delivered: 0 });
+  expect(d.per_arm['10'].s_treated).toBe(0);
+  expect(d.per_arm['01']).toMatchObject({ runs: 1, s_treated: 1, s_delivered: 0 });
+  expect(d.per_arm['01'].r_treated).toBe(0);
+  expect(d.per_arm['00']).toMatchObject({ runs: 1, r_treated: 0, s_treated: 0, r_delivered: 0, s_delivered: 0 });
+  // rates: r delivered 1/2, s delivered 1/2
+  expect(d.retrieval_rate).toBe(0.5);
+  expect(d.examples_rate).toBe(0.5);
+  expect(d.fallback_reasons).toEqual({ no_embedding: 1, embedding_failed: 1 });
+});
+
+it('aceDelivery skips events with no ace_001 field, an invalid arm, or unparseable metadata', () => {
+  const insertEvent = (runId: string, metadata: string) => db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), runId, metadata, now);
+  insertEvent('no-ace', JSON.stringify({ examples: [] }));
+  insertEvent('bad-arm', JSON.stringify({ ace_001: { arm: '99', lane: 'test-gap', examples_source: 'recency', kb_paths: [], fallback: [] } }));
+  insertEvent('bad-json', '{not valid json');
+  const d = aceDelivery(db, new Date(Date.now() - 86_400_000).toISOString());
+  for (const a of ACE_ARMS) expect(d.per_arm[a].runs).toBe(0);
+  expect(d.retrieval_rate).toBeNull();
+  expect(d.examples_rate).toBeNull();
+});
+
+it('aceDelivery counts fallback_reasons as "unrecorded" when fallback is non-empty but fallback_reason is absent', () => {
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r-unc', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ ace_001: { arm: '11', lane: 'test-gap', examples_source: 'fallback_recency', kb_paths: [], fallback: ['r'] } }), now);
+  const d = aceDelivery(db, new Date(Date.now() - 86_400_000).toISOString());
+  expect(d.fallback_reasons).toEqual({ unrecorded: 1 });
+});
+
+it('ace001Evidence uses the later of windowSince and analysisSince, and reports delivery_invalid before analysis_since', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string, success: boolean) => db.prepare(`INSERT INTO skill_outcomes
+      (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, 'loop-maker:doc-drift-and-small-fix-loop:opencode', ?, 1000, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), success ? 1 : 0, randomUUID(), JSON.stringify([`ace-001-arm:${arm}`]), now);
+  outcome('00', true);
+  // analysis_since is in the future relative to `now` → delivery_invalid counts all outcomes, rows are excluded
+  const future = '2099-01-01T00:00:00Z';
+  const ev = ace001Evidence(db, '2020-01-01T00:00:00Z', { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: future });
+  expect(ev.arms['00'].n).toBe(0);
+  expect(ev.delivery_invalid).toBe(1);
+  // windowSince after analysisSince → since = windowSince
+  const ev2 = ace001Evidence(db, now, { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' });
+  expect(ev2.arms['00'].n).toBe(1);
+});
+
+it('ace001Evidence status is analysable when every arm reaches the target and main-effect diff is published at readout', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string, success: boolean) => db.prepare(`INSERT INTO skill_outcomes
+      (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, 'loop-maker:doc-drift-and-small-fix-loop:opencode', ?, 1000, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), success ? 1 : 0, randomUUID(), JSON.stringify([`ace-001-arm:${arm}`]), now);
+  for (let i = 0; i < ACE_001_TARGET_PER_ARM; i++) for (const a of ACE_ARMS) outcome(a, a[0] === '1');
+  const ev = ace001Evidence(db, '2020-01-01T00:00:00Z', { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' });
+  expect(ev.status).toBe('analysable');
+  // retrieval effect: on = arms 10,11 (r=1); off = arms 00,01 (r=0). All r=1 arms succeed, all r=0 fail → diff = 1
+  expect(ev.main_effects.retrieval).toMatchObject({ diff: 1, withheld: null });
+  // examples effect: on = arms 01,11 (s=1); off = arms 00,10 (s=0). 01 fails (s=1 but a[0]=0), 11 succeeds, 00 fails, 10 succeeds → 1/2 vs 1/2 → 0
+  expect(ev.main_effects.examples).toMatchObject({ diff: 0, withheld: null });
+});
+
+it('ace001Evidence main-effect diff is null (withheld) when an arm has zero outcomes before readout', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string) => db.prepare(`INSERT INTO skill_outcomes
+      (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, 'loop-maker:doc-drift-and-small-fix-loop:opencode', 1, 1000, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), randomUUID(), JSON.stringify([`ace-001-arm:${arm}`]), now);
+  outcome('00'); outcome('01'); outcome('10'); // arm 11 empty
+  const ev = ace001Evidence(db, '2020-01-01T00:00:00Z', { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' });
+  expect(ev.main_effects.retrieval.diff).toBeNull();
+  expect(ev.main_effects.retrieval.withheld).toMatch(/no interim efficacy looks/);
+});
+
+it('ace001Evidence mode is null when ACE_001_MODE is unset', () => {
+  new SkillEvolutionEngine(db);
+  const ev = ace001Evidence(db, '2020-01-01T00:00:00Z', {});
+  expect(ev.mode).toBeNull();
 });
