@@ -231,3 +231,11 @@ it('B29: NE-017 (Orca as runtime substrate) is REJECT and guards an Orca depende
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+it('B29: NE-018 (ACE-001 similarity-retrieved maker context) is REJECT, cites its result, and forbids no code (the flag stays until the operator turns it off)', () => {
+  const ne18 = registry().entries.find((e) => e.id === 'NE-018');
+  expect(ne18?.verdict).toBe('REJECT');
+  expect(ne18?.evidence).toContain('docs/research/ace/ACE-001_RESULT.md');
+  for (const ref of ne18?.evidence ?? []) expect(fs.existsSync(path.join(repo, ref.split(' ')[0])), ref).toBe(true);
+  expect(ne18?.forbidden_code_patterns).toEqual([]);
+});

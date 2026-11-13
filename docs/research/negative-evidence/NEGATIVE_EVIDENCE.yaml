@@ -366,6 +366,37 @@
           ]
         }
       ]
+    },
+    {
+      "id": "NE-018",
+      "title": "Similarity-retrieved maker context for oracle-lane goals: KB pages (R) and similar verified examples (S) (ACE-001)",
+      "hypothesis": "Giving the production maker of an oracle-lane goal (test-gap, exports, mutation) the top-3 KB pages by cosine to its proposal (R) and/or the 2 verified tests of the same lane closest to its proposal (S) raises the share of goals whose proposal verifies, without raising cost or regressions.",
+      "verdict": "REJECT",
+      "decided_on": "2026-11-13",
+      "conditions": "Pre-registered 2x2 factorial ACE-001 in production (ACE_001_MODE=on), arm = sha256('ace-001:' + goal id) mod 4, analysis window from 2026-10-12T00:00Z (Amendment 1) to the readout instant 2026-11-11T11:30:24Z (arm 01's 50th goal). 227 goals, one maker outcome each (62 / 50 / 58 / 57 for arms 00 / 01 / 10 / 11). Delivery 123/123 (R) and 115/115 (S), 0 fallbacks. Control S=0 is production K1, which shows no examples on most runs (Amendment 1). Period boundaries 2026-10-27 (memory rules off) and 2026-11-08 (siblings off) reported separately (Amendments 4, 5).",
+      "result": "R: 65/115 (0.565) vs 74/112 (0.661), difference -0.095 (Newcombe 95 % CI -0.218 to +0.031), exact permutation p 0.33 stratified by lane x memory-holdout; MH RD -0.037 (-0.155, +0.081). S: 63/107 (0.589) vs 76/120 (0.633), -0.045 (-0.169, +0.081), p 0.77; MH RD +0.034 (-0.085, +0.153). Logistic R OR 0.74 (0.32-1.67), S OR 0.88 (0.37-2.08). Period-stratified estimates agree. Tokens per run -4.5 % (R), -2.3 % (S). No safety stop (max regressed gap +16.8 points < 20).",
+      "why": "Both factors were delivered on every treated run and neither raised the verified rate; both crude estimates are below 0 and every 95 % CI includes 0, which is the protocol's falsification rule. Not a harm finding. The test was powered for about +20 points; the upper bounds rule out a benefit above about +3 to +8 points (R) and +8 to +15 points (S).",
+      "evidence": [
+        "docs/research/ace/ACE-001_PROTOCOL.md (sha256 6282a5c2585429d8486b2a4695336c224b5cf98179a8c807d75fe4af05f2fb3e, Amendments 1-5)",
+        "docs/research/ace/ACE-001_RESULT.md",
+        "docs/research/ace/ACE-001_readout.mjs",
+        "docs/research/ace/ACE-001_readout-20261113.json",
+        "packages/server/src/services/experiment-registry.ts ACE_001_CLOSED"
+      ],
+      "allowed_follow_up": "The proposal-embedding store, KB ingest and the ACE assignment/delivery code remain valid infrastructure. A different context form (e.g. KB pages chosen by the target file rather than the proposal text, or examples once K1 control delivers examples) may be tested under its own pre-registration. ACE-001 says nothing about memory rules (not retrieved) or about the R x S interaction (exploratory).",
+      "forbidden_reuse": [
+        "making KB retrieval or similarity examples the default maker context on the strength of ACE-001",
+        "citing the graded-score difference (R on 0.550 vs off 0.450, a lane-skewed subset) as evidence that retrieval helps",
+        "citing ACE-001 as evidence that retrieval harms makers (every CI includes 0)"
+      ],
+      "forbidden_code_patterns": [],
+      "match_terms": [
+        "ACE-001",
+        "ACE_001_MODE",
+        "similarity examples",
+        "KB retrieval for makers"
+      ],
+      "reopen_condition": "A new pre-registered experiment with a changed context design or a control that delivers examples, powered for an effect below the ACE-001 upper bounds (about +8 points), reaching its own promotion criteria. This entry does not permit ACE_001_MODE=on as a default."
     }
   ]
 }
