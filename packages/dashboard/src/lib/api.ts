@@ -2450,8 +2450,9 @@ class ApiClient {
     });
   }
 
-  async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
-    return this.request('/loops/runs');
+  /** synthetic 'exclude': production runs only (no PR-review bookkeeping runs); 'include' (default): every run */
+  async getLoopRuns(opts: { synthetic?: 'include' | 'exclude' } = {}): Promise<{ runs: LoopRunRecord[] }> {
+    return this.request(`/loops/runs?synthetic=${opts.synthetic ?? 'include'}`);
   }
 
   async getLoopRun(runId: string): Promise<LoopRunRecord> {

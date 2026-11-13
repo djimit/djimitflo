@@ -4,7 +4,7 @@
   "counters": {
     "decision_keys_proven": 25,
     "undefined_theme_token_uses": 55,
-    "locale_less_toLocale": 33,
+    "locale_less_toLocale": 30,
     "native_alert": 0,
     "operator_routes_ui_called": 162,
     "unmatched_calls": 0,
