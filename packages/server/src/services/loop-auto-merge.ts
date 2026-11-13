@@ -63,6 +63,12 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * non_test_file is evaluated by findingFixIneligible; eligible, it skips only the test-only gates (oracle tests, removed tests,
  * the lane diff limit, assertion strength, value) and goes through every other gate above with its own class state. Its
  * mode is the lower of the two flags. Rejected, it keeps its non_test_file decision with the reason in `finding_fix`.
+ * Merge queue of one (prod 11-13: 7 green PRs sat 'waiting branch_updated' for days — strict protection puts every behind PR
+ * behind again on each merge, and all of them were updated every tick): per repo at most one PR is updated and waiting for
+ * its CI. A PR is in flight when this tick left it waiting branch_updated / rechecking_after_update / checks_pending (not
+ * behind) for less than QUEUE_HOLD_MAX_MS, or updated it. Update-branch calls run after every PR was evaluated (so a merge in
+ * this tick frees the queue), oldest first; a later behind PR is 'waiting: queued_behind_pr:#<n>' and keeps its place —
+ * also a red re-checked one (its update is the re-check's, resumed when its turn comes). Merges are not serialized.
  */
 /**
  * R12 guard-test list (UXE-00a, operator decision D-UXE-00a): the UX oracle tests. testOnlyChange makes every test file
@@ -73,6 +79,9 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
 export const ORACLE_TEST_FILES = ['packages/server/src/__tests__/ui-fitness.test.ts', 'packages/server/src/__tests__/ux-coverage.test.ts',
   'packages/dashboard/src/RouteSmoke.test.tsx', 'packages/dashboard/src/UX25b.test.tsx', 'packages/dashboard/src/UX4.test.tsx',
   'packages/dashboard/src/UxTasks.test.tsx'] as const;
+/** merge queue: a PR waiting this long on its CI (a required check that never reports) no longer holds the queue */
+export const QUEUE_HOLD_MAX_MS = 6 * 3_600_000;
+const IN_FLIGHT_REASONS = ['branch_updated', 'rechecking_after_update', 'checks_pending'];
 type Decision = 'merged' | 'would_merge' | 'audit_sample' | 'ineligible' | 'waiting' | 'capped' | 'revoked_hold';
 export interface AutoMergeRecord {
   mode: 'shadow' | 'act'; decision: Decision; reason: string; at: string; pr_number: number;
@@ -259,6 +268,9 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   const valueLanes = autoMergeValueGateLanes(env);
   const recheckOn = autoMergeRecheck(env); const recheckMs = autoMergeRecheckHours(env) * 3_600_000;
   let evaluated = 0; let merged = 0; let rechecks = 0;
+  // merge queue of one per repo: the PR in flight this tick, and the update-branch calls deferred until every PR was evaluated
+  const inFlight = new Map<string, number>();
+  const updates: Array<{ slug: string; number: number; update: () => Promise<boolean>; queue: (holder: number) => void }> = [];
   for (const run of runs) {
     const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord; verified_head_sha?: string };
     const prev = meta.auto_merge;
@@ -296,6 +308,11 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     // U2 shadow: set once the value gate has looked; every later decision of this PR carries it
     let wouldBlock: AutoMergeRecord['would_block_value'];
     const record = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord> = {}): AutoMergeRecord => {
+      const rec = write(decision, reason, extra);
+      if (rec.mode === 'act' && decision === 'waiting' && IN_FLIGHT_REASONS.includes(reason) && now.getTime() - Date.parse(rec.at) < QUEUE_HOLD_MAX_MS && !inFlight.has(slug)) inFlight.set(slug, number);
+      return rec;
+    };
+    const write = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord>): AutoMergeRecord => {
       // unchanged decision (shadow re-checks every tick): keep the first record, so `at` stays when it was first decided
       if (prev && prev.mode === pm && prev.decision === decision && prev.reason === reason && prev.would_block_value === wouldBlock && prev.finding_fix === extra.finding_fix) return prev;
       // a PR that was ever re-checked keeps its re-check stamp (evidence: re-checks per 24 h); absent otherwise
@@ -392,11 +409,17 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const required = await requiredContexts(slug);
     if (!required) { record('waiting', 'required_checks_unavailable'); continue; }
     const { state, reason: checksReason } = await checks(slug, sha, required);
+    // update-branch waits its turn in the merge queue (after the loop); a queued PR keeps its place on later ticks
+    const queueUpdate = (okReason: string) => updates.push({ slug, number, queue: (holder) => record('waiting', `queued_behind_pr:#${holder}`),
+      update: async () => {
+        const r = await gh(slug, `pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
+        record('waiting', r.ok ? okReason : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); return r.ok;
+      } });
+    const queued = prev?.mode === 'act' && prev.decision === 'waiting' && reasonCode(prev.reason) === 'queued_behind_pr';
     if (state === 'red') {
       // re-check in act: red checks on a head that is behind the base (main was red then) — update the branch so CI reruns
-      if (rechecking && pm === 'act' && pr.mergeable !== false && pr.mergeable_state !== 'dirty' && await behind(slug, pr, sha)) {
-        const r = await gh(slug, `pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
-        record('waiting', r.ok ? 'rechecking_after_update' : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); continue;
+      if ((rechecking || queued) && pm === 'act' && pr.mergeable !== false && pr.mergeable_state !== 'dirty' && await behind(slug, pr, sha)) {
+        queueUpdate('rechecking_after_update'); continue;
       }
       record('ineligible', checksReason ? `checks_failed: ${checksReason}` : 'checks_failed'); continue;
     }
@@ -421,10 +444,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       const body = r.ok ? await r.json().catch(() => null) as { errors?: unknown[] } | null : null;
       record('waiting', r.ok && !body?.errors?.length ? 'marked_ready' : `mark_ready_failed: ${r.status}`, { steps: ['mark_ready'] }); continue;
     }
-    if (pr.mergeable_state === 'behind') {
-      const r = await gh(slug, `pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
-      record('waiting', r.ok ? 'branch_updated' : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); continue;
-    }
+    if (pr.mergeable_state === 'behind') { queueUpdate('branch_updated'); continue; }
     if (pr.mergeable !== true || state !== 'green') { record('waiting', state !== 'green' ? 'checks_pending' : 'mergeability_pending'); continue; }
     const res = await gh(slug, `pulls/${number}/merge`, 'PUT', { merge_method: 'squash', sha, commit_title: `${pr.title} (#${number})`.slice(0, 250) });
     if (!res.ok) { record('waiting', `merge_failed: ${res.status}`); continue; }
@@ -439,6 +459,12 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
           ...(ffClass ? { class: 'finding_fix', finding_fix: ffEvidence } : {}) } });
     } catch { /* the loop event above is the second record */ }
     await pushNotice(`Auto-merged ${ffClass ? 'finding-fix' : 'test-only'} loop PR #${number}: ${meta.pr_url}`, env);
+  }
+  // the merge queue: per repo the PR in flight holds it; otherwise the oldest behind PR is updated (a failed update frees it)
+  for (const u of updates) {
+    const holder = inFlight.get(u.slug);
+    if (holder !== undefined) { u.queue(holder); continue; }
+    if (await u.update()) inFlight.set(u.slug, u.number);
   }
   return { evaluated, merged, revoked: revoked || laneRevokedNow };
 }

@@ -184,6 +184,8 @@ ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 # Baked-at-build provenance so /health can distinguish the running revision from
 # the built artifact instead of trusting a runtime env that may be stale.
 ENV DJIMITFLO_BUILD_COMMIT=$VCS_REF
+# read by holdout-freeze, OpenMythos receipts and skill-artifact evolution (were silently null in prod)
+ENV DJIMITFLO_BUILD_SHA=$VCS_REF
 ENV DJIMITFLO_BUILD_TIME=$BUILD_TIME
 ENV DJIMITFLO_BUILD_SOURCE=$BUILD_SOURCE
 # sha256 of the package-lock.json the image was built from; deploy-vps.sh checks it against the build receipt
