@@ -166,7 +166,7 @@ export function InteractionBoardPage() {
     <div className="space-y-6 p-4 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold text-foreground"><MessageSquare className="h-8 w-8 text-accent" /> Interaction Board</h1>
+          <h2 className="flex items-center gap-3 text-xl font-bold text-foreground"><MessageSquare className="h-6 w-6 text-accent" /> Interaction Board</h2>
           <p className="mt-2 max-w-3xl text-foreground-secondary">Read-only chat and relationship view from the same operational evidence as Mission Control. Simulation, isolation and production stay explicitly separate.</p>
         </div>
         <div className="flex items-center gap-3">

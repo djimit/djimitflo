@@ -210,7 +210,7 @@ export function FleetCockpitPage() {
       {dialog.element}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Fleet Cockpit</h1>
+          <h2 className="text-xl font-bold text-foreground">Worker pool</h2>
           <p className="mt-2 text-sm text-foreground-secondary">
             Worker pool, queue, capacity, throughput, and next executable leases.
           </p>

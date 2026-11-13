@@ -27,7 +27,7 @@ function signIn() {
   useAuthStore.setState({ token: 'ux3-token', user: { id: 'u1', email: 'ux3@example.test', role: 'admin' } as never, isAuthenticated: true, isLoading: false, error: null, restoreSession: async () => undefined } as never);
 }
 
-it.each(['/swarm', '/fleet-cockpit', '/tasks/t1', '/swarm-mission-control/proof-runs/p1'])('UX-3: rendering %s opens exactly one WebSocket for the session', async (path) => {
+it.each(['/agents', '/fleet?tab=workers', '/tasks/t1', '/swarm-mission-control/proof-runs/p1'])('UX-3: rendering %s opens exactly one WebSocket for the session', async (path) => {
   vi.stubGlobal('WebSocket', CountingSocket);
   vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('API down'); }));
   signIn();

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Heart, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
-import { PageHeader, primaryButton, panel } from '../components/PageHeader';
+import { primaryButton, panel } from '../components/PageHeader';
 
 interface HealthCheck {
   name: string;
@@ -15,7 +15,8 @@ const TONE: Record<HealthCheck['status'], { card: string; badge: string; icon: s
   critical: { card: 'border-status-error/20 bg-status-error/5', badge: 'bg-status-error/10 text-status-error', icon: 'text-status-error' },
 };
 
-export function SelfHealingPage() {
+/** Nav cut (UX-30): the former /self-healing page, now a section of /observability (/self-healing redirects to #health-checks). */
+export function SelfHealingSection() {
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,18 +35,17 @@ export function SelfHealingPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <PageHeader
-        title="Self-Healing Dashboard"
-        icon={<Heart className="h-7 w-7 text-status-error" />}
-        description="Read-only scan of loop failure rate, stale leases, leftover worktrees on disk, database size and memory."
-        actions={
-          <button onClick={runHealthCheck} disabled={loading} className={primaryButton}>
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Checking...' : 'Run Health Check'}
-          </button>
-        }
-      />
+    <section id="health-checks" aria-labelledby="health-checks-heading" className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 id="health-checks-heading" className="flex items-center gap-2 text-lg font-semibold text-foreground"><Heart className="h-5 w-5 text-status-error" />Health checks</h2>
+          <p className="mt-1 text-sm text-foreground-secondary">Read-only scan of loop failure rate, stale leases, leftover worktrees on disk, database size and memory.</p>
+        </div>
+        <button onClick={runHealthCheck} disabled={loading} className={primaryButton}>
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Checking...' : 'Run Health Check'}
+        </button>
+      </div>
 
       {error && <p role="alert" className="text-status-error">{error}</p>}
 
@@ -68,8 +68,8 @@ export function SelfHealingPage() {
       )}
 
       {checks.length === 0 && !loading && (
-        <div className={`${panel} py-12 text-center text-foreground-secondary`}>Click "Run Health Check" to scan system health.</div>
+        <div className={`${panel} py-6 text-center text-foreground-secondary`}>Click "Run Health Check" to scan system health.</div>
       )}
-    </div>
+    </section>
   );
 }

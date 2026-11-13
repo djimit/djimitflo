@@ -6,10 +6,11 @@ import { Inbox, RefreshCw } from 'lucide-react';
 import { api, type DecisionsInbox, type DependencyLane, type DraftPrs } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { useNeedsYou } from '../hooks/useNeedsYou';
-import { needsYouItems } from './OperatorCockpitPage';
+import { needsYouItems } from '../lib/needs-you';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { DiscoveryRelevanceSection } from './DiscoveryRelevanceSection';
 import { E1RetrievalLabelSection } from './E1RetrievalLabelSection';
+import { BacklogTriageSection } from './SwarmResourcesSections';
 import { ACTION_PERMISSIONS as P, useCan } from '../lib/permissions';
 import { Button, DataTable, Section } from '../components/ui';
 
@@ -232,7 +233,7 @@ export function DecisionsInboxPage() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Inbox className="w-7 h-7" />
-        <h1 className="text-2xl font-bold">Decisions inbox</h1>
+        <h1 className="text-2xl font-bold">Decisions</h1>
         <button onClick={() => void load()} className="ml-auto flex items-center gap-2 px-3 py-2 rounded-md border border-border"><RefreshCw className="w-4 h-4" /> Refresh</button>
       </div>
       <NeedsYouSummary approvals={pending.count} />
@@ -374,6 +375,7 @@ export function DecisionsInboxPage() {
           </Section>
         </>
       )}
+      <BacklogTriageSection />
     </div>
   );
 }

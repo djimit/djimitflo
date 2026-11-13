@@ -5,7 +5,6 @@ import { api } from './lib/api';
 import { useAuthStore } from './lib/auth-store';
 import { visibleText } from './test/visible-text';
 import { PolicyCenterPage } from './pages/PolicyCenterPage';
-import { FederationPage } from './pages/FederationPage';
 import { MCPPermissionsPage } from './pages/MCPPermissionsPage';
 import { TasksPage } from './pages/TasksPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
@@ -39,20 +38,6 @@ it('UXE-09: a failed policy toggle shows the error and keeps the shown state', a
   expect(await alertText()).toContain('Could not update policy Block force push: Policy is locked');
   expect(update).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'Enabled' })).not.toBeNull();
-});
-
-it('UXE-09: Federation shows failed loads and a failed registration as text', async () => {
-  const request = vi.spyOn(api, 'request').mockImplementation(async (path: string) => {
-    if (path === '/federation/peers') throw new Error('Peer table unavailable');
-    if (path === '/federation/capabilities') return { capabilities: [] } as never;
-    throw new Error('Peer URL rejected');
-  });
-  render(<FederationPage />);
-  expect(await alertText()).toContain('peers: Peer table unavailable');
-  fireEvent.click(screen.getByRole('button', { name: /Register Peer/ }));
-  fireEvent.click(screen.getByRole('button', { name: 'Register' }));
-  await waitFor(() => expect(screen.getAllByRole('alert').map(visibleText).join(' ')).toContain('Could not register peer: Peer URL rejected'));
-  expect(request.mock.calls.filter(([path]) => path === '/federation/register')).toHaveLength(1);
 });
 
 it('UXE-09: MCP Permissions shows failed loads as text, not as "none registered"', async () => {

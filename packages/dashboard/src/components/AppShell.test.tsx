@@ -75,16 +75,16 @@ describe('TabbedPage', () => {
     return <><output data-testid="query">{location.search}</output><button onClick={() => navigate(-1)}>Back</button></>;
   }
   it('defaults to the first tab and honours ?tab= for deep links', () => {
-    render(<MemoryRouter initialEntries={['/x']}><Routes><Route path="/x" element={<TabbedPage tabs={tabs} />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/x']}><Routes><Route path="/x" element={<TabbedPage title="Fixture" tabs={tabs} />} /></Routes></MemoryRouter>);
     expect(screen.getByText('first')).toBeTruthy();
     cleanup();
-    render(<MemoryRouter initialEntries={['/x?tab=two']}><Routes><Route path="/x" element={<TabbedPage tabs={tabs} />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/x?tab=two']}><Routes><Route path="/x" element={<TabbedPage title="Fixture" tabs={tabs} />} /></Routes></MemoryRouter>);
     expect(screen.getByText('second')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Two' }).getAttribute('aria-selected')).toBe('true');
   });
   it('keeps repeated entity filters across click, keyboard selection and browser history', () => {
     const initial = '?run=r1&tag=failed&tag=slow&tab=one';
-    render(<MemoryRouter initialEntries={[`/x${initial}`]}><TabbedPage tabs={tabs} /><History /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[`/x${initial}`]}><TabbedPage title="Fixture" tabs={tabs} /><History /></MemoryRouter>);
     const query = () => new URLSearchParams(screen.getByTestId('query').textContent ?? '');
     const expectContext = (tab: string) => {
       expect(query().get('tab')).toBe(tab);

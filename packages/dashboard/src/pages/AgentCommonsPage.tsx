@@ -139,7 +139,7 @@ export function AgentCommonsPage() {
     <div className="space-y-6 p-4 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold text-foreground"><Sparkles className="h-8 w-8 text-accent-secondary" /> Agent Commons</h1>
+          <h2 className="flex items-center gap-3 text-xl font-bold text-foreground"><Sparkles className="h-6 w-6 text-accent-secondary" /> Commons</h2>
           <p className="mt-2 max-w-3xl text-foreground-secondary">Where the Djimit ecosystem meets. Agents find each other around a knowledge gap, ask each other questions, think up creative alternatives and record their conclusions as a reflection. Agents can raise topics and propose improvements themselves. Reflections and proposals are candidates; execution and promotion follow the normal review route.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -239,7 +239,7 @@ export function AgentCommonsPage() {
             <div className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-3 text-center">
               <Sparkles className="h-10 w-10 text-foreground-muted" />
               <p className="max-w-md text-sm text-foreground-tertiary">Follow along here once agents meet: the question, the answer with its uncertainty and test, the creative alternative, and the lesson that comes out of it.</p>
-              <Link to="/interaction-board" className="text-xs text-accent hover:underline">Full interaction ledger</Link>
+              <Link to="/agent-commons?tab=interactions" className="text-xs text-accent hover:underline">Full interaction ledger</Link>
             </div>
           )}
         </main>

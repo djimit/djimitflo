@@ -11,7 +11,6 @@ import { useStore } from '../lib/store';
 import { ImprovementFunnelPage } from './ImprovementFunnelPage';
 import { TaskDetailPage } from './TaskDetailPage';
 import { AgentsPage } from './AgentsPage';
-import { SwarmOverviewPage } from './SwarmOverviewPage';
 import { ExecutionTimeline } from '../components/ExecutionTimeline';
 import { Layout } from '../components/Layout';
 
@@ -170,18 +169,6 @@ describe('UX-007 loading, keyboard and mobile navigation', () => {
     vi.spyOn(api, 'getAgents').mockResolvedValue({ agents: [] } as never);
     render(<MemoryRouter><AgentsPage /></MemoryRouter>);
     expect(await screen.findByText('No agents configured')).toBeTruthy();
-  });
-
-  it('SwarmOverviewPage: an agent card is a native link (keyboard, new tab)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      const body = url.startsWith('/api/agents') ? { agents: [{ id: 'a1', name: 'Live one', status: 'active', liveness: 'live', total_tasks: 0, capabilities: [] }] }
-        : url.startsWith('/api/tasks') ? { tasks: [] } : url.startsWith('/api/discussions') ? { discussions: [] } : url.startsWith('/api/learning') ? { learnings: [] } : {};
-      return { ok: true, status: 200, json: async () => body };
-    }));
-    useStore.setState({ agents: [{ id: 'a1', name: 'Live one', status: 'active', liveness: 'live', total_tasks: 0, capabilities: [] }] as never });
-    render(<MemoryRouter><SwarmOverviewPage /></MemoryRouter>);
-    const card = await screen.findByRole('link', { name: /Live one/ });
-    expect(card.getAttribute('href')).toBe('/agents/a1');
   });
 
   it('Layout: the closed mobile drawer is hidden from focus below md, Escape closes it and restores focus', async () => {

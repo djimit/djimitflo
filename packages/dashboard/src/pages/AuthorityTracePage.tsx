@@ -66,7 +66,7 @@ export function AuthorityTracePage() {
 
   if (error) return (
     <div className="p-8 space-y-4">
-      <h1 className="text-3xl font-bold text-foreground">Authority Ledger</h1>
+      <h1 className="text-3xl font-bold text-foreground">Authority ledger</h1>
       <p role="alert" className="text-status-error">{error}</p>
       <button onClick={() => void load()} className="rounded border border-border px-3 py-2 text-foreground">Retry</button>
     </div>
@@ -83,7 +83,7 @@ export function AuthorityTracePage() {
     <div className="p-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-          <ShieldCheck className="w-8 h-8" /> Authority Ledger
+          <ShieldCheck className="w-8 h-8" /> Authority ledger
         </h1>
         <p className="text-foreground-secondary mt-2">
           Append-only LifecycleEvents (djimit.io/v1alpha1) over the decision chain:

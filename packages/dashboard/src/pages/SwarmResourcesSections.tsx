@@ -14,17 +14,14 @@ type ReviewDraft = {
   limitations: string;
 };
 
-export function SwarmResourcesPage() {
+/**
+ * Nav cut (UX-30): the backlog and memory-candidate triage of the former /swarm-resources page, now a section of /decisions.
+ * Its mutation gate, assurance harness, control-plane snapshot and specialist panels are SwarmGovernanceSection (/governance?tab=swarm).
+ */
+export function BacklogTriageSection() {
   const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
-  const canManageRsiSafety = useAuthStore((state) => state.hasPermission('manage:config'));
-  const [status, setStatus] = useState<SwarmRealityStatus | null>(null);
-  const [rsiSafety, setRsiSafety] = useState<RsiSafetyStatus | null>(null);
   const [workItems, setWorkItems] = useState<WorkItemRecord[]>([]);
   const [memoryCandidates, setMemoryCandidates] = useState<MemoryCandidateRecord[]>([]);
-  const [specialists, setSpecialists] = useState<SpecialistProfile[]>([]);
-  const [specialistPanels, setSpecialistPanels] = useState<SpecialistPanelRecord[]>([]);
-  const [assuranceSummary, setAssuranceSummary] = useState<AgentAssuranceSummary | null>(null);
-  const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({});
   const [tickResult, setTickResult] = useState<SchedulerTickResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -38,24 +35,11 @@ export function SwarmResourcesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [swarmStatus, safety, backlog, memory, catalog, panels, assurance] = await Promise.all([
-        api.getSwarmStatus(),
-        api.getRsiSafetyStatus(),
-        api.getWorkItems({ limit: 50 }),
-        api.getMemoryCandidates(25),
-        api.getSpecialistCatalog(),
-        api.getSpecialistPanels(25),
-        api.getAssuranceSummary(),
-      ]);
-      setStatus(swarmStatus);
-      setRsiSafety(safety);
+      const [backlog, memory] = await Promise.all([api.getWorkItems({ limit: 50 }), api.getMemoryCandidates(25)]);
       setWorkItems(backlog.work_items);
       setMemoryCandidates(memory.candidates);
-      setSpecialists(catalog.specialists);
-      setSpecialistPanels(panels.panels);
-      setAssuranceSummary(assurance);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load swarm resources');
+      setError(err instanceof Error ? err.message : 'Failed to load backlog and memory candidates');
     } finally {
       setLoading(false);
     }
@@ -77,6 +61,165 @@ export function SwarmResourcesPage() {
   async function runScheduler() {
     const result = await api.runSchedulerTick({ max_items: 10, plan_triaged: true });
     setTickResult(result);
+  }
+
+  return (
+    <section id="backlog-triage" aria-labelledby="backlog-triage-heading" className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 id="backlog-triage-heading" className="text-lg font-semibold mb-1">Backlog and memory triage</h2>
+          <p className="text-xs text-foreground-tertiary">Backlog work items to triage, turn into a goal or discard, and memory candidates (every status) for promotion to OKF.</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => void runAction('scheduler', runScheduler)}
+            disabled={actionId !== null}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent/30 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+          >
+            <Play className="h-4 w-4" />
+            Scheduler Tick
+          </button>
+          <button
+            onClick={() => void refresh()}
+            disabled={loading || actionId !== null}
+            className="p-2 hover:bg-background-elevated rounded-lg transition-colors disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-5 h-5 text-foreground-secondary ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {tickResult && (
+        <div className="rounded border border-accent/20 bg-accent/5 p-3 text-sm text-foreground-secondary">
+          Scheduler inspected {tickResult.inspected_loop_runs} loop run(s), created {tickResult.created_work_items.length} backlog candidate(s), planned {tickResult.planned_work_items.length} work item(s), prepared {tickResult.prepared_work_items.length} work item(s), skipped {tickResult.skipped_existing} duplicate(s), and created {tickResult.leases_created} lease(s).
+        </div>
+      )}
+
+      <section className="bg-background-secondary border border-border rounded-lg p-5">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <h3 className="text-base font-semibold text-foreground">Backlog Work Items</h3>
+          <div className="flex items-center gap-2 text-xs text-foreground-tertiary">
+            <Database className="h-4 w-4" />
+            Djimitflo DB canonical
+          </div>
+        </div>
+        <div className="space-y-3">
+          {workItems.filter((item) => !['discarded', 'done'].includes(item.status)).length ? workItems.filter((item) => !['discarded', 'done'].includes(item.status)).map((item) => (
+            <WorkItemRow
+              key={item.id}
+              item={item}
+              busy={actionId !== null}
+              onTriage={() => void runAction(`triage-${item.id}`, () => api.updateWorkItem(item.id, { status: 'triaged' }))}
+              onGoal={() => void runAction(`goal-${item.id}`, () => api.convertWorkItemToGoal(item.id))}
+              onDiscard={() => void runAction(`discard-${item.id}`, () => api.updateWorkItem(item.id, { status: 'discarded' }))}
+            />
+          )) : (
+            <p className="text-sm text-foreground-secondary">No actionable work items (discarded and done items are hidden).</p>
+          )}
+        </div>
+      </section>
+
+      <section className="bg-background-secondary border border-border rounded-lg p-5">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <h3 className="text-base font-semibold text-foreground">Memory Candidates</h3>
+          <div className="text-xs text-foreground-tertiary">Candidate-only until reviewed or explicitly approved</div>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          {memoryCandidates.length ? memoryCandidates.map((candidate) => (
+            <div key={candidate.id} className="rounded border border-border bg-background p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">{candidate.title}</div>
+                  <div className="mt-1 text-xs text-foreground-secondary line-clamp-2">{candidate.content}</div>
+                </div>
+                <StatusBadge status={candidate.status} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-foreground-tertiary">
+                <span>{candidate.memory_type}</span>
+                <span>{candidate.promotion_status}</span>
+                <span>{candidate.sensitivity}</span>
+                {candidate.human_required && <span>human required</span>}
+              </div>
+              {candidate.promotion_status === 'proposed' && canApprove && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => void runAction(`promote-memory-${candidate.id}`, () => api.promoteMemoryCandidate(candidate.id))}
+                    disabled={actionId !== null}
+                    className="px-2 py-1 rounded border border-status-completed/20 text-xs text-status-completed hover:bg-status-completed/10 disabled:opacity-50"
+                  >
+                    Promote to OKF
+                  </button>
+                </div>
+              )}
+            </div>
+          )) : (
+            <p className="text-sm text-foreground-secondary">No memory candidates yet.</p>
+          )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+/** Nav cut (UX-30): the mutation gate, swarm reality check, assurance harness and specialist panels of the former /swarm-resources page. */
+export function SwarmGovernanceSection() {
+  const canManageRsiSafety = useAuthStore((state) => state.hasPermission('manage:config'));
+  const [status, setStatus] = useState<SwarmRealityStatus | null>(null);
+  const [rsiSafety, setRsiSafety] = useState<RsiSafetyStatus | null>(null);
+  const [specialists, setSpecialists] = useState<SpecialistProfile[]>([]);
+  const [specialistPanels, setSpecialistPanels] = useState<SpecialistPanelRecord[]>([]);
+  const [assuranceSummary, setAssuranceSummary] = useState<AgentAssuranceSummary | null>(null);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({});
+  const [loading, setLoading] = useState(true);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function refresh() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [swarmStatus, safety, catalog, panels, assurance] = await Promise.all([
+        api.getSwarmStatus(),
+        api.getRsiSafetyStatus(),
+        api.getSpecialistCatalog(),
+        api.getSpecialistPanels(25),
+        api.getAssuranceSummary(),
+      ]);
+      setStatus(swarmStatus);
+      setRsiSafety(safety);
+      setSpecialists(catalog.specialists);
+      setSpecialistPanels(panels.panels);
+      setAssuranceSummary(assurance);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load swarm resources');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runAction(label: string, action: () => Promise<unknown>) {
+    setActionId(label);
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed');
+    } finally {
+      setActionId(null);
+    }
   }
 
   async function runMemoryEval() {
@@ -139,18 +282,10 @@ export function SwarmResourcesPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Swarm Resources</h1>
-          <p className="text-foreground-secondary mt-2">Workstation reality checks for agents, workers, backlog, scheduler, memory and loop throughput.</p>
+          <h2 className="text-xl font-bold text-foreground">Swarm safety and panels</h2>
+          <p className="text-foreground-secondary mt-2">Self-improvement mutation gate, swarm reality checks, the agent assurance harness and specialist review panels.</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => void runAction('scheduler', runScheduler)}
-            disabled={actionId !== null}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent/30 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
-          >
-            <Play className="h-4 w-4" />
-            Scheduler Tick
-          </button>
           <button
             onClick={() => void refresh()}
             disabled={loading || actionId !== null}
@@ -172,7 +307,7 @@ export function SwarmResourcesPage() {
       <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-3" aria-labelledby="rsi-safety-heading">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="rsi-safety-heading" className="text-lg font-semibold text-foreground">Self-improvement mutation gate</h2>
+            <h3 id="rsi-safety-heading" className="text-lg font-semibold text-foreground">Self-improvement mutation gate</h3>
             <p className="mt-1 text-sm text-foreground-secondary">Controls whether the governed <code>/swarms/fix</code> workflow may create improvement work. This is not a platform-wide kill switch.</p>
           </div>
           {rsiSafety && (
@@ -210,14 +345,14 @@ export function SwarmResourcesPage() {
       </div>
 
       <p className="text-sm text-foreground-secondary">
-        Worker pools and concurrency: <Link to="/fleet-cockpit" className="underline">Fleet Cockpit</Link> · hosts, diagnostics and admin commands:{' '}
-        <Link to="/fleet" className="underline">Fleet hosts</Link> · loop health: <Link to="/cockpit" className="underline">Operator cockpit</Link>.
+        Worker pools and concurrency: <Link to="/fleet?tab=workers" className="underline">Fleet · Worker pool</Link> · hosts, diagnostics and admin commands:{' '}
+        <Link to="/fleet" className="underline">Fleet · Hosts</Link> · backlog and memory triage: <Link to="/decisions#backlog-triage" className="underline">Decisions</Link> · loop health: <Link to="/" className="underline">Cockpit</Link>.
       </p>
 
       <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Agent Assurance Harness</h2>
+            <h3 className="text-lg font-semibold text-foreground">Agent Assurance Harness</h3>
             <p className="mt-1 text-sm text-foreground-secondary">Causal traces, replay checkpoints, deterministic evals, scoped capabilities and governed reflection candidates.</p>
           </div>
           <button
@@ -264,107 +399,38 @@ export function SwarmResourcesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-6">
-        <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Control plane (VPS container)</h2>
-          <p className="text-xs text-foreground-tertiary">CPU and memory of the container this server runs in — not the workstation (see Fleet hosts).</p>
-          <div className="grid grid-cols-2 gap-3">
-            <SmallStat label="CPU Threads" value={status?.resource_snapshot.cpu_threads ?? 0} />
-            <SmallStat label="Free Memory" value={availableMemory} />
-            <SmallStat label="Open Work Items" value={status?.task_count.open_work_items ?? 0} />
-            <SmallStat label="Open Loops" value={status?.task_count.open_loop_runs ?? 0} />
+      <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
+        <h3 className="text-lg font-semibold text-foreground">Control plane (VPS container)</h3>
+        <p className="text-xs text-foreground-tertiary">CPU and memory of the container this server runs in — not the workstation (see Fleet hosts).</p>
+        <div className="grid grid-cols-2 gap-3">
+          <SmallStat label="CPU Threads" value={status?.resource_snapshot.cpu_threads ?? 0} />
+          <SmallStat label="Free Memory" value={availableMemory} />
+          <SmallStat label="Open Work Items" value={status?.task_count.open_work_items ?? 0} />
+          <SmallStat label="Open Loops" value={status?.task_count.open_loop_runs ?? 0} />
+        </div>
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+            <Network className="h-4 w-4 text-accent" />
+            Stale Agents
           </div>
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
-              <Network className="h-4 w-4 text-accent" />
-              Stale Agents
-            </div>
-            <div className="space-y-2">
-              {status?.stale_agents?.length ? status.stale_agents.map((agent) => (
-                <div key={agent.id} className="rounded border border-border bg-background p-3 text-sm">
-                  <div className="font-medium text-foreground">{agent.name}</div>
-                  <div className="text-xs text-foreground-tertiary">{agent.status} · {agent.last_active_at || 'no heartbeat'}</div>
-                </div>
-              )) : (
-                <p className="text-sm text-foreground-secondary">No stale active/idle agents.</p>
-              )}
-            </div>
-          </div>
-          {tickResult && (
-            <div className="rounded border border-accent/20 bg-accent/5 p-3 text-sm text-foreground-secondary">
-              Scheduler inspected {tickResult.inspected_loop_runs} loop run(s), created {tickResult.created_work_items.length} backlog candidate(s), planned {tickResult.planned_work_items.length} work item(s), prepared {tickResult.prepared_work_items.length} work item(s), skipped {tickResult.skipped_existing} duplicate(s), and created {tickResult.leases_created} lease(s).
-            </div>
-          )}
-        </section>
-
-        <section className="bg-background-secondary border border-border rounded-lg p-5">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Backlog Work Items</h2>
-            <div className="flex items-center gap-2 text-xs text-foreground-tertiary">
-              <Database className="h-4 w-4" />
-              Djimitflo DB canonical
-            </div>
-          </div>
-          <div className="space-y-3">
-            {workItems.filter((item) => !['discarded', 'done'].includes(item.status)).length ? workItems.filter((item) => !['discarded', 'done'].includes(item.status)).map((item) => (
-              <WorkItemRow
-                key={item.id}
-                item={item}
-                busy={actionId !== null}
-                onTriage={() => void runAction(`triage-${item.id}`, () => api.updateWorkItem(item.id, { status: 'triaged' }))}
-                onGoal={() => void runAction(`goal-${item.id}`, () => api.convertWorkItemToGoal(item.id))}
-                onDiscard={() => void runAction(`discard-${item.id}`, () => api.updateWorkItem(item.id, { status: 'discarded' }))}
-              />
+          <div className="space-y-2">
+            {status?.stale_agents?.length ? status.stale_agents.map((agent) => (
+              <div key={agent.id} className="rounded border border-border bg-background p-3 text-sm">
+                <div className="font-medium text-foreground">{agent.name}</div>
+                <div className="text-xs text-foreground-tertiary">{agent.status} · {agent.last_active_at || 'no heartbeat'}</div>
+              </div>
             )) : (
-              <p className="text-sm text-foreground-secondary">No actionable work items (discarded and done items are hidden).</p>
+              <p className="text-sm text-foreground-secondary">No stale active/idle agents.</p>
             )}
           </div>
-        </section>
-      </div>
-
-      <section className="bg-background-secondary border border-border rounded-lg p-5">
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <h2 className="text-lg font-semibold text-foreground">Memory Candidates</h2>
-          <div className="text-xs text-foreground-tertiary">Candidate-only until reviewed or explicitly approved</div>
-        </div>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-          {memoryCandidates.length ? memoryCandidates.map((candidate) => (
-            <div key={candidate.id} className="rounded border border-border bg-background p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground">{candidate.title}</div>
-                  <div className="mt-1 text-xs text-foreground-secondary line-clamp-2">{candidate.content}</div>
-                </div>
-                <StatusBadge status={candidate.status} />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs text-foreground-tertiary">
-                <span>{candidate.memory_type}</span>
-                <span>{candidate.promotion_status}</span>
-                <span>{candidate.sensitivity}</span>
-                {candidate.human_required && <span>human required</span>}
-              </div>
-              {candidate.promotion_status === 'proposed' && canApprove && (
-                <div className="mt-3">
-                  <button
-                    onClick={() => void runAction(`promote-memory-${candidate.id}`, () => api.promoteMemoryCandidate(candidate.id))}
-                    disabled={actionId !== null}
-                    className="px-2 py-1 rounded border border-status-completed/20 text-xs text-status-completed hover:bg-status-completed/10 disabled:opacity-50"
-                  >
-                    Promote to OKF
-                  </button>
-                </div>
-              )}
-            </div>
-          )) : (
-            <p className="text-sm text-foreground-secondary">No memory candidates yet.</p>
-          )}
         </div>
       </section>
+
 
       <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Specialist Swarm Panels</h2>
+            <h3 className="text-lg font-semibold text-foreground">Specialist Swarm Panels</h3>
             <p className="mt-1 text-sm text-foreground-secondary">Independent expert reviews with preserved dissent; panels project to backlog before workers are leased.</p>
           </div>
           <div className="flex items-center gap-2 text-xs text-foreground-tertiary">
