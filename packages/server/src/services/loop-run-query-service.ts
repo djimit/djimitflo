@@ -10,11 +10,14 @@
 
 import type { Database } from 'better-sqlite3';
 import type { LoopRunRecord } from './loop-types';
+import { realRunSql } from './synthetic-runs';
 
 export interface LoopRunFilter {
   status?: string;
   goal_id?: string;
   loop_name?: string;
+  /** true: real loop work only — synthetic PR-review bookkeeping runs left out (same predicate as the KPI aggregates) */
+  real_only?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -68,6 +71,7 @@ export class LoopRunQueryService {
       conditions.push('loop_name = ?');
       params.push(filter.loop_name);
     }
+    if (filter.real_only) conditions.push(realRunSql());
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const limit = filter.limit || 100;
