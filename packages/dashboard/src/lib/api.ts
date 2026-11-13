@@ -654,6 +654,8 @@ export type OperatorCockpit = {
     total?: number | null;
     /** open loop PRs: audit-sample PRs (one weekly batch) and flagged PRs the auto-merge lane did not take */
     audit_batch?: number | null; flagged_prs?: number | null;
+    /** open loop PRs the auto-merge lane still handles (waiting, capped, transient ineligible): system, never counted */
+    system_prs?: number | null;
     /** Dependabot PRs the dependency lane leaves to a human; dependency_tracked false = lane off, not tracked */
     dependency_human?: number | null; dependency_tracked?: boolean;
     /** ground-truth labelling: optional, its own count, never a decision */
