@@ -123,6 +123,52 @@ export const AUDIT_SAMPLE_PCT = 10;
 export const isAuditSample = (prNumber: number): boolean =>
   createHash('sha256').update(`loop-auto-merge:${prNumber}`).digest().readUInt32BE(0) % 100 < AUDIT_SAMPLE_PCT;
 
+/**
+ * Executed audit of the audit sample (operator 2026-11-13: the system decides routine decisions, the human only what is truly
+ * doubtful). The sample exists to catch auto-merges that pass every gate and still add no value; instead of a human reading
+ * it, an independent executed audit decides, on the PR head:
+ *   (a) the kill share of FRESH seeded mutants of the target by the PR's server unit test (settlement-execution rescoreKillShare,
+ *       seeded with the head sha, the maker-time mutants excluded) against the value gate's bar VALUE_KILL_SHARE_MIN,
+ *   (b) the maker's runtime assertion-strength verdict (test-assertion-strength),
+ *   (c) every required check green on the verified-bound head (the merge gate's rule).
+ * pass = (a) ≥ bar AND (b) pass AND (c) green; fail = kill share 0, (b) fail or a required check red; anything else
+ * (no score, a share in (0, bar), checks unreadable, still pending after AUDIT_CHECKS_PENDING_HOURS) is unknown — never a pass.
+ * AUDIT_SAMPLE_AUTO_MODE = off (default: the sample stays for the human, unchanged) | shadow (an auto_merge_audit judgment + loop
+ * event with the would-be decision; the PR's record is unchanged) | act (pass → 'audit_passed', then the normal auto-merge path;
+ * fail / unknown stay 'audit_sample' with reason 'audit_failed: …' / 'audit_unknown: …'; one in AUDIT_SPOT_CHECK_EVERY passes stays
+ * as 'audit_spot_check: …' so the automation itself stays audited — 2 % of eligible PRs instead of 10 %).
+ */
+export type AuditSampleMode = 'off' | 'shadow' | 'act';
+export const auditSampleAutoMode = (env: NodeJS.ProcessEnv = process.env): AuditSampleMode => {
+  const v = String(env.AUDIT_SAMPLE_AUTO_MODE ?? '').trim().toLowerCase();
+  return v === 'shadow' || v === 'act' ? v : 'off';
+};
+export const AUDIT_JUDGMENT = 'auto_merge_audit';
+export const AUDIT_SAMPLE_REASON = 'deterministic 10 % sample: stays for the human';
+export const AUDIT_SPOT_CHECK_EVERY = 5;
+export const AUDIT_CHECKS_PENDING_HOURS = 24;
+/** The audit decisions that keep a PR for the human (the reason code of its 'audit_sample' record in act). */
+export const AUDIT_HUMAN_REASONS = ['audit_failed', 'audit_unknown', 'audit_spot_check'] as const;
+export const isAuditSpotCheck = (prNumber: number): boolean =>
+  createHash('sha256').update(`loop-auto-merge-audit-spot:${prNumber}`).digest().readUInt32BE(0) % AUDIT_SPOT_CHECK_EVERY === 0;
+export interface AuditInputs {
+  strength: string | null;
+  checks: { state: 'green' | 'red' | 'pending' | 'unavailable'; reason?: string };
+  kill: { score: number | null; killed?: number; total?: number; reason: string | null } | null;
+}
+/** The audit's verdict from its three signals; unknown is never a pass. */
+export function executedAuditVerdict({ strength, checks, kill }: AuditInputs): { verdict: 'pass' | 'fail' | 'unknown'; why: string } {
+  if (strength === 'fail') return { verdict: 'fail', why: 'assertion strength fail' };
+  if (strength !== 'pass') return { verdict: 'unknown', why: `assertion strength ${strength ?? 'missing'}` };
+  if (checks.state === 'red') return { verdict: 'fail', why: `required checks not green${checks.reason ? ` (${checks.reason})` : ''}` };
+  if (checks.state !== 'green') return { verdict: 'unknown', why: `required checks ${checks.state}` };
+  if (!kill || kill.score === null) return { verdict: 'unknown', why: `no fresh-mutant kill share: ${kill?.reason ?? 'not executed'}` };
+  const share = `fresh-mutant kill share ${kill.score}${kill.total ? ` (${kill.killed}/${kill.total})` : ''}`;
+  if (kill.score <= 0) return { verdict: 'fail', why: `${share}: the test kills no fresh mutant` };
+  if (kill.score < VALUE_KILL_SHARE_MIN) return { verdict: 'unknown', why: `${share} below the bar ${VALUE_KILL_SHARE_MIN}` };
+  return { verdict: 'pass', why: `${share} ≥ ${VALUE_KILL_SHARE_MIN}, assertion strength pass, required checks green` };
+}
+
 export interface ClassState { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string }
 const KEY = 'loop_auto_merge_test_only';
 const ensure = (db: Database): void => {

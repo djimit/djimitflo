@@ -3,6 +3,7 @@ import type { DecisionsInbox } from './decisions-inbox';
 import { dependencyLaneQueue, laneMode } from './dependency-lane';
 import { e1LabelQueue } from './e1-retrieval-labels';
 import { relevanceQueue } from './discovery-relevance-labels';
+import { AUDIT_HUMAN_REASONS, auditSampleAutoMode, reasonCode } from './loop-auto-merge-state';
 
 /**
  * Human-only needs-you (operator 2026-10-26: "only big changes are tasked to me"). The headline count and the Telegram
@@ -28,12 +29,22 @@ export function optionalLabelling(db: Database, inbox: DecisionsInbox | null, no
 }
 
 /** Open loop PRs split into the audit sample (10 % kept for the human, reviewed as one weekly batch) and the rest (flagged). */
-export function openLoopPrSplit(db: Database): { audit_batch: number | null; flagged_prs: number | null } {
+export function openLoopPrSplit(db: Database, env: NodeJS.ProcessEnv = process.env): { audit_batch: number | null; flagged_prs: number | null } {
   try {
     const r = db.prepare(`SELECT COUNT(*) AS open, COALESCE(SUM(json_extract(metadata, '$.auto_merge.decision') = 'audit_sample'), 0) AS audit FROM loop_runs
       WHERE json_extract(metadata, '$.pr_url') IS NOT NULL AND COALESCE(json_extract(metadata, '$.pr_outcome.state'), 'open') = 'open'`).get() as { open: number; audit: number };
-    return { audit_batch: r.audit, flagged_prs: r.open - r.audit };
+    return { audit_batch: auditSampleAutoMode(env) === 'act' ? auditForHuman(db) : r.audit, flagged_prs: r.open - r.audit };
   } catch { return { audit_batch: null, flagged_prs: null }; }
+}
+
+/**
+ * AUDIT_SAMPLE_AUTO_MODE=act: the executed audit decides the sample, so the batch is only what it left for the human — open
+ * audit-sample PRs whose reason is audit_failed / audit_unknown / audit_spot_check (an audit still running is not counted).
+ */
+function auditForHuman(db: Database): number {
+  const rows = db.prepare(`SELECT json_extract(metadata, '$.auto_merge.reason') AS reason FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL
+    AND COALESCE(json_extract(metadata, '$.pr_outcome.state'), 'open') = 'open' AND json_extract(metadata, '$.auto_merge.decision') = 'audit_sample'`).all() as Array<{ reason: string | null }>;
+  return rows.filter((r) => (AUDIT_HUMAN_REASONS as readonly string[]).includes(reasonCode(r.reason))).length;
 }
 
 /** Lane decisions that leave a Dependabot PR to the human (dependency-lane.ts: only npm patch/minor is the lane's). */
