@@ -78,14 +78,17 @@ export type KnowledgeOverview = {
   interest_profile: { at: string; terms: string[] } | null;
   /** K1: mirrors services/knowledge-fitness.ts (absent on servers before K1) */
   fitness?: KnowledgeFitness;
+  /** DI-001 C: mirrors services/knowledge-overview.ts relevance_pause (the dashboard reads the fields below) */
+  relevance_pause?: { paused: boolean; unjudged: { pending: number; rejected: number; unit: number }; backlog: number;
+    unjudged_since?: string | null; last_verdict_at?: string | null };
 };
 
-export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'unused' | 'insufficient';
+export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'inconclusive' | 'unused' | 'insufficient';
 export type KnowledgeFitness = {
   at: string; window_days: number; half_life_days: number; min_n: number;
   baseline: { n: number; verified_rate: number | null };
   runs: { in_window: number; maker_attributable: number; non_maker: number; unattributed: number };
-  by_kind: Array<{ kind: string; inventory: number | null; used_with_value: number; used_no_value: number; insufficient: number; unused: number | null }>;
+  by_kind: Array<{ kind: string; inventory: number | null; used_with_value: number; used_no_value: number; inconclusive?: number; insufficient: number; unused: number | null }>;
   top: Array<{ kind: string; id: string; title: string | null; n_used: number; n_verified: number; n_regressed: number; n_survived_14d: number | null;
     wilson: [number, number] | null; last_used_at: string | null; decayed_verified_rate: number | null; status: KnowledgeFitnessStatus }>;
   rule: string;
@@ -764,7 +767,9 @@ export type ImprovementFunnel = {
    */
   kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
   /** null = unavailable (reason in `unavailable`), never a healthy 0 */
-  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null;
+    /** in-flight work items not updated for more than agedWorkItemsDays (absent on older servers) */
+    agedWorkItems?: number | null; agedWorkItemsByStatus?: Record<string, number>; agedWorkItemsOldest?: string | null; agedWorkItemsDays?: number };
   /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
   queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
   /** metric → `missing_schema: …` | `query_failed: …` */
@@ -2758,7 +2763,7 @@ class ApiClient {
     return this.request(`/health/expert-dedupe?limit=${limit}`);
   }
 
-  async listExperts(params: { state?: string; capability?: string; name?: string; kind?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[]; funnel?: Array<{ kind: string; state: ExpertLifecycleState; count: number }> }> {
+  async listExperts(params: { state?: string; capability?: string; name?: string; kind?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[]; funnel?: Array<{ kind: string; state: ExpertLifecycleState; count: number }>; total?: number; last_ingested_at?: string | null }> {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/expert/experts${query.size ? `?${query}` : ''}`);
   }
