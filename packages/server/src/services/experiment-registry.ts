@@ -91,6 +91,10 @@ const ORACLE_POPULATION_ENV = ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VA
   'GENOME_APPLY_MODE',
   // MAKER_SCOPE_REPAIR: restores an oracle-lane maker's out-of-scope package.json / lockfile, so the scope gate can pass a run it refused
   'MAKER_SCOPE_REPAIR'];
+/** ACE-001's flag sets the maker context (KB pages, similarity examples) of about 3 in 4 oracle-lane goals while on, so switching it
+ *  off after the readout (ACE-001_RESULT.md) is a period boundary for the other open oracle-population experiments; declared here
+ *  so that boot records it, unlike LOOP_EVOLVE_ENABLED at the EXP-2 close (each protocol's 2026-11-08 amendment) */
+const ACE_MAKER_CONTEXT_ENV = ['ACE_001_MODE'];
 /** TG-001 closed by the operator: INCONCLUSIVE at 20 tasks, no extension to 40 (task supply). INCONCLUSIVE from the evidence
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
@@ -106,6 +110,12 @@ export const MEMORY_HOLDOUT_CLOSED: ExperimentClose = { verdict: 'FALSIFIED (rul
  *  2026-11-07, LOOP_EVOLVE_ENABLED=false since 2026-11-08T00:00:02Z. A single registered readout, so this close records it. */
 export const X1_CLOSED: ExperimentClose = { verdict: 'INSUFFICIENT_EVIDENCE (no sibling benefit at 79/109 settled)', decided_on: '2026-11-07',
   source: 'docs/research/intelligence-metrics/EXP-2_RESULT.md#decision-under-the-registered-rules' };
+/** ACE-001 read out once when every arm reached 50 goals (arm 01's 50th at 2026-11-11T11:30:24Z), as registered: both main effects
+ *  below 0 with their 95 % CI including 0 (R −9.5 points, exact stratified permutation p 0.33; S −4.5 points, p 0.77), so H is
+ *  falsified for both factors (REJECT) and neither is promoted. 'FALSIFIED' is the protocol's word, which the learning ledger reads
+ *  as REJECTED. Turning ACE_001_MODE off is the operator's runtime change. A single registered readout, so this close records it. */
+export const ACE_001_CLOSED: ExperimentClose = { verdict: 'FALSIFIED (R -9.5 pts p 0.33, S -4.5 pts p 0.77; neither factor promoted)', decided_on: '2026-11-13',
+  source: 'docs/research/ace/ACE-001_RESULT.md#decision-under-the-registered-rules' };
 const X1_STARTED = '2026-10-09T00:00:00.000Z';
 const X1_STOP_BY = '2026-11-06T00:00:00.000Z';
 /** PL-001 runner amendment (2026-10-26): registered, not started; decide start or close by PL_DECIDE_START_BY (registered + 30 d) */
@@ -121,23 +131,24 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'ACE-001', flag: 'ACE_001_MODE', protocol: 'docs/research/ace/ACE-001_PROTOCOL.md', started_at: '2026-10-12T00:00:00.000Z',
     target_n: ACE_001_TARGET_PER_ARM, stop_by: ACE_001_STOP_BY,
     stop_note: `${AMENDED}: start + 1.25 × 50 ÷ 1.87/day (slowest arm, 13 in 6.9 d)`, stop_source: 'docs/research/ace/ACE-001_PROTOCOL.md#amendment-2-2026-10-19', population: 'oracle_goals',
+    closed: ACE_001_CLOSED,
     treatment_env: ['ACE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'MEMORY_HOLDOUT_RATE', 'PROPOSAL_DEDUPE_MODE', 'LOOP_DAEMON_CHECK_SCRIPTS', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
     // ace001Evidence counts from max(since, analysis_since)
     status: (db, env, now, since) => { const e = ace001Evidence(db, since > aceAnalysisSince(env) ? since : aceAnalysisSince(env), env, now);
       const main = (m: { diff: number | null; withheld: string | null }): ExperimentEffect => ({ metric: 'verified rate, factor on − off (at the readout only)', estimate: m.diff, ci: null, p: null, withheld: m.withheld });
-      return { n_per_arm: Object.fromEntries(Object.entries(e.arms).map(([a, v]) => [a, v.n])), verdict: null,
+      return { n_per_arm: Object.fromEntries(Object.entries(e.arms).map(([a, v]) => [a, v.n])), verdict: ACE_001_CLOSED.verdict,
         effects: { kb_retrieval: main(e.main_effects.retrieval), example_selection: main(e.main_effects.examples) } }; } },
   { id: 'STE-001', flag: 'STE_001_MODE', protocol: 'docs/research/ace/STE-001_PROTOCOL.md', started_at: '2026-10-11T00:00:00.000Z',
     target_n: STE_001_TARGET_PER_ARM, stop_by: '2026-11-14T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 1.25 × 100 ÷ 3.78/day (slowest arm, 30 in 7.9 d)`, stop_source: 'docs/research/ace/STE-001_PROTOCOL.md#amendment-1-2026-10-19', population: 'oracle_goals',
-    treatment_env: ['STE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'TEST_ONLY_DIFF_MAX', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
+    treatment_env: ['STE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'TEST_ONLY_DIFF_MAX', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV, ...ACE_MAKER_CONTEXT_ENV],
     status: (db, env, _now, since) => { const e = ste001Evidence(db, since, env);
       return { n_per_arm: { 0: e.arms['0'].n, 1: e.arms['1'].n }, verdict: null,
         effects: { maker_template: { metric: 'verified rate, STE − current template (interim, descriptive)', estimate: e.diff, ci: null, p: null } } }; } },
   { id: 'MAKER-DEPS-001', flag: 'MAKER_DEPS_001_MODE', protocol: 'docs/research/di-001/MAKER_DEPS_001_PREREG.md', started_at: '2026-10-14T00:00:00.000Z',
     target_n: MAKER_DEPS_001_TARGET_PER_ARM, stop_by: '2026-12-16T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 1.25 × 141 ÷ 2.83/day (slowest arm, 14 in 4.9 d)`, stop_source: 'docs/research/di-001/MAKER_DEPS_001_AMENDMENT_1.md#amendment-1-2026-10-19', population: 'oracle_goals',
-    treatment_env: ['MAKER_DEPS_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'LOOP_MAKER_PREPARE_DEPS', 'OPENCODE_MAX_RUN_TOKENS', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
+    treatment_env: ['MAKER_DEPS_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'LOOP_MAKER_PREPARE_DEPS', 'OPENCODE_MAX_RUN_TOKENS', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV, ...ACE_MAKER_CONTEXT_ENV],
     approved_over_limit: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4',
     status: (db, env, _now, since) => { const e = makerDeps001Evidence(db, since, env);
       return { n_per_arm: { A: e.arms.A.terminal, B: e.arms.B.terminal }, verdict: null,
@@ -154,7 +165,7 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'F2', flag: 'CHECKER_FAMILY_RANDOMISE', protocol: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-1', started_at: '2026-10-17T00:00:00.000Z',
     target_n: CHECKER_FAMILY_TARGET_DEFAULT, stop_by: '2027-01-15T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 90 d cap (v2; 1 settled per arm in 1.9 d projects past the cap)`, stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#amendment-2026-10-19-stop-conditions', population: 'oracle_goals',
-    treatment_env: ['CHECKER_FAMILY_RANDOMISE', 'CHECKER_FAMILY_VERSION', 'LOOP_MEMORY_RULES_ENABLED', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
+    treatment_env: ['CHECKER_FAMILY_RANDOMISE', 'CHECKER_FAMILY_VERSION', 'LOOP_MEMORY_RULES_ENABLED', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV, ...ACE_MAKER_CONTEXT_ENV],
     approved_over_limit: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4',
     status: (db, env, now, since) => { const e = checkerFamilyEvidence(db, since, env, fisherExact, now);
       return { n_per_arm: { same: e.primary.n.same, cross: e.primary.n.cross }, verdict: e.stop.verdict === 'collecting' ? null : e.stop.verdict,

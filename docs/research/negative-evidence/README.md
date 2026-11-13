@@ -41,3 +41,4 @@ them so that no agent rediscovers a rejected approach and silently retries it.
 | NE-015 | Leaked vendor system prompts (CL4R1T4S-style) as a capability source — [details](NE-015-leaked-vendor-prompts.md) | REJECT |
 | NE-016 | Static procedure lines appended to a gym maker prompt (`ts-build-error-repair-v1`, PL-001) — [result](../procedure-loop/PL-001_RESULT.md) | REJECT |
 | NE-017 | Orca (`stablyai/orca`) as DjimitFlo runtime substrate — [details](NE-017-orca-runtime-substrate.md) | REJECT (reopen 2026-11-07 → closed 2026-11-09, [ORCA-001](ORCA-001-PREREG.md): Orca cannot supervise atomic-agent) |
+| NE-018 | Similarity-retrieved maker context for oracle-lane goals: KB pages and similar verified examples (ACE-001) — [result](../ace/ACE-001_RESULT.md) | REJECT |
