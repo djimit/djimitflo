@@ -119,3 +119,12 @@ it('says prominently how old the runtime tool catalog is and how to sync it', as
   expect(age.textContent).toMatch(/last synced 42 d ago/);
   expect(age.textContent).toMatch(/djimitflo_sync_mcp_catalog/);
 });
+
+it('truth audit: a weeks-old catalog sync shows its date and age, not a bare time of day', async () => {
+  vi.spyOn(api, 'getMCPServers').mockResolvedValue({ servers: [{ ...STORED_SERVER, effective_status: 'catalog', last_ping_at: '2026-10-01 18:36:22' }] as never });
+  vi.spyOn(api, 'getMCPPermissions').mockResolvedValue({ permissions: [] });
+  render(<MCPPermissionsPage />);
+  const line = (await screen.findByText(/Catalog synced: /)).textContent ?? '';
+  expect(line).toContain('01/10/2026');
+  expect(line).toMatch(/\(\d+ d ago\)$/);
+});

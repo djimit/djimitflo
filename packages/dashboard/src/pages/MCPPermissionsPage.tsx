@@ -3,6 +3,7 @@ import { PlugZap, Circle } from 'lucide-react';
 import type { MCPServer } from '@djimitflo/shared';
 import { api, type MCPRefreshScope } from '../lib/api';
 import { ACTION_PERMISSIONS as P, needsText, permissionError, useCan } from '../lib/permissions';
+import { fmtDate, since } from '../lib/format';
 
 type MCPServerView = MCPServer & {
   effective_status?: MCPServer['status'] | 'catalog' | 'stale' | 'policy_blocked';
@@ -187,7 +188,7 @@ export function MCPPermissionsPage() {
         </div>
 
         <p className="text-xs text-foreground-tertiary">
-          Stored status, as of {asOf ? `the latest recorded check (${new Date(asOf).toLocaleString()})` : 'no recorded check'}. Opening this page does not probe.
+          Stored status, as of {asOf ? `the latest recorded check (${fmtDate(asOf)})` : 'no recorded check'}. Opening this page does not probe.
         </p>
         {refreshScope && (
           <p className="text-xs text-foreground-secondary">
@@ -278,7 +279,7 @@ export function MCPPermissionsPage() {
                   )}
                   {server.last_ping_at && status !== 'policy_blocked' && (
                     <div className="text-xs text-foreground-tertiary mt-1">
-                      {status === 'catalog' ? 'Catalog synced' : 'Last probe'}: {new Date(server.last_ping_at).toLocaleTimeString()}
+                      {status === 'catalog' ? 'Catalog synced' : 'Last probe'}: {fmtDate(server.last_ping_at)} ({since(server.last_ping_at)})
                     </div>
                   )}
                   <div className="text-xs text-foreground-tertiary mt-2">
