@@ -27,7 +27,8 @@ it('persists chosen model/reasoning at creation and executes the selected advert
     else if (url.endsWith('/tasks') && options?.method === 'POST') {
       created = { ...JSON.parse(options.body as string), id: 'fixture-task', status: 'pending', risk_level: 'low', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       data = created;
-    } else if (url.endsWith('/tasks/fixture-task')) data = created;
+    } else if (url.startsWith('/api/tasks?')) data = { tasks: created.id ? [created] : [], total: created.id ? 1 : 0, counts: {} };
+    else if (url.endsWith('/tasks/fixture-task')) data = created;
     else if (url.endsWith('/events')) data = { events: [] };
     else if (url.endsWith('/approvals')) data = { approvals: [] };
     else if (url.endsWith('/execute')) data = { status: 'started', executor: 'codex' };
@@ -93,6 +94,7 @@ it('shows failed repository discovery and retries without silently selecting a w
   let repositoryAttempts = 0;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url.endsWith('/loops/runtime-contracts')) return { ok: true, status: 200, json: async () => ({ runtimes: {} }) };
+    if (url.startsWith('/api/tasks?')) return { ok: true, status: 200, json: async () => ({ tasks: [], total: 0, counts: {} }) };
     if (url.endsWith('/repositories')) {
       repositoryAttempts++;
       return repositoryAttempts === 1
