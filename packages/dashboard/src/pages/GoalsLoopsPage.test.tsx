@@ -4,6 +4,8 @@ import { GoalsLoopsPage } from './GoalsLoopsPage';
 import { useAuthStore } from '../lib/auth-store';
 
 const response = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+/** the run list, whichever synthetic-run filter the page asks for */
+const isRunList = (url: string) => url.split('?')[0] === '/api/loops/runs';
 let run: any;
 let leases: any[];
 let requests: ReturnType<typeof vi.fn>;
@@ -21,7 +23,7 @@ beforeEach(() => {
     if (url === '/api/loops/start' && init?.method === 'POST') return response(run);
     if (init?.method === 'POST') return response({ run });
     if (url === '/api/goals') return response({ goals: [] });
-    if (url === '/api/loops/runs') return response({ runs: [run] });
+    if (isRunList(url)) return response({ runs: [run] });
     if (url === '/api/loops/catalog') return response({ loops: [] });
     if (url === '/api/loops/runs/fixture-run/review-bundle') return response({ run, leases, events: [] });
     throw new Error(`Unexpected request: ${url}`);
@@ -117,7 +119,7 @@ it('selects the created run and does not replace its review bundle with the prev
   const baseline=requests.getMockImplementation()!;
   requests.mockImplementation((url:string,init?:RequestInit)=> {
     if(url==='/api/loops/start') return Promise.resolve(response(created));
-    if(url==='/api/loops/runs') return Promise.resolve(response({runs:[run,created]}));
+    if(isRunList(url)) return Promise.resolve(response({runs:[run,created]}));
     if(url==='/api/loops/runs/created-run/review-bundle') return Promise.resolve(response({run:created,leases:[],events:[]}));
     return baseline(url,init);
   });
@@ -208,7 +210,7 @@ it('never pairs the previous review bundle leases with a newly selected run', as
   const baseline = requests.getMockImplementation()!;
   let resolveBundle!: (response: unknown) => void;
   requests.mockImplementation((url: string, init?: RequestInit) => {
-    if (url === '/api/loops/runs' && !init?.method) return Promise.resolve(response({ runs: [run, second] }));
+    if (isRunList(url) && !init?.method) return Promise.resolve(response({ runs: [run, second] }));
     if (url === '/api/loops/runs/second-run/review-bundle') return new Promise(resolve => { resolveBundle = resolve; });
     return baseline(url, init);
   });
@@ -320,7 +322,7 @@ it('UX-28: renders the run list and opens the run named by ?run=<id>, not the ne
   const second = { ...run, id: 'second-run', loop_name: 'second-loop', repository_path: '/tmp/second-fixture' };
   const baseline = requests.getMockImplementation()!;
   requests.mockImplementation((url: string, init?: RequestInit) => {
-    if (url === '/api/loops/runs') return Promise.resolve(response({ runs: [run, second] }));
+    if (isRunList(url)) return Promise.resolve(response({ runs: [run, second] }));
     if (url === '/api/loops/runs/second-run/review-bundle') return Promise.resolve(response({ run: second, leases: [], events: [] }));
     return baseline(url, init);
   });
@@ -339,4 +341,47 @@ it('UX-28: renders the run list and opens the run named by ?run=<id>, not the ne
   } finally {
     window.history.pushState({}, '', '/');
   }
+});
+
+it('truth audit: the loop-goal picker shows a PR-wrapped objective as its title, marked external, never the raw envelope', async () => {
+  const baseline = requests.getMockImplementation()!;
+  requests.mockImplementation((url: string, init?: RequestInit) => url === '/api/goals'
+    ? Promise.resolve(response({ goals: [{ id: 'pr-goal', status: 'completed', metadata: {}, created_at: new Date().toISOString(),
+      objective: 'BEGIN_EXTERNAL_CONTENT source=github_pull_request trust=untrusted\n{"title":"fix(tasks): real task totals","url":"https://github.com/djimit/djimitflo/pull/1247"}\nEND_EXTERNAL_CONTENT' }] }))
+    : baseline(url, init));
+  await ready();
+  expect(screen.getByRole('option', { name: 'fix(tasks): real task totals (from external content)' })).toBeTruthy();
+  expect(document.body.textContent).not.toContain('BEGIN_EXTERNAL_CONTENT');
+});
+
+const goal = (id: string, objective: string, status: string, agoMin: number) => ({ id, objective, status, metadata: {}, created_at: new Date(Date.now() - agoMin * 60_000).toISOString() });
+
+it('truth audit: the loop-goal picker lists open and recent goals, not every goal ever, and search reaches the rest', async () => {
+  // newest first, as GET /goals returns them: 60 finished goals, then an old goal that is still running
+  const goals = [...Array.from({ length: 60 }, (_, i) => goal(`done-${i}`, `Finished goal ${i}`, 'completed', i + 1)), goal('open-old', 'Still running goal', 'running', 10_000)];
+  const baseline = requests.getMockImplementation()!;
+  requests.mockImplementation((url: string, init?: RequestInit) => url === '/api/goals' ? Promise.resolve(response({ goals })) : baseline(url, init));
+  await ready();
+  const picker = screen.getByLabelText('Loop goal');
+  const options = () => Array.from(picker.querySelectorAll('option')).map((o) => o.textContent);
+  expect(options()).toContain('Still running goal');
+  expect(options()).toContain('Finished goal 0');
+  expect(options()).not.toContain('Finished goal 59');
+  expect(options().length).toBeLessThanOrEqual(26 + 1); // ad-hoc + open goals + the 25 most recent
+  expect(screen.getByText(/of 61 goals/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Search goals'), { target: { value: 'goal 59' } });
+  expect(options()).toEqual(['ad-hoc goal', 'Finished goal 59']);
+});
+
+it('truth audit: tiles say what they count — high-risk runs, over the runs listed — and the list defaults to production runs', async () => {
+  run.metadata = { risk_class: 'high' };
+  await ready();
+  expect(screen.queryByText('Security Gates')).toBeNull();
+  expect(screen.getByText('High-risk runs')).toBeTruthy();
+  expect(screen.getAllByText('latest 1 production run')).toHaveLength(3); // Blocked, High-risk runs, and Loops (empty catalog: counted from runs)
+  const listCalls = () => requests.mock.calls.map(([url]) => String(url)).filter(isRunList);
+  expect(listCalls()).toEqual(['/api/loops/runs?synthetic=exclude']);
+  fireEvent.click(screen.getByLabelText('Include PR-review runs'));
+  await waitFor(() => expect(listCalls()).toContain('/api/loops/runs?synthetic=include'));
+  expect(await screen.findAllByText('latest 1 run')).toHaveLength(3);
 });

@@ -15,7 +15,7 @@ import type { Database } from 'better-sqlite3';
  * patterns are read from the registry at runtime — never written into the server source (the B29 guard forbids them there).
  */
 export type NeCheckMode = 'off' | 'shadow';
-export type NeSource = 'proposal' | 'dream_mutant' | 'discovery_unit';
+export type NeSource = 'proposal' | 'dream_mutant' | 'discovery_unit' | 'web_research';
 export interface NeEntry { id: string; verdict: string; reopen_condition: string; forbidden_code_patterns?: string[]; match_terms?: string[] }
 export interface NeMatch { entry_id: string; verdict: string; matched: string; confidence: 'exact_pattern' | 'keyword'; reopen_condition: string }
 

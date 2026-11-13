@@ -6,10 +6,10 @@
  */
 export const OPERATOR_CONTRACTS = {
   /** GET /api/health/cockpit — services/operator-cockpit.ts */
-  cockpit: ['at', 'snapshot_id', 'health', 'errors', 'build', 'scorecard', 'guardrails', 'stalls', 'detectors', 'gym', 'remote_workers', 'maker_usage_7d', 'judgments_7d', 'needs_you', 'schedulers', 'genomes', 'deploys', 'evolution', 'capabilities', 'subtraction', 'unit_economics'],
+  cockpit: ['at', 'snapshot_id', 'health', 'errors', 'build', 'scorecard', 'guardrails', 'stalls', 'warnings', 'detectors', 'gym', 'remote_workers', 'maker_usage_7d', 'judgments_7d', 'needs_you', 'schedulers', 'genomes', 'deploys', 'evolution', 'capabilities', 'subtraction', 'unit_economics'],
   /** GET /api/health/evolution-evidence — services/evolution-evidence.ts */
   evolutionEvidence: ['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons',
-    'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'fail_before_pass_after', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'lane_policy', 'knowledge_gaps', 'jev_challenger', 'gate_rule_disagreements', 'experiments', 'learning_ledger', 'fleet_signatures', 'falsifier', 'settlement_execution', 'settlement_value', 'scheduler_capacity', 'procedure_selection', 'pl_001', 'memory_delivery', 'fleet_repair', 'advisory_exposure', 'content_drafts', 'capability_factory', 'skill_route', 'fitness_contracts', 'gym_native_tools', 'genome_apply'],
+    'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'benchmarks', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'fail_before_pass_after', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'lane_policy', 'knowledge_gaps', 'jev_challenger', 'gate_rule_disagreements', 'experiments', 'learning_ledger', 'fleet_signatures', 'falsifier', 'settlement_execution', 'settlement_value', 'scheduler_capacity', 'procedure_selection', 'pl_001', 'cv_001', 'memory_delivery', 'fleet_repair', 'advisory_exposure', 'content_drafts', 'capability_factory', 'skill_route', 'fitness_contracts', 'gym_native_tools', 'genome_apply', 'web_research'],
   /** GET /api/health/forecasts-v2 — services/forecast-scoring.ts forecastScoresV2 */
   forecastsV2: ['forecasters', 'would_have_stopped'],
   /** GET /api/health/runtimes — { runtimes: RuntimeHealthRow[] } */
@@ -21,7 +21,7 @@ export const OPERATOR_CONTRACTS = {
   /** GET /api/loops/draft-prs — services/loop-draft-pr-service.ts listDraftPrs (E1: counts per settlement state) */
   draftPrs: ['total', 'unsettled', 'by_settlement', 'closed_unmerged', 'rows'],
   /** one row of GET /api/loops/draft-prs */
-  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge', 'settlement', 'settlement_reason', 'settlement_terminal', 'settlement_age_days'],
+  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge', 'settlement', 'settlement_reason', 'settlement_terminal', 'settlement_age_days', 'needs_operator'],
   /** GET /api/health/efficiency — services/cost-ledger.ts efficiencyWithCost (resource-ledger efficiencyView + cost_per_verified) */
   efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'coverage', 'notes', 'cost_per_verified'],
   /** GET /api/health/schedulers — services/scheduler-registry.ts listSchedulers */

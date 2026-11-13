@@ -39,13 +39,43 @@ describe('ImprovementFunnelPage', () => {
     render(<ImprovementFunnelPage />);
     await waitFor(() => expect(screen.getByText('Refinement reached goal')).toBeTruthy());
     expect(screen.getByText('6%')).toBeTruthy(); // 18 / 307, not the status-derived 0 %
-    expect(screen.getByText('18 of 307 refinements · 14 completed · 4 failed')).toBeTruthy();
+    expect(screen.getByText(/^18 of 307 refinements · 14 goals completed · 4 failed · 0 verified/)).toBeTruthy();
     expect(screen.getByText('30%')).toBeTruthy(); // 30 / 100 linked panels, not 30 / 605
     expect(screen.getByText('30 of 100 proposal-linked panel decisions (605 panels in total)')).toBeTruthy();
     expect(screen.getByText('Panels created')).toBeTruthy();
     expect(screen.getByText('Specialist reviews')).toBeTruthy();
     expect(screen.getByText('120')).toBeTruthy();
     expect(screen.queryByText('Panel reviews')).toBeNull();
+  });
+
+  it('truth audit 2026-11-12: a completed refinement goal is not a verified change — verified is shown explicitly', async () => {
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue({ ...funnel,
+      refinement: { originals: 307, children: 307, childOutcomes: { archived: 292, no_change: 14, regressed: 1 }, childGoals: { reachedGoal: 18, completed: 14, failed: 4, other: 0 } } });
+    vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [] });
+    render(<ImprovementFunnelPage />);
+    expect(await screen.findByText('18 of 307 refinements · 14 goals completed · 4 failed · 0 verified (14 ended no_change)')).toBeTruthy();
+  });
+
+  it('truth audit 2026-11-12: hygiene shows in-flight work items untouched for more than 14 days', async () => {
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue({ ...funnel,
+      hygiene: { zombieGoals: 0, staleRuns: 0, blockedBoardItems: 0, agedWorkItems: 16, agedWorkItemsByStatus: { blocked: 8, leased: 3, planned: 3, triaged: 2 }, agedWorkItemsOldest: '2026-09-08T20:30:04Z', agedWorkItemsDays: 14 } });
+    vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [] });
+    render(<ImprovementFunnelPage />);
+    expect(await screen.findByText('Aged work items')).toBeTruthy();
+    expect(screen.getByText('16')).toBeTruthy();
+    expect(screen.getByText('triaged/planned/leased/blocked, not updated for >14 d · 8 blocked, 3 leased, 3 planned, 2 triaged · oldest since 2026-09-08')).toBeTruthy();
+  });
+
+  it('truth audit 2026-11-12: a Brier score above 0.25 is flagged as worse than chance', async () => {
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue(funnel);
+    vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [
+      { specialistId: 'panel-a', n: 32, brier: 0.42, meanPredicted: 0.7, observedSuccessRate: 0.2, bins: [] },
+      { specialistId: 'panel-b', n: 30, brier: 0.2, meanPredicted: 0.5, observedSuccessRate: 0.5, bins: [] },
+    ] });
+    render(<ImprovementFunnelPage />);
+    expect(await screen.findByText('panel-a')).toBeTruthy();
+    expect(screen.getAllByText(/worse than chance/)).toHaveLength(1);
+    expect(screen.getByText(/worse than chance/).closest('tr')?.textContent).toContain('panel-a');
   });
 
   it('shows the failure reason instead of an empty page', async () => {

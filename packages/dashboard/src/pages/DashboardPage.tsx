@@ -1,30 +1,49 @@
 import type { ReactNode } from 'react';
 import { Activity, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
-import { useEffect } from 'react';
-import { useShallow } from 'zustand/react/shallow';
-import { useStore, selectActiveTasks, selectCompletedTasks, selectFailedTasks } from '../lib/store';
+import { useEffect, useRef } from 'react';
+import { useStore } from '../lib/store';
 import { api } from '../lib/api';
+import { useResource } from '../hooks/useResource';
+import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { SpecComplianceWidget } from '../components/SpecComplianceWidget';
+import { fmt } from '../lib/format';
+
+// Truth audit 2026-11-12: counts come from the server's per-status totals, not from the first 100 rows in the store
+const fetchTaskOverview = () => api.getTasks({ limit: 5, view: 'summary' });
 
 export function DashboardPage() {
-  const tasks = useStore((state) => state.tasks);
+  const liveTasks = useStore((state) => state.tasks);
   const agents = useStore((state) => state.agents);
   const systemHealth = useStore((state) => state.systemHealth);
   const isConnected = useStore((state) => state.isConnected);
 
-  const activeTasks = useStore(useShallow(selectActiveTasks));
-  const completedTasks = useStore(useShallow(selectCompletedTasks));
-  const failedTasks = useStore(useShallow(selectFailedTasks));
-  const queuedTasks = tasks.filter((t) => t.status === 'queued' || t.status === 'pending');
-
-  // D3: REST fallback — load initial data via API when WebSocket store is empty.
+  const overview = useResource(fetchTaskOverview);
+  const { refresh } = overview;
+  // live task events land in the store; re-read the server totals when they do (not on first render)
+  const seenLiveTasks = useRef(liveTasks);
   useEffect(() => {
-    if (tasks.length === 0 && agents.length === 0) {
-      Promise.all([api.getTasks(), api.getAgents()])
-        .then(([taskRes, agentRes]) => {
-          useStore.setState({ tasks: taskRes.tasks });
-          useStore.setState({ agents: agentRes.agents });
-        })
+    if (seenLiveTasks.current === liveTasks) return;
+    seenLiveTasks.current = liveTasks;
+    void refresh();
+  }, [liveTasks, refresh]);
+
+  const counts = overview.data?.counts ?? {};
+  const count = (...statuses: string[]) => statuses.reduce((sum, status) => sum + (counts[status] ?? 0), 0);
+  const known = overview.data?.counts !== undefined;
+  const show = (value: number) => (known ? fmt(value) : '…');
+  const running = count('running');
+  const active = count('running', 'queued', 'pending');
+  const completed = count('completed');
+  const failed = count('failed');
+  const queued = count('queued', 'pending');
+  const total = overview.data?.total ?? 0;
+  const recentTasks = overview.data?.tasks ?? [];
+
+  // D3: REST fallback — load agents via API when the store is empty.
+  useEffect(() => {
+    if (agents.length === 0) {
+      api.getAgents()
+        .then((agentRes) => useStore.setState({ agents: agentRes.agents }))
         .catch(() => { /* best-effort */ });
     }
   }, []);
@@ -36,6 +55,7 @@ export function DashboardPage() {
 
   return (
     <div className="p-8 space-y-8">
+      {overview.error && <LoadErrorNotice failed={[`task totals: ${overview.error}`]} />}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -57,30 +77,30 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatusCard
           title="Active Tasks"
-          value={activeTasks.length.toString()}
+          value={show(active)}
           icon={<Activity className="w-6 h-6 text-status-running" />}
-          trend={`${tasks.filter(task => task.status === 'running').length} running now`}
+          trend={known ? `${running} running now` : 'loading…'}
           trendUp={true}
         />
         <StatusCard
           title="Completed"
-          value={completedTasks.length.toString()}
+          value={show(completed)}
           icon={<CheckCircle2 className="w-6 h-6 text-status-completed" />}
-          trend={`${completedTasks.length} successful`}
+          trend={known ? `of ${fmt(total)} tasks` : 'loading…'}
           trendUp={true}
         />
         <StatusCard
           title="Failed"
-          value={failedTasks.length.toString()}
+          value={show(failed)}
           icon={<XCircle className="w-6 h-6 text-status-error" />}
-          trend={failedTasks.length === 0 ? 'All good' : 'Needs attention'}
+          trend={!known ? 'loading…' : failed === 0 ? 'All good' : 'Needs attention'}
           trendUp={false}
         />
         <StatusCard
           title="Queued"
-          value={queuedTasks.length.toString()}
+          value={show(queued)}
           icon={<Clock className="w-6 h-6 text-status-paused" />}
-          trend={`${queuedTasks.length} pending`}
+          trend={known ? `${queued} pending` : 'loading…'}
           trendUp={true}
         />
       </div>
@@ -127,12 +147,12 @@ export function DashboardPage() {
         <h2 className="text-xl font-semibold text-foreground mb-6">Recent Activity</h2>
         
         <div className="space-y-4">
-          {tasks.length === 0 ? (
+          {recentTasks.length === 0 ? (
             <div className="text-center py-8 text-foreground-muted">
-              No recent activity
+              {!overview.data ? (overview.error ? 'Recent activity unavailable' : 'Loading…') : 'No recent activity'}
             </div>
           ) : (
-            tasks.slice(0, 5).map((task) => {
+            recentTasks.map((task) => {
               const timeAgo = getTimeAgo(new Date(task.updated_at));
               const status = getActivityStatus(task.status);
               

@@ -8,6 +8,10 @@ import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 const AREAS = ['models/routing', 'budgets/caps', 'schedulers', 'experiments', 'integrations', 'security/auth', 'knowledge', 'other'];
 const SOURCE_LABEL: Record<Entry['source'], string> = { env: 'env', default: 'code default', unset: 'unset' };
 const short = (sha: string) => sha.slice(0, 12);
+// Truth audit 2026-11-12: a masked value is only "set" (an older server still sends its length), and only a long unbroken
+// token may break anywhere: `break-all` on every value wrapped "shadow" one letter per line at 390 px.
+const shownValue = (e: Entry) => (e.value === null ? '(unset)' : e.masked ? (e.value === 'empty' ? 'empty' : 'set') : e.value);
+const wrap = (text: string | null) => `min-w-[8rem] ${text && /\S{32,}/.test(text) ? 'break-all' : 'break-words'}`;
 
 const fetchConfig = () => api.getRuntimeConfig();
 const skip = () => Promise.resolve(null);
@@ -97,7 +101,8 @@ export function ConfigurationPage() {
                   {!raw && (
                     <thead><tr className="text-left text-xs text-foreground-tertiary">
                       <th className="py-1 pr-4 font-normal">Name</th><th className="py-1 pr-4 font-normal">Value</th><th className="py-1 pr-4 font-normal">Source</th>
-                      <th className="py-1 pr-4 font-normal">Default</th><th className="py-1 pr-4 font-normal">Override</th><th className="py-1 font-normal">Takes effect</th>
+                      <th className="py-1 pr-4 font-normal">Default</th><th className="py-1 pr-4 font-normal">Accepted</th>
+                      <th className="py-1 pr-4 font-normal">Override</th><th className="py-1 font-normal">Takes effect</th>
                     </tr></thead>
                   )}
                   <tbody>{rows.map((e) => (
@@ -105,11 +110,12 @@ export function ConfigurationPage() {
                       <td className="py-1 pr-4 font-mono whitespace-nowrap align-top">
                         {e.name}{e.stale && <span className="ml-2 rounded bg-status-warning/10 px-1 text-xs text-status-warning">stale</span>}
                       </td>
-                      <td className={`py-1 pr-4 font-mono break-all align-top ${e.masked || e.value === null ? 'text-foreground-muted italic' : ''}`}>{e.value ?? '(unset)'}</td>
+                      <td className={`py-1 pr-4 font-mono align-top ${wrap(e.masked ? null : e.value)} ${e.masked || e.value === null ? 'text-foreground-muted italic' : ''}`}>{shownValue(e)}</td>
                       {!raw && (
                         <>
                           <td className="py-1 pr-4 whitespace-nowrap align-top">{SOURCE_LABEL[e.source]}</td>
-                          <td className="py-1 pr-4 font-mono break-all align-top text-foreground-secondary">{e.default ?? '—'}</td>
+                          <td className={`py-1 pr-4 font-mono align-top text-foreground-secondary ${wrap(e.default)}`}>{e.default ?? '—'}</td>
+                          <td className="py-1 pr-4 font-mono align-top text-foreground-secondary">{e.accepted?.length ? e.accepted.join(' · ') : '—'}</td>
                           <td className="py-1 pr-4 whitespace-nowrap align-top" title={e.overridden === null ? 'no comparable default (or masked)' : undefined}>
                             {e.overridden === true ? <span className="font-semibold">overridden</span> : e.overridden === false ? 'default' : '—'}
                           </td>

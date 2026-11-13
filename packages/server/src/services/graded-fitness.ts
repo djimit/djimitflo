@@ -13,8 +13,9 @@ import { WRITE_TEST_MUTANTS, laneOf, targetMutants, type TargetMutant } from './
  *   binary       repair without a per-test report: 1 / 0 from the verdict
  *   mutation_score  mutation-gap makers (prod): the Stryker score `after` / 100 of their own test:mutation:grounded check
  * Contract: a skill_outcomes evidence ref `graded:<0..1, 3 decimals>` plus `graded_kind:<kind>` (prod adds
- * `graded_lane:<test-gap|exports|mutation>`). GRADED_FITNESS_MODE=off|shadow (default off): records only; nothing reads it for a
- * decision except the contest below when its own flag is set.
+ * `graded_lane:<test-gap|exports|mutation>`). GRADED_FITNESS_MODE=off|shadow (default off): records only, but acting rules read
+ * what it records — the auto-merge value gate (LOOP_AUTO_MERGE_VALUE_GATE=on, metadata.graded), the graded contest below and
+ * genome promotion under DREAM_PROMOTION_RULE=graded (the gym's graded: refs) — so it is registered acting.
  * SI-B GRADED_CONTEST_MODE=off|shadow|act (default off): evolve selection by graded score (evolve-selection.ts).
  */
 export type GradedKind = 'mutant_kill' | 'tests_green' | 'binary' | 'mutation_score';

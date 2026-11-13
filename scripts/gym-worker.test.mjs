@@ -11,8 +11,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
-  GIT_INTENT, GIT_NAMES, GIT_UNTRACKED, GYM_DIFF, MAKER_DIFF, RUNNER_USER, SKILL_TOOL_CONTRACTS, git, runnerArgs, runnerForwarder, runnerGitScript, runnerGitVars, toolDeclaration, udsProxy,
-  volumeInitArgs, workerGitdir,
+  GIT_INTENT, GIT_NAMES, GIT_UNTRACKED, GYM_DIFF, MAKER_DIFF, RUNNER_USER, SKILL_TOOL_CONTRACTS, git, runnerArgs, runnerForwarder, runnerGitScript, runnerGitVars, toolDeclaration, udsModelProxy,
+  udsProxy, volumeInitArgs, workerGitdir,
 } from './gym-worker.mjs';
 
 const WORKER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'gym-worker.mjs');
@@ -266,12 +266,99 @@ test('gym attempt: same verdict as before (red → maker → green, source only)
   } finally { fs.rmSync(r.root, { recursive: true, force: true }); }
 });
 
+/** CV-001: a fake router that answers under the model it was asked for and lists the alias with its launch arguments. */
+async function fakeRouter(listing) {
+  const seen = [];
+  const srv = http.createServer((req, res) => {
+    let body = ''; req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      if (req.method === 'GET') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ data: req.url === '/models' ? listing : [] })); return; }
+      let d = {}; try { d = JSON.parse(body || '{}'); } catch { /* not JSON */ } seen.push(d.model ?? null);
+      res.setHeader('content-type', 'text/event-stream'); res.end(`data: {"id":"c1","model":${JSON.stringify(d.model ?? 'qwen38-27b')},"choices":[]}\n\ndata: [DONE]\n\n`);
+    });
+  }).listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
+  return { srv, seen, url: `http://127.0.0.1:${srv.address().port}` };
+}
+
+test('CV-001 model route: every JSON request gets the claimed alias; counts, served models and the last chat request are saved', async () => {
+  const router = await fakeRouter([]);
+  const dir = tmp('gymcv-'); const sock = path.join(dir, 's.sock');
+  const write = process.stdout.write; process.stdout.write = () => true;
+  const proxy = udsModelProxy(sock, '127.0.0.1', router.srv.address().port, 'qwen38-27b-cvd15', dir);
+  await new Promise((r) => proxy.once('listening', r)); process.stdout.write = write;
+  const post = (body) => new Promise((resolve) => {
+    const req = http.request({ socketPath: sock, method: 'POST', path: '/v1/chat/completions', headers: { 'content-type': 'application/json' } }, (res) => { let t = ''; res.on('data', (d) => { t += d; }); res.on('end', () => resolve(t)); });
+    req.end(body);
+  });
+  try {
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o666);
+    const out = await post(JSON.stringify({ messages: [{ role: 'user', content: 'x' }], stream: true }));
+    assert.match(out, /"model":"qwen38-27b-cvd15"/, 'the response streams through unchanged');
+    await post(JSON.stringify({ model: 'qwen38-27b', messages: [] })); // an explicit other model is overridden too
+    await post('not json');
+    assert.deepEqual(router.seen, ['qwen38-27b-cvd15', 'qwen38-27b-cvd15', null]);
+    const stats = JSON.parse(fs.readFileSync(path.join(dir, 'route.json'), 'utf8'));
+    assert.deepEqual(stats, { alias: 'qwen38-27b-cvd15', requests: 3, forced: 2, unforced: 1, served_models: ['qwen38-27b-cvd15', 'qwen38-27b'], http_errors: 0 }, 'the unforced request was answered by the default model: the server voids such an attempt');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'chat.json'), 'utf8')).model, 'qwen38-27b-cvd15', 'the last chat request is kept for the transcript counts');
+  } finally { proxy.close(); router.srv.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('CV-001 gym attempt: the claimed alias reaches the router through the runner route, and model_check reports alias, served model and vector digest', async () => {
+  const root = tmp('gymcvv-'); const vec = path.join(root, 'v.gguf'); fs.writeFileSync(vec, 'vector');
+  const router = await fakeRouter([{ id: 'qwen38-27b-cvd15', status: { value: 'loaded', args: ['llama-server', '--alias', 'qwen38-27b-cvd15', '--control-vector-scaled', `${vec}:1.5`] } }]);
+  const task = { commit: 'mut:1', base: null, mutant: 'export const a = 2;\n', source: 'packages/server/src/a.ts', tests: ['packages/server/src/__tests__/a.test.ts'] };
+  const chat = JSON.stringify({ messages: [{ role: 'user', content: 'go' }, { role: 'assistant', tool_calls: [{ function: { name: 'edit', arguments: '{"p":"a.ts"}' } }] }] });
+  const r = await runWorker((url, base) => (url.endsWith('/gym-worker/claim') ? { runId: 'run-cv', species: 'atomic@llama-router', task: { ...task, base }, model_override: { alias: 'qwen38-27b-cvd15' }, cv: { experiment: 'cv-001', arm: 'B', repeat: 1 } } : url.endsWith('/claim') ? { job: null } : {}),
+    FAKE_DOCKER(`if (cmd.includes('atomic-agent run')) {
+    const v = args.find((x) => x.endsWith(':/run/llama.sock:ro')); const sock = v.slice(0, -':/run/llama.sock:ro'.length);
+    const req = require('http').request({ socketPath: sock, method: 'POST', path: '/v1/chat/completions', headers: { 'content-type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => process.exit(0)); });
+    req.end(${JSON.stringify(chat)}); return;
+  }
+  if (cmd.includes('vitest run')) process.exit(n('vitest') === 0 ? 1 : 0);
+  if (cmd.includes("'--name-only'")) process.stdout.write('packages/server/src/a.ts\\n');
+  if (cmd.includes("'diff' 'HEAD'")) process.stdout.write('diff --git a/packages/server/src/a.ts b/packages/server/src/a.ts\\n');
+  if (cmd.startsWith('cat ')) process.exit(1);`), { GYM_LLAMA_URL: router.url });
+  try {
+    assert.equal(r.code, 0);
+    assert.deepEqual(router.seen, ['qwen38-27b-cvd15'], 'the router got the alias, not the shim default');
+    const res = r.posted['/api/gym-worker/runs/run-cv/result'];
+    assert.equal(res.status, 'success');
+    assert.deepEqual(res.model_check, { alias: 'qwen38-27b-cvd15', requests: 1, forced: 1, unforced: 0, served_models: ['qwen38-27b-cvd15'], http_errors: 0,
+      router: { listed: true, status: 'loaded', layer_range: null, control_vectors: [{ path: vec, scale: 1.5, sha256: createHash('sha256').update('vector').digest('hex') }] },
+      transcript: { tool_calls: 1, broken_tool_calls: 0, loop: false, post_pass_edits: 0, pass_seen: false } });
+    assert.equal(res.tg_metrics.termination, 'exit:0', 'a CV claim carries the per-attempt measurements');
+    assertHardened(r.calls, r.wt);
+  } finally { router.srv.close(); fs.rmSync(r.root, { recursive: true, force: true }); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a claim without model_override keeps the plain byte route and sends no model_check', async () => {
+  const router = await fakeRouter([]);
+  const task = { commit: 'mut:1', base: null, mutant: 'export const a = 2;\n', source: 'packages/server/src/a.ts', tests: ['packages/server/src/__tests__/a.test.ts'] };
+  const r = await runWorker((url, base) => (url.endsWith('/gym-worker/claim') ? { runId: 'run-2', species: 'atomic@llama-router', task: { ...task, base } } : url.endsWith('/claim') ? { job: null } : {}),
+    FAKE_DOCKER(`if (cmd.includes('atomic-agent run')) {
+    const v = args.find((x) => x.endsWith(':/run/llama.sock:ro')); const sock = v.slice(0, -':/run/llama.sock:ro'.length);
+    const req = require('http').request({ socketPath: sock, method: 'POST', path: '/v1/chat/completions', headers: { 'content-type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => process.exit(0)); });
+    req.end('{"messages":[]}'); return;
+  }
+  if (cmd.includes('vitest run')) process.exit(n('vitest') === 0 ? 1 : 0);
+  if (cmd.includes("'--name-only'")) process.stdout.write('packages/server/src/a.ts\\n');
+  if (cmd.includes("'diff' 'HEAD'")) process.stdout.write('diff --git a/packages/server/src/a.ts b/packages/server/src/a.ts\\n');
+  if (cmd.startsWith('cat ')) process.exit(1);`), { GYM_LLAMA_URL: router.url });
+  try {
+    assert.equal(r.code, 0);
+    assert.deepEqual(router.seen, [null], 'no model is added: the host shim keeps its default');
+    const res = r.posted['/api/gym-worker/runs/run-2/result'];
+    assert.equal(res.status, 'success'); assert.ok(!('model_check' in res) && !('tg_metrics' in res));
+  } finally { router.srv.close(); fs.rmSync(r.root, { recursive: true, force: true }); }
+});
+
 // GYM_NATIVE_SKILL_TOOLS: the oracle-gate skill delivered to atomic-agent 0.6.5 as a native tool (an MCP stdio server in its
 // config: mcp.servers[], tool `mcp.djimitflo.oracle_gate`), not as assignment text. Off = byte-identical claim and config.
 const ORACLE_GATE_FILE = path.join(path.dirname(WORKER), 'skills', 'oracle-gate.mjs');
 const ORACLE_DIGEST = `sha256:${createHash('sha256').update(fs.readFileSync(ORACLE_GATE_FILE)).digest('hex')}`;
 const OLD_CONFIG = JSON.stringify({ version: 72, localModels: { url: 'http://127.0.0.1:9', mode: 'external' }, llm: { activeTextProvider: 'local-llama', activeEmbeddingProvider: 'local-llama', toolTransport: 'auto', providers: [{ id: 'local-llama', kind: 'llama-server', url: 'http://127.0.0.1:9' }] } });
-const OLD_CAPS = ['canary', 'write_test', 'prod_gates', 'prompt_override', 'procedure_lines'];
+const OLD_CAPS = ['canary', 'write_test', 'prod_gates', 'prompt_override', 'procedure_lines', 'model_override'];
 
 /** A JSON-RPC session with the worker's in-runner MCP server (newline-delimited JSON over stdio, as atomic speaks it). */
 async function mcpSession(cwd, argv, requests) {

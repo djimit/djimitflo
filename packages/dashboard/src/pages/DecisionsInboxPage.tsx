@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { LOOP_PR_SETTLEMENT_STATES, WebSocketEventType, type LoopPrSettlementState } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
+import { Link } from 'react-router-dom';
 import { Inbox, RefreshCw } from 'lucide-react';
 import { api, type DecisionsInbox, type DependencyLane, type DraftPrs } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
+import { useNeedsYou } from '../hooks/useNeedsYou';
+import { needsYouItems } from './OperatorCockpitPage';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { DiscoveryRelevanceSection } from './DiscoveryRelevanceSection';
 import { E1RetrievalLabelSection } from './E1RetrievalLabelSection';
@@ -62,6 +65,10 @@ export function DraftPrsSection() {
           {audit.length > 0 && <AuditBatchCard rows={audit} />}
           <DataTable caption="Loop draft PRs and their settlement" rows={rows} rowKey={(r) => r.run_id} empty={audit.length ? 'No loop PR outside the audit batch.' : 'The loop has opened no draft PR yet.'} columns={[
             { key: 'pr', label: 'PR', render: (r) => <a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a> },
+            // server order: every PR that needs the operator first (oldest first), then merged PRs in the survival window
+            { key: 'waits', label: 'Waits for', render: (r) => (r.needs_operator === undefined ? '—' : r.needs_operator ? 'you: merge or close'
+              : r.settlement === 'MERGED_SURVIVAL_PENDING' ? 'waits: survival window' : 'nothing'),
+              cellClassName: (r) => (r.needs_operator ? 'font-semibold text-status-warning' : 'text-foreground-muted') },
             { key: 'lane', label: 'Lane', render: (r) => r.lane },
             { key: 'age', label: 'Age (days)', render: (r) => r.age_days },
             { key: 'github', label: 'GitHub state', render: (r) => r.outcome?.replace(/_/g, ' ') ?? 'not polled' },
@@ -104,6 +111,13 @@ export function DependencyLaneSection() {
 }
 
 type RequeueAuto = NonNullable<NonNullable<DecisionsInbox['totals']>['requeue_auto']>;
+type RequeueRow = DecisionsInbox['requeue'][number];
+/**
+ * The cockpit's system_requeue classes (not counted as needing you): no operator buttons here either (truth audit 11-12: 28 rows
+ * had Requeue/Dismiss while the cockpit said 23). A row the auto-requeue policy holds is the operator's again.
+ */
+const SYSTEM_REQUEUE: ReadonlyArray<RequeueRow['queue_class']> = ['budgeted_requeue', 'infra_failed', 'attribution_unknown', 'not_actionable'];
+const systemSide = (r: RequeueRow) => !r.requeued_as && SYSTEM_REQUEUE.includes(r.queue_class) && r.auto?.action !== 'hold';
 type RowAuto = NonNullable<DecisionsInbox['requeue'][number]['auto']>;
 const AUTO_LABEL: Record<RowAuto['action'], string> = { requeue: 'system will requeue', dismiss: 'system will dismiss', wait: 'system will handle', hold: 'needs you' };
 
@@ -124,6 +138,27 @@ export function RequeueAutoNote({ auto }: { auto: RequeueAuto | null | undefined
 function AutoVerdict({ auto }: { auto: RowAuto }) {
   const label = auto.mode === 'shadow' ? `shadow: ${AUTO_LABEL[auto.action].replace('system will', 'would')}` : AUTO_LABEL[auto.action];
   return <div className={`text-xs ${auto.action === 'hold' ? 'text-status-warning' : 'text-foreground-muted'}`} title={auto.reason}>{label} · {auto.cls.replace(/_/g, ' ')}</div>;
+}
+
+/**
+ * Truth audit 11-12: one needs-you number — the cockpit's needs_you.total (also the sidebar badge and the tab title), with its
+ * breakdown linking to the sections of this page. Falls back to the pending approvals when it cannot be read.
+ */
+export function NeedsYouSummary({ approvals }: { approvals: number }) {
+  const view = useNeedsYou();
+  if (!view) return <p className="text-sm text-foreground-secondary">Everything that waits for an operator decision, starting with{' '}
+    <a href="#approvals" className="underline">{approvals} approval{approvals === 1 ? '' : 's'} pending</a>.</p>;
+  const { items, total, unknown } = needsYouItems(view.needs_you);
+  const parts = items.filter((i) => i.count);
+  return (
+    <p className="text-sm text-foreground-secondary" data-testid="decisions-needs-you">
+      <strong className="text-foreground">{unknown.length ? '≥ ' : ''}{total} need you</strong> (the cockpit&apos;s number){parts.length ? ': ' : '.'}
+      {parts.map((i, k) => <span key={i.label}>{k ? ' · ' : ''}{i.href.startsWith('/decisions#')
+        ? <a className="underline" href={i.href.slice('/decisions'.length)}>{i.count} {i.label}</a>
+        : <Link className="underline" to={i.href}>{i.count} {i.label}</Link>}</span>)}
+      {parts.length ? '.' : ''} <a href="#approvals" className="underline">{approvals} approval{approvals === 1 ? '' : 's'} pending</a>.
+    </p>
+  );
 }
 
 /** D5, CAR, E1 and DI-001 are ground-truth labelling: optional, with its own count, never decisions. */
@@ -164,6 +199,7 @@ export function DecisionsInboxPage() {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [tgId, setTgId] = useState('');
   const [tgUser, setTgUser] = useState('');
+  const [showLabelled, setShowLabelled] = useState(false);
   const pending = usePendingApprovals();
 
   const load = useCallback(async () => {
@@ -199,10 +235,7 @@ export function DecisionsInboxPage() {
         <h1 className="text-2xl font-bold">Decisions inbox</h1>
         <button onClick={() => void load()} className="ml-auto flex items-center gap-2 px-3 py-2 rounded-md border border-border"><RefreshCw className="w-4 h-4" /> Refresh</button>
       </div>
-      <p className="text-sm text-foreground-secondary">
-        Everything that waits for an operator decision, starting with{' '}
-        <a href="#approvals" className="underline">{pending.count} approval{pending.count === 1 ? '' : 's'} pending</a>.
-      </p>
+      <NeedsYouSummary approvals={pending.count} />
       <section className="rounded-lg border border-border p-4"><ApprovalQueuePage embedded /></section>
       <DraftPrsSection />
       <DependencyLaneSection />
@@ -244,7 +277,7 @@ export function DecisionsInboxPage() {
           <Section id="requeue" title="Requeue failed proposals" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">A requeue creates a new, linked attempt; the original and its outcome stay untouched. Counts against the lane budget. Dismiss records that no requeue is needed (audited) and removes the row; no change outcomes are listed but not counted as waiting for you.</p>
             <RequeueAutoNote auto={data.totals?.requeue_auto} />
-            <DataTable caption="Regressed or infra-failed proposals (30 d)" rows={data.requeue} rowKey={(r) => r.id} rowClassName={() => 'align-top'} empty="No regressed or infra-failed proposal in the last 30 days." columns={[
+            <DataTable caption="Regressed or infra-failed proposals (30 d)" rows={data.requeue.filter((r) => !systemSide(r))} rowKey={(r) => r.id} rowClassName={() => 'align-top'} empty="No regressed or infra-failed proposal in the last 30 days." columns={[
               { key: 'proposal', label: 'Proposal', render: (r) => <>{r.title}<div className="text-xs text-foreground-muted">{r.id.slice(0, 8)}</div></> },
               { key: 'status', label: 'Status', render: (r) => <>{r.status}{r.auto && <AutoVerdict auto={r.auto} />}</> },
               { key: 'reason', label: 'Reason', render: (r) => (r.requeued_as ? <span className="text-foreground-muted">requeued as {r.requeued_as.slice(0, 8)}</span> : (
@@ -260,6 +293,15 @@ export function DecisionsInboxPage() {
                 </>
               ) },
             ]} />
+            {data.requeue.some(systemSide) && (
+              <div className="mt-3" data-testid="requeue-system">
+                <h3 className="text-sm font-semibold">System-side ({data.requeue.filter(systemSide).length}) — not counted, no action needed from you</h3>
+                <p className="text-xs text-foreground-tertiary mb-1">Operational failures and rows the budgeted requeue or the attribution step owns, as the cockpit counts them{data.totals?.requeue_auto?.mode === 'on' ? '; auto-requeue retries or dismisses them' : ''}.</p>
+                <ul className="text-sm space-y-0.5">{data.requeue.filter(systemSide).map((r) => (
+                  <li key={r.id}>{r.title} <span className="text-xs text-foreground-muted">{r.id.slice(0, 8)} · {r.status} · {(r.queue_class ?? '').replace(/_/g, ' ')}</span></li>
+                ))}</ul>
+              </div>
+            )}
           </Section>
 
           <OptionalLabellingHeader inbox={data} />
@@ -271,7 +313,10 @@ export function DecisionsInboxPage() {
                 {p.false_rejection_pct !== null && <> · false-rejection rate <strong>{p.false_rejection_pct}%</strong></>} · enforce when {p.enforce_threshold}.
               </p>
             )}
-            <DataTable caption="Pre-screen rejections to label" rows={p?.items ?? []} rowKey={(i) => i.id} rowClassName={() => 'align-top'} empty="No pre-screen rejection to label." columns={[
+            {/* truth audit 11-12: 42 of 46 rows "to label" were labelled already — unlabelled only unless asked */}
+            <label className="text-xs flex items-center gap-1 mb-1"><input type="checkbox" checked={showLabelled} onChange={(e) => setShowLabelled(e.target.checked)} />
+              Show labelled ({(p?.items ?? []).filter((i) => i.label).length})</label>
+            <DataTable caption="Pre-screen rejections to label" rows={(p?.items ?? []).filter((i) => showLabelled || !i.label)} rowKey={(i) => i.id} rowClassName={() => 'align-top'} empty="No pre-screen rejection to label." columns={[
               { key: 'proposal', label: 'Proposal', render: (i) => i.title },
               { key: 'outcome', label: 'Outcome', render: (i) => i.status },
               { key: 'reason', label: 'Pre-screen reason', render: (i) => i.reason, cellClassName: () => 'text-foreground-secondary' },

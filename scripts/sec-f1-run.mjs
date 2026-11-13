@@ -16,14 +16,20 @@
 // Usage:
 //   node scripts/sec-f1-run.mjs --dist <packages/server/dist> --work <dir> --out <results.jsonl>
 //        [--items <docs/research/eco/sec-f1>] [--cap 6000000] [--prepare-only] [--only id,id] [--keep-checkouts]
+//        [--role security_checker|checker] [--benchmark]
 // --prepare-only builds checkouts and prompts (and checks the hash) but calls no model and writes no result line.
+// Periodic benchmarks (services/benchmark-schedule.ts, scripts/benchmark-run.sh) reuse this runner unchanged in path:
+//   --role checker   builds the prompt for the general checker lease instead of the security checker (the F1 set);
+//   --benchmark      records the CHECKER_INSTRUCTIONS hash it found instead of aborting on a mismatch (a prompt change is
+//                    what a benchmark series must measure, not refuse), and takes any positive --cap (BENCHMARK_TOKEN_CAP).
+// Without both flags the SEC-F1 protocol behaviour is unchanged.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  DEFAULT_ITEMS_DIR, TOKEN_CAP, assertCheckerInstructions, assertSafeOutput, blindItems, parseArgs, prepareCheckout,
+  CHECKER_INSTRUCTIONS_SHA256, DEFAULT_ITEMS_DIR, TOKEN_CAP, assertCheckerInstructions, assertSafeOutput, blindItems, parseArgs, prepareCheckout,
   readJsonl, readManifest, readPatch, runOrder, sameChange, sha256, git,
 } from './sec-f1-lib.mjs';
 
@@ -92,8 +98,26 @@ export function loadProd(distDir) {
   };
 }
 
-/** Prompt for one prepared checkout, built by the prod LoopService exactly as the daemon does for a security checker. */
-export function buildPrompt(loops, item, checkout) {
+export const REVIEWER_ROLES = Object.freeze(['security_checker', 'checker']);
+
+/** The prompt hash: the registered one is enforced (protocol), or with `benchmark` only recorded. */
+export function checkerInstructionsHash(instructions, { benchmark = false } = {}) {
+  if (!benchmark) return { sha256: assertCheckerInstructions(instructions), registered: true };
+  const actual = sha256(JSON.stringify(instructions));
+  return { sha256: actual, registered: actual === CHECKER_INSTRUCTIONS_SHA256 };
+}
+
+/** The run's token cap: protocol runs may only lower the 6 M cap; a benchmark run takes any positive configured cap. */
+export function runCap(raw, { benchmark = false } = {}) {
+  if (raw === undefined || raw === null || raw === '') return TOKEN_CAP;
+  const cap = Number(raw);
+  if (!Number.isInteger(cap) || cap <= 0 || (!benchmark && cap > TOKEN_CAP)) throw new Error(benchmark ? '--cap must be a positive integer' : `--cap must be in (0, ${TOKEN_CAP}]`);
+  return cap;
+}
+
+/** Prompt for one prepared checkout, built by the prod LoopService exactly as the daemon does for a security checker (or, with role 'checker', the checker). */
+export function buildPrompt(loops, item, checkout, role = 'security_checker') {
+  if (!REVIEWER_ROLES.includes(role)) throw new Error(`SEC_F1_BAD_ROLE ${role}`);
   const run = {
     id: uuidFrom(`run|${item.id}`), goal_id: null, loop_name: LOOP_NAME, mode: 'closed', status: 'running',
     repository_path: checkout, state_file: null, findings: [item.finding], plan: {}, gates: [], next_actions: [], metadata: {},
@@ -104,16 +128,16 @@ export function buildPrompt(loops, item, checkout) {
   const lease = (id, role, extra) => ({ id, loop_run_id: run.id, role, runtime: 'opencode', status: 'running', finding_id: item.finding.id,
     branch_name: null, budget: {}, created_at: run.created_at, updated_at: run.updated_at, ...extra });
   const maker = lease(uuidFrom(`maker|${item.id}`), 'maker', { worktree_path: checkout, metadata: { assignment_packet_file: packet, deterministic_checks: FIXED_CHECKS.map((c) => ({ ...c })) } });
-  const checker = lease(uuidFrom(`security|${item.id}`), 'security_checker', { worktree_path: checkout, metadata: {} });
+  const checker = lease(uuidFrom(`${role === 'checker' ? 'checker' : 'security'}|${item.id}`), role, { worktree_path: checkout, metadata: {} });
   const prompt = loops.buildCheckerPrompt(run, maker, checker);
   const diff = loops.workingTreeDiff(checkout);
   return { prompt, diff, packet };
 }
 
 /** One reviewer run through the prod OpenCodeExecutor and the prod result mapping. */
-export async function review(prod, loops, prompt, checkout, timeoutMs) {
+export async function review(prod, loops, prompt, checkout, timeoutMs, role = 'security_checker') {
   const executor = new prod.OpenCodeExecutor();
-  const task = { id: `sec-f1-${sha256(prompt).slice(0, 12)}`, title: 'security_checker worker', description: prompt, metadata: {} };
+  const task = { id: `sec-f1-${sha256(prompt).slice(0, 12)}`, title: `${role} worker`, description: prompt, metadata: {} };
   const options = { workingDirectory: checkout, timeout: timeoutMs, skipPermissions: false, ...(process.env.SEC_F1_MODEL ? { model: process.env.SEC_F1_MODEL } : {}) };
   const { args } = executor.buildCommand(task, options);
   if (args.includes('--auto')) throw new Error('SEC_F1_AUTO_FLAG'); // prod reviewers run with skipPermissions=false
@@ -125,19 +149,22 @@ export async function review(prod, loops, prompt, checkout, timeoutMs) {
 }
 
 async function main(argv) {
-  const o = parseArgs(argv, { dist: 'v', work: 'v', out: 'v', items: 'v', cap: 'v', only: 'v', 'prepare-only': 'flag', 'keep-checkouts': 'flag' });
+  const o = parseArgs(argv, { dist: 'v', work: 'v', out: 'v', items: 'v', cap: 'v', only: 'v', role: 'v', 'prepare-only': 'flag', 'keep-checkouts': 'flag', benchmark: 'flag' });
+  const benchmark = Boolean(o.benchmark);
+  const role = o.role || 'security_checker';
+  if (!REVIEWER_ROLES.includes(role)) throw new Error(`--role must be one of ${REVIEWER_ROLES.join(', ')}`);
   if (!o.dist || !o.work || (!o.out && !o['prepare-only'])) throw new Error('usage: sec-f1-run.mjs --dist <server dist> --work <dir> --out <results.jsonl> [--prepare-only]');
   const itemsDir = path.resolve(o.items || DEFAULT_ITEMS_DIR);
   const work = assertSafeOutput(o.work, { itemsDir });
   const out = o.out ? assertSafeOutput(o.out, { itemsDir }) : null;
-  const cap = o.cap ? Number(o.cap) : TOKEN_CAP;
-  if (!Number.isFinite(cap) || cap <= 0 || cap > TOKEN_CAP) throw new Error(`--cap must be in (0, ${TOKEN_CAP}]`);
+  const cap = runCap(o.cap, { benchmark });
 
   // the reviewer must not reach the control plane, and nothing here may open the prod DB
   for (const k of ['DJIMITFLO_CONTROL_URL', 'DJIMITFLO_SPAWN_TOKEN', 'DB_PATH']) delete process.env[k];
   process.env.LOOP_EVIDENCE_ROOT = path.join(work, 'evidence');
   const prod = loadProd(o.dist);
-  const instructionsSha = assertCheckerInstructions(prod.CHECKER_INSTRUCTIONS); // abort before the first item
+  const hash = checkerInstructionsHash(prod.CHECKER_INSTRUCTIONS, { benchmark }); // protocol: abort before the first item
+  const instructionsSha = hash.sha256;
   const db = new prod.Database(':memory:');
   db.exec(prod.schema); prod.runMigrations(db);
   const loops = new prod.LoopService(db, path.join(work, 'evidence'));
@@ -153,7 +180,8 @@ async function main(argv) {
   let opencodeVersion = null;
   try { opencodeVersion = execFileSync(process.env.OPENCODE_BIN_PATH || 'opencode', ['--version'], { encoding: 'utf8', timeout: 30_000 }).trim(); } catch { /* recorded as null */ }
   fs.writeFileSync(path.join(resultsDir, 'run-meta.json'), `${JSON.stringify({
-    protocol: 'SEC-F1 amendment 1', dist: prod.dist, checker_instructions_sha256: instructionsSha, order, cap, timeout_ms: timeoutMs,
+    protocol: 'SEC-F1 amendment 1', dist: prod.dist, checker_instructions_sha256: instructionsSha, checker_instructions_registered: hash.registered,
+    role, benchmark, items_dir: itemsDir, order, cap, timeout_ms: timeoutMs,
     prod_opencode_max_run_tokens: prodCap ?? null, requested_model: process.env.SEC_F1_MODEL || null, opencode_version: opencodeVersion,
     node: process.version, started_at: new Date().toISOString(), prepare_only: Boolean(o['prepare-only']),
   }, null, 2)}\n`);
@@ -173,12 +201,12 @@ async function main(argv) {
     if (!o['prepare-only'] && state.exhausted) { console.error(JSON.stringify({ stop: 'token_cap', used: state.used, cap })); break; }
     const patch = readPatch(itemsDir, item);
     const checkout = prepareCheckout(work, item, patch);
-    const { prompt, diff } = buildPrompt(loops, item, checkout);
+    const { prompt, diff } = buildPrompt(loops, item, checkout, role);
     if (!sameChange(diff, patch)) throw new Error(`SEC_F1_DIFF_MISMATCH ${id}: the rendered working-tree diff is not the registered patch`);
     fs.mkdirSync(itemDir, { recursive: true });
     fs.writeFileSync(path.join(itemDir, 'prompt.md'), prompt);
     const base = { schema: 'sec-f1-result/1', id, order_index: index, repo: item.repo, base_sha: item.base_sha, patch_sha256: item.patch_sha256,
-      diff_sha256: sha256(diff), prompt_sha256: sha256(prompt), checker_instructions_sha256: instructionsSha };
+      diff_sha256: sha256(diff), prompt_sha256: sha256(prompt), checker_instructions_sha256: instructionsSha, role };
     if (o['prepare-only']) {
       console.log(JSON.stringify({ prepared: id, prompt_chars: prompt.length, diff_sha256: base.diff_sha256 }));
       if (!o['keep-checkouts']) fs.rmSync(checkout, { recursive: true, force: true });
@@ -188,7 +216,7 @@ async function main(argv) {
     process.env.OPENCODE_MAX_RUN_TOKENS = String(maxRun);
     const statusBefore = git(['-C', checkout, 'status', '--porcelain=v1', '--untracked-files=all']);
     const startedAt = new Date();
-    const { result, args } = await review(prod, loops, prompt, checkout, timeoutMs);
+    const { result, args } = await review(prod, loops, prompt, checkout, timeoutMs, role);
     const stdout = result.stdout || '';
     const ok = result.exitCode === 0 && !result.timedOut;
     const verdict = ok ? loops.extractCheckerVerdict(stdout) : 'insufficient_evidence';

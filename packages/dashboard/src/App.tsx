@@ -60,8 +60,10 @@ function DataLoader({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function loadData() {
       try {
+        // Truth audit 2026-11-12: no longer the full first page of tasks (1.2 MB) on every route. Pages that list or
+        // count tasks read them themselves; the store only seeds running tasks (Agents "Current Task", live WS merges).
         const [tasksRes, agentsRes] = await Promise.all([
-          api.getTasks(),
+          api.getTasks({ status: 'running', view: 'summary' }),
           api.getAgents(),
         ]);
         setTasks(tasksRes?.tasks ?? []);

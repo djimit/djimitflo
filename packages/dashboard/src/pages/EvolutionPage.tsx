@@ -1,14 +1,19 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Dna } from 'lucide-react';
 import { api, type EvolutionEvidence, type GateState } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { ExperimentsSection } from './EvolutionExperiments';
 import { Pl001Card } from './EvolutionPl001';
+import { Cv001Card } from './EvolutionCv001';
 import { FitnessContractsCard } from './EvolutionFitness';
+import { BenchmarksCard } from './EvolutionBenchmarks';
 import { DataTable } from '../components/ui';
 
 const fetchEvidence = () => api.getEvolutionEvidence();
+/** the server caches the evidence for 5 min; polling faster only re-reads the same snapshot */
+export const EVIDENCE_POLL_MS = 5 * 60_000;
+const DAY = 86_400_000;
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)} %`);
 const num = (v: number | null | undefined, d = 2) => (v === null || v === undefined ? '—' : v.toFixed(d));
 const ci = (c: [number, number] | null | undefined, asPct = false) => (c ? `[${asPct ? pct(c[0]) : num(c[0])}, ${asPct ? pct(c[1]) : num(c[1])}]` : '—');
@@ -16,8 +21,23 @@ const GATE_TEXT: Record<GateState, string> = { green: 'text-status-completed', r
 const GATE_NAME: Record<'A' | 'B' | 'C' | 'D', string> = { A: 'evaluator can see', B: 'gold labels exist', C: 'human queue drains', D: 'forecasters are decision-grade' };
 
 /** UX-9: the evolution loop's evidence in one read-only page — Realm Gates first, then each measured source with its n. */
+/** re-read every `ms` while the tab is visible; a hidden tab does not poll, and on return a stale snapshot is re-read once */
+function useVisiblePoll(refresh: () => Promise<void>, ms: number) {
+  useEffect(() => {
+    let last = Date.now();
+    const tick = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < ms) return;
+      last = Date.now(); void refresh();
+    };
+    const timer = setInterval(tick, ms);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
+  }, [refresh, ms]);
+}
+
 export function EvolutionPage() {
-  const { data, error } = useResource(fetchEvidence, { pollMs: 60_000 });
+  const { data, error, refresh } = useResource(fetchEvidence);
+  useVisiblePoll(refresh, EVIDENCE_POLL_MS);
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -69,6 +89,8 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
   const c = data.commons;
   return (
     <div className="space-y-8">
+      <NeedsDecision data={data} />
+
       <section aria-labelledby="gates">
         <h2 id="gates" className="text-lg font-semibold mb-2">Realm Gates</h2>
         <ul className="grid gap-3 md:grid-cols-2">
@@ -76,6 +98,7 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
             <li key={k} className="rounded-lg border border-border p-3">
               <p className="font-medium">Gate {k} — {GATE_NAME[k]}: <span className={GATE_TEXT[data.gates[k].state]}>{data.gates[k].state}</span></p>
               <p className="text-sm text-foreground-secondary">{data.gates[k].reason}</p>
+              {k === 'B' && <p className="text-xs text-foreground-tertiary">Settled loop PRs: E1 settlement states, all time (no window) — not the merge outcomes under Loop draft PRs.</p>}
             </li>
           ))}
         </ul>
@@ -118,7 +141,20 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
         </Section>
       )}
 
+      {data.benchmarks && (
+        <Section title="Fixed benchmarks">
+          <BenchmarksCard data={data.benchmarks} />
+        </Section>
+      )}
+
+      {data.cv_001 && (
+        <Section title="CV-001 — discipline control vector (gym repair)">
+          <Cv001Card data={data.cv_001} />
+        </Section>
+      )}
+
       <Section title="Genome trials">
+        <Genomes genomes={data.genomes} />
         <p className="text-sm text-foreground-secondary">Holdouts: mined {data.genomes.holdout.mined ?? '—'}, mutant {data.genomes.holdout.mutant ?? '—'} tasks.</p>
         {/* §16 step 7: how often each current frozen epoch has been used; a reuse risk asks the operator for a fresh epoch */}
         {data.holdout_exposure?.epochs.filter((e) => e.current).map((e) => (
@@ -178,7 +214,7 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
       </Section>
 
       <Section title="Loop draft PRs">
-        <p className="text-sm">n = {data.drafts.unsettled_open_or_recent} open or merged under 14 days · median age {data.drafts.age_days_p50 ?? '—'} d · oldest {data.drafts.age_days_max ?? '—'} d · settled {data.merge.merge_outcomes ?? 0}</p>
+        <p className="text-sm">n = {data.drafts.unsettled_open_or_recent} open or merged under 14 days · median age {data.drafts.age_days_p50 ?? '—'} d · oldest {data.drafts.age_days_max ?? '—'} d · settled merge outcomes {data.merge.merge_outcomes ?? 'unknown'} (all time{data.merge.first_settled ? `, since ${data.merge.first_settled.slice(0, 10)}` : ''}; not Gate B&apos;s settled loop PRs)</p>
       </Section>
 
       {data.auto_merge && data.auto_merge.mode !== 'off' && (
@@ -206,6 +242,53 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
         )}
       </Section>
     </div>
+  );
+}
+
+type GenomeEvidence = EvolutionEvidence['genomes'];
+/** maker_genomes by status (origins in brackets) and the genome(s) in trial now — the server sent both, the page had dropped them */
+function Genomes({ genomes }: { genomes: GenomeEvidence }) {
+  const byStatus = new Map<string, { n: number; origins: string[] }>();
+  for (const g of genomes.by_status) {
+    const s = byStatus.get(g.status) ?? { n: 0, origins: [] };
+    s.n += g.n; s.origins.push(`${g.origin} ${g.n}`); byStatus.set(g.status, s);
+  }
+  const inTrial = genomes.recent.filter((g) => g.status === 'trial');
+  const trialCount = byStatus.get('trial')?.n ?? 0;
+  return (
+    <div className="text-sm space-y-1" data-testid="genomes">
+      <p>{byStatus.size ? `Genomes by status: ${[...byStatus].map(([st, v]) => `${st} ${v.n} (${v.origins.join(', ')})`).join(' · ')}` : 'No genome recorded (maker_genomes empty or unreadable).'}</p>
+      {inTrial.length > 0 ? inTrial.map((g) => (
+        <p key={g.id}>In trial now: <span className="font-medium">{g.id}</span> (since {g.updated_at.slice(0, 16).replace('T', ' ')}){g.note ? ` — ${g.note}` : ''}</p>
+      )) : <p>{trialCount > 0 ? `${trialCount} genome(s) in trial, not among the ${genomes.recent.length} most recent rows` : 'No genome in trial.'}</p>}
+    </div>
+  );
+}
+
+/**
+ * What asks the operator for a decision, from this snapshot only: overdue experiments, experiments stopping within 3 days,
+ * current holdout epochs over their reuse limit and Realm Gates that are red. Read-only; each line links to nothing new.
+ */
+export function NeedsDecision({ data }: { data: EvolutionEvidence }) {
+  const at = Date.parse(data.at);
+  const items: string[] = [];
+  const open = (data.experiments?.experiments ?? []).filter((e) => e.verdict === null);
+  for (const e of open.filter((x) => x.overdue)) items.push(`${e.id} overdue — ${e.overdue_reason ?? 'no reason recorded'}`);
+  for (const e of open.filter((x) => !x.overdue && x.stop_by)) {
+    const left = (Date.parse(e.stop_by as string) - at) / DAY;
+    if (left >= 0 && left <= 3) items.push(`${e.id} stops by ${(e.stop_by as string).slice(0, 10)} (in ${left.toFixed(1)} d) — read out or close`);
+  }
+  for (const h of (data.holdout_exposure?.epochs ?? []).filter((x) => x.current && x.reuse_risk)) {
+    items.push(`${h.holdout} holdout epoch ${h.epoch}: ${h.candidates} candidates, over the reuse limit ${data.holdout_exposure.limit} — introduce a fresh epoch`);
+  }
+  for (const k of ['A', 'B', 'C', 'D'] as const) if (data.gates[k].state === 'red') items.push(`Gate ${k} (${GATE_NAME[k]}) red — ${data.gates[k].reason}`);
+  return (
+    <section aria-labelledby="needs-decision" className="rounded-lg border border-border p-3" data-testid="needs-decision">
+      <h2 id="needs-decision" className="text-lg font-semibold mb-1">Needs a decision</h2>
+      {!items.length ? <p className="text-sm text-foreground-secondary">Nothing in this snapshot needs a decision.</p> : (
+        <ul className="list-disc pl-5 text-sm space-y-0.5">{items.map((t) => <li key={t}>{t}</li>)}</ul>
+      )}
+    </section>
   );
 }
 
