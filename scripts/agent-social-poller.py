@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """Run one bounded Djimitflo peer-learning poll for a real runtime."""
-import ipaddress, json, os, re, shutil, signal, subprocess, sys, tempfile, urllib.error, urllib.parse, urllib.request
+import ipaddress, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request, uuid
 from pathlib import Path
+
+ATTEMPT_DEADLINE = None
+RUNTIME_DEADLINE = None
+
+def bounded_timeout(max_seconds, deadline, label):
+    if deadline is None: return max_seconds
+    remaining = deadline - time.monotonic()
+    if remaining <= 0: raise TimeoutError(label)
+    return min(max_seconds, remaining)
 
 def api(method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(os.environ['DJIMITFLO_URL'].rstrip('/') + path, data=data, method=method,
         headers={'Content-Type': 'application/json', 'X-Agent-Social-Token': os.environ['DJIMITFLO_SOCIAL_TOKEN']})
     try:
-        with urllib.request.urlopen(request, timeout=30) as response: return response.status, json.load(response)
+        with urllib.request.urlopen(request, timeout=bounded_timeout(30, ATTEMPT_DEADLINE, 'attempt deadline exceeded before API response')) as response: return response.status, json.load(response)
     except urllib.error.HTTPError as error: raise RuntimeError(f'Djimitflo HTTP {error.code}: {error.read(500).decode("utf-8", "replace")}') from error
 
 def extract_object(text):
@@ -61,6 +70,18 @@ def provider_http_status(event):
     status = data.get('statusCode') if isinstance(data, dict) else None
     return status if isinstance(status, int) and 400 <= status <= 599 else None
 
+def classify_failure(error, phase='runtime'):
+    if phase == 'reply': return 'reply_delivery_failed'
+    if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)): return 'runtime_timeout'
+    if isinstance(error, FileNotFoundError): return 'runtime_unavailable'
+    if isinstance(error, json.JSONDecodeError): return 'invalid_runtime_output'
+    message = str(error).lower()
+    if 'timeout' in message or 'timed out' in message: return 'runtime_timeout'
+    if 'not installed' in message or 'not found' in message: return 'runtime_unavailable'
+    if 'no json object' in message or 'omitted a required' in message or 'must be an array' in message: return 'invalid_runtime_output'
+    if 'failed with exit' in message or 'error event' in message or 'returned an error' in message or 'provider http' in message or 'unsuccessful completion' in message: return 'runtime_process_failed'
+    return 'poller_error'
+
 def bounded_process(command, prompt, cwd, env, timeout=150):
     # Cancellation must also stop the detached CLI and all of its workers.
     def cancelled(signum, _frame):
@@ -71,7 +92,7 @@ def bounded_process(command, prompt, cwd, env, timeout=150):
                               stderr=subprocess.PIPE, text=True, cwd=cwd, env=env,
                               start_new_session=True) as child:
             try:
-                stdout, _ = child.communicate(prompt, timeout=timeout)
+                stdout, _ = child.communicate(prompt, timeout=bounded_timeout(timeout, RUNTIME_DEADLINE, 'runtime exceeded total attempt deadline'))
             except subprocess.TimeoutExpired:
                 raise RuntimeError('runtime exceeded bounded execution timeout') from None
             finally:
@@ -204,7 +225,7 @@ def run_hermes(prompt):
 
 def run_deerflow(prompt):
     runner = 'import json,os,sys,urllib.request\nprompt=sys.stdin.read()\nbody={"assistant_id":os.environ.get("SOCIAL_DEERFLOW_ASSISTANT","telegram-safe"),"input":{"messages":[{"role":"user","content":prompt}]},"context":{"model_name":os.environ.get("SOCIAL_MODEL_ID","reasoning"),"thinking_enabled":False},"on_completion":"delete"}\nr=urllib.request.Request("http://127.0.0.1:8001/api/runs/wait",data=json.dumps(body).encode(),method="POST",headers={"Content-Type":"application/json","X-DeerFlow-Internal-Token":os.environ["DEER_FLOW_INTERNAL_AUTH_TOKEN"]})\nwith urllib.request.urlopen(r,timeout=180) as response: data=json.load(response)\nmessages=[item for item in data.get("messages",[]) if item.get("type") in ("ai","assistant")]\nif not messages: raise RuntimeError("DeerFlow returned no assistant message")\nmessage=messages[-1]\nprint(json.dumps({"content":message.get("content",""),"run_id":message.get("additional_kwargs",{}).get("run_id",""),"usage":message.get("usage_metadata",{})}))'
-    result = subprocess.run(['docker', 'exec', '-i', os.environ.get('SOCIAL_DEERFLOW_CONTAINER', 'deer-flow-gateway'), 'python', '-c', runner], input=prompt, text=True, capture_output=True, env=runtime_env('deerflow'), timeout=210)
+    result = subprocess.run(['docker', 'exec', '-i', os.environ.get('SOCIAL_DEERFLOW_CONTAINER', 'deer-flow-gateway'), 'python', '-c', runner], input=prompt, text=True, capture_output=True, env=runtime_env('deerflow'), timeout=bounded_timeout(210, RUNTIME_DEADLINE, 'runtime exceeded total attempt deadline'))
     if result.returncode: raise RuntimeError(f'DeerFlow failed with exit {result.returncode}')
     envelope = json.loads(result.stdout); return envelope['content'], envelope.get('run_id', ''), envelope.get('usage', {})
 
@@ -214,7 +235,7 @@ def run_ollama(prompt):
     body = {'model': model, 'stream': False, 'format': 'json', 'options': {'temperature': 0.7, 'num_predict': 700},
             'messages': [{'role': 'system', 'content': 'You are a curious, creative specialist agent. Reply with exactly one JSON object.'}, {'role': 'user', 'content': prompt}]}
     request = urllib.request.Request(os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/') + '/api/chat', data=json.dumps(body).encode(), method='POST', headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(request, timeout=300) as response: data = json.load(response)
+    with urllib.request.urlopen(request, timeout=bounded_timeout(300, RUNTIME_DEADLINE, 'runtime exceeded total attempt deadline')) as response: data = json.load(response)
     usage = {key: data[key] for key in ('prompt_eval_count', 'eval_count', 'total_duration') if isinstance(data.get(key), (int, float))}
     return data.get('message', {}).get('content', ''), data.get('created_at', ''), usage
 
@@ -228,6 +249,7 @@ def self_test():
     print('agent-social-poller self-test: PASS')
 
 def main():
+    global ATTEMPT_DEADLINE, RUNTIME_DEADLINE
     if '--self-test' in sys.argv: self_test(); return
     agent, runtime, model = os.environ['DJIMITFLO_AGENT_ID'], os.environ['SOCIAL_RUNTIME'], os.environ.get('SOCIAL_MODEL_ID', '').strip()
     if runtime not in RUNTIMES: raise RuntimeError(f'unsupported runtime: {runtime}')
@@ -237,12 +259,31 @@ def main():
     for message in body.get('messages', []):
         if (message.get('payload') or {}).get('action') == 'social.invite':  # informational: the server marked it read; the next heartbeat is the bite
             print(json.dumps({'agent': agent, 'invite': message['payload'].get('thread_id')})); continue
+        phase, attempt_id = 'runtime', str(uuid.uuid4())
+        RUNTIME_DEADLINE = time.monotonic() + 240
+        ATTEMPT_DEADLINE = RUNTIME_DEADLINE + 30
         try:
             output, run_id, usage = RUNTIMES[runtime](prompt_for(message))
             reply = extract_object(output); reply.update({'runtime': runtime, 'model_id': model, 'runtime_run_id': run_id, 'usage': usage, 'delivery_lease_token': message.get('deliveryLeaseToken', '')})
+            phase = 'reply'
             status, result = api('POST', f"/api/swarm-v2/social-runtime/{agent}/messages/{message['id']}/respond", reply)
             print(json.dumps({'agent': agent, 'input': message['payload']['action'], 'output': result['message']['payload']['action'], 'status': status, 'duplicate': result['duplicate']})); processed += 1
-        except Exception as error: failures += 1; print(json.dumps({'agent': agent, 'message_id': message.get('id'), 'error': str(error)[:500]}), file=sys.stderr)
+        except Exception as error:
+            failures += 1
+            error_class = classify_failure(error, phase)
+            reported = False
+            if message.get('id') and message.get('deliveryLeaseToken'):
+                try:
+                    _, result = api('POST', f"/api/swarm-v2/social-runtime/{agent}/messages/{message['id']}/failure", {
+                        'attempt_id': attempt_id, 'delivery_lease_token': message['deliveryLeaseToken'], 'failure_class': error_class,
+                    })
+                    reported = result.get('reported') is True
+                except Exception:
+                    pass
+            print(json.dumps({'agent': agent, 'message_id': message.get('id'), 'attempt_id': attempt_id,
+                              'failure_class': error_class, 'reported_to_server': reported, 'error': str(error)[:500]}), file=sys.stderr)
+        finally:
+            RUNTIME_DEADLINE = ATTEMPT_DEADLINE = None
     print(json.dumps({'agent': agent, 'processed': processed, 'failures': failures}))
     if failures: raise SystemExit(1)
 if __name__ == '__main__': main()

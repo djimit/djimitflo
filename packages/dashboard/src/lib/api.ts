@@ -1637,12 +1637,13 @@ export type SocialThread = {
 
 export type CommonsThreadKind = 'discussion' | 'record';
 
-/** Derived server-side from heartbeats, own runtime replies and lapsed delivery leases; the runtime itself reports no errors. */
+/** Derived from heartbeats, successful runtime replies, poller-reported failure classes and lapsed delivery leases. */
 export type CommonsRuntimeReadiness = {
   state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
   last_heartbeat_at: string | null; last_successful_reply_at: string | null;
-  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
-  runtime_failures_reported: false;
+  last_failed_attempt: { at: string; message_id: string; observed: 'runtime_reported' | 'claim_lapsed_without_reply'; failure_class: 'runtime_unavailable' | 'runtime_timeout' | 'runtime_process_failed' | 'invalid_runtime_output' | 'reply_delivery_failed' | 'poller_error' | null } | null;
+  runtime_failures_reported: boolean;
+  runtime_failure_reporting_enabled: boolean;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };

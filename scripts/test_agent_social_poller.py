@@ -1,5 +1,7 @@
 """Run with python3 -m unittest discover -s scripts -p 'test_agent_social_poller.py'."""
 import importlib.util
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -18,6 +20,44 @@ REPLY = dict(answer='a', uncertainty='u', falsifiable_next_step='f', creative_al
 
 
 class SocialRuntimeTests(unittest.TestCase):
+    def test_runtime_failures_are_reduced_to_bounded_classes(self):
+        self.assertEqual(poller.classify_failure(RuntimeError('runtime exceeded bounded execution timeout')), 'runtime_timeout')
+        self.assertEqual(poller.classify_failure(RuntimeError('claude CLI is not installed')), 'runtime_unavailable')
+        self.assertEqual(poller.classify_failure(RuntimeError('runtime returned no JSON object')), 'invalid_runtime_output')
+        self.assertEqual(poller.classify_failure(RuntimeError('opencode provider HTTP 401')), 'runtime_process_failed')
+        self.assertEqual(poller.classify_failure(FileNotFoundError('hermes')), 'runtime_unavailable')
+        self.assertEqual(poller.classify_failure(json.JSONDecodeError('invalid', '{', 0)), 'invalid_runtime_output')
+        self.assertEqual(poller.classify_failure(RuntimeError('pi returned an unsuccessful completion')), 'runtime_process_failed')
+        self.assertEqual(poller.classify_failure(RuntimeError('HTTP 503'), 'reply'), 'reply_delivery_failed')
+        self.assertEqual(poller.classify_failure(RuntimeError('unexpected internal condition')), 'poller_error')
+
+    def test_attempt_deadline_reserves_time_for_reply_and_failure_reporting(self):
+        now = poller.time.monotonic()
+        self.assertLessEqual(poller.bounded_timeout(300, now + 240, 'expired'), 240)
+        self.assertAlmostEqual(poller.bounded_timeout(30, now + 270, 'expired'), 30, delta=1)
+        with self.assertRaisesRegex(TimeoutError, 'attempt deadline'):
+            poller.bounded_timeout(10, now - 1, 'attempt deadline exceeded')
+
+    def test_main_reports_only_the_failure_class_for_a_claimed_message(self):
+        message = {'id': 'message-1', 'deliveryLeaseToken': 'lease-1', 'payload': {'action': 'social.question', 'context': 'quoted peer data', 'params': {}, 'evidence': []}}
+        calls = []
+        def api(method, path, body=None):
+            calls.append((method, path, body))
+            if method == 'GET': return 200, {'messages': [message]}
+            if path.endswith('/failure'): return 201, {'reported': True}
+            return 200, {}
+        stderr = io.StringIO()
+        with patch.dict(os.environ, {'DJIMITFLO_AGENT_ID': 'agent-1', 'SOCIAL_RUNTIME': 'claude', 'SOCIAL_MODEL_ID': 'model-1'}), \
+             patch.object(poller, 'api', side_effect=api), \
+             patch.dict(poller.RUNTIMES, {'claude': lambda _prompt: (_ for _ in ()).throw(RuntimeError('runtime exceeded bounded execution timeout'))}), \
+             patch.object(poller.sys, 'argv', ['agent-social-poller.py']), contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit): poller.main()
+        failure = next(call for call in calls if call[1].endswith('/failure'))
+        self.assertEqual(failure[2]['failure_class'], 'runtime_timeout')
+        self.assertEqual(failure[2]['delivery_lease_token'], 'lease-1')
+        self.assertNotIn('error', failure[2])
+        self.assertIn('"reported_to_server": true', stderr.getvalue())
+
     def test_provider_error_only_exposes_numeric_http_status(self):
         event = {'type': 'error', 'error': {'data': {'statusCode': 401, 'message': 'secret provider body'}}}
         with self.assertRaisesRegex(RuntimeError, '^opencode provider HTTP 401$'):

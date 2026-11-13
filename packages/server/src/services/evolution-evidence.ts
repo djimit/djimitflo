@@ -130,6 +130,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'COMMONS_EVIDENCE_ROOM_MODE', acting: false },
   { name: 'COMMONS_FALSIFIER_MODE', acting: false },
   { name: 'COMMONS_INVESTIGATION_MODE', acting: false },
+  { name: 'COMMONS_RUNTIME_FAILURE_REPORTING_MODE', acting: false },
   { name: 'ASG_MODE', acting: true },
   { name: 'SETTLEMENT_EXECUTION_MODE', acting: true },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },

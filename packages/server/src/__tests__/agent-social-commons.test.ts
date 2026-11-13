@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Sqlite from 'better-sqlite3';
 import type Database from 'better-sqlite3';
-import { AgentCommunicationService } from '../services/agent-communication-service';
+import { AgentCommunicationService, deriveRuntimeReadiness } from '../services/agent-communication-service';
 import { createTestDb } from './helpers/test-db';
 
 describe('agent commons read-model', () => {
@@ -9,6 +9,7 @@ describe('agent commons read-model', () => {
   let comms: AgentCommunicationService;
 
   beforeEach(() => {
+    delete process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE;
     db = createTestDb();
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"security\"]'), ('agent-b', 'Agent B', 'active', '[\"ux\"]')").run();
     comms = new AgentCommunicationService(db);
@@ -16,7 +17,7 @@ describe('agent commons read-model', () => {
     comms.heartbeat('agent-b', 'opencode', 'model-b', 'runtime_token');
   });
 
-  afterEach(() => db.close());
+  afterEach(() => { db.close(); delete process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE; });
 
   it('groups question, response and learning into one thread with presence', () => {
     const round = comms.socialize(0);
@@ -280,7 +281,7 @@ describe('agent commons runtime readiness (AC-01)', () => {
     expect(b.runtime_failures_reported).toBe(false);
   });
 
-  it('a claimed question whose lease lapsed without a reply is a failed attempt; resumed success makes it ready without a duplicate reply', () => {
+  it('a claimed question whose lease lapsed without a report is still distinguishable; resumed success makes it ready', () => {
     comms.socialize(0);
     const [question] = comms.receiveSocial('agent-b');
     // the poller claimed it, the child exited non-zero, nothing was posted: the lease lapses
@@ -299,6 +300,47 @@ describe('agent commons runtime readiness (AC-01)', () => {
     expect(resumed.last_successful_reply_at).toBeTruthy();
     expect(resumed.last_failed_attempt).toBeNull();
     expect(db.prepare("SELECT COUNT(*) AS n FROM agent_messages WHERE from_agent = 'agent-b' AND json_extract(payload_json, '$.action') = 'social.response'").get()).toEqual({ n: 1 });
+  });
+
+  it('uses a scoped poller-reported failure class and keeps readiness evidence attributable', () => {
+    process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE = 'shadow';
+    comms.socialize(0);
+    const [question] = comms.receiveSocial('agent-b');
+    expect(question).toBeDefined();
+    const report = { agentId: 'agent-b', messageId: question.id, attemptId: '00000000-0000-4000-8000-000000000001', deliveryLeaseToken: question.deliveryLeaseToken!, failureClass: 'runtime_timeout' as const };
+    expect(comms.reportRuntimeFailure(report)).toEqual({ duplicate: false });
+    expect(comms.reportRuntimeFailure(report)).toEqual({ duplicate: true });
+    expect(comms.reportRuntimeFailure({ ...report, attemptId: '00000000-0000-4000-8000-000000000005' })).toEqual({ duplicate: true });
+    expect(readiness('agent-b')).toMatchObject({
+      state: 'degraded', runtime_failures_reported: true,
+      last_failed_attempt: { message_id: question.id, observed: 'runtime_reported', failure_class: 'runtime_timeout' },
+    });
+    expect(() => comms.reportRuntimeFailure({ ...report, failureClass: 'runtime_process_failed' })).toThrow('SOCIAL_ATTEMPT_CONFLICT');
+    expect(() => comms.reportRuntimeFailure({ ...report, attemptId: '00000000-0000-4000-8000-000000000002', deliveryLeaseToken: 'wrong' })).toThrow('SOCIAL_LEASE_INVALID');
+    expect(() => comms.reportRuntimeFailure({ ...report, attemptId: '00000000-0000-4000-8000-000000000003', failureClass: 'arbitrary' as never })).toThrow('SOCIAL_FAILURE_CLASS_INVALID');
+    expect(db.prepare('SELECT COUNT(*) AS n FROM agent_social_runtime_failures WHERE agent_id = ?').get('agent-b')).toEqual({ n: 1 });
+    const now = Date.now();
+    expect(deriveRuntimeReadiness({ lastHeartbeatAt: new Date(now).toISOString(), lastSuccessAt: new Date(now - 1_000).toISOString(), lastFailureAt: new Date(now).toISOString(), lastFailureObserved: 'runtime_reported', now })).toEqual({ state: 'degraded', reason: 'poller reported a runtime failure after the last successful reply' });
+  });
+
+  it('keeps a reported class when that lease expires, rejects a new late report, and recognizes a later unreported lease', () => {
+    process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE = 'shadow';
+    comms.socialize(0);
+    const [question] = comms.receiveSocial('agent-b');
+    const report = { agentId: 'agent-b', messageId: question.id, attemptId: '00000000-0000-4000-8000-000000000006', deliveryLeaseToken: question.deliveryLeaseToken!, failureClass: 'runtime_timeout' as const };
+    expect(comms.reportRuntimeFailure(report)).toEqual({ duplicate: false });
+    db.prepare('UPDATE agent_social_runtime_failures SET occurred_at = ? WHERE agent_id = ? AND message_id = ?').run(new Date(Date.now() - 10 * 60_000).toISOString(), 'agent-b', question.id);
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 60_000, question.id);
+
+    expect(readiness('agent-b').last_failed_attempt).toMatchObject({ message_id: question.id, observed: 'runtime_reported', failure_class: 'runtime_timeout' });
+    expect(comms.reportRuntimeFailure(report)).toEqual({ duplicate: true });
+
+    const reclaimed = comms.receiveSocial('agent-b').find((message) => message.id === question.id)!;
+    expect(reclaimed).toBeDefined();
+    db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 60_000, question.id);
+    expect(() => comms.reportRuntimeFailure({ ...report, attemptId: '00000000-0000-4000-8000-000000000007', deliveryLeaseToken: reclaimed.deliveryLeaseToken! })).toThrow('SOCIAL_LEASE_INVALID');
+    expect(readiness('agent-b').last_failed_attempt).toMatchObject({ message_id: question.id, observed: 'claim_lapsed_without_reply', failure_class: null });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM agent_social_runtime_failures WHERE agent_id = ? AND message_id = ?').get('agent-b', question.id)).toEqual({ n: 1 });
   });
 
   it('a lapse after the last successful reply degrades again; an older lapse does not', () => {
