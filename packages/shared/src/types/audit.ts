@@ -61,4 +61,6 @@ export interface AuditQuery {
   to_date?: string;
   limit?: number;
   offset?: number;
+  /** leave out auth.login events of service accounts (users on the reserved `.invalid` domain) */
+  exclude_service_logins?: boolean;
 }
