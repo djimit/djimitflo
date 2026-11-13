@@ -68,8 +68,9 @@ export interface CockpitSnapshot {
      * labels (optional_labelling), system stalls, warnings and panel-reviewed proposals (system). null if any part is unknown.
      */
     total: number | null;
-    /** open_prs split: audit-sample PRs (one weekly batch) and the rest (flagged: the auto-merge lane did not take them) */
-    audit_batch: number | null; flagged_prs: number | null;
+    /** open_prs split: audit-sample PRs (one weekly batch), the rest (flagged: the auto-merge lane did not take them) and
+     * system_prs (waiting / capped / transient ineligible: the lane still handles them — shown, not in total) */
+    audit_batch: number | null; flagged_prs: number | null; system_prs: number | null;
     /** open Dependabot PRs the dependency lane leaves to a human; null + dependency_tracked false when the lane is off */
     dependency_human: number | null; dependency_tracked: boolean;
     /** ground-truth labelling (D5, CAR, E1, DI-001): optional, its own count, never in total */

@@ -592,23 +592,80 @@ it('recheck: a BEHIND red PR gets update-branch, then waits as rechecking_after_
   expect(writes()).toEqual([]);
   await tickAt(7);
   expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'rechecking_after_update', steps: ['update_branch'] });
-  expect(writes()).toEqual([700, 702].map((n) => ({ method: 'PUT', url: `https://api.github.com/repos/o/r/pulls/${n}/update-branch`, body: { expected_head_sha: `sha${n}` } })));
+  // merge queue of one: 702 is re-checked too, but waits its turn behind 700 instead of a second update in the same tick
+  expect(decision(702)).toMatchObject({ decision: 'waiting', reason: 'queued_behind_pr:#700' });
+  expect(writes()).toEqual([{ method: 'PUT', url: 'https://api.github.com/repos/o/r/pulls/700/update-branch', body: { expected_head_sha: 'sha700' } }]);
   // GitHub's update-branch: a web-flow merge of main on top of the old head; CI reruns on it
-  for (const n of [700, 702]) {
-    prs.get(n)!.head.sha = `upd${n}`; checks.set(`upd${n}`, 'pending');
+  const updated = (n: number, state: 'pending' | 'red') => {
+    prs.get(n)!.head.sha = `upd${n}`; checks.set(`upd${n}`, state);
     commitsBySha.set(`upd${n}`, { parents: [{ sha: `sha${n}` }, { sha: 'main1' }], committer: { login: 'web-flow' }, commit: { verification: { verified: true } } });
-  }
+  };
+  updated(700, 'pending');
   await tickAt(7.25);
   expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'rechecking_after_update' });
-  expect(writes()).toHaveLength(2); // pending: not marked ready, not merged
-  checks.set('upd700', 'green'); checks.set('upd702', 'red');
+  expect(decision(702).reason).toBe('queued_behind_pr:#700'); // still red and behind: keeps its place
+  expect(writes()).toHaveLength(1); // pending: not marked ready, not merged
+  checks.set('upd700', 'green');
   await tickAt(7.5);
   expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'marked_ready' });
-  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'checks_failed' });
+  // its turn: the queued re-check resumes with the update the re-check would have made
+  expect(decision(702)).toMatchObject({ decision: 'waiting', reason: 'rechecking_after_update', steps: ['update_branch'] });
+  expect(writes().at(-1)).toEqual({ method: 'PUT', url: 'https://api.github.com/repos/o/r/pulls/702/update-branch', body: { expected_head_sha: 'sha702' } });
+  updated(702, 'red');
   expect(await tickAt(7.75)).toMatchObject({ merged: 1 });
   expect(writes().filter((c) => c.url.endsWith('/merge'))).toEqual([{ method: 'PUT', url: 'https://api.github.com/repos/o/r/pulls/700/merge', body: expect.objectContaining({ sha: 'upd700' }) }]);
   expect(decision(700)).toMatchObject({ decision: 'merged', rechecks: 1 });
-  expect(decision(702).decision).toBe('ineligible');
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'checks_failed' }); // red again on the updated head
+});
+
+// prod 2026-11-13: every behind PR got update-branch in the same tick; with strict protection each merge put the rest behind
+// again, so 7 green PRs sat 'waiting branch_updated' for days, re-running full CI every cycle. A merge queue of one fixes it.
+const seedBehind = (nums: number[]) => nums.forEach((n, i) => {
+  seedPr(n, { draft: false, behind: true });
+  db.prepare('UPDATE loop_runs SET created_at = ? WHERE id = ?').run(`2026-10-06T0${i}:00:00Z`, `run-${n}`); // oldest first
+});
+const updatedPrs = () => writes().filter((c) => c.url.endsWith('/update-branch')).map((c) => Number(c.url.split('/').at(-2)));
+
+it('merge queue: of three behind PRs only the oldest gets update-branch; the rest wait queued_behind_pr and follow one by one', async () => {
+  seedBehind([700, 702, 703]);
+  const tick = (h: number) => tickAt(h, env('act'));
+  await tick(0);
+  expect(updatedPrs()).toEqual([700]);
+  expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'branch_updated', steps: ['update_branch'] });
+  expect([decision(702), decision(703)]).toMatchObject([{ decision: 'waiting', reason: 'queued_behind_pr:#700' }, { decision: 'waiting', reason: 'queued_behind_pr:#700' }]);
+  // 700's CI runs on the updated head: it stays in flight, nothing else is updated
+  checks.set('sha700', 'pending');
+  await tick(0.25);
+  expect(decision(700).reason).toBe('checks_pending');
+  expect([decision(702).reason, decision(703).reason]).toEqual(['queued_behind_pr:#700', 'queued_behind_pr:#700']);
+  expect(updatedPrs()).toEqual([700]);
+  // 700 green and up to date: it merges; then (after the merge) the next oldest is updated, the last one queues behind it
+  checks.set('sha700', 'green');
+  expect(await tick(0.5)).toMatchObject({ merged: 1 });
+  expect(writes().map((c) => c.url.replace('https://api.github.com/repos/o/r/', '')).slice(-2)).toEqual(['pulls/700/merge', 'pulls/702/update-branch']);
+  expect(decision(703).reason).toBe('queued_behind_pr:#702');
+  expect(await tick(0.75)).toMatchObject({ merged: 1 });
+  expect(decision(702).decision).toBe('merged');
+  expect(updatedPrs()).toEqual([700, 702, 703]);
+  expect(await tick(1)).toMatchObject({ merged: 1 });
+  expect([700, 702, 703].map((n) => decision(n).decision)).toEqual(['merged', 'merged', 'merged']);
+  expect(updatedPrs()).toEqual([700, 702, 703]); // each PR updated exactly once
+});
+
+it('merge queue: a green up-to-date PR still merges while another is in flight; a holder stuck pending > 6 h no longer holds the queue', async () => {
+  seedBehind([700, 702]);
+  seedPr(703, { draft: false }); // up to date and green
+  await tickAt(0, env('act'));
+  expect(updatedPrs()).toEqual([700]);
+  expect(decision(702).reason).toBe('queued_behind_pr:#700');
+  expect(decision(703).decision).toBe('merged');
+  checks.set('sha700', 'pending'); // a required check that never reports
+  await tickAt(0.25, env('act'));
+  await tickAt(6, env('act'));
+  expect(updatedPrs()).toEqual([700]);
+  await tickAt(6.5, env('act'));
+  expect(updatedPrs()).toEqual([700, 702]);
+  expect(decision(702).reason).toBe('branch_updated');
 });
 
 it('recheck: shadow re-evaluates but never updates a branch', async () => {
