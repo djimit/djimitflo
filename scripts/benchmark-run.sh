@@ -2,7 +2,7 @@
 # Periodic benchmarks — the one-command operator runner for SEC-F1 and F1 (packages/server/src/services/benchmark-schedule.ts).
 # Run it on the VPS host when the stall watch raises `benchmark:due:<id>` (BENCHMARK_SCHEDULE_MODE=on). It repeats the SEC-F1
 # harness path (docs/research/eco/SEC-F1_RUN.md) unattended:
-#   - a depth-1 fetch of djimit/djimitflo at the prod build (DJIMITFLO_BUILD_SHA of --container; --ref overrides) holds the
+#   - a depth-1 fetch of djimit/djimitflo at the prod build (DJIMITFLO_BUILD_COMMIT of --container; --ref overrides) holds the
 #     harness and the frozen items, mounted read-only — the harness is the code the prod image runs;
 #   - throwaway containers on the prod image (the image of --container): no /data mount, no DB, not on the compose network;
 #   - the reviewer is the prod checker prompt + prod OpenCodeExecutor (scripts/sec-f1-run.mjs --benchmark --role <role>), the
@@ -67,8 +67,8 @@ fi
 # 2. source (harness + frozen items) and the output dir; a rerun in the same month reuses both (resume)
 if [ "$APPLY" = 1 ]; then umask 022; mkdir -p "$SLOT_DIR"; fi
 if [ -z "$REF" ]; then
-  echo "+ docker exec $C printenv DJIMITFLO_BUILD_SHA"
-  if [ "$APPLY" = 1 ]; then REF=$(docker exec "$C" printenv DJIMITFLO_BUILD_SHA || true); [ -n "$REF" ] || { echo "no DJIMITFLO_BUILD_SHA in $C: pass --ref" >&2; exit 1; }
+  echo "+ docker exec $C printenv DJIMITFLO_BUILD_COMMIT"
+  if [ "$APPLY" = 1 ]; then REF=$(docker exec "$C" printenv DJIMITFLO_BUILD_COMMIT || true); [ -n "$REF" ] && [ "$REF" != unknown ] || { echo "no DJIMITFLO_BUILD_COMMIT in $C: pass --ref" >&2; exit 1; }
   else REF='<prod build sha>'; fi
 fi
 if [ "$APPLY" != 1 ] || [ ! -d "$SRC/.git" ]; then
@@ -86,7 +86,7 @@ x mkdir -p "$OUT"
 x chown 1001:1001 "$OUT"
 echo "source $SHA, items $ITEMS (manifest $MANIFEST_SHA), image $IMG, role $ROLE, token cap $CAP"
 
-RUN=(docker run --rm --user 1001:1001 -v "$SRC/scripts:/bench/scripts:ro" -v "$SRC/docs/research/eco:/bench/docs/research/eco:ro" -v "$OUT:/out" -w /tmp)
+RUN=(docker run --rm --entrypoint "" --user 1001:1001 -v "$SRC/scripts:/bench/scripts:ro" -v "$SRC/docs/research/eco:/bench/docs/research/eco:ro" -v "$OUT:/out" -w /tmp)
 RUNNER=(node /bench/scripts/sec-f1-run.mjs --items "/bench/$ITEMS" --role "$ROLE" --benchmark --dist "$DIST" --work /out/work)
 
 # 3. prepare (GitHub only, no model) and, for SEC-F1, the deterministic baseline (offline)
@@ -105,7 +105,7 @@ if [ "$APPLY" = 1 ]; then
   docker rm -f "$NAME" >/dev/null 2>&1 || true
 fi
 AUTH_MOUNT=(); if [ -n "$AUTH" ]; then AUTH_MOUNT=(-v "$AUTH:/home/djimitflo/.local/share/opencode/auth.json:ro"); fi
-x docker run -d --name "$NAME" --user 1001:1001 -v "$SRC/scripts:/bench/scripts:ro" -v "$SRC/docs/research/eco:/bench/docs/research/eco:ro" -v "$OUT:/out" -w /tmp \
+x docker run -d --name "$NAME" --entrypoint "" --user 1001:1001 -v "$SRC/scripts:/bench/scripts:ro" -v "$SRC/docs/research/eco:/bench/docs/research/eco:ro" -v "$OUT:/out" -w /tmp \
   --network bridge --env-file "$ENVF" --tmpfs /home/djimitflo:uid=1001,gid=1001 -e HOME=/home/djimitflo ${AUTH_MOUNT[@]+"${AUTH_MOUNT[@]}"} \
   "$IMG" "${RUNNER[@]}" --cap "$CAP" --out /out/results.jsonl
 echo "+ every ${POLL}s: docker exec $C $CLI idle — exit 5 (a real lease started) → docker stop $NAME, reason in $OUT/abort.json"
