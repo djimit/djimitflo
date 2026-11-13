@@ -336,8 +336,8 @@ describe('checks_verdict — no false green', () => {
     if (o.summary !== undefined) f['repos/djimit/djimitflo/branches/main'] = o.summary;
     const gh = stubGh(f);
     const req = o.required === undefined ? 'build,sbom' : o.required;
-    const r = spawnSync('bash', ['-c', `source ${script}; checks_verdict s1; echo; mt_gh pr checks-at 1 --sha s1`], { encoding: 'utf8',
-      env: { ...process.env, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: req ?? '' } });
+    const r = spawnSync('bash', ['-c', `source "$MTC_SCRIPT"; checks_verdict s1; echo; mt_gh pr checks-at 1 --sha s1`], { encoding: 'utf8',
+      env: { ...process.env, MTC_SCRIPT: script, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: req ?? '' } });
     const [json, line] = r.stdout.split('\n').filter(Boolean);
     return { ...(JSON.parse(json) as { verdict: string; red: string[]; reason?: string }), line };
   };
@@ -375,8 +375,8 @@ describe('checks_verdict — no false green', () => {
     expect(v.verdict).toBe('pending');
     expect(v.reason).toBe('required_checks_unavailable');
     expect(v.line).toContain('required_checks_unavailable');
-    const r = spawnSync('bash', ['-c', `source ${script}; required_json`], { encoding: 'utf8',
-      env: { ...process.env, PATH: stubGh().PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
+    const r = spawnSync('bash', ['-c', `source "$MTC_SCRIPT"; required_json`], { encoding: 'utf8',
+      env: { ...process.env, MTC_SCRIPT: script, PATH: stubGh().PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
     expect(JSON.parse(r.stdout)).toEqual({ source: 'unavailable', contexts: [], checks: [] });
   });
   it('readable branch protection is the source of the required contexts', () => {
@@ -398,8 +398,8 @@ describe('checks_verdict — required producer identity', () => {
   const verdict = (runs: unknown[], prot: unknown = protection) => {
     const gh = stubGh({ [`${C}/check-runs?per_page=100`]: { check_runs: runs }, [`${C}/status`]: { state: 'pending', statuses: [] },
       'repos/djimit/djimitflo/branches/main/protection/required_status_checks': prot });
-    const r = spawnSync('bash', ['-c', `source ${script}; checks_verdict s1`], { encoding: 'utf8',
-      env: { ...process.env, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
+    const r = spawnSync('bash', ['-c', `source "$MTC_SCRIPT"; checks_verdict s1`], { encoding: 'utf8',
+      env: { ...process.env, MTC_SCRIPT: script, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
     return JSON.parse(r.stdout) as { verdict: string; reason?: string; missing: string[] };
   };
   const r = (id: number, name: string, conclusion: string, app: number) => ({ id, name, status: 'completed', conclusion, app: { id: app }, completed_at: `2026-10-26T0${id}:00:00Z` });
@@ -560,9 +560,9 @@ describe('--dry-run (read-only plan)', () => {
 
   it('the guard refuses mutating gh commands in read-only mode before gh runs', () => {
     const gh = stubGh({ 'repos/o/r/x': { ok: 1 } });
-    const r = spawnSync('bash', ['-c', `source ${script}; READONLY=1
+    const r = spawnSync('bash', ['-c', `source "$MTC_SCRIPT"; READONLY=1
       for c in "pr merge 1" "pr ready 1" "pr edit 1" "pr update-branch 1" "pr comment 1" "api -X PUT repos/o/r/pulls/1/merge" "api repos/o/r/pulls/1/merge -f sha=x" "api graphql -f query=x" "run rerun 1" "label create x"; do
-        ghx $c >/dev/null 2>&1 && echo rc=0 || echo "rc=$?"; done; ghx api repos/o/r/x`], { encoding: 'utf8', env: { ...process.env, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l') } });
+        ghx $c >/dev/null 2>&1 && echo rc=0 || echo "rc=$?"; done; ghx api repos/o/r/x`], { encoding: 'utf8', env: { ...process.env, MTC_SCRIPT: script, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l') } });
     const rcs = r.stdout.split('\n').filter((l) => l.startsWith('rc='));
     expect(rcs).toHaveLength(10);
     expect(new Set(rcs)).toEqual(new Set(['rc=99']));

@@ -4,9 +4,9 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import {
-  chooseEffort, effortParams, evc, JUDGMENT_CONSUMERS, recordEffortJudgment, recordEffortSibling, siblingArm, type EffortOption,
+  chooseEffort, effortParams, effortX1Evidence, evc, JUDGMENT_CONSUMERS, recordEffortJudgment, recordEffortSibling, siblingArm, type EffortOption,
 } from '../services/effort-controller';
-import { buildEvolutionEvidence, EVOLUTION_FLAGS } from '../services/evolution-evidence';
+import { buildEvolutionEvidence, EVOLUTION_FLAGS, fisherExact } from '../services/evolution-evidence';
 import { RemoteGymService } from '../services/remote-gym-service';
 import { runJudgment, type JudgmentDef } from '../services/judgment-service';
 import type { TypeSafeClient } from '../services/typesafe-client';
@@ -143,4 +143,23 @@ it('X1 evidence: per-arm goals, verified, regressed and infra in evolution-evide
   expect(typeof e.effort_x1.fisher_p).toBe('number');
   for (const name of ['EFFORT_CONTROLLER_MODE', 'EFFORT_LAMBDA_TOK', 'EFFORT_LAMBDA_KWH', 'EFFORT_EXPLORATION']) expect(EVOLUTION_FLAGS).toContainEqual({ name, acting: false });
   expect(EVOLUTION_FLAGS).toContainEqual({ name: 'EFFORT_SIBLING_RANDOMISE', acting: true });
+});
+
+// EXP-2 readout (#1191): goals.created_at is SQLite 'YYYY-MM-DD HH:MM:SS'; a string compare with an ISO since dropped every goal
+// created on the start day ('2026-10-09 08:07:36' < '2026-10-09T00:00:00.000Z') and nothing stopped the count at stop_by
+it('X1 evidence compares timestamps as julian days: start-day goals in SQLite format count, goals from `until` on do not', () => {
+  const imp = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at) VALUES (?, 'f', 't', 'd', 'r', 's', ?, ?, ?)`);
+  const goal = db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', ?, ?, ?, ?)");
+  const seed = (id: string, createdAt: string, status = 'verified') => { imp.run(`s-${id}`, status, createdAt, createdAt);
+    goal.run(`g-${id}`, JSON.stringify({ effort_arm: 'on' }), `s-${id}`, createdAt, createdAt); };
+  seed('start-day', '2026-10-09 08:07:36');            // SQLite format, on the start day: counted
+  seed('iso', '2026-10-20T10:00:00.000Z');             // ISO format inside the window: counted
+  seed('before', '2026-10-08 23:59:59', 'regressed');  // before since: not counted
+  seed('last', '2026-11-05 23:59:59', 'regressed');    // last second before stop_by: counted
+  seed('at-stop', '2026-11-06 00:00:00', 'regressed'); // at stop_by: not counted
+  seed('after-iso', '2026-11-07T12:00:00.000Z');       // after stop_by, ISO: not counted
+  const since = '2026-10-09T00:00:00.000Z'; const until = '2026-11-06T00:00:00.000Z';
+  expect(effortX1Evidence(db, since, {}, fisherExact, until).on).toMatchObject({ goals: 3, verified: 2, regressed: 1 });
+  // no until: open-ended (evolution-evidence's rolling window), still with the start day
+  expect(effortX1Evidence(db, since, {}, fisherExact).on).toMatchObject({ goals: 5, verified: 3, regressed: 2 });
 });

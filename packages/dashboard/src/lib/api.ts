@@ -42,6 +42,8 @@ export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 
 export interface RuntimeConfigEntry {
   name: string; value: string | null; masked: boolean; group: string; area: string;
   source: 'env' | 'default' | 'unset'; default: string | null; overridden: boolean | null; takes_effect: 'restart'; stale?: boolean | null;
+  /** modes the runbook documents for this flag (default first); null/absent when it lists none */
+  accepted?: string[] | null;
 }
 export interface RuntimeConfig {
   entries: RuntimeConfigEntry[]; masked: number;
@@ -76,14 +78,17 @@ export type KnowledgeOverview = {
   interest_profile: { at: string; terms: string[] } | null;
   /** K1: mirrors services/knowledge-fitness.ts (absent on servers before K1) */
   fitness?: KnowledgeFitness;
+  /** DI-001 C: mirrors services/knowledge-overview.ts relevance_pause (the dashboard reads the fields below) */
+  relevance_pause?: { paused: boolean; unjudged: { pending: number; rejected: number; unit: number }; backlog: number;
+    unjudged_since?: string | null; last_verdict_at?: string | null };
 };
 
-export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'unused' | 'insufficient';
+export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'inconclusive' | 'unused' | 'insufficient';
 export type KnowledgeFitness = {
   at: string; window_days: number; half_life_days: number; min_n: number;
   baseline: { n: number; verified_rate: number | null };
   runs: { in_window: number; maker_attributable: number; non_maker: number; unattributed: number };
-  by_kind: Array<{ kind: string; inventory: number | null; used_with_value: number; used_no_value: number; insufficient: number; unused: number | null }>;
+  by_kind: Array<{ kind: string; inventory: number | null; used_with_value: number; used_no_value: number; inconclusive?: number; insufficient: number; unused: number | null }>;
   top: Array<{ kind: string; id: string; title: string | null; n_used: number; n_verified: number; n_regressed: number; n_survived_14d: number | null;
     wilson: [number, number] | null; last_used_at: string | null; decayed_verified_rate: number | null; status: KnowledgeFitnessStatus }>;
   rule: string;
@@ -111,7 +116,8 @@ export interface RuntimeHealthRow {
   leases_30d: { n: number; completed: number; failed: number; cancelled: number; success_rate: number | null };
   leases_90d: number;
   last_success_at: string | null;
-  gym: { species: string[]; benched: boolean };
+  /** attempts_30d: gym outcomes of the runtime in 30 d (a gym-only runtime has no leases) */
+  gym: { species: string[]; benched: boolean; attempts_30d?: { n: number; ok: number } };
   readiness: 'ok' | 'reassess' | 'retire_unused' | 'keep_test_only' | 'hold' | 'rejected' | 'unknown_runtime';
 }
 
@@ -155,6 +161,12 @@ export type IntelligenceMetric = {
   version: string; status: 'ok' | 'INSUFFICIENT_EVIDENCE' | 'UNDEFINED';
   value: number | null; ci: [number, number] | null; n: number; blocker: string | null; detail: Record<string, unknown>;
 };
+export interface BenchmarkPoint { started_at: string; status: 'ok' | 'failed' | 'insufficient'; value: number | null; ci_low: number | null; ci_high: number | null; n: number;
+  catches: number | null; false_rejects: number | null; tokens: number | null; models: string[]; prompt_sha256: string | null; reason: string | null }
+export interface BenchmarkSeries { id: string; title: string; metric: 'auc' | 'pass_rate'; cadence: 'monthly' | 'weekly'; execution: 'operator_runner' | 'in_process';
+  due: boolean | null; overdue: boolean | null; owed_at: string | null; regression: { regressed: boolean; drop: number | null; threshold: number | null; basis: 'ci' | 'margin' | null };
+  series: BenchmarkPoint[] }
+export interface BenchmarkEvidence { mode: 'off' | 'on'; token_cap: number; margin: number; benchmarks: BenchmarkSeries[] }
 export interface EvolutionEvidence {
   at: string; window_days: number;
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
@@ -342,6 +354,10 @@ export interface EvolutionEvidence {
     top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
   /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
   pl_001?: Pl001Evidence;
+  /** Periodic fixed benchmarks (BENCHMARK_SCHEDULE_MODE, services/benchmark-schedule.ts): series per benchmark, due / overdue, regression; null = not computed */
+  benchmarks?: BenchmarkEvidence | null;
+  /** CV-001 (CV_001_MODE): qwen38-27b vs the gym-only control-vector preset on frozen mutant-repair tasks (services/cv-001.ts); unknown is null, never 0 */
+  cv_001?: Cv001Evidence;
   /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
   memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
     by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
@@ -363,7 +379,39 @@ export interface EvolutionEvidence {
   skill_route?: { mode: 'off' | 'shadow' | 'on'; since: string; note: string;
     by_arm_lane: Array<{ arm: string; lane: string; selected: number; delivered: number; invoked: number; passed: number; verified: number; credited: number }> | null;
     contrast: { treatment: { n: number; verified: number; rate: number | null }; holdout: { n: number; verified: number; rate: number | null }; difference: number | null; withheld: string | null } | null };
+  /** fitness-contract registry (services/fitness-contracts.ts): which components can learn — counts by status, acting-flag coverage, the list (static, read-only) */
+  fitness_contracts?: FitnessContractsReport;
+  /** GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native gym tool — offered / called / pass rate when called / stopped within N steps of a pass; null = unreadable */
+  gym_native_tools?: { mode: string | null; stop_within_steps: number; offered: number; scored: number; reported: number; unknown: number; called: number; calls: number;
+    calls_passed: number; call_pass_rate: number | null; attempts_passed: number; attempt_pass_rate: number | null; stopped_within_n: number } | null;
+  /** GENOME_APPLY_MODE=on: promoted genomes in production makers, delivered vs holdout per genome; null = unreadable (services/genome-apply.ts) */
+  genome_apply?: { mode: 'off' | 'shadow' | 'on'; holdout_rate: number; retire_rule: string; note: string;
+    leases: { delivered: number; holdout: number; undelivered: number } | null;
+    genomes: Array<{ genome_id: string; status: string | null; undelivered: number; difference: number | null; decision: 'retire' | 'keep' | 'insufficient'; reason: string;
+      treatment: { n: number; verified: number; rate: number | null; ci: [number, number] | null }; holdout: { n: number; verified: number; rate: number | null; ci: [number, number] | null } }> | null;
+    retire_decisions: Array<{ genome_id: string; at: string; reason: string | null }> | null };
+  /** WEB-001 (WEB_RESEARCH_MODE): failure-driven web research → knowledge → dream genome → trial; null fields = no job yet (unknown) */
+  web_research?: { mode: 'off' | 'shadow' | 'on'; window_days: number; note: string;
+    questions: { asked: number; by_status: Record<string, number>; recent: Array<{ at: string; status: string; failure_class: string | null; lane: string | null; runtime: string | null; question: string | null }> } | null;
+    candidates: { returned: number; accepted: number; rejected_by_reason: Record<string, number> } | null; routed: number | null;
+    cited: { genomes: number; promoted: number; retired: number; inconclusive: number; pending: number;
+      list: Array<{ genome: string; status: string; knowledge: string[]; trial: { state: string; b: number | null; c: number | null; p: number | null; deciding_n: number | null } | null }> } | null };
 }
+export type FitnessStatus = 'closed_loop' | 'measured_no_selection' | 'unmeasured' | 'circular';
+export type FitnessContractRow = {
+  component: string; class: string; name: string; unit: string; flags: string[]; judgment?: string; experiment?: string; mechanism?: string;
+  outcome: { metric: string; source: string; independence: 'independent' | 'circular' | 'none' };
+  cost: { tokens: string | null; kwh: string | null; operator_minutes: string | null };
+  comparison: { kind: 'randomised' | 'holdout' | 'benchmark' | 'none'; ref: string | null };
+  decision_rule: string | null; inheritance: string | null; status: FitnessStatus; note: string;
+  /** the learning ledger's status for the contract's mechanism; null = no mechanism named */
+  ledger_status: LearningStatus | null;
+};
+export type FitnessContractsReport = {
+  total: number; by_status: Record<FitnessStatus, number>;
+  coverage: { acting_flags: number; mapped: number; exempt: number; unmapped: string[] };
+  violations: string[]; contracts: FitnessContractRow[]; note: string;
+};
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
   rate_A: number | null; rate_B: number | null; p_one_sided: number | null; supported: boolean | null }
@@ -388,6 +436,25 @@ export interface Pl001Evidence {
   stop: { first_attempt_at: string | null; day_limit_at: string | null; stopped: boolean; reason: string | null } | null;
   verdict: Pl001Verdict | null;
   runs: Array<{ task_key: string; arm: 'A' | 'B'; run_id: string; status: string; reason: string; void: string | null; verified: boolean; at: string }>;
+}
+export interface Cv001Paired { n_pairs: number; both_clean: number; b_only_B: number; c_only_A: number; neither_clean: number; clean_rate_A: number | null; clean_rate_B: number | null;
+  p_one_sided: number | null; plain_rate_A: number | null; plain_rate_B: number | null; observed: { A: number; B: number }; degenerate_rate_A: number | null; degenerate_rate_B: number | null;
+  timeout_rate_A: number | null; timeout_rate_B: number | null; rules: Record<string, boolean> | null; adopt: boolean | null }
+export interface Cv001Evidence {
+  mode: 'off' | 'on'; experiment_id: string; protocol: string; prereg_sha256: string; loop_name: string;
+  status: 'not_frozen' | 'invalid_manifest' | 'waiting_window' | 'collecting' | 'exhausted' | 'stopped';
+  treatment: { aliases: { A: string; B: string }; vector_sha256: string; scale: number };
+  serving: { open: boolean; reason: string | null; window: string; maker_jobs: number | null };
+  targets: { tasks: number; repeats: number; units: number; block_size: number; alpha: number; max_days: number };
+  freeze_refused: { reason: string; at: string } | null;
+  manifest: { frozen_at: string; sha256: string; tasks: number; units: number; species: string; valid: boolean; reason: string | null; by_tier: Record<string, number> } | null;
+  pairs: { done: number; open: number; invalid_units: number; target: number } | null;
+  arms: Array<{ arm: 'A' | 'B'; name: string; alias: string; observations: number; clean: number; plain: number; timeouts: number; degenerate: number; loops: number; post_pass_edits: number;
+    censored: number; invalid: number; pending: number; physical_attempts: number; void_attempts: number; infra_attempts: number; maker_ms_median: number | null; tokens: { known: number; unknown: number } }>;
+  primary: Cv001Paired | null; sensitivity: Cv001Paired | null; repeat1: Cv001Paired | null;
+  stop: { first_attempt_at: string | null; day_limit_at: string | null; stopped: boolean; reason: string | null } | null;
+  verdict: 'ADOPT' | 'REJECT' | 'INCONCLUSIVE' | null;
+  runs: Array<{ task_key: string; repeat: number; arm: 'A' | 'B'; run_id: string; status: string; reason: string; void: string | null; clean: boolean; at: string }>;
 }
 export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
 export interface FalsifierEvidence {
@@ -559,6 +626,9 @@ export type RelevanceQueue = {
 export type E1BlindTask = { task_id: string; query: string; candidates: Array<{ handle: string; title: string; excerpt: string }> };
 export type E1LabelQueue = { task: E1BlindTask | null; progress: { labelled: number; tasks: number; target: number; max_tasks: number } };
 export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
+export type CockpitWarning = { subsystem: string; since: string | null; detail: string; due_in_days: number };
+/** GET /api/health/needs-you — the cockpit's needs_you alone (sidebar badge, tab title, /decisions header) */
+export type NeedsYouView = { at: string; needs_you: NonNullable<OperatorCockpit['needs_you']>; warnings: CockpitWarning[]; errors: Array<{ section: string; message: string }> };
 export type OperatorCockpit = {
   at: string;
   /** Cockpit 3.0: one id per snapshot; health = worst guardrail state (DEGRADED for a partial snapshot or open stall) */
@@ -571,10 +641,14 @@ export type OperatorCockpit = {
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
   guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null }; attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
+  /** a detector finding dated in the future (an admission that expires in 15 d): a deadline, not a stall (older servers: absent) */
+  warnings?: CockpitWarning[];
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched?: boolean; stale?: boolean }>;
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
   needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
+    /** stalls whose remedy is an operator act (counted in total); `stalls` is then the system-side rest */
+    operator_stalls?: number | null;
     join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null;
     /** human decisions only (server-side); labels, stalls and panel-reviewed proposals are not in it */
     total?: number | null;
@@ -586,7 +660,7 @@ export type OperatorCockpit = {
     optional_labelling?: { d5: number | null; car: number | null; e1: number | null; di001: number | null; total: number | null } | null;
     /** what the system handles (shown, never counted) */
     system?: { requeue_will_handle: number | null; requeue_mode: string | null; proposals_auto_reviewed: boolean };
-    system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
+    system_requeue?: Partial<Record<'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number;
     /** Cockpit 3.0: execution, not intent — armed_not_ticking / failing schedulers silently stopped working */
@@ -642,12 +716,14 @@ export type OperatorDigest = { at: string; text: string; data: Record<string, un
  */
 export type DraftPrs = { total: number | null; unsettled: number | null; by_settlement: Record<LoopPrSettlementState, number> | null; closed_unmerged: number | null;
   rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null;
-    settlement: LoopPrSettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null }> };
+    settlement: LoopPrSettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null;
+    /** open on GitHub (never polled = open): waits for the operator's merge or close; false = only waits or done (older servers: absent) */
+    needs_operator?: boolean }> };
 export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {
   requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null;
-    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+    queue_class?: 'operator' | 'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
     /** REQUEUE_AUTO_MODE policy verdict (absent when off): requeue / dismiss / wait = system will handle; hold = needs you */
     auto?: { mode: 'shadow' | 'on'; action: 'requeue' | 'dismiss' | 'wait' | 'hold'; cls: string; reason: string } | null }>;
   /** untruncated counts over the same filters as the paginated lists; null = the count failed */
@@ -691,7 +767,9 @@ export type ImprovementFunnel = {
    */
   kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
   /** null = unavailable (reason in `unavailable`), never a healthy 0 */
-  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null;
+    /** in-flight work items not updated for more than agedWorkItemsDays (absent on older servers) */
+    agedWorkItems?: number | null; agedWorkItemsByStatus?: Record<string, number>; agedWorkItemsOldest?: string | null; agedWorkItemsDays?: number };
   /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
   queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
   /** metric → `missing_schema: …` | `query_failed: …` */
@@ -760,7 +838,8 @@ type UsageQuota = {
 };
 
 export type UsageWindowId = '5h' | 'today' | '7d' | 'month';
-export type UsageWindowSum = { calls: number; tokens: number | null; calls_without_tokens: number };
+/** tokens = reported total incl. cache reads (what limits compare); fresh_tokens = uncached input + output; cache_read_tokens null = not reported */
+export type UsageWindowSum = { calls: number; tokens: number | null; fresh_tokens?: number | null; cache_read_tokens?: number | null; calls_without_tokens: number };
 export type UsageLimitView = {
   account: string; plan: string; window: '5h' | 'session' | 'weekly' | 'daily' | 'monthly' | 'none'; unit: 'tokens' | 'messages' | 'requests' | 'credits' | 'unknown';
   limit: number | null; limit_text: string; source_url: string | null; checked_at: string | null;
@@ -798,7 +877,7 @@ export type UsageAccount = {
   scope: 'djimitflo_ledger'; windows: Record<UsageWindowId, UsageWindowSum>; lease_sessions: Record<UsageWindowId, number>;
   /** ollama_cloud only */
   account_usage?: UsageAccountWide;
-  consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; calls_without_tokens: number }>;
+  consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; fresh_tokens?: number | null; cache_read_tokens?: number | null; calls_without_tokens: number }>;
   providers_seen: string[]; last_error: UsageEventBrief; last_limit_hit: UsageEventBrief;
   state: { state: 'limit_reached' | 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
   cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
@@ -1892,8 +1971,9 @@ class ApiClient {
   }
 
   // Tasks
-  async getTasks(params?: { status?: string; agent_id?: string }): Promise<{ tasks: Task[]; total: number }> {
-    const query = new URLSearchParams(params as Record<string, string>);
+  /** `total` = all tasks matching the filters (not the page size); `counts` = per-status totals ignoring `status`. */
+  async getTasks(params?: { status?: string; agent_id?: string; q?: string; limit?: number; offset?: number; view?: 'summary' }): Promise<{ tasks: Task[]; total: number; counts?: Record<string, number> }> {
+    const query = new URLSearchParams(Object.entries(params ?? {}).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
     return this.request(`/tasks?${query}`);
   }
 
@@ -2173,6 +2253,10 @@ class ApiClient {
     return this.request('/health/cockpit');
   }
 
+  async getNeedsYou(): Promise<NeedsYouView> {
+    return this.request('/health/needs-you');
+  }
+
   /** UX-13: the daily operator digest as it would be sent. */
   async getOperatorDigest(): Promise<OperatorDigest> {
     return this.request('/health/digest');
@@ -2286,8 +2370,8 @@ class ApiClient {
     return this.request(`/authority/trace/${encodeURIComponent(correlationId)}`);
   }
 
-  async getObservabilityMetrics(): Promise<ObservabilityMetrics> {
-    return this.request('/observability/metrics');
+  async getObservabilityMetrics(days = 7): Promise<ObservabilityMetrics> {
+    return this.request(`/observability/metrics?days=${days}`);
   }
 
   async getRiskTrends(days?: number): Promise<{ trends: Array<{ date: string; risk_level: string; count: number }> }> {
@@ -2373,8 +2457,9 @@ class ApiClient {
     });
   }
 
-  async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
-    return this.request('/loops/runs');
+  /** synthetic 'exclude': production runs only (no PR-review bookkeeping runs); 'include' (default): every run */
+  async getLoopRuns(opts: { synthetic?: 'include' | 'exclude' } = {}): Promise<{ runs: LoopRunRecord[] }> {
+    return this.request(`/loops/runs?synthetic=${opts.synthetic ?? 'include'}`);
   }
 
   async getLoopRun(runId: string): Promise<LoopRunRecord> {
@@ -2678,7 +2763,7 @@ class ApiClient {
     return this.request(`/health/expert-dedupe?limit=${limit}`);
   }
 
-  async listExperts(params: { state?: string; capability?: string; name?: string; kind?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[]; funnel?: Array<{ kind: string; state: ExpertLifecycleState; count: number }> }> {
+  async listExperts(params: { state?: string; capability?: string; name?: string; kind?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[]; funnel?: Array<{ kind: string; state: ExpertLifecycleState; count: number }>; total?: number; last_ingested_at?: string | null }> {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/expert/experts${query.size ? `?${query}` : ''}`);
   }

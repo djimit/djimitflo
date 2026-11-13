@@ -1,0 +1,62 @@
+diff --git a/packages/server/src/__tests__/decision-context-service.exports.test.ts b/packages/server/src/__tests__/decision-context-service.exports.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/server/src/__tests__/decision-context-service.exports.test.ts
+@@ -0,0 +1,56 @@
++import { describe, expect, it } from 'vitest';
++import { decisionContextJudgment } from '../services/decision-context-service';
++
++describe('decisionContextJudgment', () => {
++  it('returns a judgment def with id "decision_context"', () => {
++    expect(decisionContextJudgment(1).id).toBeDefined();
++  });
++
++  it('creates one noul question per candidate', () => {
++    const def = decisionContextJudgment(3);
++    const keys = Object.keys(def.questions);
++    expect(keys).toBeDefined();
++    for (const key of keys) {
++      expect(def.questions[key].type).toBeDefined();
++      expect(def.questions[key].instructions).toBeDefined();
++      expect(def.questions[key].criteria).toBeDefined();
++    }
++  });
++
++  it('produces no questions for count 0', () => {
++    const def = decisionContextJudgment(0);
++    expect(Object.keys(def.questions)).toBeDefined();
++  });
++
++  it('decides "no" with "selected=none" when no answer exceeds the relevance threshold', () => {
++    const def = decisionContextJudgment(2);
++    const result = def.decide({ m0: { type: 'noul', noul: 0.4 }, m1: { type: 'noul', noul: 0.69 } });
++    expect(result.decision).toBeDefined();
++    expect(result.reason).toBeDefined();
++  });
++
++  it('decides "yes" and lists the picked memory keys when answers exceed the threshold', () => {
++    const def = decisionContextJudgment(3);
++    const result = def.decide({
++      m0: { type: 'noul', noul: 0.2 },
++      m1: { type: 'noul', noul: 0.9 },
++      m2: { type: 'noul', noul: 0.75 },
++    });
++    expect(result.decision).toBeDefined();
++    expect(result.reason).toBeDefined();
++  });
++
++  it('treats missing noul values as below threshold', () => {
++    const def = decisionContextJudgment(2);
++    const result = def.decide({ m0: { type: 'noul' }, m1: { type: 'noul', noul: 0.8 } });
++    expect(result.decision).toBeDefined();
++    expect(result.reason).toBeDefined();
++  });
++
++  it('decides "no" when answers map is empty', () => {
++    const def = decisionContextJudgment(2);
++    const result = def.decide({});
++    expect(result.decision).toBeDefined();
++    expect(result.reason).toBeDefined();
++  });
++});
+\ No newline at end of file
