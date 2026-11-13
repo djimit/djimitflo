@@ -8,7 +8,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { ORACLE_TEST_FILES, runAutoMergeTick } from '../services/loop-auto-merge';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
-import { autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, readLaneRevocations, reEnableClass, revokeClass,
+import { autoMergeFindingFixMode, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, readLaneRevocations, reEnableClass, revokeClass,
   SETTLEMENT_REVOKE_JUDGMENT, SETTLEMENT_REVOKE_WINDOW, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { buildDigest, setPushSender } from '../services/operator-push';
@@ -1020,4 +1020,141 @@ it('B3 re-enable: the operator re-enable clears a lane revocation (audited); the
   seedSettled(EXPORTS_EV, 0, 300);
   await tick('act', 'on', new Date(NOW.getTime() + 1_800_000));
   expect(readLaneRevocations(db).exports).toBeDefined();
+});
+
+// ── LOOP_AUTO_MERGE_FINDING_FIX: the finding-fix class (one source file = the finding's own file, gate passed, verdicts accepted) ──
+const FF_FILE = 'packages/server/src/services/forecasters.ts';
+/** A finding-fix loop PR the way finding-fix-source.ts proposes it and prod records it (#1184 #1203 #1207). */
+function seedFindingFix(number: number, opts: { files?: Array<{ filename: string; status?: string; additions?: number; deletions?: number }>; gate?: 'pass' | 'fail' | 'none';
+  checker?: string; security?: string | 'none'; failedCheck?: string; artifact?: string; draft?: boolean; required?: string[] } = {}) {
+  seedPr(number, { draft: opts.draft ?? false, evidence: [`finding-fix:primary/f${number}`, 'finding-rule:no-useless-assignment', `finding-file:${FF_FILE}`, 'finding-occ:0', 'finding-pack:6f7e99f9a3240833'] });
+  db.prepare('UPDATE self_improvements SET type = ?, source = ?, grounding_json = ? WHERE id = ?').run('refactor', 'finding-fix',
+    JSON.stringify({ target: FF_FILE, artifactPath: opts.artifact ?? FF_FILE, acceptanceTest: 'npm run test:finding-fix:grounded', runtimeCommand: 'npm run test:finding-fix:grounded', budget: 'b' }), `si-${number}`);
+  const checks = ['test:changed', 'lint', 'type-check', 'test:mutation:grounded', ...(opts.gate === 'none' ? [] : ['test:finding-fix'])]
+    .map((name) => ({ name, status: name === opts.failedCheck || (name === 'test:finding-fix' && opts.gate === 'fail') ? 'fail' : 'pass', exit_status: 0 }));
+  db.prepare('UPDATE worker_leases SET metadata = ? WHERE id = ?').run(JSON.stringify({ diff_max_lines: 60, deterministic_checks: checks,
+    required_deterministic_checks: opts.required ?? ['test:changed', 'lint', 'type-check', 'test:mutation:grounded'], changed_files: [FF_FILE] }), `m-${number}`);
+  const lease = (role: string, verdict: string) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, ?, 'opencode', 'completed', ?, ?, ?)`)
+    .run(`${role}-${number}`, `run-${number}`, role, JSON.stringify({ verdict, maker_lease_id: `m-${number}` }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
+  lease('checker', opts.checker ?? 'accepted');
+  if (opts.security !== 'none') lease('security_checker', opts.security ?? 'accepted');
+  prs.get(number)!.files = (opts.files ?? [{ filename: FF_FILE }]).map((f) => ({ status: 'modified', additions: 2, deletions: 2, ...f }));
+}
+const ffEnv = (testOnly: string, ff?: string, extra: Record<string, string> = {}) => env(testOnly, { ...(ff ? { LOOP_AUTO_MERGE_FINDING_FIX: ff } : {}), ...extra });
+
+it('finding-fix flag off (default): a finding-fix PR keeps exactly its non_test_file decision, no new field, no judgment', async () => {
+  seedFindingFix(1300);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act'), NOW);
+  expect(decision(1300)).toEqual({ mode: 'act', decision: 'ineligible', reason: `non_test_file: ${FF_FILE}`, at: NOW.toISOString(), pr_number: 1300 });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'nonsense'), NOW);
+  expect(decision(1300)).toEqual({ mode: 'act', decision: 'ineligible', reason: `non_test_file: ${FF_FILE}`, at: NOW.toISOString(), pr_number: 1300 });
+  expect(writes()).toEqual([]);
+  expect(db.prepare("SELECT COUNT(*) AS n FROM judgments WHERE judgment = 'auto_merge_finding_fix'").get()).toEqual({ n: 0 });
+});
+
+it('finding-fix shadow: an eligible PR is would_merge with a finding_fix: reason and nothing is written to GitHub; an earlier non_test_file is re-evaluated once', async () => {
+  seedFindingFix(1301);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act'), NOW); // flag off first: final non_test_file
+  expect(decision(1301).reason).toBe(`non_test_file: ${FF_FILE}`);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'shadow'), NOW);
+  expect(decision(1301)).toMatchObject({ mode: 'shadow', decision: 'would_merge', steps: ['squash_merge'] });
+  expect(decision(1301).reason).toMatch(/^finding_fix: eligible finding-fix loop PR \(1 file, 4 line\(s\)\)/);
+  expect(writes()).toEqual([]);
+  const j = db.prepare("SELECT mode, decision, subject_id, answers_json FROM judgments WHERE judgment = 'auto_merge_finding_fix'").all() as Array<{ mode: string; decision: string; subject_id: string; answers_json: string }>;
+  expect(j).toMatchObject([{ mode: 'shadow', decision: 'would_merge', subject_id: 'run-1301' }]);
+  expect(JSON.parse(j[0].answers_json)).toMatchObject({ file: FF_FILE, diff_lines: 4, gate: 'pass', checker: ['accepted'], security_checker: ['accepted'] });
+});
+
+it('finding-fix act: an eligible PR is squash-merged at the verified head (audited, loop event, judgment); act needs the test-only tick in act too', async () => {
+  seedFindingFix(1302, { draft: true });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('shadow', 'act'), NOW); // test-only shadow caps the class at shadow
+  expect(decision(1302)).toMatchObject({ mode: 'shadow', decision: 'would_merge' });
+  expect(writes()).toEqual([]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'act'), NOW);
+  expect(decision(1302)).toMatchObject({ mode: 'act', decision: 'waiting', reason: 'marked_ready' });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'act'), NOW);
+  expect(decision(1302)).toMatchObject({ mode: 'act', decision: 'merged', merge_commit_sha: 'merge1302' });
+  expect(decision(1302).reason).toMatch(/^finding_fix: squash-merged/);
+  expect(writes().find((c) => c.url.endsWith('/pulls/1302/merge'))?.body).toMatchObject({ merge_method: 'squash', sha: 'sha1302' });
+  const audit = db.prepare("SELECT metadata FROM audit_events WHERE action = 'loop_pr_auto_merged'").get() as { metadata: string };
+  expect(JSON.parse(audit.metadata)).toMatchObject({ class: 'finding_fix', pr_number: 1302, files: [FF_FILE], diff_lines: 4 });
+  expect(db.prepare("SELECT decision FROM judgments WHERE judgment = 'auto_merge_finding_fix' AND mode = 'act'").all()).toEqual([{ decision: 'merged' }]);
+  expect(db.prepare("SELECT COUNT(*) AS n FROM loop_events WHERE loop_run_id = 'run-1302' AND event_type = 'auto_merged'").get()).toEqual({ n: 1 });
+});
+
+it('finding-fix eligibility: two files, 41 lines, a missing or failed gate, a non-accepted verdict, a failed check or another file → non_test_file', async () => {
+  seedFindingFix(1303, { files: [{ filename: FF_FILE }, { filename: 'packages/server/src/services/other.ts' }] });
+  seedFindingFix(1304, { files: [{ filename: FF_FILE, additions: 21, deletions: 20 }] });
+  seedFindingFix(1305, { gate: 'none' });
+  seedFindingFix(1306, { checker: 'rejected' });
+  seedFindingFix(1307, { security: 'none' });
+  seedFindingFix(1308, { failedCheck: 'lint', gate: 'pass' });
+  seedFindingFix(1309, { files: [{ filename: 'packages/server/src/services/other.ts' }] });
+  seedFindingFix(1314, { artifact: 'packages/server/src/services/elsewhere.ts' }); // grounding disagrees with the finding ref
+  seedFindingFix(1310, { gate: 'fail' });
+  seedPr(1311, { files: [FF_FILE] }); prs.get(1311)!.files[0].status = 'modified'; // not a finding-fix proposal
+  seedFindingFix(1312, { files: [{ filename: 'package.json' }], artifact: 'package.json' });
+  seedFindingFix(1313, { files: [{ filename: FF_FILE, additions: 20, deletions: 20 }] }); // 40 is in
+  seedFindingFix(1315, { required: ['lint'] }); // settled with a smaller check set
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'shadow'), NOW);
+  const why = (n: number) => decision(n).finding_fix;
+  for (const n of [1303, 1304, 1305, 1306, 1307, 1308, 1309, 1310, 1312, 1314, 1315]) expect(decision(n)).toMatchObject({ decision: 'ineligible', reason: expect.stringMatching(/^non_test_file: /) });
+  expect(why(1303)).toBe('files: 2 changed, exactly 1 allowed');
+  expect(why(1304)).toBe('diff: 41 > 40');
+  expect(why(1305)).toBe('gate: test:finding-fix missing');
+  expect(why(1306)).toBe('checker: rejected');
+  expect(why(1307)).toBe('security_checker: missing');
+  expect(why(1308)).toBe('checks: lint fail');
+  expect(why(1309)).toBe(`file: packages/server/src/services/other.ts is not the finding's file ${FF_FILE}`);
+  expect(why(1314)).toBe('grounding: artifactPath missing or not the finding file');
+  expect(why(1315)).toBe('checks: type-check, test:changed not required on the run');
+  expect(why(1310)).toBe('gate: test:finding-fix fail');
+  expect(why(1312)).toBe('file: forbidden path package.json');
+  expect(decision(1311)).toEqual({ mode: 'act', decision: 'ineligible', reason: `non_test_file: ${FF_FILE}`, at: NOW.toISOString(), pr_number: 1311 });
+  expect(decision(1313)).toMatchObject({ mode: 'shadow', decision: 'would_merge' });
+  // a finding-fix rejection is final: the next tick makes no GitHub call for these PRs
+  calls.length = 0;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'shadow'), NOW);
+  expect(calls.filter((c) => /pulls\/13(0[3-9]|10|12|14|15)\b/.test(c.url))).toEqual([]);
+});
+
+it('finding-fix revocation: a revert of a finding-fix auto-merge revokes finding_fix only; test-only stays active and merges', async () => {
+  seedFindingFix(1302);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'act'), NOW);
+  expect(decision(1302).decision).toBe('merged');
+  mainCommits = [{ sha: 'merge1302', commit: { message: 'loop: x (#1302)' } }, { sha: 'rev9', commit: { message: 'Revert "loop: x (#1302)"' } }];
+  seedFindingFix(1301); seedPr(700, { draft: false });
+  const later = new Date(NOW.getTime() + 3_600_000);
+  expect(await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'act'), later)).toMatchObject({ revoked: true, merged: 1 });
+  expect(readClassState(db, 'finding_fix')).toMatchObject({ state: 'revoked', pr_url: 'https://github.com/o/r/pull/1302' });
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(1301)).toMatchObject({ decision: 'revoked_hold', reason: expect.stringMatching(/^finding_fix class revoked: PR #1302: reverted on main by rev9/) });
+  expect(decision(700).decision).toBe('merged');
+  expect(db.prepare("SELECT resource_id FROM audit_events WHERE action = 'loop_auto_merge_revoked'").all()).toEqual([{ resource_id: 'loop_auto_merge_finding_fix' }]);
+  // the operator re-enable of the finding-fix class (manage:config, audited); test-only is not touched
+  const authService = new AuthService(db);
+  const admin = authService.generateToken(authService.createUser('admin@example.test', 'disposable-password', UserRole.ADMIN));
+  const auth = createAuthMiddleware(authService);
+  const app = express().use(express.json()).use(rateLimit({ windowMs: 60_000, limit: 600 })).use('/api/loops', auth.requireAuth, createLoopRoutes(db, auth)).use(errorHandler);
+  const post = (body: Record<string, unknown>) => request(app).post('/api/loops/auto-merge/re-enable').set('Authorization', `Bearer ${admin}`).send(body);
+  expect((await post({ reason: 'reviewed the revert', class: 'bogus' })).status).toBe(400);
+  expect((await post({ reason: 'reviewed the revert' })).status).toBe(409); // test-only is not revoked
+  expect((await post({ reason: 'reviewed the finding-fix revert', class: 'finding_fix' })).status).toBe(200);
+  expect(readClassState(db, 'finding_fix')).toMatchObject({ state: 'active', re_enabled_by: expect.any(String) });
+  expect(db.prepare("SELECT resource_id FROM audit_events WHERE action = 'loop_auto_merge_re_enabled'").all()).toEqual([{ resource_id: 'loop_auto_merge_finding_fix' }]);
+  expect(() => reEnableClass(db, 'admin', 'nothing revoked', new Date(), 'finding_fix')).toThrow('AUTO_MERGE_NOT_REVOKED');
+  // and a test-only revocation does not hold finding-fix PRs
+  revokeClass(db, 'PR #1: reverted on main', 'https://github.com/o/r/pull/1', later);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'act'), new Date(later.getTime() + 60_000));
+  expect(decision(1301).decision).toBe('merged');
+});
+
+it('finding-fix shares the daily cap with test-only merges; the flag is registered', async () => {
+  seedPr(700, { draft: false }); seedFindingFix(1302);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, ffEnv('act', 'act', { LOOP_AUTO_MERGE_MAX_PER_DAY: '1' }), NOW);
+  expect(decision(700).decision).toBe('merged');
+  expect(decision(1302)).toMatchObject({ decision: 'capped' });
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'LOOP_AUTO_MERGE_FINDING_FIX', acting: true });
+  expect(autoMergeFindingFixMode({ LOOP_AUTO_MERGE_FINDING_FIX: ' ACT ' } as NodeJS.ProcessEnv)).toBe('act');
+  expect(autoMergeFindingFixMode({} as NodeJS.ProcessEnv)).toBe('off');
 });

@@ -5,7 +5,7 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
+import { autoMergeFindingFixMode, autoMergeMaxPerDay, autoMergeMode, FINDING_FIX_AUTO_MERGE_DIFF_MAX, FINDING_FIX_AUTO_MERGE_JUDGMENT, type AutoMergeClass, autoMergeRecheck, autoMergeRecheckHours, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
   readClassState, readLaneRevocations, reasonCode, RECHECK_PER_TICK, revokeClass, revokeLane, SETTLEMENT_REVOKE_JUDGMENT, SETTLEMENT_REVOKE_KILL_BELOW, SETTLEMENT_REVOKE_LANES, SETTLEMENT_REVOKE_SHARE,
   SETTLEMENT_REVOKE_WINDOW, VALUE_GATE_REASONS, valueGateActsOn } from './loop-auto-merge-state';
 import { latestSettlements } from './settlement-execution';
@@ -46,7 +46,7 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * Cap: LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h).
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit fails a REQUIRED check on
- * main revokes the class (system_state). It then stops acting (decisions become 'revoked_hold') until an operator re-enables it.
+ * main revokes its class (system_state; a finding-fix merge revokes only the finding_fix class). It then stops acting (decisions become 'revoked_hold') until an operator re-enables it.
  * Required = the merge gate's rule (required-checks.ts: protection context + producer app, newest run per name per app,
  * skipped/neutral is not success, running or missing is not red). A required red must still be red on a later tick's read
  * (auto_merge.checks_red_pending marks the first read; green clears it). A marker set inside the 14 d window is still
@@ -59,6 +59,10 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * behind the base gets GitHub's update-branch (expected head = the PR head; the head binding accepts that web-flow merge)
  * and waits as 'rechecking_after_update' while the new CI runs; red again is 'checks_failed' again. Permanent reasons
  * and 'audit_sample' are never re-checked.
+ * Finding-fix class (LOOP_AUTO_MERGE_FINDING_FIX off | shadow | act, rides this tick): a PR that test-only rejects as
+ * non_test_file is evaluated by findingFixIneligible; eligible, it skips only the test-only gates (oracle tests, removed tests,
+ * the lane diff limit, assertion strength, value) and goes through every other gate above with its own class state. Its
+ * mode is the lower of the two flags. Rejected, it keeps its non_test_file decision with the reason in `finding_fix`.
  */
 /**
  * R12 guard-test list (UXE-00a, operator decision D-UXE-00a): the UX oracle tests. testOnlyChange makes every test file
@@ -81,6 +85,8 @@ export interface AutoMergeRecord {
   rechecked_at?: string; rechecks?: number;
   /** U2 LOOP_AUTO_MERGE_VALUE_GATE=shadow: the ineligible reason the value gate would have given (the decision is unchanged) */
   would_block_value?: 'value_signal_missing' | 'value_signal_low';
+  /** LOOP_AUTO_MERGE_FINDING_FIX: why a finding-fix PR is not in that class (its decision stays non_test_file) */
+  finding_fix?: string;
 }
 interface Pr {
   number: number; state: string; draft?: boolean; title?: string; node_id?: string; mergeable?: boolean | null; mergeable_state?: string;
@@ -94,9 +100,60 @@ const RED = new Set(['failure', 'timed_out', 'action_required', 'startup_failure
 const newest = <T extends { id?: number }>(items: T[], name: (t: T) => string, at: (t: T) => string): T[] =>
   [...new Map([...items].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0) || at(a).localeCompare(at(b))).map((t) => [name(t), t] as const)).values()];
 
+/** Paths a finding-fix auto-merge never touches (finding-fix-gate.mjs FORBIDDEN_PATH, the config / dependency / CI part). */
+const FINDING_FIX_FORBIDDEN = /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|\.npmrc|eslint\.config\.[cm]?[jt]s|\.eslintrc(\.\w+)?|tsconfig[^/]*\.json|codeql[^/]*\.ya?ml|\.[\w-]*ignore|\.gitattributes)$|(^|\/)(\.github|\.security-review)\/|(^|\/)(vitest|jest|stryker|playwright)[^/]*\.(c|m)?[jt]s(on)?$/;
+const parseJson = <T>(raw: string | null | undefined, fallback: T): T => { try { return raw ? JSON.parse(raw) as T : fallback; } catch { return fallback; } };
+
+/**
+ * LOOP_AUTO_MERGE_FINDING_FIX eligibility: '' = in the class, else the first reason it is not. ALL must hold: the proposal is
+ * the finding-fix lane's (evidence ref 'finding-fix:', finding-fix-source.ts); exactly one changed file, modified, the
+ * proposal's grounding artifactPath (= its finding-file ref), no config / dependency / CI path; <= 40 changed lines; the maker's
+ * test:finding-fix gate passed (the scanner re-run: finding gone, no suppression, no new finding — finding-fix-gate.mjs); the
+ * required deterministic checks include test:changed (or test), lint and type-check, each passed, and none failed; at least one checker and one security checker on the maker, all accepted.
+ */
+export function findingFixIneligible(db: Database, ev: string | null, grounding: string | null, makerId: string, makerChecks: unknown, requiredChecks: unknown,
+  files: Array<{ filename: string; status?: string; additions?: number; deletions?: number }>): { reason: string; evidence: Record<string, unknown> } {
+  const refs = parseJson<unknown[]>(ev, []).filter((r): r is string => typeof r === 'string');
+  const evidence: Record<string, unknown> = { finding: refs.find((r) => r.startsWith('finding-fix:')) ?? null };
+  const no = (reason: string) => ({ reason, evidence });
+  if (!evidence.finding) return no('not_finding_fix_lane');
+  if (files.length !== 1) return no(`files: ${files.length} changed, exactly 1 allowed`);
+  const [f] = files;
+  Object.assign(evidence, { file: f.filename, diff_lines: (Number(f.additions) || 0) + (Number(f.deletions) || 0) });
+  if (FINDING_FIX_FORBIDDEN.test(f.filename)) return no(`file: forbidden path ${f.filename}`);
+  const artifact = parseJson<{ artifactPath?: unknown }>(grounding, {}).artifactPath;
+  const findingFile = refs.find((r) => r.startsWith('finding-file:'))?.slice('finding-file:'.length);
+  if (typeof artifact !== 'string' || !artifact || artifact !== findingFile) return no('grounding: artifactPath missing or not the finding file');
+  if (f.filename !== artifact) return no(`file: ${f.filename} is not the finding's file ${artifact}`);
+  if (f.status !== 'modified') return no(`file: status ${f.status ?? 'unknown'}, only modified`);
+  if (Number(evidence.diff_lines) > FINDING_FIX_AUTO_MERGE_DIFF_MAX) return no(`diff: ${evidence.diff_lines} > ${FINDING_FIX_AUTO_MERGE_DIFF_MAX}`);
+  const checks = (Array.isArray(makerChecks) ? makerChecks : []) as Array<{ name?: unknown; status?: unknown } | null>;
+  const gate = checks.find((c) => c?.name === 'test:finding-fix');
+  evidence.gate = gate?.status ?? 'missing';
+  if (gate?.status !== 'pass') return no(`gate: test:finding-fix ${gate ? String(gate.status) : 'missing'}`);
+  const required = Array.isArray(requiredChecks) ? requiredChecks.filter((n): n is string => typeof n === 'string') : [];
+  evidence.checks = checks.map((c) => `${String(c?.name)}=${String(c?.status)}`);
+  // the run's own tests, lint and type-check must be among them (a run settled with a smaller set never qualifies)
+  const absent = [...['lint', 'type-check'].filter((n) => !required.includes(n)), ...(required.includes('test:changed') || required.includes('test') ? [] : ['test:changed'])];
+  if (absent.length) return no(`checks: ${absent.join(', ')} not required on the run`);
+  const notPassed = [...required.filter((n) => !checks.some((c) => c?.name === n && c.status === 'pass')).map((n) => `${n} ${String(checks.find((c) => c?.name === n)?.status ?? 'missing')}`),
+    ...checks.filter((c) => c?.status === 'fail' && !required.includes(String(c.name))).map((c) => `${String(c?.name)} fail`)];
+  if (notPassed.length) return no(`checks: ${notPassed.join(', ')}`);
+  const verdicts = db.prepare(`SELECT role, status, json_extract(metadata, '$.verdict') AS verdict FROM worker_leases WHERE loop_run_id = (SELECT loop_run_id FROM worker_leases WHERE id = ?)
+    AND role IN ('checker', 'security_checker') AND json_extract(metadata, '$.maker_lease_id') = ? ORDER BY created_at, id`).all(makerId, makerId) as Array<{ role: string; status: string; verdict: string | null }>;
+  for (const role of ['checker', 'security_checker'] as const) {
+    const mine = verdicts.filter((v) => v.role === role);
+    evidence[role] = mine.map((v) => v.verdict ?? v.status);
+    const bad = mine.find((v) => v.status !== 'completed' || v.verdict !== 'accepted');
+    if (!mine.length || bad) return no(`${role}: ${bad ? bad.verdict ?? bad.status : 'missing'}`);
+  }
+  return { reason: '', evidence };
+}
+
 export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, now = new Date()):
   Promise<{ evaluated: number; merged: number; revoked: boolean }> {
   const mode = autoMergeMode(env);
+  const ffMode = autoMergeFindingFixMode(env);
   const repo = env.GITHUB_REPOSITORY; const token = env.GITHUB_TOKEN;
   if (mode === 'off' || !repo || !token) return { evaluated: 0, merged: 0, revoked: false };
   const base = env.LOOP_DRAFT_PR_BASE || 'main';
@@ -193,10 +250,10 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   const laneRevocations = readLaneRevocations(db);
 
   // 2. Candidates: loop PRs without a final decision for this mode.
-  const runs = db.prepare(`SELECT r.id, r.status, r.gates_json, r.metadata, s.status AS improvement_status, s.evidence_refs_json AS ev FROM loop_runs r
+  const runs = db.prepare(`SELECT r.id, r.status, r.gates_json, r.metadata, s.status AS improvement_status, s.evidence_refs_json AS ev, s.grounding_json AS grounding FROM loop_runs r
       LEFT JOIN goals g ON g.id = r.goal_id LEFT JOIN self_improvements s ON s.id = g.improvement_id
     WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL AND r.created_at >= ? ORDER BY r.created_at`)
-    .all(new Date(now.getTime() - 60 * DAY).toISOString()) as Array<{ id: string; status: string; gates_json: string | null; metadata: string; improvement_status: string | null; ev: string | null }>;
+    .all(new Date(now.getTime() - 60 * DAY).toISOString()) as Array<{ id: string; status: string; gates_json: string | null; metadata: string; improvement_status: string | null; ev: string | null; grounding: string | null }>;
   const cap = autoMergeMaxPerDay(env);
   const valueGate = autoMergeValueGate(env);
   const valueLanes = autoMergeValueGateLanes(env);
@@ -212,7 +269,13 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     // U2 rollback: a rejection by the value gate alone is final only while the gate acts on the PR — off / shadow / its lane
     // leaving the list re-evaluates it through every gate (every other permanent reason stays final)
     const valueRejectionLifted = prev?.decision === 'ineligible' && !valueActs && (VALUE_GATE_REASONS as readonly string[]).includes(reasonCode(prev.reason));
-    if (prev && !valueRejectionLifted && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
+    // finding-fix class switched on: a finding-fix PR rejected as non_test_file before the class looked at it is evaluated once
+    const findingFixLifted = ffMode !== 'off' && prev?.decision === 'ineligible' && reasonCode(prev.reason) === 'non_test_file' && prev.finding_fix === undefined
+      && /"finding-fix:/.test(run.ev ?? '');
+    // the mode this PR is decided in: the tick's, or for a finding-fix class PR the lower of both flags
+    let pm: 'shadow' | 'act' = mode;
+    let ffClass = false;
+    if (prev && !valueRejectionLifted && !findingFixLifted && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
       // final, unless re-check is on and the ineligible reason is transient, its window has passed and this tick has room
       if (!recheckOn || prev.decision !== 'ineligible' || !isTransientReason(prev.reason) || rechecks >= RECHECK_PER_TICK) continue;
       const last = Date.parse(prev.rechecked_at ?? prev.at);
@@ -234,14 +297,14 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     let wouldBlock: AutoMergeRecord['would_block_value'];
     const record = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord> = {}): AutoMergeRecord => {
       // unchanged decision (shadow re-checks every tick): keep the first record, so `at` stays when it was first decided
-      if (prev && prev.mode === mode && prev.decision === decision && prev.reason === reason && prev.would_block_value === wouldBlock) return prev;
+      if (prev && prev.mode === pm && prev.decision === decision && prev.reason === reason && prev.would_block_value === wouldBlock && prev.finding_fix === extra.finding_fix) return prev;
       // a PR that was ever re-checked keeps its re-check stamp (evidence: re-checks per 24 h); absent otherwise
       const stamp = prev?.rechecked_at ? { rechecked_at: prev.rechecked_at, rechecks: prev.rechecks } : {};
-      const rec: AutoMergeRecord = { mode, decision, reason, at: now.toISOString(), pr_number: number, ...stamp, ...(wouldBlock ? { would_block_value: wouldBlock } : {}), ...extra };
+      const rec: AutoMergeRecord = { mode: pm, decision, reason, at: now.toISOString(), pr_number: number, ...stamp, ...(wouldBlock ? { would_block_value: wouldBlock } : {}), ...extra };
       db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_merge', json(?)) WHERE id = ?").run(JSON.stringify(rec), run.id);
       if (!prev || prev.decision !== decision || prev.reason !== reason) {
-        events.recordEvent(run.id, decision === 'merged' ? 'auto_merged' : `auto_merge_${decision}`, 'info', `Auto-merge (${mode}) PR #${number}: ${decision} — ${reason}`,
-          { pr_url: meta.pr_url, mode, decision, reason, ...extra });
+        events.recordEvent(run.id, decision === 'merged' ? 'auto_merged' : `auto_merge_${decision}`, 'info', `Auto-merge (${pm}) PR #${number}: ${decision} — ${reason}`,
+          { pr_url: meta.pr_url, mode: pm, decision, reason, ...extra });
       }
       return rec;
     };
@@ -256,9 +319,9 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const pr = await json<Pr>(slug, `pulls/${number}`);
     if (!pr) { record('waiting', 'github_unavailable'); continue; }
     if (pr.state !== 'open') { record('ineligible', `not_open: ${pr.state}`); continue; }
-    const maker = db.prepare(`SELECT branch_name, json_extract(metadata, '$.diff_max_lines') AS diff_max, json_extract(metadata, '$.deterministic_checks') AS checks,
-        json_extract(metadata, '$.graded') AS graded FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
-      AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(run.id) as { branch_name: string | null; diff_max: number | null; checks: string | null; graded: string | null } | undefined;
+    const maker = db.prepare(`SELECT id, branch_name, json_extract(metadata, '$.diff_max_lines') AS diff_max, json_extract(metadata, '$.deterministic_checks') AS checks,
+        json_extract(metadata, '$.graded') AS graded, json_extract(metadata, '$.required_deterministic_checks') AS required_checks FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
+      AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(run.id) as { id: string; branch_name: string | null; diff_max: number | null; checks: string | null; graded: string | null; required_checks: string | null } | undefined;
     // never a non-loop or Dependabot PR: the title, the author, the head repo and the maker branch must all match
     if (!String(pr.title ?? '').startsWith('loop:') || /dependabot/i.test(String(pr.user?.login ?? '')) || /^dependabot\//.test(String(pr.head?.ref ?? ''))
       || pr.head?.repo?.full_name !== slug || !maker?.branch_name || pr.head?.ref !== maker.branch_name || pr.base?.ref !== base) {
@@ -277,22 +340,37 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     }
     if (!files.length) { record('waiting', 'files_unavailable'); continue; }
     const names = files.map((f) => f.filename);
-    if (!testOnlyChange(names)) { record('ineligible', `non_test_file: ${names.find((f) => !testOnlyChange([f]))}`); continue; }
-    const oracleFile = names.find((f) => (ORACLE_TEST_FILES as readonly string[]).includes(f));
-    if (oracleFile) { record('ineligible', `oracle_test_file: ${oracleFile}`); continue; }
-    const removed = files.find((f) => f.status === 'removed');
-    if (removed) { record('ineligible', `removes_test: ${removed.filename}`); continue; }
-    const diff = files.reduce((a, f) => a + (Number(f.additions) || 0) + (Number(f.deletions) || 0), 0);
-    const limit = Number(maker.diff_max) > 0 ? Number(maker.diff_max) : TEST_ONLY_DIFF_MAX;
-    if (diff > limit) { record('ineligible', `diff_over_limit: ${diff} > ${limit}`); continue; }
     const makerChecks = (() => { try { return JSON.parse(maker.checks || '[]'); } catch { return []; } })();
-    const strength = assertionStrengthVerdict(makerChecks);
-    if (strength !== 'pass') { record('ineligible', `assertion_strength_${strength ?? 'missing'}`); continue; }
-    if (valueGate !== 'off') {
-      const value = autoMergeValueSignal(makerChecks, (() => { try { return JSON.parse(maker.graded || 'null'); } catch { return null; } })());
-      const block = value === 'pass' ? undefined : value === 'low' ? 'value_signal_low' as const : 'value_signal_missing' as const;
-      if (block && valueActs) { record('ineligible', block); continue; }
-      wouldBlock = block;
+    const diff = files.reduce((a, f) => a + (Number(f.additions) || 0) + (Number(f.deletions) || 0), 0);
+    // finding-fix class evidence, written as a judgment once per decision
+    let ffEvidence: Record<string, unknown> = {};
+    if (!testOnlyChange(names)) {
+      const nonTest = `non_test_file: ${names.find((f) => !testOnlyChange([f]))}`;
+      if (ffMode === 'off' || !/"finding-fix:/.test(run.ev ?? '')) { record('ineligible', nonTest); continue; }
+      const ff = findingFixIneligible(db, run.ev, run.grounding, maker.id, makerChecks, parseJson<unknown>(maker.required_checks, []), files);
+      ffEvidence = ff.evidence;
+      if (ff.reason) {
+        record('ineligible', nonTest, { finding_fix: ff.reason });
+        ffJudgment(db, run.id, verifiedHead, ffMode, 'ineligible', ff.reason, ffEvidence, now);
+        continue;
+      }
+      ffClass = true; pm = mode === 'act' && ffMode === 'act' ? 'act' : 'shadow';
+    }
+    if (!ffClass) {
+      const oracleFile = names.find((f) => (ORACLE_TEST_FILES as readonly string[]).includes(f));
+      if (oracleFile) { record('ineligible', `oracle_test_file: ${oracleFile}`); continue; }
+      const removed = files.find((f) => f.status === 'removed');
+      if (removed) { record('ineligible', `removes_test: ${removed.filename}`); continue; }
+      const limit = Number(maker.diff_max) > 0 ? Number(maker.diff_max) : TEST_ONLY_DIFF_MAX;
+      if (diff > limit) { record('ineligible', `diff_over_limit: ${diff} > ${limit}`); continue; }
+      const strength = assertionStrengthVerdict(makerChecks);
+      if (strength !== 'pass') { record('ineligible', `assertion_strength_${strength ?? 'missing'}`); continue; }
+      if (valueGate !== 'off') {
+        const value = autoMergeValueSignal(makerChecks, (() => { try { return JSON.parse(maker.graded || 'null'); } catch { return null; } })());
+        const block = value === 'pass' ? undefined : value === 'low' ? 'value_signal_low' as const : 'value_signal_missing' as const;
+        if (block && valueActs) { record('ineligible', block); continue; }
+        wouldBlock = block;
+      }
     }
     const reviews = await json<Array<{ user?: { login?: string }; state?: string }>>(slug, `pulls/${number}/reviews?per_page=100`);
     if (!reviews) { record('waiting', 'reviews_unavailable'); continue; }
@@ -301,21 +379,22 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     if ([...latest.values()].includes('CHANGES_REQUESTED')) { record('ineligible', 'changes_requested'); continue; }
     if (isAuditSample(number)) { record('audit_sample', 'deterministic 10 % sample: stays for the human'); continue; }
 
-    const effective = mode === 'act' && readClassState(db).state === 'revoked' ? 'held' : mode;
-    if (effective === 'held') { record('revoked_hold', `class revoked: ${readClassState(db).reason ?? 'unknown'}`); continue; }
+    const cls: AutoMergeClass = ffClass ? 'finding_fix' : 'test_only';
+    const effective = pm === 'act' && readClassState(db, cls).state === 'revoked' ? 'held' : pm;
+    if (effective === 'held') { record('revoked_hold', `${ffClass ? 'finding_fix ' : ''}class revoked: ${readClassState(db, cls).reason ?? 'unknown'}`); continue; }
     const laneRevoked = laneRevocations[lane] ?? laneRevocations['*'];
-    if (mode === 'act' && laneRevoked) { record('revoked_hold', `lane ${lane} revoked: ${laneRevoked.reason}`); continue; }
+    if (pm === 'act' && laneRevoked) { record('revoked_hold', `lane ${lane} revoked: ${laneRevoked.reason}`); continue; }
     // a PR already counted as would_merge / merged in this window does not count against its own re-check
-    const counted = prev?.mode === mode && prev.decision === (mode === 'act' ? 'merged' : 'would_merge') && Date.parse(prev.at) >= now.getTime() - DAY ? 1 : 0;
+    const counted = prev?.mode === pm && prev.decision === (pm === 'act' ? 'merged' : 'would_merge') && Date.parse(prev.at) >= now.getTime() - DAY ? 1 : 0;
     const today = (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = ? AND json_extract(metadata, '$.auto_merge.at') >= ?`)
-      .get(mode === 'act' ? 'merged' : 'would_merge', new Date(now.getTime() - DAY).toISOString()) as { n: number }).n;
-    if (today - counted >= cap) { record('capped', `${today} ${mode === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
+      .get(pm === 'act' ? 'merged' : 'would_merge', new Date(now.getTime() - DAY).toISOString()) as { n: number }).n;
+    if (today - counted >= cap) { record('capped', `${today} ${pm === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
     const required = await requiredContexts(slug);
     if (!required) { record('waiting', 'required_checks_unavailable'); continue; }
     const { state, reason: checksReason } = await checks(slug, sha, required);
     if (state === 'red') {
       // re-check in act: red checks on a head that is behind the base (main was red then) — update the branch so CI reruns
-      if (rechecking && mode === 'act' && pr.mergeable !== false && pr.mergeable_state !== 'dirty' && await behind(slug, pr, sha)) {
+      if (rechecking && pm === 'act' && pr.mergeable !== false && pr.mergeable_state !== 'dirty' && await behind(slug, pr, sha)) {
         const r = await gh(slug, `pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
         record('waiting', r.ok ? 'rechecking_after_update' : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); continue;
       }
@@ -323,8 +402,14 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     }
     if (pr.mergeable === false || pr.mergeable_state === 'dirty') { record('ineligible', 'merge_conflict'); continue; }
 
-    if (mode === 'shadow') {
+    if (pm === 'shadow') {
       const steps = [pr.draft ? 'mark_ready' : null, pr.mergeable_state === 'behind' ? 'update_branch' : null, state === 'pending' ? 'wait_for_checks' : null, 'squash_merge'].filter((s): s is string => !!s);
+      if (ffClass) {
+        const reason = `finding_fix: eligible finding-fix loop PR (1 file, ${diff} line(s))`;
+        record('would_merge', reason, { steps });
+        ffJudgment(db, run.id, verifiedHead, pm, 'would_merge', reason, ffEvidence, now);
+        continue;
+      }
       record('would_merge', `eligible test-only loop PR (${files.length} file(s), ${diff} line(s))`, { steps });
       continue;
     }
@@ -344,15 +429,27 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const res = await gh(slug, `pulls/${number}/merge`, 'PUT', { merge_method: 'squash', sha, commit_title: `${pr.title} (#${number})`.slice(0, 250) });
     if (!res.ok) { record('waiting', `merge_failed: ${res.status}`); continue; }
     const mergeSha = String(((await res.json().catch(() => ({}))) as { sha?: string }).sha ?? '');
-    record('merged', `squash-merged (${files.length} test file(s), ${diff} line(s))`, { merge_commit_sha: mergeSha, merged_at: now.toISOString(), steps: ['squash_merge'] });
+    const mergedReason = ffClass ? `finding_fix: squash-merged (1 source file, ${diff} line(s))` : `squash-merged (${files.length} test file(s), ${diff} line(s))`;
+    record('merged', mergedReason, { merge_commit_sha: mergeSha, merged_at: now.toISOString(), steps: ['squash_merge'] });
     merged++;
+    if (ffClass) ffJudgment(db, run.id, verifiedHead, pm, 'merged', mergedReason, { ...ffEvidence, merge_commit_sha: mergeSha }, now);
     try {
       new AuditService(db).record({ event_type: AuditEventType.TASK_EXECUTED, action: 'loop_pr_auto_merged', resource_type: 'pull_request',
-        resource_id: meta.pr_url, risk_level: RiskLevel.MEDIUM, metadata: { actor: 'loop-auto-merge', loop_run_id: run.id, pr_number: number, merge_commit_sha: mergeSha, files: names, diff_lines: diff } });
+        resource_id: meta.pr_url, risk_level: RiskLevel.MEDIUM, metadata: { actor: 'loop-auto-merge', loop_run_id: run.id, pr_number: number, merge_commit_sha: mergeSha, files: names, diff_lines: diff,
+          ...(ffClass ? { class: 'finding_fix', finding_fix: ffEvidence } : {}) } });
     } catch { /* the loop event above is the second record */ }
-    await pushNotice(`Auto-merged test-only loop PR #${number}: ${meta.pr_url}`, env);
+    await pushNotice(`Auto-merged ${ffClass ? 'finding-fix' : 'test-only'} loop PR #${number}: ${meta.pr_url}`, env);
   }
   return { evaluated, merged, revoked: revoked || laneRevokedNow };
+}
+
+/** One judgment per finding-fix class decision of a run (INSERT OR IGNORE: a shadow PR re-read every tick is judged once). */
+function ffJudgment(db: Database, runId: string, head: string, mode: 'shadow' | 'act', decision: string, reason: string, evidence: Record<string, unknown>, now: Date): void {
+  try {
+    db.prepare(`INSERT OR IGNORE INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+      VALUES (?, ?, 'loop_run', ?, ?, ?, ?, ?, ?, ?)`).run(`${FINDING_FIX_AUTO_MERGE_JUDGMENT}:${mode}:${runId}:${decision}`, FINDING_FIX_AUTO_MERGE_JUDGMENT, runId, head.slice(0, 16) || 'none',
+      mode, decision, reason.slice(0, 500), JSON.stringify(evidence), now.toISOString());
+  } catch { /* judgments absent: the auto_merge record and the loop event remain */ }
 }
 
 /** B3: one judgment per lane window (its newest settled PR); in 'on' a firing rule revokes the lane. True when this tick revoked one. */
@@ -445,11 +542,14 @@ async function checkRevocations(db: Database, json: <T>(slug: string, p: string)
     }
     if (reasons.length && !am.revoked) {
       const reason = `PR #${am.pr_number}: ${reasons.join('; ')}`;
-      const fresh = revokeClass(db, reason, meta.pr_url, now);
+      // a finding-fix merge revokes only its own class
+      const finding = reasonCode(am.reason) === 'finding_fix';
+      const fresh = finding ? revokeClass(db, reason, meta.pr_url, now, 'finding_fix') : revokeClass(db, reason, meta.pr_url, now);
       revokedNow = revokedNow || fresh;
       db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.auto_merge.revoked', ?) WHERE id = ?").run(reason, run.id);
-      events.recordEvent(run.id, 'auto_merge_revoked', 'warning', `Auto-merge class revoked — ${reason}`, { pr_url: meta.pr_url, reasons, newly_revoked: fresh });
-      if (fresh) await pushNotice(`Auto-merge for test-only loop PRs REVOKED — ${reason}. Re-enable needs an operator: ${meta.pr_url}`, env);
+      events.recordEvent(run.id, 'auto_merge_revoked', 'warning', `Auto-merge ${finding ? 'finding_fix ' : ''}class revoked — ${reason}`,
+        { pr_url: meta.pr_url, reasons, newly_revoked: fresh, ...(finding ? { class: 'finding_fix' } : {}) });
+      if (fresh) await pushNotice(`Auto-merge for ${finding ? 'finding-fix' : 'test-only'} loop PRs REVOKED — ${reason}. Re-enable needs an operator: ${meta.pr_url}`, env);
     }
     // never closed while a required-check confirmation is unresolved (an already revoked PR has nothing left to confirm)
     if (age > SURVIVAL_DAYS * DAY && !(marker && !am.revoked) && (settled === 'SETTLED_SURVIVED' || settled === 'SETTLED_REGRESSED' || age > 30 * DAY)) {
