@@ -20,6 +20,21 @@ export interface ConnectionEvidence {
 }
 
 const DAY = 86_400_000;
+
+/**
+ * Truth audit 2026-11-12: connection state is an Agent Commons concept; applied to factory workers it produced
+ * "runtime missing: no social runtime configured" and "token expired, never used" for opencode-maker and friends.
+ * It applies only to Commons residents and agents with a social runtime; the others are named for what they are.
+ */
+export type AgentGroup = 'factory_worker' | 'fleet_agent' | 'commons_resident';
+type GroupInput = { agent_type?: string | null; metadata?: unknown };
+const metaOf = (a: GroupInput) => (typeof a.metadata === 'object' && a.metadata ? a.metadata : {}) as { commons_resident?: unknown; social_runtime?: unknown };
+export const inCommons = (a: GroupInput) => Boolean(metaOf(a).commons_resident || metaOf(a).social_runtime);
+/** fleet agents carry a type (hermes, openclaw, scallop, overwatch, deerflow) even when they also talk in the Commons */
+export function agentGroup(a: GroupInput): AgentGroup {
+  return a.agent_type ? 'fleet_agent' : inCommons(a) ? 'commons_resident' : 'factory_worker';
+}
+const GROUP_LABEL: Record<AgentGroup, string> = { factory_worker: 'factory worker', fleet_agent: 'fleet agent', commons_resident: 'Commons resident' };
 const ago = (iso: string, now: number) => { const h = Math.max(0, Math.round((now - Date.parse(iso)) / 3_600_000)); return h < 48 ? `${h} h` : `${Math.round(h / 24)} d`; };
 
 export function connectionState(e: ConnectionEvidence, now = Date.now()): { state: ConnectionState; reason: string } {
@@ -41,9 +56,9 @@ export function connectionState(e: ConnectionEvidence, now = Date.now()): { stat
 /** Evidence for many agents from existing tables (fail-soft: a missing table contributes nothing). */
 export function connectionStates(
   db: Database,
-  agents: Array<{ id: string; retired_at?: string | null; retirement_reason?: string | null; metadata?: unknown; last_seen_at?: string | null; liveness?: string }>,
+  agents: Array<{ id: string; agent_type?: string | null; retired_at?: string | null; retirement_reason?: string | null; metadata?: unknown; last_seen_at?: string | null; liveness?: string }>,
   now = Date.now(),
-): Map<string, { state: ConnectionState; reason: string }> {
+): Map<string, { state: ConnectionState | null; reason: string }> {
   const all = <T>(sql: string): T[] => { try { return db.prepare(sql).all() as T[]; } catch { return []; } };
   const replies = new Map(all<{ a: string; t: string }>('SELECT from_agent AS a, MAX(timestamp) AS t FROM agent_messages GROUP BY from_agent').map((r) => [r.a, r.t]));
   const tokens = new Map<string, { at: string; exp: string | null }>();
@@ -59,8 +74,9 @@ export function connectionStates(
   for (const j of all<{ agent_id: string; decided_at: string | null }>("SELECT agent_id, decided_at FROM social_join_requests WHERE status = 'approved'")) {
     if (j.decided_at && (!tokens.has(j.agent_id) || (tokens.get(j.agent_id) as { at: string }).at < j.decided_at)) tokens.set(j.agent_id, { at: j.decided_at, exp: null });
   }
-  const out = new Map<string, { state: ConnectionState; reason: string }>();
+  const out = new Map<string, { state: ConnectionState | null; reason: string }>();
   for (const a of agents) {
+    if (!inCommons(a)) { out.set(a.id, { state: null, reason: `${GROUP_LABEL[agentGroup(a)]} — not a Commons participant` }); continue; }
     const meta = (typeof a.metadata === 'object' && a.metadata ? a.metadata : {}) as { social_runtime?: { last_heartbeat_at?: string } };
     const socialBeat = meta.social_runtime?.last_heartbeat_at ?? null;
     const seen = [a.last_seen_at ?? null, socialBeat].filter((t): t is string => Boolean(t)).sort().pop() ?? null;

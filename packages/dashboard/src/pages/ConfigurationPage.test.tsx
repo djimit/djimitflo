@@ -26,7 +26,7 @@ it('groups settings, shows masked secrets as masked and filters by name or value
   vi.spyOn(api, 'getRuntimeConfig').mockResolvedValue(fixture());
   render(<ConfigurationPage />);
   expect(await screen.findByText('remote@workstation/atomic')).toBeTruthy();
-  expect(screen.getByText('set (40 chars)')).toBeTruthy();
+  expect(screen.getByText('set')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'workstation' } });
   expect(screen.queryByText('NVIDIA_API_KEY')).toBeNull();
   fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: '40 chars' } }); // masked values are not searchable
@@ -76,4 +76,24 @@ it('shows the permission error', async () => {
   vi.spyOn(api, 'getRuntimeConfig').mockRejectedValue(new Error('Access denied'));
   render(<ConfigurationPage />);
   expect((await screen.findByRole('alert')).textContent).toBe('Access denied');
+});
+
+// Dashboard truth audit 2026-11-12 (/configuration): masked values leaked their length, mode flags had no accepted
+// values, and at 390 px `break-all` wrapped every value one character per line.
+it('shows a masked value as "set" only, the accepted values of a mode flag, and breaks only long tokens', async () => {
+  vi.spyOn(api, 'getRuntimeConfig').mockResolvedValue({ masked: 1, build: BUILD, entries: [
+    entry({ name: 'NVIDIA_API_KEY', value: 'set (40 chars)', masked: true }),
+    entry({ name: 'ASG_MODE', value: 'shadow', default: 'off', overridden: true, accepted: ['off', 'shadow', 'on'] }),
+    entry({ name: 'LONG_LIST', value: 'x'.repeat(80) }),
+  ] });
+  render(<ConfigurationPage />);
+  const row = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
+  await screen.findByText('ASG_MODE');
+  expect(within(row('NVIDIA_API_KEY')).getByText('set')).toBeTruthy();
+  expect(screen.queryByText(/40 chars/)).toBeNull();
+  expect(screen.getByRole('columnheader', { name: 'Accepted' })).toBeTruthy();
+  expect(within(row('ASG_MODE')).getByText('off · shadow · on')).toBeTruthy();
+  const short = within(row('ASG_MODE')).getByText('shadow', { selector: 'td' });
+  expect(short.className).not.toMatch(/break-all/);
+  expect(within(row('LONG_LIST')).getByText('x'.repeat(80)).className).toMatch(/break-all/);
 });

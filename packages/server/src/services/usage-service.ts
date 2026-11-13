@@ -74,10 +74,10 @@ export class UsageService {
     return providers.map((p: any) => {
       const usage = this.db.prepare(
         `SELECT
-          COALESCE(SUM(CASE WHEN timestamp >= datetime('now', '-1 hour') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as hourly,
-          COALESCE(SUM(CASE WHEN timestamp >= datetime('now', '-1 day') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as daily,
-          COALESCE(SUM(CASE WHEN timestamp >= datetime('now', '-7 days') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as weekly,
-          COALESCE(SUM(CASE WHEN timestamp >= datetime('now', '-30 days') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as monthly,
+          COALESCE(SUM(CASE WHEN julianday(timestamp) >= julianday('now', '-1 hour') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as hourly,
+          COALESCE(SUM(CASE WHEN julianday(timestamp) >= julianday('now', '-1 day') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as daily,
+          COALESCE(SUM(CASE WHEN julianday(timestamp) >= julianday('now', '-7 days') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as weekly,
+          COALESCE(SUM(CASE WHEN julianday(timestamp) >= julianday('now', '-30 days') THEN prompt_tokens + completion_tokens ELSE 0 END), 0) as monthly,
           COALESCE(SUM(cost), 0) as total_cost
         FROM token_usage_log WHERE provider = ?`,
       ).get(p.provider) as any;

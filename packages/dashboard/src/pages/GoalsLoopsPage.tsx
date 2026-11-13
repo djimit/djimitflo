@@ -3,8 +3,13 @@ import { AlertTriangle, Play, Plus, RefreshCw, ShieldCheck, Target, Workflow } f
 import { api, type GoalRecord, type LoopCatalogItem, type LoopReviewBundle, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 import { useDialog } from '../components/ConfirmDialog';
+import { objectiveLabel } from '../lib/external-content';
 import { LoopRunList } from './goals-loops/LoopRunList';
 import { LoopRunDetail } from './goals-loops/LoopRunDetail';
+
+/** Truth audit: the picker listed all 2,582 goals (70 % of the page text); it shows open goals plus the most recent ones. */
+const GOAL_PICKER_LIMIT = 25;
+const FINISHED_GOAL = new Set(['completed', 'failed', 'cancelled']);
 
 export function GoalsLoopsPage() {
   const dialog = useDialog();
@@ -23,6 +28,9 @@ export function GoalsLoopsPage() {
   const [goalObjective, setGoalObjective] = useState('');
   const [goalAcceptance, setGoalAcceptance] = useState('');
   const [goalRisk, setGoalRisk] = useState<'low' | 'medium' | 'high' | 'critical'>('low');
+  const [goalQuery, setGoalQuery] = useState('');
+  // the run list defaults to production runs; the PR-review bookkeeping runs are one toggle away
+  const [includeSynthetic, setIncludeSynthetic] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const actionPending = useRef(false);
@@ -40,11 +48,18 @@ export function GoalsLoopsPage() {
   selectedRunRef.current = selectedRun?.id || null;
   const bundleRequest = useRef(0);
   const chosenGoal = goals.find(goal => goal.id === selectedGoalId);
+  const pickableGoals = useMemo(() => {
+    const query = goalQuery.trim().toLowerCase();
+    const shown = query
+      ? goals.filter((goal) => goal.id.toLowerCase().includes(query) || objectiveLabel(goal.objective).toLowerCase().includes(query)).slice(0, GOAL_PICKER_LIMIT)
+      : [...goals.filter((goal) => !FINISHED_GOAL.has(goal.status)), ...goals.filter((goal) => FINISHED_GOAL.has(goal.status)).slice(0, GOAL_PICKER_LIMIT)];
+    return chosenGoal && !shown.includes(chosenGoal) ? [chosenGoal, ...shown] : shown;
+  }, [goals, goalQuery, chosenGoal]);
   const runLocked = !!selectedRun && (selectedRun.metadata?.operator_paused === true || ['completed', 'cancelled', 'escalated'].includes(selectedRun.status));
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [includeSynthetic]);
 
   useEffect(() => {
     if (!selectedRun) {
@@ -71,7 +86,7 @@ export function GoalsLoopsPage() {
     try {
       const [goalRes, runRes, catalogRes] = await Promise.all([
         api.getGoals(),
-        api.getLoopRuns(),
+        api.getLoopRuns({ synthetic: includeSynthetic ? 'include' : 'exclude' }),
         api.getLoopCatalog(),
       ]);
       setGoals(goalRes.goals);
@@ -219,6 +234,7 @@ export function GoalsLoopsPage() {
 
   const selectedLoop = catalog.find((loop) => loop.name === selectedLoopName);
   const highRiskRuns = runs.filter((run) => run.metadata?.risk_class === 'high' || run.metadata?.risk_class === 'critical' || run.gates.some((gate) => gate.name === 'security_checker_verdict' && gate.status === 'fail')).length;
+  const runWindow = `latest ${runs.length} ${includeSynthetic ? '' : 'production '}run${runs.length === 1 ? '' : 's'}`;
   const blockedRuns = runs.filter((run) => ['blocked', 'escalated', 'failed'].includes(run.status)).length;
 
   return (
@@ -248,10 +264,10 @@ export function GoalsLoopsPage() {
       {notice && <p role="status" className="text-sm text-foreground-secondary">{notice}</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Metric icon={<Target className="h-5 w-5" />} label="Goals" value={goals.length} tone="blue" />
-        <Metric icon={<Workflow className="h-5 w-5" />} label="Loops" value={catalog.length || runs.length} tone="green" />
-        <Metric icon={<AlertTriangle className="h-5 w-5" />} label="Blocked" value={blockedRuns} tone="yellow" />
-        <Metric icon={<ShieldCheck className="h-5 w-5" />} label="Security Gates" value={highRiskRuns} tone="red" />
+        <Metric icon={<Target className="h-5 w-5" />} label="Goals" value={goals.length} note="all goals" tone="blue" />
+        <Metric icon={<Workflow className="h-5 w-5" />} label="Loops" value={catalog.length || runs.length} note={catalog.length ? 'in the loop catalog' : runWindow} tone="green" />
+        <Metric icon={<AlertTriangle className="h-5 w-5" />} label="Blocked" value={blockedRuns} note={runWindow} tone="yellow" />
+        <Metric icon={<ShieldCheck className="h-5 w-5" />} label="High-risk runs" value={highRiskRuns} note={runWindow} tone="red" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(360px,0.75fr)_minmax(520px,1.25fr)] gap-4">
@@ -302,6 +318,14 @@ export function GoalsLoopsPage() {
               className="flex-1 px-3 py-2 bg-background rounded border border-border text-foreground text-sm"
               placeholder="/path/to/repository on workstation"
             />
+            <input
+              type="search"
+              value={goalQuery}
+              aria-label="Search goals"
+              onChange={(event) => setGoalQuery(event.target.value)}
+              className="lg:w-40 px-3 py-2 bg-background rounded border border-border text-foreground text-sm"
+              placeholder="Search goals"
+            />
             <select
               value={selectedGoalId}
               aria-label="Loop goal"
@@ -310,8 +334,8 @@ export function GoalsLoopsPage() {
               className="lg:w-56 px-3 py-2 bg-background rounded border border-border text-foreground text-sm"
             >
               <option value="">ad-hoc goal</option>
-              {goals.map((goal) => (
-                <option key={goal.id} value={goal.id}>{goal.objective}</option>
+              {pickableGoals.map((goal) => (
+                <option key={goal.id} value={goal.id}>{objectiveLabel(goal.objective)}</option>
               ))}
             </select>
             <select
@@ -342,6 +366,9 @@ export function GoalsLoopsPage() {
               Start
             </button>
           </div>
+          <p className="text-xs text-foreground-tertiary">
+            Goal picker: {pickableGoals.length} of {goals.length} goals ({goalQuery.trim() ? `matching the search, up to ${GOAL_PICKER_LIMIT}` : `open goals and the ${GOAL_PICKER_LIMIT} most recent`}); search to find others.
+          </p>
           {selectedGoalId && canIntervene && (
             <div className="flex flex-wrap gap-2">
               <p className="w-full text-xs text-foreground-secondary">Goal admission: {chosenGoal?.metadata?.operator_paused === true ? 'paused by operator' : chosenGoal?.status || 'unknown'}</p>
@@ -363,7 +390,13 @@ export function GoalsLoopsPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(360px,0.9fr)_minmax(520px,1.1fr)] gap-6">
-        <LoopRunList runs={runs} loading={loading} selectedRun={selectedRun} actionId={actionId} setSelectedRunId={setSelectedRunId} />
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs text-foreground-secondary">
+            <input type="checkbox" checked={includeSynthetic} disabled={loading} onChange={(event) => setIncludeSynthetic(event.target.checked)} />
+            Include PR-review runs
+          </label>
+          <LoopRunList runs={runs} loading={loading} selectedRun={selectedRun} actionId={actionId} setSelectedRunId={setSelectedRunId} />
+        </div>
 
         <LoopRunDetail
           selectedRun={selectedRun} selectedRunId={selectedRunId} selectedBundle={selectedBundle} runLookupError={runLookupError} loading={loading}
@@ -375,7 +408,7 @@ export function GoalsLoopsPage() {
   );
 }
 
-function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number; tone: 'blue' | 'green' | 'yellow' | 'red' }) {
+function Metric({ icon, label, value, note, tone }: { icon: React.ReactNode; label: string; value: number; note: string; tone: 'blue' | 'green' | 'yellow' | 'red' }) {
   const tones = {
     blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
     green: 'bg-status-completed/10 text-status-completed border-status-completed/20',
@@ -386,6 +419,7 @@ function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: st
     <div className={`border rounded-lg p-4 ${tones[tone]}`}>
       <div className="flex items-center gap-2 mb-2 text-sm">{icon}<span>{label}</span></div>
       <div className="text-2xl font-bold">{value}</div>
+      <div className="text-xs opacity-80">{note}</div>
     </div>
   );
 }

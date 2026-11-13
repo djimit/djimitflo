@@ -319,11 +319,11 @@ export class PredictiveAnalyticsService {
     // Count stale leases (live state: every stale lease needs the cleanup, synthetic ones included)
     const stalePrepared = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
-      WHERE status = 'prepared' AND created_at < datetime('now', '-24 hours')
+      WHERE status = 'prepared' AND julianday(created_at) < julianday('now', '-24 hours')
     `).get() as any;
     const staleRunning = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
-      WHERE status = 'running' AND updated_at < datetime('now', '-2 hours')
+      WHERE status = 'running' AND julianday(updated_at) < julianday('now', '-2 hours')
     `).get() as any;
     const staleLeaseCount = (stalePrepared.c || 0) + (staleRunning.c || 0);
 

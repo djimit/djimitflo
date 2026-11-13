@@ -17,7 +17,8 @@ export interface RuntimeHealthRow {
   leases_30d: { n: number; completed: number; failed: number; cancelled: number; success_rate: number | null };
   leases_90d: number;
   last_success_at: string | null;
-  gym: { species: string[]; benched: boolean };
+  /** attempts_30d: gym outcomes (skill_outcomes loop-maker:gym:<runtime>) — a gym-only runtime has 0 leases but real attempts */
+  gym: { species: string[]; benched: boolean; attempts_30d: { n: number; ok: number } };
   readiness: Readiness;
 }
 
@@ -33,9 +34,12 @@ export function runtimeHealth(db: Database, now = Date.now(), ledger: readonly R
      FROM worker_leases WHERE created_at >= ? AND ${realRunIdSql('loop_run_id')} GROUP BY runtime`, d30).map((l) => [l.runtime, l]));
   const leases90 = new Map(all<{ runtime: string; n: number }>(db, 'SELECT runtime, COUNT(*) AS n FROM worker_leases WHERE created_at >= ? GROUP BY runtime', d90).map((l) => [l.runtime, l.n]));
   const lastSuccess = new Map(all<{ runtime: string; t: string }>(db, `SELECT runtime, MAX(updated_at) AS t FROM worker_leases WHERE status = 'completed' AND ${realRunIdSql('loop_run_id')} GROUP BY runtime`).map((l) => [l.runtime, l.t]));
+  const gymAttempts = new Map(all<{ runtime: string; n: number; ok: number }>(db,
+    "SELECT substr(skill_id, length('loop-maker:gym:') + 1) AS runtime, COUNT(*) AS n, SUM(success) AS ok FROM skill_outcomes WHERE domain = 'gym' AND skill_id LIKE 'loop-maker:gym:%' AND created_at >= ? GROUP BY skill_id", d30)
+    .map((g) => [g.runtime, { n: g.n, ok: g.ok ?? 0 }]));
   const gymSpecies = all<{ s: string }>(db, "SELECT DISTINCT json_extract(metadata, '$.gym.species') AS s FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? AND json_extract(metadata, '$.gym.species') IS NOT NULL", d30).map((r) => r.s);
 
-  const ids = [...new Set([...ledger.map((a) => a.runtime_id), ...leases.keys(), ...probes.keys()])].sort();
+  const ids = [...new Set([...ledger.map((a) => a.runtime_id), ...leases.keys(), ...probes.keys(), ...gymAttempts.keys()])].sort();
   return ids.map((runtime) => {
     const records = ledger.filter((a) => a.runtime_id === runtime);
     const record = records[0];
@@ -62,7 +66,7 @@ export function runtimeHealth(db: Database, now = Date.now(), ledger: readonly R
       leases_30d: { n: l.n, completed: l.completed, failed: l.failed, cancelled: l.cancelled, success_rate: decided ? +(l.completed / decided).toFixed(3) : null },
       leases_90d: n90,
       last_success_at: lastSuccess.get(runtime) ?? null,
-      gym: { species, benched: species.some((s) => { try { return infraFailing(db, s, d1); } catch { return false; } }) },
+      gym: { species, benched: species.some((s) => { try { return infraFailing(db, s, d1); } catch { return false; } }), attempts_30d: gymAttempts.get(runtime) ?? { n: 0, ok: 0 } },
       readiness,
     };
   });
