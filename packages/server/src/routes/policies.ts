@@ -35,7 +35,14 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
   router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
       const policies = db.prepare('SELECT * FROM approval_policies ORDER BY priority DESC, created_at DESC').all();
-      res.json({ policies: (policies as any[]).map(parsePolicy) });
+      // who last changed each policy and when, from the audit trail the PATCH/DELETE handlers already write
+      const lastChange = db.prepare(`
+        SELECT a.timestamp AS at, a.action, a.user_id, u.email, u.role
+        FROM audit_events a LEFT JOIN users u ON u.id = a.user_id
+        WHERE a.resource_type = 'approval_policy' AND a.resource_id = ?
+        ORDER BY a.timestamp DESC, a.rowid DESC LIMIT 1
+      `);
+      res.json({ policies: (policies as any[]).map((row) => ({ ...parsePolicy(row), last_change: lastChange.get(row.id) ?? null })) });
     } catch (error) {
       next(error);
     }

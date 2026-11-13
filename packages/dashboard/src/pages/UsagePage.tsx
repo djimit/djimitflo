@@ -12,7 +12,8 @@ import { Button } from '../components/ui';
  * The windows are Djimitflo's share, as recorded; account-wide Ollama figures come from the Ollama balance API
  * (OLLAMA_BALANCE_MODE), and are shown as unknown with the reason when it is off or failed — never 0.
  * Accounts without an account-wide source (Claude Max, ChatGPT Pro) show the latest operator snapshot of the vendor's usage page,
- * labelled operator-reported with its age (stale after 24 h); manage:config can report a new one.
+ * labelled operator-reported with its age; after 24 h (the API's stale flag) it is greyed out and marked "stale since"; manage:config can report a new one.
+ * Tokens: the headline is fresh input + output; cache reads are shown apart (a cached opencode session re-reads its context every step).
  */
 const WINDOWS: Array<{ id: UsageWindowId; label: string }> = [
   { id: '5h', label: 'last 5 h' }, { id: 'today', label: 'today (UTC)' }, { id: '7d', label: 'rolling 7 d' }, { id: 'month', label: 'month (UTC)' },
@@ -20,6 +21,11 @@ const WINDOWS: Array<{ id: UsageWindowId; label: string }> = [
 const fmt = (n: number | null) => (n === null ? 'unknown' : n.toLocaleString(LOCALE));
 const when = (iso: string | null) => fmtDate(iso, { fallback: '—' });
 const usd = (n: number) => `$${n.toFixed(2)}`;
+/** fresh = total − cache reads (older API: total) */
+const freshOf = (s: { tokens: number | null; fresh_tokens?: number | null }) => (s.fresh_tokens !== undefined ? s.fresh_tokens : s.tokens);
+const STALE_HOURS = 24;
+const staleSince = (reportedAt: string) => when(new Date(Date.parse(reportedAt) + STALE_HOURS * 3_600_000).toISOString());
+const passed = (iso: string | undefined) => Boolean(iso && Date.parse(iso) <= Date.now());
 const money = (n: number | undefined, currency: string | undefined) => (n === undefined ? 'unknown'
   : currency ? n.toLocaleString(LOCALE, { style: 'currency', currency }) : n.toLocaleString(LOCALE, { maximumFractionDigits: 2 }));
 
@@ -92,15 +98,16 @@ function LimitMeta({ l }: { l: UsageLimitView }) {
   );
 }
 
-function LimitRow({ l }: { l: UsageLimitView }) {
+function LimitRow({ l, staleSnapshot = false }: { l: UsageLimitView; staleSnapshot?: boolean }) {
   const head = `${l.plan} · ${l.window}`;
   if (l.pct_source && l.used_pct !== null) {
     const by = l.pct_source === 'operator_snapshot' ? `operator-reported ${since(l.reported_at)}` : 'account-wide';
+    const stale = l.pct_source === 'operator_snapshot' && staleSnapshot && l.reported_at;
     return (
-      <div className="mb-2">
+      <div className={`mb-2${stale ? ' opacity-60 grayscale' : ''}`}>
         <div className="flex justify-between text-xs text-foreground-secondary mb-1">
           <span>{head}</span>
-          <span>{fmt(l.used_pct)} % used ({by}){l.resets_at ? ` · resets ${when(l.resets_at)}` : ''}</span>
+          <span>{fmt(l.used_pct)} % used ({by}){l.resets_at ? ` · resets ${when(l.resets_at)}` : ''}{stale ? ` · stale since ${staleSince(l.reported_at!)}` : ''}</span>
         </div>
         <Bar pct={l.used_pct} label={head} />
         {l.unit_note && <div className="text-xs text-foreground-secondary italic mt-1">{l.unit_note}</div>}
@@ -141,6 +148,8 @@ function LimitRow({ l }: { l: UsageLimitView }) {
 
 function Limits({ a }: { a: UsageAccount }) {
   if (a.limits.length === 0) return null;
+  const stale = Boolean(a.operator_snapshot?.stale);
+  const row = (l: UsageLimitView) => <LimitRow key={`${l.plan}-${l.window}`} l={l} staleSnapshot={stale} />;
   const active = a.limits.filter((l) => l.active === true);
   const rest = a.limits.filter((l) => l.active !== true);
   return (
@@ -148,11 +157,11 @@ function Limits({ a }: { a: UsageAccount }) {
       <div className="text-xs text-foreground-secondary mb-1">
         plan: {a.plan === 'unknown' ? 'unknown — set account_plan in docs/usage-plan-limits.json; all candidate plans shown' : a.plan}
       </div>
-      {active.map((l) => <LimitRow key={`${l.plan}-${l.window}`} l={l} />)}
-      {a.plan === 'unknown' ? rest.map((l) => <LimitRow key={`${l.plan}-${l.window}`} l={l} />) : rest.length > 0 && (
+      {active.map(row)}
+      {a.plan === 'unknown' ? rest.map(row) : rest.length > 0 && (
         <details>
           <summary className="text-xs text-foreground-secondary cursor-pointer">other plans (reference)</summary>
-          {rest.map((l) => <LimitRow key={`${l.plan}-${l.window}`} l={l} />)}
+          {rest.map(row)}
         </details>
       )}
     </div>
@@ -167,28 +176,28 @@ function OperatorSnapshot({ s }: { s: UsageOperatorSnapshot }) {
       <div>
         <div className="flex justify-between">
           <span>{name}: {fmt(w.used_pct)} % used</span>
-          <span className="text-foreground-secondary">{w.resets_at ? `resets ${when(w.resets_at)}` : 'reset time not reported'}</span>
+          <span className="text-foreground-secondary">{w.resets_at ? (passed(w.resets_at) ? `reset ${when(w.resets_at)} (passed)` : `resets ${when(w.resets_at)}`) : 'reset time not reported'}</span>
         </div>
         <Bar pct={w.used_pct} label={`operator snapshot · ${name}`} />
       </div>
     ));
   const sl = s.spend_limit;
   return (
-    <div role="group" aria-label="Operator snapshot" className="text-xs text-foreground space-y-1 border-l-2 border-border pl-2">
-      <div className="text-foreground-secondary flex items-center gap-2">
+    <div role="group" aria-label="Operator snapshot" className={`text-xs text-foreground space-y-1 border-l-2 border-border pl-2${s.stale ? ' opacity-60 grayscale' : ''}`}>
+      <div className="text-foreground-secondary flex flex-wrap items-center gap-2">
         <span>operator-reported {since(s.reported_at)} ({when(s.reported_at)}){s.plan ? ` · plan ${s.plan}` : ''}</span>
-        {s.stale && <span className="px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-600" title="older than 24 h">stale</span>}
+        {s.stale && <span className="px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-600" title={`older than ${STALE_HOURS} h: not current`}>stale since {staleSince(s.reported_at)}</span>}
       </div>
       {pct('session', s.session)}
       {pct('weekly', s.weekly)}
       {s.model_weekly?.map((m) => (
         <div key={m.model}>
-          {`${m.model} (weekly): ${m.used_pct === undefined ? 'unknown' : `${fmt(m.used_pct)} % used`}${m.resets_at ? ` · resets ${when(m.resets_at)}` : ''}${m.cap_note ? ` · ${m.cap_note}` : ''}`}
+          {`${m.model} (weekly): ${m.used_pct === undefined ? 'unknown' : `${fmt(m.used_pct)} % used`}${m.resets_at ? (passed(m.resets_at) ? ` · reset ${when(m.resets_at)} (passed)` : ` · resets ${when(m.resets_at)}`) : ''}${m.cap_note ? ` · ${m.cap_note}` : ''}`}
         </div>
       ))}
       {s.credits?.map((c) => (
         <div key={c.label}>
-          {`${c.label}: ${money(c.remaining, c.currency)}${c.total !== undefined ? ` of ${money(c.total, c.currency)}` : ''} left${c.expires_at ? ` · expires ${when(c.expires_at)}` : ''}`}
+          {`${c.label}: ${money(c.remaining, c.currency)}${c.total !== undefined ? ` of ${money(c.total, c.currency)}` : ''} left${c.expires_at ? (passed(c.expires_at) ? ` · expired ${when(c.expires_at)}` : ` · expires ${when(c.expires_at)}`) : ''}`}
         </div>
       ))}
       {sl && (
@@ -276,7 +285,7 @@ function AccountCard({ a, onChanged }: { a: UsageAccount; onChanged: () => void 
       {canReport && snapshotable && <SnapshotForm account={a.id} onSaved={onChanged} />}
       <table className="w-full text-xs">
         <caption className="text-left text-foreground-secondary mb-1">Djimitflo&apos;s share, as recorded — a CLI lease (e.g. opencode) counts once, although it makes many requests</caption>
-        <thead><tr className="text-foreground-secondary"><th className="text-left">window</th><th className="text-right">calls</th><th className="text-right">tokens</th></tr></thead>
+        <thead><tr className="text-foreground-secondary"><th className="text-left">window</th><th className="text-right">calls</th><th className="text-right">fresh tokens</th><th className="text-right">cache reads</th></tr></thead>
         <tbody>
           {WINDOWS.map((w) => {
             const s = a.windows[w.id]; const leases = a.lease_sessions?.[w.id] ?? 0;
@@ -284,7 +293,8 @@ function AccountCard({ a, onChanged }: { a: UsageAccount; onChanged: () => void 
               <tr key={w.id}>
                 <td className="text-foreground-secondary">{w.label}</td>
                 <td className="text-right text-foreground">{s.calls}{leases ? <span className="text-foreground-secondary"> ({leases} lease)</span> : null}</td>
-                <td className="text-right text-foreground">{fmt(s.tokens)}{s.calls_without_tokens ? <span className="text-foreground-secondary"> (+{s.calls_without_tokens} unreported)</span> : null}</td>
+                <td className="text-right text-foreground">{fmt(freshOf(s))}{s.calls_without_tokens ? <span className="text-foreground-secondary"> (+{s.calls_without_tokens} unreported)</span> : null}</td>
+                <td className="text-right text-foreground-secondary">{s.cache_read_tokens == null ? <span title="not reported">—</span> : fmt(s.cache_read_tokens)}</td>
               </tr>
             );
           })}
@@ -303,7 +313,10 @@ function AccountCard({ a, onChanged }: { a: UsageAccount; onChanged: () => void 
         <details>
           <summary className="text-xs text-foreground-secondary cursor-pointer">consumers (7 d)</summary>
           <ul className="text-xs mt-1">
-            {a.consumers_7d.map((c) => <li key={c.consumer} className="flex justify-between"><span>{c.consumer}</span><span>{c.calls} calls · {fmt(c.tokens)} tokens</span></li>)}
+            {a.consumers_7d.map((c) => (
+              <li key={c.consumer} className="flex justify-between gap-2"><span className="break-all">{c.consumer}</span>
+                <span className="shrink-0">{c.calls} calls · {fmt(freshOf(c))} fresh tokens{c.cache_read_tokens ? ` (+${fmt(c.cache_read_tokens)} cache reads)` : ''}</span></li>
+            ))}
           </ul>
         </details>
       )}
@@ -335,7 +348,7 @@ export function UsagePage() {
   }
   if (error || !data) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 p-4 md:p-8">
         <h1 className="text-2xl font-bold text-foreground">Usage</h1>
         <div className="bg-background-secondary rounded-lg p-6 text-center" role="alert">
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
@@ -345,20 +358,30 @@ export function UsagePage() {
     );
   }
   const missing = Object.entries(data.sources).filter(([, v]) => v === 'missing').map(([k]) => k);
+  // busiest first: 7-day fresh tokens, then 7-day calls (Array.sort is stable: ties keep the API order)
+  const fresh7d = (a: UsageAccount) => freshOf(a.windows['7d']) ?? 0;
+  const accounts = [...data.accounts].sort((x, y) => fresh7d(y) - fresh7d(x) || y.windows['7d'].calls - x.windows['7d'].calls);
+  const sum = (f: (a: UsageAccount) => number | null | undefined) => accounts.reduce((t, a) => t + (f(a) ?? 0), 0);
+  const cache7d = sum((a) => a.windows['7d'].cache_read_tokens);
+  const limited = accounts.filter((a) => a.state.state !== 'no_limit_recorded').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 md:p-8">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Usage</h1>
         <p className="text-foreground-secondary mt-1">Calls and tokens per provider account — model-call ledger and maker/checker CLI sessions.</p>
         <p className="text-xs text-foreground-secondary mt-1">{data.note}</p>
       </div>
+      <p role="status" aria-label="Usage summary" className="text-sm text-foreground">
+        7 d: {fmt(sum((a) => a.windows['7d'].calls))} calls · {fmt(sum(fresh7d))} fresh tokens{cache7d ? ` + ${fmt(cache7d)} cache reads` : ''}
+        {' · '}{accounts.filter((a) => a.windows['7d'].calls > 0).length} accounts with usage{limited ? ` · ${limited} limited or in backoff` : ''}
+      </p>
       {missing.length > 0 && <p className="text-sm text-yellow-600" role="status">Source missing: {missing.join(', ')} — totals are partial.</p>}
       {data.plan_limits.error && <p className="text-sm text-yellow-600" role="status">Plan limits unreadable ({data.plan_limits.source}): {data.plan_limits.error}</p>}
       {data.plan_limits.invalid > 0 && <p className="text-sm text-yellow-600" role="status">{data.plan_limits.invalid} invalid plan-limit entries ignored ({data.plan_limits.source}).</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {data.accounts.map((a) => <AccountCard key={a.id} a={a} onChanged={reload} />)}
+        {accounts.map((a) => <AccountCard key={a.id} a={a} onChanged={reload} />)}
       </div>
 
       {legacy && (

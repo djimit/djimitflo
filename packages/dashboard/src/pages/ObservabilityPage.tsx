@@ -26,6 +26,12 @@ const MAX_RECONNECTS = 5;
 const STABLE_STREAM_MS = 60_000; // a stream that stayed open this long resets the reconnect budget
 const reconnectDelay = (attempt: number) => Math.min(1_000 * 2 ** (attempt - 1), 15_000);
 
+// Truth audit 2026-11-12: every count is windowed and says so; a 7,377-char error is clamped, not repeated.
+const WINDOWS = [1, 7, 30, 90, 365];
+const windowLabel = (days: number) => (days === 1 ? 'last 24 hours' : `last ${days} days`);
+const ERROR_CLAMP = 300;
+const DOMINANT_SHARE = 0.95;
+
 export function ObservabilityPage() {
   const [metrics, setMetrics] = useState<ObservabilityMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,6 +41,8 @@ export function ObservabilityPage() {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [streamGeneration, setStreamGeneration] = useState(0);
   const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [windowDays, setWindowDays] = useState(7);
+  const [expandedErrors, setExpandedErrors] = useState<Set<number>>(new Set());
   const token = useAuthStore((state) => state.token);
 
   // D10: SSE live event feed
@@ -91,10 +99,10 @@ export function ObservabilityPage() {
   }, [token, streamGeneration]);
 
   useEffect(() => {
-    api.getObservabilityMetrics().then(setMetrics)
+    api.getObservabilityMetrics(windowDays).then((next) => { setMetrics(next); setExpandedErrors(new Set()); })
       .catch(error => setMetricsError(error instanceof Error ? error.message : 'Metrics unavailable'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [windowDays]);
 
   // W7: keep the page title when the metrics call fails (the route smoke found a bare error line)
   if (metricsError) return <div className="p-8 space-y-4"><h1 className="text-3xl font-bold text-foreground">Observability</h1><div role="alert" className="text-status-error">{metricsError}</div></div>;
@@ -111,22 +119,44 @@ export function ObservabilityPage() {
   }
 
   const totalAssessments = Object.values(metrics.risk_distribution).reduce((sum, count) => sum + count, 0);
+  const dominant = Object.entries(metrics.risk_distribution).find(([, count]) => totalAssessments > 0 && count / totalAssessments > DOMINANT_SHARE);
+  // an older server ignores ?days and returns all-time counts (no window_days): say so rather than mislabel them
+  const period = metrics.window_days ? windowLabel(metrics.window_days) : 'all time';
+  const outcomes = metrics.approval_outcomes;
 
   return (
     <div className="p-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Observability</h1>
-        <p className="text-foreground-secondary mt-2">System-wide execution metrics, risk distribution, and policy decisions.</p>
+        <p className="text-foreground-secondary mt-2">System-wide execution metrics, risk-engine recommendations and approval outcomes.</p>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2 text-foreground-secondary">
+            Window
+            <select aria-label="Window" value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}
+              className="bg-background-secondary border border-border rounded-md px-2 py-1 text-foreground">
+              {WINDOWS.map((days) => <option key={days} value={days}>{windowLabel(days)}</option>)}
+            </select>
+          </label>
+          <span data-testid="metrics-window" className="text-xs text-foreground-muted">
+            Counts cover the {period}: tasks by creation, assessments by time, approvals by when they were decided or expired.
+            Pending approvals are current.
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard icon={<Activity className="w-5 h-5" />} label="Total Tasks" value={metrics.total_tasks} color="blue" />
+        <MetricCard icon={<Activity className="w-5 h-5" />} label="Tasks created" value={metrics.total_tasks} color="blue" />
         <MetricCard icon={<CheckCircle className="w-5 h-5" />} label="Completed" value={metrics.completed_tasks} color="green" />
         <MetricCard icon={<XCircle className="w-5 h-5" />} label="Failed" value={metrics.failed_tasks} color="red" />
-        <MetricCard icon={<Clock className="w-5 h-5" />} label="Pending Approvals" value={metrics.pending_approvals} color="yellow" />
+        <MetricCard icon={<Clock className="w-5 h-5" />} label="Pending approvals (now)" value={metrics.pending_approvals} color="yellow" />
       </div>
+      {metrics.avg_duration_ms ? (
+        <p className="text-sm text-foreground-secondary">
+          Avg. duration of completed tasks: <span className="font-medium text-foreground">{formatDuration(metrics.avg_duration_ms)}</span>
+        </p>
+      ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Shield className="w-5 h-5" />
@@ -138,24 +168,39 @@ export function ObservabilityPage() {
             <RiskBar label="High" count={metrics.risk_distribution.high ?? 0} total={totalAssessments} color="orange" />
             <RiskBar label="Critical" count={metrics.risk_distribution.critical ?? 0} total={totalAssessments} color="red" />
           </div>
+          {dominant && (
+            <p role="note" className="mt-4 text-xs text-foreground-secondary">
+              {Math.round((dominant[1] / totalAssessments) * 100)}% of assessments are {dominant[0]}: this distribution carries little signal in this window.
+            </p>
+          )}
         </div>
 
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <BarChart3 className="w-5 h-5" />
-            Policy Decisions
+            Risk-engine recommendations
           </h2>
+          <p className="text-xs text-foreground-muted mb-3">What the risk engine recommended per assessment. Not a decision: see approval outcomes.</p>
           <div className="space-y-3">
-            <DecisionRow label="Allowed" count={metrics.policy_decisions.allow ?? 0} color="green" />
-            <DecisionRow label="Require Approval" count={metrics.policy_decisions.require_approval ?? 0} color="yellow" />
-            <DecisionRow label="Denied" count={metrics.policy_decisions.deny ?? 0} color="red" />
+            <DecisionRow label="Allow" count={metrics.policy_decisions.allow ?? 0} color="green" />
+            <DecisionRow label="Require approval" count={metrics.policy_decisions.require_approval ?? 0} color="yellow" />
+            <DecisionRow label="Deny" count={metrics.policy_decisions.deny ?? 0} color="red" />
           </div>
-          {metrics.avg_duration_ms && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <span className="text-sm text-foreground-secondary">Avg. duration: </span>
-              <span className="text-sm font-medium text-foreground">{formatDuration(metrics.avg_duration_ms)}</span>
+        </div>
+
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <CheckCircle className="w-5 h-5" />
+            Approval outcomes
+          </h2>
+          <p className="text-xs text-foreground-muted mb-3">Approvals decided or expired in the {period}.</p>
+          {outcomes ? (
+            <div className="space-y-3">
+              <DecisionRow label="Approved" count={outcomes.approved} color="green" />
+              <DecisionRow label="Denied" count={outcomes.denied} color="red" />
+              <DecisionRow label="Expired" count={outcomes.expired} color="yellow" />
             </div>
-          )}
+          ) : <p className="text-sm text-foreground-secondary">Not reported by this server version.</p>}
         </div>
       </div>
 
@@ -163,18 +208,34 @@ export function ObservabilityPage() {
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-status-error" />
-            Recent Errors
+            Recent errors
+            <span className="text-xs font-normal text-foreground-muted">identical messages grouped</span>
           </h2>
           <div className="space-y-2">
-            {metrics.recent_errors.map((error, i) => (
-              <div key={i} className="flex items-start gap-2 p-2 rounded bg-status-error/5 border border-status-error/20">
-                <XCircle className="w-4 h-4 text-status-error mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm text-foreground">{error.message}</p>
-                  <p className="text-xs text-foreground-secondary">{error.task_id.slice(0, 8)}... &middot; {new Date(error.timestamp).toLocaleString()}</p>
+            {metrics.recent_errors.map((error, i) => {
+              const long = error.message.length > ERROR_CLAMP;
+              const expanded = expandedErrors.has(i);
+              return (
+                <div key={i} data-testid="recent-error" className="flex items-start gap-2 p-2 rounded bg-status-error/5 border border-status-error/20">
+                  <XCircle className="w-4 h-4 text-status-error mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-foreground break-words whitespace-pre-wrap">
+                      {(error.count ?? 1) > 1 && <span className="mr-2 rounded bg-status-error/10 px-1.5 text-xs font-semibold text-status-error">×{error.count}</span>}
+                      {long && !expanded ? `${error.message.slice(0, ERROR_CLAMP)}…` : error.message}
+                    </p>
+                    {long && (
+                      <button type="button" className="text-xs underline text-foreground-secondary"
+                        onClick={() => setExpandedErrors((prev) => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next; })}>
+                        {expanded ? 'Show less' : `Show full message (${error.message.length} chars)`}
+                      </button>
+                    )}
+                    <p className="text-xs text-foreground-secondary">
+                      {error.task_id.slice(0, 8)}... &middot; {(error.count ?? 1) > 1 ? 'latest ' : ''}{new Date(error.timestamp).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

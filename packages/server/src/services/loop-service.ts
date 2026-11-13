@@ -28,7 +28,7 @@ import { LoopDiscoveryService } from './loop-discovery-service';
 import { LoopVerificationService } from './loop-verification-service';
 import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
-import { LoopRunQueryService } from './loop-run-query-service';
+import { LoopRunQueryService, type LoopRunFilter } from './loop-run-query-service';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { LoopRecoveryService, RuntimeLeaseRegistry, type ResumeInterruptedMode, type ResumeInterruptedSummary } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
@@ -656,8 +656,8 @@ export class LoopService {
     return this.queries.getById(id);
   }
 
-  listLoopRuns(): LoopRunRecord[] {
-    return this.queries.list();
+  listLoopRuns(filter: LoopRunFilter = {}): LoopRunRecord[] {
+    return this.queries.list(filter);
   }
 
   getReviewBundle(id: string): { run: LoopRunRecord; leases: WorkerLeaseRecord[]; events: LoopEventRecord[]; state_content: string | null } {

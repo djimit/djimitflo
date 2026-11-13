@@ -49,9 +49,17 @@ it('K1: n < 5 attributable uses is insufficient (never 0); at 5 the item is judg
   for (let i = 0; i < 5; i++) run('maker_failure', ['b.md']);
   f = knowledgeFitness(db, NOW);
   expect(f.baseline).toEqual({ n: 10, verified_rate: 0.4 });
-  expect(item(f, 'kb_page', 'a.md')).toMatchObject({ n_used: 5, n_verified: 4, n_regressed: 1, status: 'used_with_value' });
+  // 4/5 (Wilson 38–96 %) and 0/5 (0–43 %) both include the 40 % baseline: neither is decided on n = 5
+  expect(item(f, 'kb_page', 'a.md')).toMatchObject({ n_used: 5, n_verified: 4, n_regressed: 1, status: 'inconclusive' });
   expect(item(f, 'kb_page', 'a.md')!.wilson![0]).toBeGreaterThan(0.3);
-  expect(item(f, 'kb_page', 'b.md')).toMatchObject({ n_regressed: 5, status: 'used_no_value' });
+  expect(item(f, 'kb_page', 'b.md')).toMatchObject({ n_regressed: 5, status: 'inconclusive' });
+  for (let i = 0; i < 15; i++) { run('maker_failure', ['b.md']); run('verified', ['c.md']); }
+  f = knowledgeFitness(db, NOW);
+  expect(f.baseline).toEqual({ n: 40, verified_rate: 0.475 });
+  expect(item(f, 'kb_page', 'b.md')).toMatchObject({ n_regressed: 20, status: 'used_no_value' }); // 0/20: upper bound 16 % < 47.5 %
+  expect(item(f, 'kb_page', 'c.md')).toMatchObject({ n_verified: 15, status: 'used_with_value' }); // 15/15: lower bound 80 % > 47.5 %
+  expect(item(f, 'kb_page', 'a.md')).toMatchObject({ status: 'inconclusive' });
+  expect(f.by_kind.find((k) => k.kind === 'kb_page')).toMatchObject({ used_with_value: 1, used_no_value: 1, inconclusive: 1 });
 });
 
 it('K1: unattributed and environment runs credit nobody; decay weights recent uses more; unused counts come from the inventory', () => {
@@ -96,6 +104,11 @@ it('K1: pure helpers and the knowledge overview section', () => {
   expect(knowledgeItem('requeue-of:p')).toBeNull();
   expect(fitnessStatus(0, 0, 0, 0.5)).toBe('unused');
   expect(fitnessStatus(9, 2, 2, 0.5)).toBe('insufficient');
+  // truth audit 2026-11-12: 68/95 = 0.716 and 68/96 = 0.708 sit either side of a 0.71 baseline, but both intervals contain it
+  expect(fitnessStatus(95, 68, 27, 0.71)).toBe('inconclusive');
+  expect(fitnessStatus(96, 68, 28, 0.71)).toBe('inconclusive');
+  expect(fitnessStatus(100, 90, 10, 0.71)).toBe('used_with_value'); // Wilson 83–94 % > 71 %
+  expect(fitnessStatus(100, 50, 50, 0.71)).toBe('used_no_value'); // Wilson 40–60 % < 71 %
   expect(knowledgeOverview(db, NOW).fitness).toMatchObject({ min_n: 5, half_life_days: 30, top: [] });
   expect(knowledgeFitness(new Database(':memory:'), NOW)).toMatchObject({ top: [], baseline: { n: 0, verified_rate: null } });
 });
