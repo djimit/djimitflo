@@ -3,9 +3,6 @@ type: security-architecture
 title: "AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth"
 description: The seven-role RBAC model and ROLE_PERMISSIONS table, AuthService JWT issuance with revocable session-bound access tokens and 30-day refresh-cookie rotation, requireAuth/requirePermission middleware that re-reads role and organization membership from the DB on every request, and bearer-subprotocol WebSocket authentication with close-code-driven client re-auth.
 tags: [authentication, authorization, rbac, jwt, refresh-token-rotation, sessions, websocket, middleware, separation-of-duties, tenancy]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-a43d7cc8a5a9d2a77f3767e3
     resource: repo://packages/dashboard/src/hooks/useWebSocket.ts
@@ -45,7 +42,10 @@ sources:
     resource: repo://packages/shared/src/types/auth.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-13T16:00:27.211Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-13T16:00:27.211Z
 ---
 
 # AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth
@@ -113,7 +113,8 @@ that the rest of the pipeline relies on (see /openwiki/concepts/governance-pipel
   `AuthorizationService.canApproveForTask` denies non-privileged users from
   approving tasks they own (packages/server/src/services/authorization-service.ts).
   Approval decision endpoints (`POST /api/approvals/:id/approve`, `/deny`,
-  `/cancel`, and siblings in loops/swarm-governance/work-items) all sit behind
+  `/cancel`, `PATCH /api/approvals/:id`, and sibling approval endpoints in
+  loops, swarm-governance, work-items, and host-agent) all sit behind
   `requirePermission('approve:task')` (packages/server/src/routes/approvals.ts).
 
 So an operator who builds can never be the operator who signs off, even with an

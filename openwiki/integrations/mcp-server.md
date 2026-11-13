@@ -1,15 +1,21 @@
 ---
 type: integration-package
 title: MCP Server Package
-description: The @djimitflo/mcp-server package exposes Djimitflo state and control actions to MCP clients (Claude Code, Cursor, VS Code) over stdio or an authenticated HTTP/SSE transport, reading and writing the SQLite database directly with a snapshot-vs-live safety boundary and per-principal role context.
-tags: [mcp, mcp-server, stdio, http-transport, sqlite, snapshot-live-gating, tool-families, auth-context, integrations]
+description: The @djimitflo/mcp-server package exposes Djimitflo state and control actions to MCP clients (Claude Code, Cursor, VS Code) over stdio or an authenticated HTTP/SSE transport, reading and writing the SQLite database directly with a snapshot-vs-live safety boundary, per-principal role context, and a data-freshness label stamped on every DB-backed answer.
+tags: [mcp, mcp-server, stdio, http-transport, sqlite, snapshot-live-gating, tool-families, auth-context, djimitsec, integrations]
 sources:
   - id: openwiki-source-ba912540c58d3dce145e1625
     resource: repo://packages/mcp-server/package.json
   - id: openwiki-source-99818a842bae5a0ab782c95a
     resource: repo://packages/mcp-server/src/__tests__/authority-tools.test.ts
+  - id: openwiki-source-c64f2181505aee0596c9031c
+    resource: repo://packages/mcp-server/src/__tests__/data-label.test.ts
   - id: openwiki-source-98839c85310f2361920fdde1
     resource: repo://packages/mcp-server/src/__tests__/db.test.ts
+  - id: openwiki-source-c03727191c85688d48becf8f
+    resource: repo://packages/mcp-server/src/__tests__/djimitsec-tools.test.ts
+  - id: openwiki-source-6200567cdc34e1718c3313d0
+    resource: repo://packages/mcp-server/src/__tests__/expert-tools.test.ts
   - id: openwiki-source-c611658bc71229073f0e22d4
     resource: repo://packages/mcp-server/src/__tests__/explainer-tools.test.ts
   - id: openwiki-source-f32a88438a95fd9c406f31ef
@@ -18,6 +24,10 @@ sources:
     resource: repo://packages/mcp-server/src/__tests__/knowledge-tools.test.ts
   - id: openwiki-source-3df4070bfd72dd7e20c8c996
     resource: repo://packages/mcp-server/src/__tests__/mcp-server.test.ts
+  - id: openwiki-source-9dfe4947b9bd3626878b7069
+    resource: repo://packages/mcp-server/src/__tests__/mcp-write-permissions.test.ts
+  - id: openwiki-source-06760683d82f7f3166822b93
+    resource: repo://packages/mcp-server/src/__tests__/notebooks.test.ts
   - id: openwiki-source-f12bef0d948ec2e5776ac453
     resource: repo://packages/mcp-server/src/__tests__/orchestration-registration.test.ts
   - id: openwiki-source-26dce71b79faec29409362d1
@@ -26,12 +36,12 @@ sources:
     resource: repo://packages/mcp-server/src/db.ts
   - id: openwiki-source-35ac8c9a6fc2c825c488ce71
     resource: repo://packages/mcp-server/src/index.ts
-  - id: openwiki-source-a78a8c0681b5fc0825f107fa
-    resource: repo://packages/mcp-server/src/register-tools.ts
   - id: openwiki-source-502a0307278bcc1ace106d3b
     resource: repo://packages/mcp-server/src/tools/agents.ts
   - id: openwiki-source-d8dc0d8d1c544c08c0700d0d
     resource: repo://packages/mcp-server/src/tools/authority.ts
+  - id: openwiki-source-7d9cf8655b0bffd40fa963fb
+    resource: repo://packages/mcp-server/src/tools/djimitsec.ts
   - id: openwiki-source-4f3e4e48427ba24e11b45e1d
     resource: repo://packages/mcp-server/src/tools/experts.ts
   - id: openwiki-source-e7c45ca8fa1c19082bfc7554
@@ -60,7 +70,10 @@ sources:
     resource: repo://packages/shared/src/jwt.ts
   - id: openwiki-source-f873c20d1298723efcbc88e6
     resource: repo://packages/shared/src/types/auth.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-13T16:00:27.211Z
+generated: { by: "openwiki/0.5.2", at: "2026-11-13T16:00:27.211Z" }
 ---
 
 # MCP Server Package
@@ -68,12 +81,14 @@ generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
 `@djimitflo/mcp-server` (`packages/mcp-server`) is the
 [Model Context Protocol](https://modelcontextprotocol.io) bridge between Djimitflo
 and IDE/agent clients such as Claude Code, Cursor, or VS Code. It ships a
-`djimitflo-mcp` binary that starts an `McpServer` (`name: "djimitflo"`) and
-registers twelve tool families covering loops, goals, agents, mission control,
-orchestration, governance, and knowledge packs. Unlike dashboard/API clients, most
-tools query Djimitflo's SQLite database **directly via `better-sqlite3` rather
-than through the REST API**; only a handful of tools (council, approvals, exports,
-explainer pipeline runs) deliberately cross the authenticated API boundary.
+`djimitflo-mcp` binary (`packages/mcp-server` package.json `bin`, targeting
+`dist/index.js`) that starts an `McpServer` (`name: "djimitflo"`) and registers
+thirteen tool families covering loops, goals, agents, mission control,
+orchestration, governance, knowledge packs, and DjimitSec scanning. Unlike
+dashboard/API clients, most tools query Djimitflo's SQLite database **directly via
+`better-sqlite3` rather than through the REST API**; only a handful of tools
+(council, approvals, exports, explainer pipeline runs, the DjimitSec scan
+dispatch) deliberately cross the authenticated API boundary.
 
 ```text
 djimitflo-mcp --transport stdio            # default, for IDE-managed processes
@@ -93,12 +108,13 @@ flowchart TD
   JWT --> AUTHN["currentPrincipal live DB re-check of user and session"]
   SYNTH --> ALS["runWithMcpAuth AsyncLocalStorage"]
   AUTHN --> ALS
-  ALS --> TOOLS["registered tool families gated by requireLiveMode and requirePermission"]
+  ALS --> TOOLS["labelDbTools-wrapped families gated by requireLiveMode and requireMcpPermission"]
 ```
 
 *Startup wiring: one database handle is opened first, then either a synthetic stdio
 principal or per-request JWT verification establishes the AsyncLocalStorage auth
-context that all tool handlers read.*
+context that all tool handlers read. DB-backed families are registered through a
+labeling proxy so every answer carries the database's freshness label.*
 
 The entrypoint `src/index.ts` parses `--transport`, `--port` (default `3002`), and
 `--db`, opens the database once via `createDatabase`, and builds a `createServer`
@@ -108,12 +124,15 @@ factory that registers all tool families on each new `McpServer` instance.
 connects to `StdioServerTransport` inside `runWithMcpAuth` with a synthetic
 principal: `sub` comes from `DJIMITFLO_MCP_STDIO_PRINCIPAL` or falls back to
 `stdio:<uid>`, `token` comes from `DJIMITFLO_MCP_TOKEN` (or empty), and the role is
-**hardwired to `UserRole.VIEWER`** with a 24-hour expiry. This means a default
-stdio session can only read; every tool guarded by a permission such as
-`write:swarm_action`, `write:evidence`, `create:task`, or `read:audit` throws
-`MCP_PERMISSION_DENIED` because the viewer role carries none of them. Tools that do
-no `requirePermission` check (the plain read loops/goals/agents/mission-control
-tools, OKF, notebook bridge calls, the extractive explainer fallback) still work.
+**hardwired to `UserRole.VIEWER`** with a 24-hour expiry. The viewer role carries
+only `read:evidence` and `read:repository`, so a default stdio session can only
+read; every tool guarded by a permission such as `write:swarm_action`,
+`write:evidence`, `write:governance`, `manage:config`, `create:task`, or
+`read:audit` fails with `MCP_PERMISSION_DENIED`. Gated notebook and explainer
+write tools catch that error and return an `isError` result instead, while the
+ungated tools (the plain read loops/goals/agents/mission-control tools, OKF,
+`notebook_list`, `notebook_ask`, explainer reads and the extractive fallback)
+still work.
 
 **HTTP.** `startHttpServer` in `src/transports/http.ts` refuses to start without
 `JWT_SECRET` (`JWT_SECRET is required for MCP HTTP transport`). It serves the
@@ -171,28 +190,50 @@ instance id, node id (`DJIMITFLO_NODE_ID` or hostname), resolved path, mode, and
 attached to. Do not weaken this gating: it is what makes pointing the same binary
 at a copied snapshot safe.
 
+### Data labels (O2c)
+
+Snapshot gating prevents *writes* to a copied database, but an agent can still
+*read* a stale copy and mistake it for production. To counter this, `registerTools`
+registers every DB-backed family through `labelDbTools(server, db)`, a `Proxy`
+that wraps `registerTool`: each wrapped handler appends one extra text block to
+its result carrying `dataLabel(handle)` — `data_as_of` (the newest
+`loop_runs.created_at`, else the DB file's mtime, else `null`; never "now"),
+`is_production` (true only for the fixed container path `/data/djimitflo.sqlite`,
+exported as `PROD_DB_PATH`), and `db_path`. `content[0]` and any structured
+content are unchanged. Two groups are exempt by construction: families registered
+with the raw server (`okf_*` and the notebook bridge tools, which read no
+database), and the API-forwarded pair `djimitflo_council_ask` /
+`djimitflo_generate_export` (`API_ONLY_TOOLS`), whose answers are served by the
+live API rather than by this handle.
+
 ## Auth context and permission checks
 
 `src/auth-context.ts` stores `{ payload, token }` in `AsyncLocalStorage`
 (`runWithMcpAuth`/`currentMcpAuth`); `currentMcpAuth` throws
 `MCP_AUTH_CONTEXT_REQUIRED` when a handler runs outside it, which makes anonymous
-mutation impossible regardless of transport. Orchestration and authority tools add
-a `requirePermission` helper that checks the principal's role against
-`ROLE_PERMISSIONS` from `@djimitflo/shared` and throws
-`MCP_PERMISSION_DENIED: <permission>`. The platform tools (`council`, exports) and
-orchestration `approve_action` forward `currentMcpAuth().token` as a Bearer header
-to `DJIMITFLO_API_URL` (default `http://127.0.0.1:3001/api`), so the API re-applies
-its own authorization to those calls.
+mutation impossible regardless of transport. The shared `requireMcpPermission`
+helper (plus a local copy in the orchestration tools) checks the principal's role
+against `ROLE_PERMISSIONS` from `@djimitflo/shared` and throws
+`MCP_PERMISSION_DENIED: <permission>` — the doc comment states the rule: an MCP
+tool that writes must ask for the permission of its HTTP route twin, so the MCP
+surface is never a wider door than the API. The platform tools (`council`,
+exports), orchestration `approve_action`, and `djimitflo_scan_repository` forward
+`currentMcpAuth().token` as a Bearer header to `DJIMITFLO_API_URL` (default
+`http://127.0.0.1:3001/api`), so the API re-applies its own authorization to
+those calls.
 
 ## Tool family map
 
-`registerTools` exported from `src/index.ts` mounts the twelve families below;
-each tool name is listed with its mutating posture. A second registrar,
-`src/register-tools.ts`, additionally mounts an `experts` family
+`registerTools` exported from `src/index.ts` mounts the thirteen families below;
+each tool name is listed with its mutating posture. The former second registrar
+(`src/register-tools.ts`, which mounted an additional `experts` family) has been
+**removed**: `tools/experts.ts` still exports `registerExpertTools`
 (`djimitflo_expert_search`, `djimitflo_expert_get`,
 `djimitflo_expert_capabilities`, `djimitflo_expert_claims` — read-only provenance
-views over the `expert_*` tables) but is not imported by the binary's `main`, so
-those tools only appear where that module is wired in explicitly.
+views over the `expert_*` tables, returning tentative lifecycle states verbatim
+and hiding person-kind identities unless `FRONTIER_EXPERT_PERSONS_ENABLED=true`)
+but the binary's `main` never imports it, so those tools appear only where the
+module is wired in explicitly (as `expert-tools.test.ts` does).
 
 | Family | Tools | Posture |
 | --- | --- | --- |
@@ -203,11 +244,12 @@ those tools only appear where that module is wired in explicitly.
 | orchestration | `djimitflo_spawn_agent`, `djimitflo_handoff_agent`, `djimitflo_approve_action` (mutating), `djimitflo_list_orchestration_agents` (read) | All three mutators require live mode; spawn/handoff need `write:swarm_action`, approve needs `create:task` and POSTs `/approvals` through the API |
 | okf | `okf_search`, `okf_get`, `okf_related`, `okf_validate`, `okf_status` | Read-only over the file-based OKF bundle, no database involved |
 | openmythos | `djimitflo_openmythos_leaderboard`, `djimitflo_openmythos_score` | Read-only over `openmythos_eval_runs`; evals are started via the REST API, not MCP |
-| governance | `djimitflo_get_data_provenance`, `djimitflo_mcp_doctor`, `djimitflo_list_mcp_servers`, `djimitflo_list_mcp_tools`, `djimitflo_get_mcp_permissions`, `djimitflo_get_cost_summary`, `djimitflo_get_evidence_chain`, `djimitflo_list_openmythos_runs`, `djimitflo_list_skill_outcomes` (read) and `djimitflo_sync_mcp_catalog`, `djimitflo_sync_http_sidecar_catalog`, `djimitflo_probe_mcp_sidecars` (mutating with `apply=true`) | The three sync/probe tools default to `apply=false` dry-run previews and gate the write path behind `requireLiveMode` |
-| notebooks | `notebook_list`, `notebook_create`, `notebook_delete`, `notebook_add_source`, `notebook_ask`, `notebook_generate`, `notebook_research`, `notebook_notes`, `notebook_download` | No Djimitflo DB access; all shell out to a NotebookLM bridge subprocess (see below) — create/delete/add/notes mutate the external service |
-| explainer | `explainer_create_task`, `explainer_run_task` (write queue rows), `explainer_list_tasks`, `explainer_get_task`, `explainer_list_bundles`, `explainer_ask`, `explainer_search_repo`, `explainer_get_fact`, `explainer_compare_repos` (read) | Not gated by `requireLiveMode`; `explainer_ask`/`explainer_run_task` delegate to `EXPLAINER_SERVER_URL` when set, otherwise fall back to local chunk search / job enqueue |
+| governance | `djimitflo_get_data_provenance`, `djimitflo_mcp_doctor`, `djimitflo_list_mcp_servers`, `djimitflo_list_mcp_tools`, `djimitflo_get_mcp_permissions`, `djimitflo_get_cost_summary`, `djimitflo_get_evidence_chain`, `djimitflo_list_openmythos_runs`, `djimitflo_list_skill_outcomes` (read) and `djimitflo_sync_mcp_catalog`, `djimitflo_sync_http_sidecar_catalog`, `djimitflo_probe_mcp_sidecars` (mutating with `apply=true`) | The three sync/probe tools default to `apply=false` dry-run previews; the write path requires live mode **and** `manage:config` (their HTTP twins' permission) |
+| notebooks | `notebook_list`, `notebook_create`, `notebook_delete`, `notebook_add_source`, `notebook_ask`, `notebook_generate`, `notebook_research`, `notebook_notes`, `notebook_download` | No Djimitflo DB access; all shell out to a NotebookLM bridge subprocess (see below). Every notebook-mutating or file-writing tool requires `write:evidence`, which the stdio-default viewer lacks; `list`, `ask`, and `notes action=list` stay open |
+| explainer | `explainer_create_task`, `explainer_run_task` (write queue rows, gated by `write:governance`), `explainer_list_tasks`, `explainer_get_task`, `explainer_list_bundles`, `explainer_ask`, `explainer_search_repo`, `explainer_get_fact`, `explainer_compare_repos` (read) | Still not gated by `requireLiveMode`, but create/run check permission since they enqueue scans of arbitrary `local_path`/`remote_url`; `explainer_ask`/`explainer_run_task` delegate to `EXPLAINER_SERVER_URL` when set, otherwise fall back to local chunk search / job enqueue |
 | authority | `djimitflo_authority_trace`, `djimitflo_authority_stats` (`read:audit`), `djimitflo_authority_emit` (mutating, `write:evidence` + live mode) | `authority_emit` refuses `policyDecision: 'ALLOW'` — actionable authority requires the external producer — and stamps the authenticated principal as actor |
-| platform | `djimitflo_council_ask`, `djimitflo_generate_export` (API-forwarded), `djimitflo_memory_search` (read-only SQL over `memory_candidates`) | Council/export calls carry the session Bearer token so the API's own auth applies |
+| platform | `djimitflo_council_ask`, `djimitflo_generate_export` (API-forwarded), `djimitflo_memory_search` (read-only SQL over `memory_candidates`) | Council/export calls carry the session Bearer token so the API's own auth applies; they are also exempt from the data label |
+| djimitsec | `djimitflo_scan_repository` (mutating) | Live mode + `create:task` and `execute:task`; dispatches only the fixed approved DjimitSec scanner through the native task API — native dispatch plus API forwarding, never direct DB writes (see below) |
 
 Three deliberate "no-op by design" behaviors are worth knowing before extending
 these tools: orchestration `djimitflo_spawn_agent` inserts a **registration-only**
@@ -218,10 +260,13 @@ creates a *pending* approval record and explicitly does not execute the action; 
 `djimitflo_handoff_agent` writes a pending `fleet_handoffs` control-plane row rather
 than transferring a live process.
 
-The governance sync tools classify discovered tools with simple heuristics — tool
-names matching `approve|spawn|handoff` become `requires_approval/high`, and HTTP
-GET/HEAD/OPTIONS operations become `allowed/low` while other methods become
-`requires_approval/medium` — so freshly synced permissions start conservative.
+The governance sync tools classify discovered tools with simple heuristics —
+`djimitflo_scan_repository` is pinned to `requires_approval/medium`, tool names
+matching `approve|spawn|handoff` become `requires_approval/high`, names matching
+`evidence|cost|permission|mcp_` become `allowed/medium` and everything else is
+`allowed/low`, and HTTP GET/HEAD/OPTIONS operations become `allowed/low` while
+other methods become `requires_approval/medium` — so freshly synced permissions
+start conservative.
 
 ## External integrations
 
@@ -230,8 +275,14 @@ GET/HEAD/OPTIONS operations become `allowed/low` while other methods become
 `NOTEBOOKLM_BRIDGE_PATH` (default `~/workspace/notebooklm-mcp/bridge.py`) with a
 120-second timeout and 10 MB stdout buffer, expecting JSON on stdout. Failures
 surface as explicit `isError` tool results including the bridge's `recovery` hint
-rather than throwing — the tools work from a snapshot server because they never
-touch Djimitflo state.
+rather than throwing. Two hardening boundaries apply: every tool that changes a
+notebook or writes a file (`create`, `delete`, `add_source`, `generate`,
+`research`, `notes action=create`, `download`) first requires `write:evidence`,
+so the stdio-default viewer cannot push local files to an external service; and
+`notebook_download` confines its `outputPath` to the notebook directory
+(`NOTEBOOKLM_OUTPUT_DIR`, default `<bridge dir>/downloads`), resolving the
+nearest existing ancestor and rejecting `..` escapes and symlink breakouts with
+`NOTEBOOK_OUTPUT_PATH_OUTSIDE_DIR`.
 
 **OKF bundle.** `okf_*` tools resolve the knowledge bundle from `OKF_BASE` or by
 probing `djimitflo-knowledge/okf` relative to the module and cwd, and walk the
@@ -246,7 +297,23 @@ fabricate answers: it returns extractive citations from published knowledge chun
 or a `NOT_ENOUGH_EVIDENCE` refusal, and `explainer_create_task`/`explainer_run_task`
 guarantee a pending `explainer_jobs` row so the server's `ExplainerFleetWorker`
 later picks the task up. With the URL set, both delegate over HTTP (optionally with
-`DJIMITFLO_API_TOKEN`).
+`DJIMITFLO_API_TOKEN`). Because a created task names an arbitrary `local_path` or
+`remote_url` for the worker to scan, both write tools require `write:governance`
+(matching `POST /api/explainer/tasks` and its HTTP twin run route) and return the
+denial as an `isError` result without inserting rows.
+
+**DjimitSec scanner dispatch.** `djimitflo_scan_repository` (live mode +
+`create:task`/`execute:task`) accepts only a `owner/repo` id and a 40-hex `commit`
+— no shell, URL, path, profile, or budget input — and creates the task through the
+API (`POST /tasks` with `metadata: { executor: 'djimitsec', djimitsecScan: {...}
+}`), then dispatches `POST /tasks/:id/execute`. If the execute call's outcome is
+ambiguous, the tool reports `state: 'held'` with `reconcile: true` and never
+creates or executes a second time automatically; passing an existing `taskId`
+returns a read-only reconciliation that verifies the task's djimitsec metadata
+(`DJIMITSEC_NATIVE_TASK_IDENTITY_MISMATCH` on mismatch) and never resubmits. All
+responses mark the scan results `verified: false` — static observations are not
+verified findings. Scanners and credentials deliberately live outside the MCP
+process.
 
 ## Testing
 
@@ -254,6 +321,9 @@ Focused contracts live in `src/__tests__/`:
 
 - `db.test.ts` — path resolution against `INIT_CWD`, monorepo `.data` preference,
   snapshot default, and the database-instance-id requirement for live mutations.
+- `data-label.test.ts` — `dataLabel` semantics (row max → file mtime → `null`),
+  `is_production` pinned to `/data/djimitflo.sqlite`, the label block appended to
+  DB-backed results (including error paths), with okf/notebook tools unlabelled.
 - `http-auth.test.ts` — rejection matrix for live-session tokens (`revoked`,
   `expired`, `wrong-user`, `disabled`, `stale-organization`, snapshot authority),
   role rebinding from the live DB, mid-call revocation, and cross-principal session
@@ -263,9 +333,22 @@ Focused contracts live in `src/__tests__/`:
 - `mcp-server.test.ts` — registration of the full tool inventory, read-only tool
   execution in one pass, `DJIMITFLO_LIVE_DATA_REQUIRED` for every mutating apply
   path on a snapshot handle, and exact API URL forwarding for council/export tools.
+- `mcp-write-permissions.test.ts` — HTTP-twin permissions: viewer/maker/checker
+  catalog syncs fail with `MCP_PERMISSION_DENIED: manage:config` (a preview stays
+  open to a viewer; an operator's `denied` decision is never overwritten) and
+  explainer create/run need `write:governance`, writing nothing on denial.
 - `authority-tools.test.ts` — emit/trace/stats round-trip with sequence numbering
   and payload digests, `ALLOW`-forgery refusal for every role, and snapshot/anonymous
   write rejection.
+- `notebooks.test.ts` — bridge argument/timeout contracts, `isError` recovery
+  hints, viewer denial (`write:evidence`) for all seven write tools with the bridge
+  never spawned, and download path confinement including symlink escape refusal.
+- `djimitsec-tools.test.ts` — canonical `/tasks` create-execute sequence with the
+  session token, held-state ambiguity handling, identity-mismatched readback, and
+  the anonymous/viewer/snapshot boundaries trip *before* any HTTP call.
+- `expert-tools.test.ts` — missing-table reporting, verbatim tentative/contradictory
+  claims, and person-kind identities hidden without
+  `FRONTIER_EXPERT_PERSONS_ENABLED=true`.
 
 ## Configuration summary
 
@@ -277,8 +360,8 @@ Focused contracts live in `src/__tests__/`:
 | `DJIMITFLO_NODE_ID`, `DJIMITFLO_COMMIT_SHA` | Provenance labels reported by mission-control/governance tools |
 | `DJIMITFLO_MCP_STDIO_PRINCIPAL`, `DJIMITFLO_MCP_TOKEN` | stdio principal id and the token forwarded to API-calling tools |
 | `JWT_SECRET` | Required for `--transport http`; verifies Bearer JWTs |
-| `DJIMITFLO_API_URL` | Base URL for council/approval/export forwarding (default `http://127.0.0.1:3001/api`) |
-| `OKF_BASE`, `NOTEBOOKLM_PYTHON`, `NOTEBOOKLM_BRIDGE_PATH`, `EXPLAINER_SERVER_URL`, `DJIMITFLO_API_TOKEN`, `MCP_STATUS_TTL_MS` | Knowledge-bundle, NotebookLM bridge, explainer delegation, and stale-server classification tuning |
+| `DJIMITFLO_API_URL` | Base URL for council/approval/export/DjimitSec forwarding (default `http://127.0.0.1:3001/api`) |
+| `OKF_BASE`, `NOTEBOOKLM_PYTHON`, `NOTEBOOKLM_BRIDGE_PATH`, `NOTEBOOKLM_OUTPUT_DIR`, `EXPLAINER_SERVER_URL`, `DJIMITFLO_API_TOKEN`, `FRONTIER_EXPERT_PERSONS_ENABLED`, `MCP_STATUS_TTL_MS` | Knowledge-bundle, NotebookLM bridge and download confinement, explainer delegation, expert person visibility, and stale-server classification tuning |
 
 See `/openwiki/operations/configuration-reference.md` for the fleet-wide view of
 these variables and `/openwiki/architecture/monorepo-layout.md` for where this
@@ -288,12 +371,16 @@ package sits in the workspace build order (`@djimitflo/shared` must build first)
 
 - Snapshot is the default; only `DJIMITFLO_DATA_MODE=live` unlocks mutations, and
   only against an identified operational database (`requireLiveMode`).
+- Every DB-backed tool response carries the data label (`data_as_of`,
+  `is_production`, `db_path`); `is_production` is true only at
+  `/data/djimitflo.sqlite`, so agents can detect a stale snapshot posing as prod.
 - The stdio principal is always `viewer`-role; privilege comes only from real JWTs
   on the HTTP transport, where user state, organization, and session family are
   re-validated against live data on every request.
 - Mutating tools fail closed: missing auth context, insufficient role, or snapshot
   mode each throw distinct errors (`MCP_AUTH_CONTEXT_REQUIRED`,
-  `MCP_PERMISSION_DENIED`, `DJIMITFLO_LIVE_DATA_REQUIRED`) before any write occurs.
+  `MCP_PERMISSION_DENIED`, `DJIMITFLO_LIVE_DATA_REQUIRED`) before any write occurs,
+  and each write tool mirrors the permission of its HTTP route twin.
 - Control-plane records ≠ execution: spawn, handoff, and approval tools persist
   intent only; task/loop services and the dashboard own dispatch and decisions.
 - The MCP server is a **direct SQLite peer** of the server runtime, not an API

@@ -1,11 +1,8 @@
 ---
 type: operations-runbook
 title: Backup, Restore & Data Retention
-description: How the Djimitflo server snapshots its SQLite database into validated tar.gz bundles, stages two-phase restores through a restore-pending.json marker applied at startup, and guards disk capacity via RetentionService purges and the DiskGuardService alerting loop.
+description: How the Djimitflo server snapshots its SQLite database into validated tar.gz bundles, stages two-phase restores through a restore-pending.json marker applied at startup, and bounds the data volume via the in-app RetentionService scheduler, the read-only nightly-retention.sh report, and the DiskGuardService alerting loop.
 tags: [backup, restore, sqlite, retention, disk-guard, disaster-recovery, operations, audit]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-526c2013720d2821623139b9
     resource: repo://packages/server/src/__tests__/backup.test.ts
@@ -13,6 +10,8 @@ sources:
     resource: repo://packages/server/src/__tests__/disk-guard.test.ts
   - id: openwiki-source-4935e0ab3d4eb36eac2334d5
     resource: repo://packages/server/src/__tests__/loop-services.test.ts
+  - id: openwiki-source-37e8838e9d412d4f6ea96e25
+    resource: repo://packages/server/src/__tests__/retention-errors.test.ts
   - id: openwiki-source-289072797fee700b24a8a1d3
     resource: repo://packages/server/src/bootstrap/autonomous-services.ts
   - id: openwiki-source-8aed4ab6457283bb8b19e5d3
@@ -33,7 +32,10 @@ sources:
     resource: repo://packages/server/src/services/retention-service.ts
   - id: openwiki-source-eebaf177712ad937ce48ce28
     resource: repo://packages/shared/src/types/common.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-11-13T16:00:27.211Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-11-13T16:00:27.211Z
 ---
 
 # Backup, Restore & Data Retention
@@ -230,9 +232,10 @@ grants accordingly.
 
 **`RetentionService`** (`packages/server/src/services/retention-service.ts`) is the
 scheduled counterpart to backups: it deletes old rows so the database — and with
-it the backups — stays bounded. Started only in operator/autonomous runtime
-profiles (in `index.ts` `main()`, inside the `operatorRuntime` branch) and, where
-the lifecycle manager is wired, registered for a clean `stop()`. Configuration:
+it the backups — stays bounded. It is started only in operator-enabled runtime
+profiles (the `operatorRuntime` branch in `index.ts` `main()`), alongside
+`CognitiveLoopClosureService`; it is not registered with the lifecycle manager, so
+shutdown just loses the timer with the process. Configuration:
 
 | Env | Default | Meaning |
 |---|---|---|
@@ -246,11 +249,33 @@ Each `purge()` computes an ISO cutoff and deletes older rows from
 `ttl IS NULL` — explicit TTLs own their own lifecycle), `cognitive_episodes`,
 and `cognitive_patterns`; three hot metric tables (`llm_provider_metrics`,
 `model_routing_decisions`, `model_execution_outcomes`) use a fixed **30-day**
-cutoff instead. Deletion is table-name-constant (no injection surface), failures
-on a missing table are swallowed as `0` deletions, and `getStats()` reports
-`lastRun`, cumulative `totalPurged`, and the computed `nextRun`. Purges are
-best-effort — intervals swallow rejections — and the service never touches backup
-archives; archive cleanup on disk is an operator responsibility.
+cutoff instead. Deletion is table-name-constant (no injection surface), and the
+service never touches backup archives; archive cleanup on disk is an operator
+responsibility.
+
+Per-table outcomes are explicit (OBS-003): only a `no such table` failure counts
+as the known no-op `'missing'` (0 deletions); any other error is recorded as
+`status: 'error'` with `deleted: null` — never as a zero that reads as "nothing
+to purge". `purge()` resolves with the table error list, and `getStats()` reports
+`lastRun`, `lastStatus`, `lastErrors`, cumulative `totalPurged`, and the computed
+`nextRun`. Ticks report through the scheduler registry: `start()` arms the
+`retention` scheduler entry via `noteScheduler`, and each tick ends in
+`markRun('retention', …)`, so a failing purge shows the scheduler as `failing`
+(with the first-table error message) in the cockpit instead of failing silently.
+
+**The app is the only writer of the production database** (invariant M2e/A25).
+The cron script `scripts/nightly-retention.sh` is deliberately **count-only**: it
+`docker exec`s into the container, opens `/data/djimitflo.sqlite` with
+`{ readonly: true, fileMustExist: true }`, and prints a JSON report of how many
+`openmythos_eval_runs` rows are older than `RETENTION_REPORT_DAYS` (default 180)
+so an operator can decide on an in-app rule. It replaced a predecessor (cron
+`20 4 1 * *` on the host) that opened the database read-write in a second process
+and `DELETE`d rows outside the app's audit trail. Install it from `origin/main`
+with `install -m 755 scripts/nightly-retention.sh /srv/djimitflo/`, never from a
+scratch worktree. The invariant is pinned by
+`packages/server/src/__tests__/prod-db-readonly.test.ts`, which scans `scripts/`,
+`docs/runbooks/`, and server source for any read-write open of the production
+path.
 
 **`ComplianceAuditService`** adds retention *policy* on top of raw purging:
 its "Retention Policies — automated data retention with legal hold" capability
@@ -291,6 +316,10 @@ with the lifecycle manager; failures to start are logged and non-fatal.
   directories under the backup dir are cleaned on a best-effort basis in
   `finally` blocks; stale ones are safe to delete (they never match the backup
   filename regex and never appear in listings).
+- **Retention scheduler shows `failing` in the cockpit** → read
+  `lastErrors`/`last_error` for the offending table (e.g. lock or disk-I/O
+  errors); the interval keeps running, so the next tick recovers without a
+  restart once the cause is fixed.
 - **Disk pressure** → DiskGuard gives at most one alert per day per level; if
   `warn`/`critical` items appear, free space in the backup directory first
   (old archives plus their `.manifest.json` sidecars) — RetentionService shrinks
@@ -299,6 +328,9 @@ with the lifecycle manager; failures to start are logged and non-fatal.
   restore env secrets (`JWT_SECRET` etc.) and re-clone repository working trees.
   Without the original `JWT_SECRET`, all existing tokens are invalid after
   restore.
+- **Retention report cron** → `nightly-retention.sh` is a read-only row counter
+  for `openmythos_eval_runs`, not a purger; act on its output inside the app
+  (retention rules), never by scripting `DELETE`s against the production file.
 
 ## Verification (focused tests)
 
@@ -314,7 +346,13 @@ live database file is not overwritten by staging. `disk-guard.test.ts` covers th
 80/90 thresholds, the once-per-day-and-level dedup, and the outbox event;
 `loop-services.test.ts` covers the retention cutoff semantics (100-day-old rows
 purged, recent kept), the `RETENTION_ENABLED=false` no-op, default stats
-(90 days / 24 h), and scheduler start/stop.
+(90 days / 24 h), and scheduler start/stop. `retention-errors.test.ts` proves per
+OBS-003 that a failing table surfaces `status: 'error'` with `deleted: null`,
+populates `getStats().lastErrors`, and marks the `retention` scheduler `failing`
+with the table error in `last_error`. `prod-db-readonly.test.ts` pins the
+only-writer invariant behind `nightly-retention.sh`: no script, runbook, or
+source recipe may open `/data/djimitflo.sqlite` without read-only access, and the
+script itself must contain no write statements.
 
 ## Related pages
 

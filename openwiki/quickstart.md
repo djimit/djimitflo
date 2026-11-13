@@ -3,9 +3,6 @@ type: guide
 title: DjimFlo Wiki Quickstart
 description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agent orchestration control plane with governance guardrails), how the wiki is organized, and routes you to the right page for your task.
 tags: [quickstart, orientation, governance, agent-orchestration, wiki]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
