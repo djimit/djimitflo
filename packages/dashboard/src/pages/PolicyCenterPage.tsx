@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react';
 import type { ExecutionPolicy } from '@djimitflo/shared';
 import { api } from '../lib/api';
+import { useDialog } from '../components/ConfirmDialog';
+import { fmtDate } from '../lib/format';
 import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
+
+/** GET /policies adds the latest audit event per policy (null when the audit trail has none). */
+type PolicyRow = ExecutionPolicy & { last_change?: { at: string; action: string; user_id: string | null; email: string | null; role: string | null } | null };
+
+const riskLevels = (policy: PolicyRow) => (policy.risk_levels?.length ? policy.risk_levels : [policy.risk_level]);
+const enforces = (policy: PolicyRow) => {
+  const scope = `${policy.action_type} actions at risk ${riskLevels(policy).join(', ')}`;
+  return policy.decision === 'deny' ? `${scope} are no longer blocked by this policy` : `${scope} no longer require approval from this policy`;
+};
 
 export function PolicyCenterPage() {
   const canEdit = useCan(P.policyUpdate);
-  const [policies, setPolicies] = useState<ExecutionPolicy[]>([]);
+  const dialog = useDialog();
+  const [policies, setPolicies] = useState<PolicyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -17,11 +29,15 @@ export function PolicyCenterPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const togglePolicy = async (policy: ExecutionPolicy) => {
+  const togglePolicy = async (policy: PolicyRow) => {
     setError(null);
+    if (policy.enabled && (policy.decision === 'deny' || policy.decision === 'require_approval')
+      && !(await dialog.confirm(`Disable "${policy.name}"?`, `While it is disabled, ${enforces(policy)}.`, 'Disable policy'))) return;
     try {
       const updated = await api.updatePolicy(policy.id, { enabled: !policy.enabled });
-      setPolicies((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setPolicies((current) => current.map((item) => (item.id === updated.id ? { ...updated, last_change: item.last_change } : item)));
+      // the PATCH wrote an audit event: reload so "last changed" shows it
+      api.getPolicies().then((result) => setPolicies(result.policies)).catch((err) => setError(`Could not reload policies: ${message(err)}`));
     } catch (err) {
       setError(`Could not update policy ${policy.name}: ${message(err)}`);
     }
@@ -40,7 +56,7 @@ export function PolicyCenterPage() {
         <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading policies...</div>
       ) : (
         <div className="space-y-4">
-          {policies.map((policy) => (
+          {policies.map((policy, index) => (
             <div key={policy.id} className="bg-background-secondary border border-border rounded-lg p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -48,9 +64,15 @@ export function PolicyCenterPage() {
                   <p className="text-sm text-foreground-secondary mt-1">{policy.description}</p>
                   <div className="flex flex-wrap gap-2 mt-3 text-xs">
                     <span className="px-2 py-1 rounded border border-border text-foreground-secondary">{policy.action_type}</span>
-                    <span className="px-2 py-1 rounded border border-border text-foreground-secondary">{policy.risk_level}</span>
+                    <span className="px-2 py-1 rounded border border-border text-foreground-secondary">{riskLevels(policy).join(', ')}</span>
                     <span className="px-2 py-1 rounded border border-border text-foreground-secondary">{policy.decision}</span>
+                    <span className="px-2 py-1 rounded border border-border text-foreground-secondary" title="Policies are evaluated in priority order, highest first">priority {policy.priority ?? 0} · #{index + 1} in evaluation order</span>
                   </div>
+                  <p className="text-xs text-foreground-secondary mt-2">
+                    {policy.last_change
+                      ? `Last changed ${fmtDate(policy.last_change.at)} by ${policy.last_change.email ? `${policy.last_change.email}${policy.last_change.role ? ` (${policy.last_change.role})` : ''}` : policy.last_change.user_id ?? 'unknown'} (${policy.last_change.action})`
+                      : 'No change recorded in the audit trail'}
+                  </p>
                 </div>
                 <button
                   onClick={() => void togglePolicy(policy)}
@@ -65,6 +87,7 @@ export function PolicyCenterPage() {
           ))}
         </div>
       )}
+      {dialog.element}
     </div>
   );
 }
