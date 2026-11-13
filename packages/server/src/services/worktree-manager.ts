@@ -78,7 +78,10 @@ export class WorktreeManager {
    * Each deploy mounts a fresh clone as the runtime repository, so a worktree prepared before a deploy (a maker that
    * waited hours for its approval) points at git metadata that no longer exists (prod 2026-09-25: "the repo exists but
    * doesn't have the worktrees directory"). Re-register it in the current repository on the same branch and put its
-   * files back (assignment, any earlier work). Returns true when a repair was needed.
+   * untracked files back (the assignment, prepared node_modules, new files). Tracked files come from the current HEAD: copying
+   * the old versions back reverted every change main made since (prod 2026-11-08: 3 makers failed diff_under_threshold on
+   * #1192's files). ponytail: edits to tracked files made before the deploy are dropped; repair only runs for makers that waited
+   * across a deploy, which have not run yet. Returns true when a repair was needed.
    */
   repairWorktree(repositoryPath: string, worktreePath: string, branchName: string): boolean {
     if (!existsSync(worktreePath)) return false;
@@ -89,16 +92,11 @@ export class WorktreeManager {
     try {
       this.git(repositoryRoot, ['worktree', 'prune']);
       this.git(repositoryRoot, ['worktree', 'add', '-B', branchName, worktreePath, 'HEAD']);
-      // cpSync stats (follows) an existing destination symlink and throws ENOENT when it dangles (prod: the tracked
-      // `knowledge` link points outside the container), so drop the one `worktree add` just made and copy ours.
-      const isLink = (p: string) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
+      // skipping tracked paths also skips tracked symlinks (prod: `knowledge` dangles in the container; cpSync throws ENOENT on it)
+      const tracked = new Set(this.git(worktreePath, ['ls-files', '-z']).split('\0').filter(Boolean));
       cpSync(aside, worktreePath, {
         recursive: true, force: true, verbatimSymlinks: true,
-        filter: (src, dest) => {
-          if (path.basename(src) === '.git') return false;
-          if (isLink(src) && isLink(dest)) rmSync(dest);
-          return true;
-        },
+        filter: (src) => path.basename(src) !== '.git' && !tracked.has(path.relative(aside, src).split(path.sep).join('/')),
       });
     } finally {
       rmSync(aside, { recursive: true, force: true });

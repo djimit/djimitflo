@@ -105,7 +105,7 @@ export const AuditLogViewer: React.FC = () => {
           aria-label="Entity type"
           value={entityType}
           onChange={(e) => changeEntityType(e.target.value)}
-          className="px-3 py-1 border rounded-md"
+          className="px-3 py-1 rounded-md border border-border bg-background-secondary text-foreground"
         >
           <option value="">All Entity Types</option>
           {ENTITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
@@ -115,7 +115,7 @@ export const AuditLogViewer: React.FC = () => {
           aria-label="Action"
           value={action}
           onChange={(e) => changeAction(e.target.value)}
-          className="px-3 py-1 border rounded-md"
+          className="px-3 py-1 rounded-md border border-border bg-background-secondary text-foreground"
         >
           <option value="">All Actions</option>
           {[...new Set([...logs.map(log => log.action), ...(action ? [action] : [])])].map(value => <option key={value} value={value}>{value}</option>)}
@@ -136,34 +136,34 @@ export const AuditLogViewer: React.FC = () => {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full bg-white dark:bg-gray-800">
+        <table className="min-w-full bg-background-secondary text-foreground">
           <thead>
             <tr>
-              <th className="py-2 px-4 border">Entity Type</th>
-              <th className="py-2 px-4 border">Entity ID</th>
-              <th className="py-2 px-4 border">Action</th>
-              <th className="py-2 px-4 border">Metadata</th>
-              <th className="py-2 px-4 border">Timestamp</th>
+              <th className="py-2 px-4 border border-border">Entity Type</th>
+              <th className="py-2 px-4 border border-border">Entity ID</th>
+              <th className="py-2 px-4 border border-border">Action</th>
+              <th className="py-2 px-4 border border-border">Metadata</th>
+              <th className="py-2 px-4 border border-border">Timestamp</th>
             </tr>
           </thead>
           <tbody>
             {logs.map((log) => (
               <tr key={log.id}>
-                <td className="py-2 px-4 border">{log.resource_type}</td>
-                <td className="py-2 px-4 border">{log.resource_id}</td>
-                <td className="py-2 px-4 border">{log.action}</td>
-                <td className="py-2 px-4 border">
+                <td className="py-2 px-4 border border-border">{log.resource_type}</td>
+                <td className="py-2 px-4 border border-border">{log.resource_id}</td>
+                <td className="py-2 px-4 border border-border">{log.action}</td>
+                <td className="py-2 px-4 border border-border">
                   <pre className="text-xs overflow-hidden">
                     {typeof log.metadata === 'string' ? log.metadata : JSON.stringify(log.metadata, null, 2)}
                   </pre>
                 </td>
-                <td className="py-2 px-4 border">{new Date(log.timestamp).toLocaleString()}</td>
+                <td className="py-2 px-4 border border-border">{new Date(log.timestamp).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
         </table>
         {loaded && !error && logs.length === 0 && (
-          <p className="py-4 text-sm text-gray-500">No audit events match these filters.</p>
+          <p className="py-4 text-sm text-foreground-secondary">No audit events match these filters.</p>
         )}
       </div>
 
@@ -171,19 +171,19 @@ export const AuditLogViewer: React.FC = () => {
         <button
           onClick={() => setOffset(Math.max(0, offset - limit))}
           disabled={offset === 0}
-          className="px-4 py-1 bg-gray-200 rounded-md disabled:opacity-50"
+          className="px-4 py-1 rounded-md border border-border bg-background-elevated text-foreground disabled:opacity-50"
         >
           Previous
         </button>
         <button
           onClick={() => setOffset(offset + limit)}
           disabled={!hasMore}
-          className="px-4 py-1 bg-gray-200 rounded-md disabled:opacity-50"
+          className="px-4 py-1 rounded-md border border-border bg-background-elevated text-foreground disabled:opacity-50"
         >
           Next
         </button>
         {total !== null && (
-          <span className="self-center text-sm text-gray-500">
+          <span className="self-center text-sm text-foreground-secondary">
             {logs.length === 0 ? `0 of ${total}` : `${offset + 1}–${offset + logs.length} of ${total}`}
           </span>
         )}

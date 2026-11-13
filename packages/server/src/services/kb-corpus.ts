@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { addDimColumn, cosine, embed } from './proposal-dedupe';
-import { checkContentSafety, contentSafetyEnabled, filterForPrompt } from './content-safety';
+import { checkContentSafety, contentSafetyEnabled, filterForPrompt, safetyWindow } from './content-safety';
 import { runJudgment, type JudgmentDef } from './judgment-service';
 import type { TypeSafeClient } from './typesafe-client';
 import { dimsMatch } from './embedding-dims';
@@ -33,7 +33,8 @@ const ensure = (db: Database) => {
  * leaves no yes/no row, so the page is 'unknown' — never a pass. Derived from `judgments`, so there is no second copy to drift.
  * The requirement follows CONTENT_SAFETY_MODE: with content safety off there is no regime and no verdict is expected.
  */
-const safetyText = (title: string, body: string): string => `${title}\n${body}`.slice(0, 4_000);
+// CONTENT_SAFETY_CHUNKING=on: the whole page (checked in windows); off: the first 4 000 chars, as before
+const safetyText = (title: string, body: string): string => safetyWindow(`${title}\n${body}`);
 const textHash = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 16);
 type SafetyState = 'safe' | 'unsafe' | 'unknown';
 function safetyStates(db: Database): (path: string, title: string, body: string) => SafetyState {

@@ -134,8 +134,14 @@ export interface ObservabilityMetrics {
   pending_approvals: number;
   avg_duration_ms: number | null;
   risk_distribution: Record<RiskLevel, number>;
+  /** risk_assessments.recommended_decision: what the risk engine recommended, not what an approver decided */
   policy_decisions: Record<PolicyDecision, number>;
-  recent_errors: Array<{ task_id: ID; message: string; timestamp: string }>;
+  /** identical messages are grouped; timestamp is the latest occurrence and count how often it occurred in the window */
+  recent_errors: Array<{ task_id: ID; message: string; timestamp: string; count?: number }>;
+  /** days the windowed counts cover; null = all time. Pending approvals and active tasks are always current state. */
+  window_days?: number | null;
+  /** approvals decided (or expired) in the window, by outcome */
+  approval_outcomes?: { approved: number; denied: number; expired: number };
 }
 
 export interface AuditTrailEntry {

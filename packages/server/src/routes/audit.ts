@@ -33,11 +33,21 @@ export function createAuditRoutes(db: Database, auditService: AuditService, auth
       if (req.query.to) query.to_date = req.query.to as string;
       query.limit = boundedInteger(req.query.limit, 50, 1, 200, 'limit');
       query.offset = boundedInteger(req.query.offset, 0, 0, 1_000_000, 'offset');
+      if (req.query.hide_service_logins === '1') query.exclude_service_logins = true;
 
       const result = auditService.query(query);
+      // actor email/role instead of a raw user UUID (read-only lookup of the users on this page)
+      const userIds = [...new Set(result.events.map(event => event.user_id).filter((id): id is string => Boolean(id)))];
+      const users = userIds.length
+        ? new Map((db.prepare(`SELECT id, email, role FROM users WHERE id IN (${userIds.map(() => '?').join(',')})`).all(...userIds) as Array<{ id: string; email: string; role: string }>).map(u => [u.id, u]))
+        : new Map<string, { email: string; role: string }>();
       res.json({
-        events: result.events,
+        events: result.events.map(event => {
+          const user = event.user_id ? users.get(event.user_id) : undefined;
+          return user ? { ...event, actor_email: user.email, actor_role: user.role } : event;
+        }),
         total: result.total,
+        ...(query.exclude_service_logins ? { hidden_service_logins: auditService.query({ ...query, exclude_service_logins: false, limit: 1, offset: 0 }).total - result.total } : {}),
         page: Math.floor((query.offset ?? 0) / (query.limit ?? 50)) + 1,
       });
     } catch (err) { next(err); }

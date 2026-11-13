@@ -95,6 +95,8 @@ export function frontierExpertsEnabled(env: NodeJS.ProcessEnv = process.env): bo
   return (env.DJIMITFLO_FRONTIER_EXPERTS_ENABLED || '').trim().toLowerCase() === 'true';
 }
 
+export type ExpertListFilter = { state?: string; capability?: string; name?: string; kind?: ExpertKind; excludePersons?: boolean };
+
 export class FrontierExpertRegistryService {
   private readonly audit: AuditService;
 
@@ -132,13 +134,27 @@ export class FrontierExpertRegistryService {
     return this.get(id)!;
   }
 
-  /** Bounded listing for operators and tools; filters by lifecycle state, capability id and a name fragment. */
-  list(filter: { state?: string; capability?: string; name?: string; kind?: ExpertKind; excludePersons?: boolean; random?: boolean; limit?: number } = {}): Array<ExpertIdentityRow & { capabilities: string[] }> {
-    const limit = Math.max(1, Math.min(200, filter.limit ?? 50));
-    const rows = this.db.prepare(`SELECT DISTINCT e.* FROM expert_identities e
+  private filterSql(filter: ExpertListFilter): { from: string; params: Record<string, unknown> } {
+    return {
+      from: `FROM expert_identities e
       ${filter.capability ? "JOIN expert_capabilities c ON c.expert_id = e.id AND c.status != 'revoked' AND c.capability_id = @capability" : ''}
-      WHERE (@state IS NULL OR e.lifecycle_state = @state) AND (@name IS NULL OR e.canonical_name LIKE @name) AND (@kind IS NULL OR COALESCE(e.kind, 'person') = @kind) AND (@excludePersons = 0 OR COALESCE(e.kind, 'person') != 'person')
-      ORDER BY ${filter.random ? 'RANDOM()' : 'e.updated_at DESC'} LIMIT @limit`).all({ capability: filter.capability ?? null, state: filter.state ?? null, name: filter.name ? `%${filter.name}%` : null, kind: filter.kind ?? null, excludePersons: filter.excludePersons ? 1 : 0, limit }) as ExpertIdentityRow[];
+      WHERE (@state IS NULL OR e.lifecycle_state = @state) AND (@name IS NULL OR e.canonical_name LIKE @name) AND (@kind IS NULL OR COALESCE(e.kind, 'person') = @kind) AND (@excludePersons = 0 OR COALESCE(e.kind, 'person') != 'person')`,
+      params: { capability: filter.capability ?? null, state: filter.state ?? null, name: filter.name ? `%${filter.name}%` : null, kind: filter.kind ?? null, excludePersons: filter.excludePersons ? 1 : 0 },
+    };
+  }
+
+  /** How many experts match the same filter as list() — the list is capped at 200, this count is not. */
+  count(filter: ExpertListFilter = {}): number {
+    const { from, params } = this.filterSql(filter);
+    return (this.db.prepare(`SELECT COUNT(DISTINCT e.id) AS n ${from}`).get(params) as { n: number }).n;
+  }
+
+  /** Bounded listing for operators and tools; filters by lifecycle state, capability id and a name fragment. */
+  list(filter: ExpertListFilter & { random?: boolean; limit?: number } = {}): Array<ExpertIdentityRow & { capabilities: string[] }> {
+    const limit = Math.max(1, Math.min(200, filter.limit ?? 50));
+    const { from, params } = this.filterSql(filter);
+    const rows = this.db.prepare(`SELECT DISTINCT e.* ${from}
+      ORDER BY ${filter.random ? 'RANDOM()' : 'e.updated_at DESC'} LIMIT @limit`).all({ ...params, limit }) as ExpertIdentityRow[];
     const capabilities = this.db.prepare("SELECT capability_id FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'");
     return rows.map((row) => ({ ...row, capabilities: (capabilities.all(row.id) as Array<{ capability_id: string }>).map((item) => item.capability_id) }));
   }

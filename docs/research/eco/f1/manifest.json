@@ -1,0 +1,1268 @@
+{
+  "schema_version": 1,
+  "benchmark": "f1",
+  "protocol": "F1-R (EVAL_PROTOCOL.md §2 G0 rebuild, 2026-11-07)",
+  "note": "Rebuilt deterministically by scripts/f1-build-items.mjs; not byte-identical to the 09-10 / 14-10 case files (lost), so earlier F1 AUCs are context only.",
+  "items": [
+    {
+      "id": "02666e7c03",
+      "pr": 475,
+      "side": "good",
+      "kind": null,
+      "commit": "727a5bfedaba8a0cdae57069bfcf3b2ee846e629",
+      "repo": "djimit/djimitflo",
+      "base_sha": "a5be844daa10b93b72a5ac7895d55416a2e49fe2",
+      "files": [
+        "packages/server/src/__tests__/command-risk-classifier.test.ts"
+      ],
+      "patch_sha256": "394a33f41b6fb257aa2aee34c42124edff7e71e705f08b3b5e10df564e8182b0",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-869a1ccd",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/command-risk-classifier.test.ts",
+        "message": "Add unit tests for services/command-risk-classifier.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/command-risk-classifier.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "1d1c23c489c7860877029415b11a001316a0a088cc9607e6ebfb055d039ba784"
+    },
+    {
+      "id": "02fa89fe66",
+      "pr": 574,
+      "side": "good",
+      "kind": null,
+      "commit": "4de6c80b43fdd5f187eaa9165de24746b887ffa2",
+      "repo": "djimit/djimitflo",
+      "base_sha": "1e84fed99e3580ab8efafeed9a442c1d1271aa19",
+      "files": [
+        "packages/server/src/__tests__/frontier-expert-skills.exports.test.ts"
+      ],
+      "patch_sha256": "5fe20fde928f43e033f8a82b259c01b3a43ade9b04685e10a49a2271536bbf2b",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-c7db4c41",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/frontier-expert-skills.exports.test.ts",
+        "message": "Test untested exports of services/frontier-expert-skills.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/frontier-expert-skills.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "9a7450b7362a8b210e80cff049519f59b7ed0c1a4b92a24c666b17824c0544d2"
+    },
+    {
+      "id": "0d716ffd66",
+      "pr": 475,
+      "side": "defective",
+      "kind": "A",
+      "commit": "727a5bfedaba8a0cdae57069bfcf3b2ee846e629",
+      "repo": "djimit/djimitflo",
+      "base_sha": "a5be844daa10b93b72a5ac7895d55416a2e49fe2",
+      "files": [
+        "packages/server/src/__tests__/command-risk-classifier.test.ts"
+      ],
+      "patch_sha256": "f9cf067af6da931e5a2d9d64ed70f30a13a146e46219cdeb2ce913c9db51a653",
+      "defect_lines": [
+        40,
+        41,
+        42,
+        43,
+        49,
+        50,
+        51,
+        56,
+        57,
+        58,
+        63,
+        64,
+        65,
+        70,
+        71,
+        72,
+        77,
+        78,
+        83,
+        84,
+        89,
+        90,
+        91,
+        96,
+        101,
+        108,
+        109,
+        110,
+        118,
+        119,
+        120,
+        128,
+        129,
+        130,
+        138,
+        139,
+        140,
+        141,
+        149,
+        150,
+        158,
+        172,
+        182,
+        183
+      ],
+      "finding": {
+        "id": "f1r-869a1ccd",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/command-risk-classifier.test.ts",
+        "message": "Add unit tests for services/command-risk-classifier.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/command-risk-classifier.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "1d1c23c489c7860877029415b11a001316a0a088cc9607e6ebfb055d039ba784"
+    },
+    {
+      "id": "10db24bac4",
+      "pr": 592,
+      "side": "good",
+      "kind": null,
+      "commit": "ef21255e590e07e9b5535a589a04acdecd4e1e72",
+      "repo": "djimit/djimitflo",
+      "base_sha": "fbe3978d965c3b9ba130457661831af4dd470da4",
+      "files": [
+        "packages/server/src/__tests__/commons-proposal-review-service.exports.test.ts"
+      ],
+      "patch_sha256": "2c43f3b6cf56659976bb8f9599ec997f97a939876684433168c2bab535ace766",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-077e3ab1",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/commons-proposal-review-service.exports.test.ts",
+        "message": "Test untested exports of services/commons-proposal-review-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/commons-proposal-review-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "c042a1d2902006866e3bec488f0a377d393e445e5f71e258683d419f90792973"
+    },
+    {
+      "id": "1760333fc5",
+      "pr": 571,
+      "side": "defective",
+      "kind": "A",
+      "commit": "1e84fed99e3580ab8efafeed9a442c1d1271aa19",
+      "repo": "djimit/djimitflo",
+      "base_sha": "012f8d40f5ab263e0d3e73e3313868ab7a47c26e",
+      "files": [
+        "packages/server/src/__tests__/local-shadow-queue.exports.test.ts"
+      ],
+      "patch_sha256": "4b0754e121faf84466fafae7ad5351b97cf66f5c4ab2873086cc985d61b38664",
+      "defect_lines": [
+        18,
+        23,
+        27,
+        31,
+        38,
+        39,
+        44
+      ],
+      "finding": {
+        "id": "f1r-ca0bf6a6",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/local-shadow-queue.exports.test.ts",
+        "message": "Test untested exports of services/local-shadow-queue.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/local-shadow-queue.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "8a65ff8d3109e57ecd2fc1ed520a691da99a120d79381c54e08561c73b926dd1"
+    },
+    {
+      "id": "1a2b88251e",
+      "pr": 606,
+      "side": "defective",
+      "kind": "B",
+      "commit": "d3f09ddc4c378e10b1d9b38e7bdcadaa3c452ed5",
+      "repo": "djimit/djimitflo",
+      "base_sha": "c5d13f043da5edada4b3739234a5478dd9bc7a90",
+      "files": [
+        "packages/server/src/__tests__/service-map.test.ts"
+      ],
+      "patch_sha256": "e26acccfb718991b960f77357b9a2dc66ae97724b7aab6df0862654ee0346add",
+      "defect_lines": [
+        15,
+        16,
+        17,
+        22,
+        27,
+        50,
+        57,
+        58,
+        59,
+        68,
+        75,
+        82,
+        91,
+        99,
+        107
+      ],
+      "finding": {
+        "id": "f1r-2a8caf6d",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/service-map.test.ts",
+        "message": "Raise the mutation score of services/service-map.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/service-map.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "6454f6e998097f147a97ea8f73f427559ae1ade74f167404930f6ea0261694ad"
+    },
+    {
+      "id": "28f48e44d0",
+      "pr": 610,
+      "side": "good",
+      "kind": null,
+      "commit": "6cd18043ff667bdd4a450b677e9ddfab11ae7b4d",
+      "repo": "djimit/djimitflo",
+      "base_sha": "d3f09ddc4c378e10b1d9b38e7bdcadaa3c452ed5",
+      "files": [
+        "packages/server/src/__tests__/goal-service.exports.test.ts"
+      ],
+      "patch_sha256": "d258ec2798ee42e58330883e0adb8363b529ddcaf24a880794d9bc8f3953b55d",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-8a1d087d",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/goal-service.exports.test.ts",
+        "message": "Test untested exports of services/goal-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/goal-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "a79bfd324d077f80841381af77896ae8b7cd5a5e8ebfeeefcc9a4fe0d8f71b5e"
+    },
+    {
+      "id": "28fa8ebd4c",
+      "pr": 594,
+      "side": "good",
+      "kind": null,
+      "commit": "8ff784f3a74ee71bf11357baa6faee06e9ecd618",
+      "repo": "djimit/djimitflo",
+      "base_sha": "f82d204896224a97bf5db27e4a2c8e94aaee822d",
+      "files": [
+        "packages/server/src/__tests__/skill-training-promotion-gate.test.ts"
+      ],
+      "patch_sha256": "db87c3d8ec85c6f71119ca125cf7c158d28d1da499d5e77de81758ec62fd2f01",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-df4052f6",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/skill-training-promotion-gate.test.ts",
+        "message": "Raise the mutation score of services/skill-training-promotion-gate.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/skill-training-promotion-gate.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "e919a6e029b67c9907859321f5528ea0721237af94ac62ee7ad12d83c5d34dc9"
+    },
+    {
+      "id": "2fe2037898",
+      "pr": 593,
+      "side": "good",
+      "kind": null,
+      "commit": "f82d204896224a97bf5db27e4a2c8e94aaee822d",
+      "repo": "djimit/djimitflo",
+      "base_sha": "ef21255e590e07e9b5535a589a04acdecd4e1e72",
+      "files": [
+        "packages/server/src/__tests__/commons-grounding.exports.test.ts"
+      ],
+      "patch_sha256": "91161548c682f39ab3fcf078e701eabddecd9cbbcdc45bd7af01ba17525857fd",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-f2c4d47d",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/commons-grounding.exports.test.ts",
+        "message": "Test untested exports of services/commons-grounding.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/commons-grounding.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "5e6fd8a49d6e91034efff72f6e34bde5a28391634fdaf1796bcb6ac66bc6e1ed"
+    },
+    {
+      "id": "3c0b78cfe8",
+      "pr": 582,
+      "side": "good",
+      "kind": null,
+      "commit": "257f32a12fc3405efe11f425b3f7ebb95676e326",
+      "repo": "djimit/djimitflo",
+      "base_sha": "4de6c80b43fdd5f187eaa9165de24746b887ffa2",
+      "files": [
+        "packages/server/src/__tests__/decision-context-service.exports.test.ts"
+      ],
+      "patch_sha256": "460980a3129c0178951afa474752093f6ee84f20172e489b4bc607e385f537ef",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-d9ec4e5e",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/decision-context-service.exports.test.ts",
+        "message": "Test untested exports of services/decision-context-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/decision-context-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "961a84c8e9fdbba2b7e0e428d573c0d901a97acb53188146f7b52989f42ed300"
+    },
+    {
+      "id": "3f04bb0ab7",
+      "pr": 611,
+      "side": "defective",
+      "kind": "C",
+      "commit": "2d803a2b0e89109a216b8939405c0a0106659617",
+      "repo": "djimit/djimitflo",
+      "base_sha": "6cd18043ff667bdd4a450b677e9ddfab11ae7b4d",
+      "files": [
+        "packages/server/src/__tests__/expert-evidence-enrichment-service.exports.test.ts"
+      ],
+      "patch_sha256": "d20c5313473acd92850d8154b4370cae39f1d617d089ffab3942ce3d7cf5253a",
+      "defect_lines": [
+        2
+      ],
+      "finding": {
+        "id": "f1r-567c197e",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/expert-evidence-enrichment-service.exports.test.ts",
+        "message": "Test untested exports of services/expert-evidence-enrichment-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/expert-evidence-enrichment-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "1a8622724be0a3e37a9ab6640b4ca266a28d7a0ba4ac31115e4e3e0963c8b4a4"
+    },
+    {
+      "id": "40066d9897",
+      "pr": 587,
+      "side": "good",
+      "kind": null,
+      "commit": "da94d80e13e67cf30949e735bcf9327028544120",
+      "repo": "djimit/djimitflo",
+      "base_sha": "257f32a12fc3405efe11f425b3f7ebb95676e326",
+      "files": [
+        "packages/server/src/__tests__/spawn-token.exports.test.ts"
+      ],
+      "patch_sha256": "53f96e71b375916f5cd859228301168cf22fb6e4e285ec12386812c2e4a0a1ee",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-21afc147",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/spawn-token.exports.test.ts",
+        "message": "Test untested exports of services/spawn-token.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/spawn-token.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "23ab08f0fc636819461b243fb33cb1443f2195c937359e5a30249a11f6071bdf"
+    },
+    {
+      "id": "42bed9c349",
+      "pr": 574,
+      "side": "defective",
+      "kind": "C",
+      "commit": "4de6c80b43fdd5f187eaa9165de24746b887ffa2",
+      "repo": "djimit/djimitflo",
+      "base_sha": "1e84fed99e3580ab8efafeed9a442c1d1271aa19",
+      "files": [
+        "packages/server/src/__tests__/frontier-expert-skills.exports.test.ts"
+      ],
+      "patch_sha256": "392f5c6f34c4acd586a8ee8d6729130321feda4ae801a54c22b31955a4484b04",
+      "defect_lines": [
+        2
+      ],
+      "finding": {
+        "id": "f1r-c7db4c41",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/frontier-expert-skills.exports.test.ts",
+        "message": "Test untested exports of services/frontier-expert-skills.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/frontier-expert-skills.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "9a7450b7362a8b210e80cff049519f59b7ed0c1a4b92a24c666b17824c0544d2"
+    },
+    {
+      "id": "45beba75ed",
+      "pr": 571,
+      "side": "good",
+      "kind": null,
+      "commit": "1e84fed99e3580ab8efafeed9a442c1d1271aa19",
+      "repo": "djimit/djimitflo",
+      "base_sha": "012f8d40f5ab263e0d3e73e3313868ab7a47c26e",
+      "files": [
+        "packages/server/src/__tests__/local-shadow-queue.exports.test.ts"
+      ],
+      "patch_sha256": "9e6d182f6246499f1503f62ae1a2c1e4ee3e585579fd8ce23f24270fae45e689",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-ca0bf6a6",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/local-shadow-queue.exports.test.ts",
+        "message": "Test untested exports of services/local-shadow-queue.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/local-shadow-queue.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "8a65ff8d3109e57ecd2fc1ed520a691da99a120d79381c54e08561c73b926dd1"
+    },
+    {
+      "id": "4afb4b2faf",
+      "pr": 593,
+      "side": "defective",
+      "kind": "B",
+      "commit": "f82d204896224a97bf5db27e4a2c8e94aaee822d",
+      "repo": "djimit/djimitflo",
+      "base_sha": "ef21255e590e07e9b5535a589a04acdecd4e1e72",
+      "files": [
+        "packages/server/src/__tests__/commons-grounding.exports.test.ts"
+      ],
+      "patch_sha256": "fe4da05cda3de3488216a2a5a538b1cadb6a1dfe35716806dfb9f81bb08864b9",
+      "defect_lines": [
+        23,
+        27,
+        36,
+        61,
+        74,
+        82,
+        89,
+        98,
+        99,
+        105,
+        112
+      ],
+      "finding": {
+        "id": "f1r-f2c4d47d",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/commons-grounding.exports.test.ts",
+        "message": "Test untested exports of services/commons-grounding.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/commons-grounding.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "5e6fd8a49d6e91034efff72f6e34bde5a28391634fdaf1796bcb6ac66bc6e1ed"
+    },
+    {
+      "id": "4c72954ff6",
+      "pr": 594,
+      "side": "defective",
+      "kind": "A",
+      "commit": "8ff784f3a74ee71bf11357baa6faee06e9ecd618",
+      "repo": "djimit/djimitflo",
+      "base_sha": "f82d204896224a97bf5db27e4a2c8e94aaee822d",
+      "files": [
+        "packages/server/src/__tests__/skill-training-promotion-gate.test.ts"
+      ],
+      "patch_sha256": "89ab99e0e279e1f616c01df31656e01e330bf852ec0a22cc6d37c823d893540f",
+      "defect_lines": [
+        37,
+        43,
+        54,
+        55,
+        60,
+        61,
+        66,
+        67,
+        72,
+        73,
+        78,
+        79,
+        84,
+        85,
+        90,
+        91,
+        101
+      ],
+      "finding": {
+        "id": "f1r-df4052f6",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/skill-training-promotion-gate.test.ts",
+        "message": "Raise the mutation score of services/skill-training-promotion-gate.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/skill-training-promotion-gate.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "e919a6e029b67c9907859321f5528ea0721237af94ac62ee7ad12d83c5d34dc9"
+    },
+    {
+      "id": "5888fd9666",
+      "pr": 610,
+      "side": "defective",
+      "kind": "A",
+      "commit": "6cd18043ff667bdd4a450b677e9ddfab11ae7b4d",
+      "repo": "djimit/djimitflo",
+      "base_sha": "d3f09ddc4c378e10b1d9b38e7bdcadaa3c452ed5",
+      "files": [
+        "packages/server/src/__tests__/goal-service.exports.test.ts"
+      ],
+      "patch_sha256": "71221dfcab8229633979af5c81bc454d0b58277eaae32c160461cb475011ac67",
+      "defect_lines": [
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        71,
+        75,
+        76,
+        77,
+        81,
+        82,
+        83,
+        87,
+        88,
+        89,
+        93,
+        94,
+        95
+      ],
+      "finding": {
+        "id": "f1r-8a1d087d",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/goal-service.exports.test.ts",
+        "message": "Test untested exports of services/goal-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/goal-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "a79bfd324d077f80841381af77896ae8b7cd5a5e8ebfeeefcc9a4fe0d8f71b5e"
+    },
+    {
+      "id": "5949eb15f8",
+      "pr": 591,
+      "side": "defective",
+      "kind": "A",
+      "commit": "fbe3978d965c3b9ba130457661831af4dd470da4",
+      "repo": "djimit/djimitflo",
+      "base_sha": "033c023492e50d17086f833d136fb6e358866446",
+      "files": [
+        "packages/server/src/__tests__/queue-hygiene-service.exports.test.ts"
+      ],
+      "patch_sha256": "b33186c1ed909f0a4caf80c793d370d63fc817485cfa2c6775d5cbb8882f2f70",
+      "defect_lines": [
+        15,
+        20,
+        25,
+        27,
+        33,
+        34,
+        35,
+        39,
+        45,
+        46,
+        47,
+        51
+      ],
+      "finding": {
+        "id": "f1r-696b5a03",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/queue-hygiene-service.exports.test.ts",
+        "message": "Test untested exports of services/queue-hygiene-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/queue-hygiene-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "907fe3ea69df265e3240255c7ac0cb94abbc0653a3301f4e460d537754da76b5"
+    },
+    {
+      "id": "7c20796f8d",
+      "pr": 588,
+      "side": "defective",
+      "kind": "C",
+      "commit": "961f965142f93b4a3a4d9d6288995671a4772e18",
+      "repo": "djimit/djimitflo",
+      "base_sha": "da94d80e13e67cf30949e735bcf9327028544120",
+      "files": [
+        "packages/server/src/__tests__/llm-fallback.exports.test.ts"
+      ],
+      "patch_sha256": "d8d2cdaf37b0ce0085a67d3aebad5e7c95e18c6b7e141362253a8bfd7cad577a",
+      "defect_lines": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "finding": {
+        "id": "f1r-c5c40e00",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/llm-fallback.exports.test.ts",
+        "message": "Test untested exports of services/llm-fallback.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/llm-fallback.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "09cb8924aef1576c21976f692a993e8551623d43ecb0f4c143c09a023da08e97"
+    },
+    {
+      "id": "7cd6a1130e",
+      "pr": 612,
+      "side": "good",
+      "kind": null,
+      "commit": "db14757895e0dbddb317bc2de1290b721e5e885c",
+      "repo": "djimit/djimitflo",
+      "base_sha": "2d803a2b0e89109a216b8939405c0a0106659617",
+      "files": [
+        "packages/server/src/__tests__/test-gap-source-service.exports.test.ts"
+      ],
+      "patch_sha256": "121cebf50ce60c89c82ca36efa4699fd36e1acc7d2fa3fcd6eec51f182881d5f",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-e44db322",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/test-gap-source-service.exports.test.ts",
+        "message": "Test untested exports of services/test-gap-source-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/test-gap-source-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "05404f3903b0e52fb821e387d7b7169829dc8f0051c640badf0f9640d0b9725f"
+    },
+    {
+      "id": "87fc80ad01",
+      "pr": 552,
+      "side": "good",
+      "kind": null,
+      "commit": "012f8d40f5ab263e0d3e73e3313868ab7a47c26e",
+      "repo": "djimit/djimitflo",
+      "base_sha": "2ffae63a8177c726c6dbedf4e6113d3751218c3f",
+      "files": [
+        "packages/server/src/__tests__/swarm-task-decomposer.test.ts"
+      ],
+      "patch_sha256": "3820a2f62299ab2808890c9f3c7c830e0f6bec73de0c2b0fb1f6013be13169e1",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-4534c4a0",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/swarm-task-decomposer.test.ts",
+        "message": "Add unit tests for services/swarm-task-decomposer.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/swarm-task-decomposer.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "e30a1579df69d3c0cef856cf46a1cce15d08f69d66738d6f239efe97c40252c1"
+    },
+    {
+      "id": "8f0ecc6793",
+      "pr": 605,
+      "side": "good",
+      "kind": null,
+      "commit": "c5d13f043da5edada4b3739234a5478dd9bc7a90",
+      "repo": "djimit/djimitflo",
+      "base_sha": "8ff784f3a74ee71bf11357baa6faee06e9ecd618",
+      "files": [
+        "packages/server/src/__tests__/agent-lure-service.exports.test.ts"
+      ],
+      "patch_sha256": "4cb54de82bd6fd492ce78424c2072dc0fe6b547f14e28c92fd175dfc74b17ff0",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-118c61ea",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/agent-lure-service.exports.test.ts",
+        "message": "Test untested exports of services/agent-lure-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/agent-lure-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "b88cd2ab5d78244f5154b34424012b1ebed8b67d2a2651efd48b1e768a7fe494"
+    },
+    {
+      "id": "8fc9354193",
+      "pr": 605,
+      "side": "defective",
+      "kind": "C",
+      "commit": "c5d13f043da5edada4b3739234a5478dd9bc7a90",
+      "repo": "djimit/djimitflo",
+      "base_sha": "8ff784f3a74ee71bf11357baa6faee06e9ecd618",
+      "files": [
+        "packages/server/src/__tests__/agent-lure-service.exports.test.ts"
+      ],
+      "patch_sha256": "c7a924c872968e5f2631e48c31444325cf1151bc49227d455379c5a4196dbeac",
+      "defect_lines": [
+        6
+      ],
+      "finding": {
+        "id": "f1r-118c61ea",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/agent-lure-service.exports.test.ts",
+        "message": "Test untested exports of services/agent-lure-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/agent-lure-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "b88cd2ab5d78244f5154b34424012b1ebed8b67d2a2651efd48b1e768a7fe494"
+    },
+    {
+      "id": "95de2c1e76",
+      "pr": 612,
+      "side": "defective",
+      "kind": "B",
+      "commit": "db14757895e0dbddb317bc2de1290b721e5e885c",
+      "repo": "djimit/djimitflo",
+      "base_sha": "2d803a2b0e89109a216b8939405c0a0106659617",
+      "files": [
+        "packages/server/src/__tests__/test-gap-source-service.exports.test.ts"
+      ],
+      "patch_sha256": "7118c4982ba88fe2c11eb0d3d606f298242b8085784d4ab538872a42d183de3d",
+      "defect_lines": [
+        34,
+        35,
+        36,
+        37,
+        48,
+        49,
+        50,
+        54,
+        62
+      ],
+      "finding": {
+        "id": "f1r-e44db322",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/test-gap-source-service.exports.test.ts",
+        "message": "Test untested exports of services/test-gap-source-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/test-gap-source-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "05404f3903b0e52fb821e387d7b7169829dc8f0051c640badf0f9640d0b9725f"
+    },
+    {
+      "id": "9952fe9a06",
+      "pr": 588,
+      "side": "good",
+      "kind": null,
+      "commit": "961f965142f93b4a3a4d9d6288995671a4772e18",
+      "repo": "djimit/djimitflo",
+      "base_sha": "da94d80e13e67cf30949e735bcf9327028544120",
+      "files": [
+        "packages/server/src/__tests__/llm-fallback.exports.test.ts"
+      ],
+      "patch_sha256": "2168608e35a23db4c863e00d53cc9f755f1ac5156e68d290725a7cc31b977d64",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-c5c40e00",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/llm-fallback.exports.test.ts",
+        "message": "Test untested exports of services/llm-fallback.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/llm-fallback.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "09cb8924aef1576c21976f692a993e8551623d43ecb0f4c143c09a023da08e97"
+    },
+    {
+      "id": "a22d6d27eb",
+      "pr": 474,
+      "side": "defective",
+      "kind": "B",
+      "commit": "a5be844daa10b93b72a5ac7895d55416a2e49fe2",
+      "repo": "djimit/djimitflo",
+      "base_sha": "2f9ea3b5ac56304ac9cc8c7ff0fc7b394dbbb3ac",
+      "files": [
+        "packages/server/src/__tests__/memory-store.test.ts"
+      ],
+      "patch_sha256": "c3d8c1ef43ba225a3e7af12abf2c4824576f9dbe512ccbd146935d1b9316899b",
+      "defect_lines": [
+        25,
+        26,
+        28,
+        32,
+        37,
+        43,
+        44,
+        45,
+        46,
+        47,
+        55,
+        56,
+        63,
+        64,
+        65,
+        66,
+        75,
+        76,
+        77,
+        85,
+        89
+      ],
+      "finding": {
+        "id": "f1r-b64ffd49",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/memory-store.test.ts",
+        "message": "Add unit tests for services/memory-store.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/memory-store.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "17dd59eb210ec8692c1102955b67e7b19df25ab0773a6018d33e7b85d5107137"
+    },
+    {
+      "id": "a4759814e2",
+      "pr": 537,
+      "side": "defective",
+      "kind": "C",
+      "commit": "2ffae63a8177c726c6dbedf4e6113d3751218c3f",
+      "repo": "djimit/djimitflo",
+      "base_sha": "727a5bfedaba8a0cdae57069bfcf3b2ee846e629",
+      "files": [
+        "packages/server/src/__tests__/repo-evidence-packet.test.ts"
+      ],
+      "patch_sha256": "33c3bedcbf8a51fcebeb51833d7d00ea9d2a6034131d5c49e04a19f179d909c4",
+      "defect_lines": [
+        5
+      ],
+      "finding": {
+        "id": "f1r-024920d2",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/repo-evidence-packet.test.ts",
+        "message": "Add unit tests for services/repo-evidence-packet.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/repo-evidence-packet.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "a01ec9479e7a382ed28858b14702ea959281e466d3c2c0d313acac0c71842d89"
+    },
+    {
+      "id": "af73fb49e0",
+      "pr": 616,
+      "side": "defective",
+      "kind": "A",
+      "commit": "c7bec59e3ecb62a2aa61844b5fdb6e24416feb0c",
+      "repo": "djimit/djimitflo",
+      "base_sha": "db14757895e0dbddb317bc2de1290b721e5e885c",
+      "files": [
+        "packages/server/src/__tests__/roborev-findings-service.test.ts"
+      ],
+      "patch_sha256": "709dbcc395bfe5129d99e45fff8f6262836b66710cf56bc9e038a28810055088",
+      "defect_lines": [
+        33,
+        38,
+        81,
+        95,
+        104,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        178,
+        179
+      ],
+      "finding": {
+        "id": "f1r-244a5efc",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/roborev-findings-service.test.ts",
+        "message": "Raise the mutation score of services/roborev-findings-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/roborev-findings-service.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "ff1b9adf50a030c68734dc7abc2413119cb8143641af0c6d02cd8f9caa8e78dc"
+    },
+    {
+      "id": "b57ca61563",
+      "pr": 616,
+      "side": "good",
+      "kind": null,
+      "commit": "c7bec59e3ecb62a2aa61844b5fdb6e24416feb0c",
+      "repo": "djimit/djimitflo",
+      "base_sha": "db14757895e0dbddb317bc2de1290b721e5e885c",
+      "files": [
+        "packages/server/src/__tests__/roborev-findings-service.test.ts"
+      ],
+      "patch_sha256": "2323450f7d7da78330a8366e5789462fd5eb3f5c4e805e1f92bfbc677db010b0",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-244a5efc",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/roborev-findings-service.test.ts",
+        "message": "Raise the mutation score of services/roborev-findings-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/roborev-findings-service.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "ff1b9adf50a030c68734dc7abc2413119cb8143641af0c6d02cd8f9caa8e78dc"
+    },
+    {
+      "id": "b91d7c2fcc",
+      "pr": 611,
+      "side": "good",
+      "kind": null,
+      "commit": "2d803a2b0e89109a216b8939405c0a0106659617",
+      "repo": "djimit/djimitflo",
+      "base_sha": "6cd18043ff667bdd4a450b677e9ddfab11ae7b4d",
+      "files": [
+        "packages/server/src/__tests__/expert-evidence-enrichment-service.exports.test.ts"
+      ],
+      "patch_sha256": "3677674171fa34e8c4399924d605d18fae88de2dff61d870c704936bcf8a2f6a",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-567c197e",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/expert-evidence-enrichment-service.exports.test.ts",
+        "message": "Test untested exports of services/expert-evidence-enrichment-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/expert-evidence-enrichment-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "1a8622724be0a3e37a9ab6640b4ca266a28d7a0ba4ac31115e4e3e0963c8b4a4"
+    },
+    {
+      "id": "bd626858fe",
+      "pr": 582,
+      "side": "defective",
+      "kind": "B",
+      "commit": "257f32a12fc3405efe11f425b3f7ebb95676e326",
+      "repo": "djimit/djimitflo",
+      "base_sha": "4de6c80b43fdd5f187eaa9165de24746b887ffa2",
+      "files": [
+        "packages/server/src/__tests__/decision-context-service.exports.test.ts"
+      ],
+      "patch_sha256": "02888a0d4b515082b1480cc2ec8f1af7281c1ff005da45583c9dc30de2d18d86",
+      "defect_lines": [
+        6,
+        12,
+        14,
+        15,
+        22,
+        28,
+        29,
+        39,
+        40,
+        46,
+        47,
+        53,
+        54
+      ],
+      "finding": {
+        "id": "f1r-d9ec4e5e",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/decision-context-service.exports.test.ts",
+        "message": "Test untested exports of services/decision-context-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/decision-context-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "961a84c8e9fdbba2b7e0e428d573c0d901a97acb53188146f7b52989f42ed300"
+    },
+    {
+      "id": "c0920fb549",
+      "pr": 537,
+      "side": "good",
+      "kind": null,
+      "commit": "2ffae63a8177c726c6dbedf4e6113d3751218c3f",
+      "repo": "djimit/djimitflo",
+      "base_sha": "727a5bfedaba8a0cdae57069bfcf3b2ee846e629",
+      "files": [
+        "packages/server/src/__tests__/repo-evidence-packet.test.ts"
+      ],
+      "patch_sha256": "3bfa65b6ba94d26eead728d751b3b7b8bb9ad79513fc133dc7e4eb186098b60a",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-024920d2",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/repo-evidence-packet.test.ts",
+        "message": "Add unit tests for services/repo-evidence-packet.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/repo-evidence-packet.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "a01ec9479e7a382ed28858b14702ea959281e466d3c2c0d313acac0c71842d89"
+    },
+    {
+      "id": "c0b1cecbd3",
+      "pr": 591,
+      "side": "good",
+      "kind": null,
+      "commit": "fbe3978d965c3b9ba130457661831af4dd470da4",
+      "repo": "djimit/djimitflo",
+      "base_sha": "033c023492e50d17086f833d136fb6e358866446",
+      "files": [
+        "packages/server/src/__tests__/queue-hygiene-service.exports.test.ts"
+      ],
+      "patch_sha256": "123231391bd74b9bbad5881d319dbefdbe7d15ba9473afa8993febdb023177fd",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-696b5a03",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/queue-hygiene-service.exports.test.ts",
+        "message": "Test untested exports of services/queue-hygiene-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/queue-hygiene-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "907fe3ea69df265e3240255c7ac0cb94abbc0653a3301f4e460d537754da76b5"
+    },
+    {
+      "id": "c50f8dba09",
+      "pr": 587,
+      "side": "defective",
+      "kind": "A",
+      "commit": "da94d80e13e67cf30949e735bcf9327028544120",
+      "repo": "djimit/djimitflo",
+      "base_sha": "257f32a12fc3405efe11f425b3f7ebb95676e326",
+      "files": [
+        "packages/server/src/__tests__/spawn-token.exports.test.ts"
+      ],
+      "patch_sha256": "f951e50dc4a8412efb9dc9044d46c9e6d9f2b90e80b35f9168775126bda027b5",
+      "defect_lines": [
+        6,
+        10,
+        14,
+        15,
+        19,
+        23,
+        24,
+        28,
+        29,
+        33,
+        34
+      ],
+      "finding": {
+        "id": "f1r-21afc147",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/spawn-token.exports.test.ts",
+        "message": "Test untested exports of services/spawn-token.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/spawn-token.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "23ab08f0fc636819461b243fb33cb1443f2195c937359e5a30249a11f6071bdf"
+    },
+    {
+      "id": "cd64b60070",
+      "pr": 552,
+      "side": "defective",
+      "kind": "B",
+      "commit": "012f8d40f5ab263e0d3e73e3313868ab7a47c26e",
+      "repo": "djimit/djimitflo",
+      "base_sha": "2ffae63a8177c726c6dbedf4e6113d3751218c3f",
+      "files": [
+        "packages/server/src/__tests__/swarm-task-decomposer.test.ts"
+      ],
+      "patch_sha256": "91c1f57e7423a4c1702a0e73a4337901b74a61b3a2c2416e1ad95bf796a846e3",
+      "defect_lines": [
+        17,
+        18,
+        19,
+        21,
+        22,
+        23,
+        30,
+        31,
+        38,
+        44,
+        46,
+        53,
+        54,
+        56,
+        62,
+        63,
+        71,
+        72,
+        82,
+        88,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        105,
+        114,
+        116,
+        117,
+        118,
+        125,
+        142,
+        143,
+        144
+      ],
+      "finding": {
+        "id": "f1r-4534c4a0",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/swarm-task-decomposer.test.ts",
+        "message": "Add unit tests for services/swarm-task-decomposer.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/swarm-task-decomposer.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "e30a1579df69d3c0cef856cf46a1cce15d08f69d66738d6f239efe97c40252c1"
+    },
+    {
+      "id": "d915e4086f",
+      "pr": 590,
+      "side": "defective",
+      "kind": "B",
+      "commit": "033c023492e50d17086f833d136fb6e358866446",
+      "repo": "djimit/djimitflo",
+      "base_sha": "961f965142f93b4a3a4d9d6288995671a4772e18",
+      "files": [
+        "packages/server/src/__tests__/judgment-service.exports.test.ts"
+      ],
+      "patch_sha256": "64d2770f440fbebe91b77a2dc7842aa02eac2692e0f37791c77526d2cce2e6cf",
+      "defect_lines": [
+        21,
+        26,
+        31,
+        36,
+        41,
+        46,
+        48,
+        53,
+        58,
+        64,
+        65,
+        66
+      ],
+      "finding": {
+        "id": "f1r-c0b778f6",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/judgment-service.exports.test.ts",
+        "message": "Test untested exports of services/judgment-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/judgment-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "58fcfe9b6c1f8930e7dc250b96c7a0d6fe8371121dcbb9c76c8983967d442f71"
+    },
+    {
+      "id": "e2216f38d8",
+      "pr": 474,
+      "side": "good",
+      "kind": null,
+      "commit": "a5be844daa10b93b72a5ac7895d55416a2e49fe2",
+      "repo": "djimit/djimitflo",
+      "base_sha": "2f9ea3b5ac56304ac9cc8c7ff0fc7b394dbbb3ac",
+      "files": [
+        "packages/server/src/__tests__/memory-store.test.ts"
+      ],
+      "patch_sha256": "4b5674250c103054059c218b873316e73e6dbd8846710c85f25f5689de09a30e",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-b64ffd49",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/memory-store.test.ts",
+        "message": "Add unit tests for services/memory-store.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/memory-store.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "17dd59eb210ec8692c1102955b67e7b19df25ab0773a6018d33e7b85d5107137"
+    },
+    {
+      "id": "e3b9119ba0",
+      "pr": 592,
+      "side": "defective",
+      "kind": "C",
+      "commit": "ef21255e590e07e9b5535a589a04acdecd4e1e72",
+      "repo": "djimit/djimitflo",
+      "base_sha": "fbe3978d965c3b9ba130457661831af4dd470da4",
+      "files": [
+        "packages/server/src/__tests__/commons-proposal-review-service.exports.test.ts"
+      ],
+      "patch_sha256": "eef907bc80fb4c64fab962620186d3f9d08e9516eb86fae7e4839f2a0cd4abfa",
+      "defect_lines": [
+        2
+      ],
+      "finding": {
+        "id": "f1r-077e3ab1",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/commons-proposal-review-service.exports.test.ts",
+        "message": "Test untested exports of services/commons-proposal-review-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/commons-proposal-review-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "c042a1d2902006866e3bec488f0a377d393e445e5f71e258683d419f90792973"
+    },
+    {
+      "id": "ea49fa2372",
+      "pr": 590,
+      "side": "good",
+      "kind": null,
+      "commit": "033c023492e50d17086f833d136fb6e358866446",
+      "repo": "djimit/djimitflo",
+      "base_sha": "961f965142f93b4a3a4d9d6288995671a4772e18",
+      "files": [
+        "packages/server/src/__tests__/judgment-service.exports.test.ts"
+      ],
+      "patch_sha256": "90b515dd0cd8c14113c9bd8d7775a3600ccdd0bb3ca4cd8b19179504d49e6481",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-c0b778f6",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/judgment-service.exports.test.ts",
+        "message": "Test untested exports of services/judgment-service.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/judgment-service.exports.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "58fcfe9b6c1f8930e7dc250b96c7a0d6fe8371121dcbb9c76c8983967d442f71"
+    },
+    {
+      "id": "eb654b663a",
+      "pr": 606,
+      "side": "good",
+      "kind": null,
+      "commit": "d3f09ddc4c378e10b1d9b38e7bdcadaa3c452ed5",
+      "repo": "djimit/djimitflo",
+      "base_sha": "c5d13f043da5edada4b3739234a5478dd9bc7a90",
+      "files": [
+        "packages/server/src/__tests__/service-map.test.ts"
+      ],
+      "patch_sha256": "dc03fd5a98d3c316c009b844fec20699d98111b1d6b3e75b4bff46106a45a767",
+      "defect_lines": [],
+      "finding": {
+        "id": "f1r-2a8caf6d",
+        "type": "test_gap",
+        "severity": "info",
+        "file": "packages/server/src/__tests__/service-map.test.ts",
+        "message": "Raise the mutation score of services/service-map.ts",
+        "evidence": "Loop PR diff, 1 file (packages/server/src/__tests__/service-map.test.ts)",
+        "suggested_fix": "Keep the change if the test is correct and actually tests the target."
+      },
+      "finding_sha256": "6454f6e998097f147a97ea8f73f427559ae1ade74f167404930f6ea0261694ad"
+    }
+  ]
+}

@@ -34,6 +34,8 @@ describe('isInfrastructureFailure', () => {
     'ETIMEDOUT',
     'ENOSPC: no space left on device',
     'approval expired',
+    // prod 2026-11-08: worktree repair after a deploy hit a dangling tracked symlink; the proposal was parked for good
+    "maker_execution_error: ENOENT: no such file or directory, stat '/data/loop-worktrees/7474ac12/51e5aeb3/knowledge'",
   ])('returns true for infra failure: %s', (detail) => {
     expect(isInfrastructureFailure(detail)).toBe(true);
   });
@@ -43,6 +45,7 @@ describe('isInfrastructureFailure', () => {
     'syntax error in module.ts',
     '',
     'normal runtime error',
+    "ENOENT: no such file or directory, open 'src/services/missing.ts'", // a maker's own missing file is not infra
   ])('returns false for non-infra detail: %s', (detail) => {
     expect(isInfrastructureFailure(detail)).toBe(false);
   });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, RefreshCw, Play, Pause, RotateCcw, Globe, ShieldCheck, MessageCircleQuestion, Check, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { fmtDate } from '../../lib/format';
 import { LoadErrorNotice, softFail } from '../../components/LoadErrorNotice';
 
 export interface FleetRepository {
@@ -493,7 +494,7 @@ export function ExplainerFleetPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-foreground-secondary">
-                    {repo.last_generated ? new Date(repo.last_generated).toLocaleDateString() : 'Never'}
+                    {repo.last_generated ? fmtDate(repo.last_generated) : 'Never'}
                   </td>
                   <td className="px-4 py-3">
                     {repo.last_generated ? (

@@ -36,6 +36,16 @@ describe('frontier expert routes (§35: broad reads, governed mutation)', () => 
     expect((await request(app).get('/swarms/expert/experts?kind=robot')).body.error.code).toBe('VALIDATION_ERROR');
     const funnel = (await request(app).get('/swarms/expert/experts?kind=person&limit=1')).body.funnel as Array<{ kind: string; count: number }>;
     expect(funnel.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThan(1);
+    // truth audit 2026-11-12: the capped list says how many match the filter and when the newest unit was ingested
+    const persons = (db.prepare("SELECT COUNT(*) AS n FROM expert_identities WHERE COALESCE(kind, 'person') = 'person'").get() as { n: number }).n;
+    const capped = (await request(app).get('/swarms/expert/experts?kind=person&limit=1')).body;
+    expect(capped.experts).toHaveLength(1);
+    expect(capped.total).toBe(persons);
+    expect(capped.last_ingested_at).toBeNull();
+    const unit = db.prepare(`INSERT INTO expert_identities (id, canonical_name, aliases_json, lifecycle_state, identity_confidence, provenance_json, version, kind, created_at)
+      VALUES (?, ?, '[]', 'CAPABILITY_INFERRED', 0, '{}', 1, 'paper', ?)`);
+    unit.run('unit-old', 'Old paper', '2026-10-01T00:00:00Z'); unit.run('unit-new', 'New paper', '2026-10-14T07:00:00Z');
+    expect((await request(app).get('/swarms/expert/experts?kind=paper&name=paper&limit=1')).body).toMatchObject({ total: 2, last_ingested_at: '2026-10-14T07:00:00Z' });
 
     const resolved = await request(app).post('/swarms/expert/resolve').send({ question: 'Which prompt injection defences survive adaptive attackers?', max_experts: 2 });
     expect(resolved.status).toBe(200);

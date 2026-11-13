@@ -2,6 +2,7 @@
 // Needs git and node; docker is replaced by a fake on PATH that records every call.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -10,7 +11,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
-  GIT_INTENT, GIT_NAMES, GIT_UNTRACKED, GYM_DIFF, MAKER_DIFF, RUNNER_USER, git, runnerArgs, runnerForwarder, runnerGitScript, runnerGitVars, udsProxy, volumeInitArgs, workerGitdir,
+  GIT_INTENT, GIT_NAMES, GIT_UNTRACKED, GYM_DIFF, MAKER_DIFF, RUNNER_USER, SKILL_TOOL_CONTRACTS, git, runnerArgs, runnerForwarder, runnerGitScript, runnerGitVars, toolDeclaration, udsModelProxy,
+  udsProxy, volumeInitArgs, workerGitdir,
 } from './gym-worker.mjs';
 
 const WORKER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'gym-worker.mjs');
@@ -181,7 +183,7 @@ test('llama route: runner 127.0.0.1:<port> → unix socket → host router; the 
  * The real worker (main) against a stub API and a fake docker that logs every call: every runner step is hardened, only
  * npm ci has a network (bridge), the host worktree is never mounted, git runs in a runner, attempt volumes are removed.
  */
-async function runWorker(claims, dockerScript) {
+async function runWorker(claims, dockerScript, extraEnv = {}) {
   const root = tmp('gymm-');
   const origin = path.join(root, 'origin'); fs.mkdirSync(path.join(origin, 'packages/server/src/__tests__'), { recursive: true });
   rawGit(origin, ['init', '-q']); fs.writeFileSync(path.join(origin, 'packages/server/src/a.ts'), 'export const a = 1;\n');
@@ -198,7 +200,7 @@ async function runWorker(claims, dockerScript) {
   await new Promise((r) => api.once('listening', r));
   const log = path.join(root, 'docker.log');
   const code = await new Promise((resolve) => {
-    const p = spawn(process.execPath, [WORKER], { stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_DOCKER_LOG: log, FAKE_STATE: path.join(root, 'state'), GYM_WORK_DIR: path.join(root, 'work'), GYM_REPO: origin, GYM_HOST: 'testhost', GYM_WORKER_TOKEN_FILE: path.join(root, 'token'), DJIMITFLO_API: `http://127.0.0.1:${api.address().port}/api`, GYM_LLAMA_URL: 'http://127.0.0.1:9' } });
+    const p = spawn(process.execPath, [WORKER], { stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_DOCKER_LOG: log, FAKE_STATE: path.join(root, 'state'), GYM_WORK_DIR: path.join(root, 'work'), GYM_REPO: origin, GYM_HOST: 'testhost', GYM_WORKER_TOKEN_FILE: path.join(root, 'token'), DJIMITFLO_API: `http://127.0.0.1:${api.address().port}/api`, GYM_LLAMA_URL: 'http://127.0.0.1:9', GYM_NATIVE_SKILL_TOOLS: '', ...extraEnv } });
     p.on('exit', resolve);
   });
   api.close();
@@ -219,7 +221,7 @@ function assertHardened(calls, workDir) {
     assert.ok(!a.includes('host') && !a.join(' ').includes('--network host'), `no host network: ${a.at(-1)}`);
     assert.equal(a[a.indexOf('--cap-drop') + 1], 'ALL'); assert.ok(a.includes('--read-only') && a.includes('no-new-privileges'));
     assert.ok(a.some((x) => x.endsWith('@sha256:b15ba19e35a994d39de0a10e6c6559af7ac355a6b24ff26425b0fa88f2f2b9ca')));
-    for (let i = 0; i < a.length; i++) if (a[i] === '-v' && a[i + 1].startsWith('/')) assert.ok(a[i + 1].endsWith(':ro') && !a[i + 1].includes(`${path.sep}wt-`) && !a[i + 1].includes(`${path.sep}mk-`), `host binds are read-only and never the worktree: ${a[i + 1]}`);
+    for (let i = 0; i < a.length; i++) if (a[i] === '-v' && a[i + 1].startsWith('/')) assert.ok(a[i + 1].endsWith(':ro') && !a[i + 1].startsWith(path.join(workDir, 'wt-')) && !a[i + 1].startsWith(path.join(workDir, 'mk-')), `host binds are read-only and never the worktree: ${a[i + 1]}`);
   }
   const [init, ...steps] = runs;
   assert.equal(init[init.indexOf('--user') + 1], '0:0'); assert.equal(init.at(-5), 'chown');
@@ -261,5 +263,211 @@ test('gym attempt: same verdict as before (red → maker → green, source only)
     assert.deepEqual(res.changed_files, ['packages/server/src/a.ts']);
     assert.equal(res.graded_kind, 'binary');
     assertHardened(r.calls, r.wt);
+  } finally { fs.rmSync(r.root, { recursive: true, force: true }); }
+});
+
+/** CV-001: a fake router that answers under the model it was asked for and lists the alias with its launch arguments. */
+async function fakeRouter(listing) {
+  const seen = [];
+  const srv = http.createServer((req, res) => {
+    let body = ''; req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      if (req.method === 'GET') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ data: req.url === '/models' ? listing : [] })); return; }
+      let d = {}; try { d = JSON.parse(body || '{}'); } catch { /* not JSON */ } seen.push(d.model ?? null);
+      res.setHeader('content-type', 'text/event-stream'); res.end(`data: {"id":"c1","model":${JSON.stringify(d.model ?? 'qwen38-27b')},"choices":[]}\n\ndata: [DONE]\n\n`);
+    });
+  }).listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
+  return { srv, seen, url: `http://127.0.0.1:${srv.address().port}` };
+}
+
+test('CV-001 model route: every JSON request gets the claimed alias; counts, served models and the last chat request are saved', async () => {
+  const router = await fakeRouter([]);
+  const dir = tmp('gymcv-'); const sock = path.join(dir, 's.sock');
+  const write = process.stdout.write; process.stdout.write = () => true;
+  const proxy = udsModelProxy(sock, '127.0.0.1', router.srv.address().port, 'qwen38-27b-cvd15', dir);
+  await new Promise((r) => proxy.once('listening', r)); process.stdout.write = write;
+  const post = (body) => new Promise((resolve) => {
+    const req = http.request({ socketPath: sock, method: 'POST', path: '/v1/chat/completions', headers: { 'content-type': 'application/json' } }, (res) => { let t = ''; res.on('data', (d) => { t += d; }); res.on('end', () => resolve(t)); });
+    req.end(body);
+  });
+  try {
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o666);
+    const out = await post(JSON.stringify({ messages: [{ role: 'user', content: 'x' }], stream: true }));
+    assert.match(out, /"model":"qwen38-27b-cvd15"/, 'the response streams through unchanged');
+    await post(JSON.stringify({ model: 'qwen38-27b', messages: [] })); // an explicit other model is overridden too
+    await post('not json');
+    assert.deepEqual(router.seen, ['qwen38-27b-cvd15', 'qwen38-27b-cvd15', null]);
+    const stats = JSON.parse(fs.readFileSync(path.join(dir, 'route.json'), 'utf8'));
+    assert.deepEqual(stats, { alias: 'qwen38-27b-cvd15', requests: 3, forced: 2, unforced: 1, served_models: ['qwen38-27b-cvd15', 'qwen38-27b'], http_errors: 0 }, 'the unforced request was answered by the default model: the server voids such an attempt');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'chat.json'), 'utf8')).model, 'qwen38-27b-cvd15', 'the last chat request is kept for the transcript counts');
+  } finally { proxy.close(); router.srv.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('CV-001 gym attempt: the claimed alias reaches the router through the runner route, and model_check reports alias, served model and vector digest', async () => {
+  const root = tmp('gymcvv-'); const vec = path.join(root, 'v.gguf'); fs.writeFileSync(vec, 'vector');
+  const router = await fakeRouter([{ id: 'qwen38-27b-cvd15', status: { value: 'loaded', args: ['llama-server', '--alias', 'qwen38-27b-cvd15', '--control-vector-scaled', `${vec}:1.5`] } }]);
+  const task = { commit: 'mut:1', base: null, mutant: 'export const a = 2;\n', source: 'packages/server/src/a.ts', tests: ['packages/server/src/__tests__/a.test.ts'] };
+  const chat = JSON.stringify({ messages: [{ role: 'user', content: 'go' }, { role: 'assistant', tool_calls: [{ function: { name: 'edit', arguments: '{"p":"a.ts"}' } }] }] });
+  const r = await runWorker((url, base) => (url.endsWith('/gym-worker/claim') ? { runId: 'run-cv', species: 'atomic@llama-router', task: { ...task, base }, model_override: { alias: 'qwen38-27b-cvd15' }, cv: { experiment: 'cv-001', arm: 'B', repeat: 1 } } : url.endsWith('/claim') ? { job: null } : {}),
+    FAKE_DOCKER(`if (cmd.includes('atomic-agent run')) {
+    const v = args.find((x) => x.endsWith(':/run/llama.sock:ro')); const sock = v.slice(0, -':/run/llama.sock:ro'.length);
+    const req = require('http').request({ socketPath: sock, method: 'POST', path: '/v1/chat/completions', headers: { 'content-type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => process.exit(0)); });
+    req.end(${JSON.stringify(chat)}); return;
+  }
+  if (cmd.includes('vitest run')) process.exit(n('vitest') === 0 ? 1 : 0);
+  if (cmd.includes("'--name-only'")) process.stdout.write('packages/server/src/a.ts\\n');
+  if (cmd.includes("'diff' 'HEAD'")) process.stdout.write('diff --git a/packages/server/src/a.ts b/packages/server/src/a.ts\\n');
+  if (cmd.startsWith('cat ')) process.exit(1);`), { GYM_LLAMA_URL: router.url });
+  try {
+    assert.equal(r.code, 0);
+    assert.deepEqual(router.seen, ['qwen38-27b-cvd15'], 'the router got the alias, not the shim default');
+    const res = r.posted['/api/gym-worker/runs/run-cv/result'];
+    assert.equal(res.status, 'success');
+    assert.deepEqual(res.model_check, { alias: 'qwen38-27b-cvd15', requests: 1, forced: 1, unforced: 0, served_models: ['qwen38-27b-cvd15'], http_errors: 0,
+      router: { listed: true, status: 'loaded', layer_range: null, control_vectors: [{ path: vec, scale: 1.5, sha256: createHash('sha256').update('vector').digest('hex') }] },
+      transcript: { tool_calls: 1, broken_tool_calls: 0, loop: false, post_pass_edits: 0, pass_seen: false } });
+    assert.equal(res.tg_metrics.termination, 'exit:0', 'a CV claim carries the per-attempt measurements');
+    assertHardened(r.calls, r.wt);
+  } finally { router.srv.close(); fs.rmSync(r.root, { recursive: true, force: true }); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a claim without model_override keeps the plain byte route and sends no model_check', async () => {
+  const router = await fakeRouter([]);
+  const task = { commit: 'mut:1', base: null, mutant: 'export const a = 2;\n', source: 'packages/server/src/a.ts', tests: ['packages/server/src/__tests__/a.test.ts'] };
+  const r = await runWorker((url, base) => (url.endsWith('/gym-worker/claim') ? { runId: 'run-2', species: 'atomic@llama-router', task: { ...task, base } } : url.endsWith('/claim') ? { job: null } : {}),
+    FAKE_DOCKER(`if (cmd.includes('atomic-agent run')) {
+    const v = args.find((x) => x.endsWith(':/run/llama.sock:ro')); const sock = v.slice(0, -':/run/llama.sock:ro'.length);
+    const req = require('http').request({ socketPath: sock, method: 'POST', path: '/v1/chat/completions', headers: { 'content-type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => process.exit(0)); });
+    req.end('{"messages":[]}'); return;
+  }
+  if (cmd.includes('vitest run')) process.exit(n('vitest') === 0 ? 1 : 0);
+  if (cmd.includes("'--name-only'")) process.stdout.write('packages/server/src/a.ts\\n');
+  if (cmd.includes("'diff' 'HEAD'")) process.stdout.write('diff --git a/packages/server/src/a.ts b/packages/server/src/a.ts\\n');
+  if (cmd.startsWith('cat ')) process.exit(1);`), { GYM_LLAMA_URL: router.url });
+  try {
+    assert.equal(r.code, 0);
+    assert.deepEqual(router.seen, [null], 'no model is added: the host shim keeps its default');
+    const res = r.posted['/api/gym-worker/runs/run-2/result'];
+    assert.equal(res.status, 'success'); assert.ok(!('model_check' in res) && !('tg_metrics' in res));
+  } finally { router.srv.close(); fs.rmSync(r.root, { recursive: true, force: true }); }
+});
+
+// GYM_NATIVE_SKILL_TOOLS: the oracle-gate skill delivered to atomic-agent 0.6.5 as a native tool (an MCP stdio server in its
+// config: mcp.servers[], tool `mcp.djimitflo.oracle_gate`), not as assignment text. Off = byte-identical claim and config.
+const ORACLE_GATE_FILE = path.join(path.dirname(WORKER), 'skills', 'oracle-gate.mjs');
+const ORACLE_DIGEST = `sha256:${createHash('sha256').update(fs.readFileSync(ORACLE_GATE_FILE)).digest('hex')}`;
+const OLD_CONFIG = JSON.stringify({ version: 72, localModels: { url: 'http://127.0.0.1:9', mode: 'external' }, llm: { activeTextProvider: 'local-llama', activeEmbeddingProvider: 'local-llama', toolTransport: 'auto', providers: [{ id: 'local-llama', kind: 'llama-server', url: 'http://127.0.0.1:9' }] } });
+const OLD_CAPS = ['canary', 'write_test', 'prod_gates', 'prompt_override', 'procedure_lines', 'model_override'];
+
+/** A JSON-RPC session with the worker's in-runner MCP server (newline-delimited JSON over stdio, as atomic speaks it). */
+async function mcpSession(cwd, argv, requests) {
+  const p = spawn(process.execPath, [WORKER, '--skill-mcp', '.', '--', ...argv], { cwd, stdio: ['pipe', 'pipe', 'ignore'] });
+  const replies = new Map(); let buf = '';
+  p.stdout.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.set(m.id, m); } });
+  for (const r of requests) p.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...r })}\n`);
+  const want = requests.filter((r) => r.id !== undefined).map((r) => r.id);
+  await new Promise((resolve, reject) => { const t = setTimeout(() => reject(new Error('mcp timeout')), 60_000); const tick = setInterval(() => { if (want.every((id) => replies.has(id))) { clearTimeout(t); clearInterval(tick); resolve(); } }, 20); });
+  p.kill();
+  return replies;
+}
+const gateRepo = (testBody) => {
+  const dir = tmp('gymskill-');
+  fs.writeFileSync(path.join(dir, 'package.json'), '{"scripts":{}}\n');
+  fs.writeFileSync(path.join(dir, 't.test.mjs'), `import test from 'node:test'; import assert from 'node:assert'; test('t', () => { ${testBody} });\n`);
+  return dir;
+};
+const INIT = [{ id: 0, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'atomic-agent', version: '0.1.0' } } }, { method: 'notifications/initialized' }];
+
+test('native skill tool: the in-runner MCP server declares oracle_gate from its contract and returns only the parsed ORACLE_GATE line', async () => {
+  const green = gateRepo('assert.equal(1, 1);'); const red = gateRepo('assert.equal(1, 2);');
+  try {
+    const r = await mcpSession(green, ['node', '--test', 't.test.mjs'], [...INIT, { id: 1, method: 'tools/list', params: {} }, { id: 2, method: 'tools/call', params: { name: 'oracle_gate', arguments: {} } }, { id: 3, method: 'tools/call', params: { name: 'nope', arguments: {} } }]);
+    assert.deepEqual(r.get(0).result.capabilities, { tools: {} });
+    assert.deepEqual(r.get(1).result.tools, SKILL_TOOL_CONTRACTS.map(toolDeclaration));
+    assert.deepEqual(r.get(1).result.tools.map((t) => [t.name, t.inputSchema]), [['oracle_gate', { type: 'object', properties: {}, required: [], additionalProperties: false }]], 'the schema comes from the contract: no params');
+    const content = r.get(2).result.content;
+    assert.equal(content.length, 1); assert.equal(content[0].type, 'text');
+    assert.match(content[0].text, /^ORACLE_GATE \{[^\n]*\}$/, 'one line, nothing else (no child output, no human line)');
+    const gate = JSON.parse(content[0].text.slice('ORACLE_GATE '.length));
+    assert.equal(gate.pass, true); assert.equal(gate.digest, ORACLE_DIGEST, "the worker's own copy of the skill ran");
+    assert.deepEqual(gate.checks.map((c) => [c.name, c.exit]), [['node --test t.test.mjs', 0]], 'only the acceptance command: the daemon scripts do not fit atomic\'s 60 s MCP call limit');
+    assert.equal(r.get(3).error.code, -32602, 'an unknown tool is an error, nothing runs');
+    const f = await mcpSession(red, ['node', '--test', 't.test.mjs'], [...INIT, { id: 1, method: 'tools/call', params: { name: 'oracle_gate', arguments: {} } }]);
+    const failed = JSON.parse(f.get(1).result.content[0].text.slice('ORACLE_GATE '.length));
+    assert.equal(failed.pass, false); assert.equal(failed.checks[0].exit, 1);
+    assert.equal(f.get(1).result.isError, false, 'a failing gate is a verdict, not a tool error');
+  } finally { fs.rmSync(green, { recursive: true, force: true }); fs.rmSync(red, { recursive: true, force: true }); }
+});
+
+const gymClaim = (extra = {}) => (url, base) => (url.endsWith('/gym-worker/claim') ? { runId: 'run-1', species: 'atomic@llama-router', task: { commit: 'mut:1', base, mutant: 'export const a = 2;\n', source: 'packages/server/src/a.ts', tests: ['packages/server/src/__tests__/a.test.ts'] }, ...extra } : url.endsWith('/claim') ? { job: null } : {});
+const ev = (o) => JSON.stringify({ sessionId: 's-1', ...o });
+const TRACE = [
+  ev({ type: 'step_started', seq: 3, ts: 1, stepIndex: 0 }),
+  ev({ type: 'tool_invocation', seq: 6, ts: 2, stepIndex: 0, tool: 'os.fs.edit', status: 'ok', summary: 'edited' }),
+  ev({ type: 'step_started', seq: 8, ts: 3, stepIndex: 1 }),
+  ev({ type: 'tool_invocation', seq: 9, ts: 4, stepIndex: 1, tool: 'mcp.djimitflo.oracle_gate', status: 'ok', summary: `ORACLE_GATE {"pass":false,"checks":[{"name":"npx vitest run src/__tests__/a.test.ts","exit":1,"ms":900}],"digest":"${ORACLE_DIGEST}"}` }),
+  ev({ type: 'step_started', seq: 10, ts: 5, stepIndex: 2 }),
+  ev({ type: 'tool_invocation', seq: 11, ts: 6, stepIndex: 2, tool: 'mcp.djimitflo.oracle_gate', status: 'ok', summary: `ORACLE_GATE {"pass":true,"checks":[{"name":"npx vitest run src/__tests__/a.test.ts","exit":0,"ms":800}],"digest":"${ORACLE_DIGEST}"}` }),
+  ev({ type: 'step_started', seq: 12, ts: 7, stepIndex: 3 }),
+  ev({ type: 'tool_invocation', seq: 13, ts: 8, stepIndex: 3, tool: 'reply', status: 'ok', summary: 'done' }),
+].join('\n');
+const GYM_DOCKER = FAKE_DOCKER(`if (cmd.includes('/state/traces')) { process.stdout.write(${JSON.stringify(`${TRACE}\n`)}); process.exit(0); }
+  if (cmd.includes('vitest run')) process.exit(n('vitest') === 0 ? 1 : 0);
+  if (cmd.includes("'--name-only'")) process.stdout.write('packages/server/src/a.ts\\n');
+  if (cmd.includes("'diff' 'HEAD'")) process.stdout.write('diff --git a/packages/server/src/a.ts b/packages/server/src/a.ts\\n');
+  if (cmd.startsWith('cat ')) process.exit(1);`);
+const configCmd = (calls) => calls.filter((a) => a[0] === 'run').map((a) => a.at(-1)).find((c) => c.startsWith('atomic-agent config set '));
+const makerRun = (calls) => calls.find((a) => a[0] === 'run' && a.at(-1).includes('atomic-agent run'));
+
+test('GYM_NATIVE_SKILL_TOOLS off (default): claim body, atomic config, maker mounts and result are as before', async () => {
+  const r = await runWorker(gymClaim({ native_skill_tools: ['oracle_gate'] }), GYM_DOCKER);
+  try {
+    assert.equal(r.code, 0);
+    assert.deepEqual(r.posted['/api/gym-worker/claim'], { species: ['atomic@llama-router'], capabilities: OLD_CAPS }, 'no capability announced');
+    assert.equal(configCmd(r.calls), `atomic-agent config set '${OLD_CONFIG}' >/dev/null`, 'byte-identical atomic config');
+    assert.ok(!makerRun(r.calls).some((x) => x.includes('/opt/djimitflo')), 'no skill mount');
+    assert.ok(!r.calls.some((a) => a.at(-1).includes('/state/traces')), 'no trace read');
+    const res = r.posted['/api/gym-worker/runs/run-1/result'];
+    assert.equal(res.status, 'success'); assert.ok(!('native_tools' in res));
+    assertHardened(r.calls, r.wt);
+  } finally { fs.rmSync(r.root, { recursive: true, force: true }); }
+});
+
+test('GYM_NATIVE_SKILL_TOOLS on, claim without the tool: capability announced, everything else as before', async () => {
+  const r = await runWorker(gymClaim(), GYM_DOCKER, { GYM_NATIVE_SKILL_TOOLS: 'on' });
+  try {
+    assert.deepEqual(r.posted['/api/gym-worker/claim'].capabilities, [...OLD_CAPS, 'native_skill_tools']);
+    assert.equal(configCmd(r.calls), `atomic-agent config set '${OLD_CONFIG}' >/dev/null`);
+    assert.ok(!makerRun(r.calls).some((x) => x.includes('/opt/djimitflo')));
+    assert.ok(!('native_tools' in r.posted['/api/gym-worker/runs/run-1/result']));
+  } finally { fs.rmSync(r.root, { recursive: true, force: true }); }
+});
+
+test('GYM_NATIVE_SKILL_TOOLS on + advertised: atomic gets the MCP server, the worker\'s own skill is mounted read-only, calls are reported', async () => {
+  const r = await runWorker(gymClaim({ native_skill_tools: ['oracle_gate'] }), GYM_DOCKER, { GYM_NATIVE_SKILL_TOOLS: 'on' });
+  try {
+    assert.equal(r.code, 0);
+    const cmd = configCmd(r.calls);
+    const cfg = JSON.parse(cmd.slice('atomic-agent config set \''.length, cmd.lastIndexOf('\' >/dev/null')));
+    const { mcp, ...rest } = cfg;
+    assert.deepEqual(rest, JSON.parse(OLD_CONFIG), 'the rest of the config is unchanged');
+    assert.deepEqual(mcp, { servers: [{ name: 'djimitflo', trust: 'pure_read', transport: { kind: 'stdio', command: 'node', cwd: '/w',
+      args: ['/opt/djimitflo/gym-worker.mjs', '--skill-mcp', 'packages/server', '--', 'npx', 'vitest', 'run', 'src/__tests__/a.test.ts'] } }] }, 'the gym oracle\'s own command, run by the worker\'s copy');
+    const maker = makerRun(r.calls);
+    const binds = maker.flatMap((x, i) => (maker[i - 1] === '-v' && x.includes('/opt/djimitflo') ? [x] : []));
+    assert.deepEqual(binds, [`${WORKER}:/opt/djimitflo/gym-worker.mjs:ro`, `${ORACLE_GATE_FILE}:/opt/djimitflo/skills/oracle-gate.mjs:ro`], 'host copies, read-only, never the worktree\'s');
+    assert.equal(maker[maker.indexOf('--network') + 1], 'none', 'the tool runs inside the maker sandbox: no network');
+    const res = r.posted['/api/gym-worker/runs/run-1/result'];
+    assert.equal(res.status, 'success');
+    assert.deepEqual(res.native_tools, { offered: ['oracle_gate'], calls: 2, results: [{ pass: false, digest_ok: true }, { pass: true, digest_ok: true }], steps_after_pass: 1 });
+    assertHardened(r.calls, r.wt);
+  } finally { fs.rmSync(r.root, { recursive: true, force: true }); }
+});
+
+test('GYM_NATIVE_SKILL_TOOLS on + advertised, unreadable trace: calls unknown (null), never 0', async () => {
+  const r = await runWorker(gymClaim({ native_skill_tools: ['oracle_gate'] }), GYM_DOCKER.replace(`process.stdout.write(${JSON.stringify(`${TRACE}\n`)});`, ''), { GYM_NATIVE_SKILL_TOOLS: 'on' });
+  try {
+    assert.deepEqual(r.posted['/api/gym-worker/runs/run-1/result'].native_tools, { offered: ['oracle_gate'], calls: null, results: [], steps_after_pass: null });
   } finally { fs.rmSync(r.root, { recursive: true, force: true }); }
 });
