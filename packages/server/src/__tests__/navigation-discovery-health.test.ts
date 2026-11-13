@@ -25,5 +25,5 @@ it.each([undefined, 'off', 'shadow', 'on', 'private-unrecognized-value'])('publi
   expect(JSON.stringify(body)).not.toContain('private-unrecognized-value');
 });
 it('registers the operator rollout in existing evolution flags', () => {
-  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: true });
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: false });
 });

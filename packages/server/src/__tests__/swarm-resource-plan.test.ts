@@ -115,7 +115,7 @@ describe('workstation swarm resource plan', () => {
   it('reports swarm reality counts without treating registry rows as live workers', async () => {
     const now = new Date();
     const recent = now.toISOString();
-    const stale = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const stale = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString(); // live = evidence < 24 h (agent-liveness.ts)
 
     db.prepare(`
       INSERT INTO agents (id, name, description, status, capabilities, metadata, last_active_at, created_at, updated_at)

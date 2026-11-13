@@ -44,7 +44,10 @@ export interface CockpitSnapshot {
   build: { commit: string | null; build_time: string | null };
   scorecard: Record<string, number | null>;
   guardrails: Guardrail[];
+  /** current stalls (an operator-action stall stays here and is also counted in needs_you.operator_stalls) */
   stalls: Stall[];
+  /** a detector finding dated in the future (an admission that expires in 15 d): a deadline, not a stall — no health effect */
+  warnings: Warning[];
   /** stale: no outcome for 72 h — the species is not running, whatever its success rate says (sorted after the active ones) */
   /** avg_tokens: mean over the outcomes whose runtime reported a count; null = none did (unknown, not 0) */
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched: boolean; stale: boolean }>;
@@ -53,15 +56,16 @@ export interface CockpitSnapshot {
   needs_you: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     /** UX-6: every other thing that can block the loop on the operator */
     /** open loop draft PRs wait for a human merge or close; draft_prs (unsettled) also holds merged PRs still settling */
-    proposals: number | null; draft_prs: number | null; open_prs: number | null; stalls: number | null; approvals_expiring: number | null;
+    /** stalls: current stalls the system side owns (not counted); operator_stalls: stalls whose remedy is an operator act (counted) */
+    proposals: number | null; draft_prs: number | null; open_prs: number | null; stalls: number | null; operator_stalls: number | null; approvals_expiring: number | null;
     join_requests: number | null; shell_requests: number | null;
     /** proposals listed in two sections (operator requeue + unlabelled pre-screen) — subtracted once from total */
     shared_subjects: number | null;
     /**
      * HUMAN_DECISION items only (needs-you-classes.ts): approvals + join + shell requests, requeue rows no system handles,
      * memory reviews (not template duplicates), the audit batch, flagged loop PRs, Dependabot PRs the lane leaves to a human
-     * (when the lane is tracked) and proposals when no auto-review panel runs. Not: labels (optional_labelling), stalls and
-     * panel-reviewed proposals (system). null if any of its parts is unknown.
+     * (when the lane is tracked), stalls that tell the operator to act, and proposals when no auto-review panel runs. Not:
+     * labels (optional_labelling), system stalls, warnings and panel-reviewed proposals (system). null if any part is unknown.
      */
     total: number | null;
     /** open_prs split: audit-sample PRs (one weekly batch) and the rest (flagged: the auto-merge lane did not take them) */
@@ -210,15 +214,54 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
         AND NOT (s.success = 0 AND ${nonMakerRunSql('s.task_id', env)}) AND NOT ${supersededMergeOutcomeSql('s')} GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0) ?? [])
     .map((g) => ({ ...g, scope, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
   const genomes = [...genomesIn('production'), ...genomesIn('gym')];
+  const ny = needsYouSnapshot(db, now, env);
+  errors.push(...ny.errors);
+  const { needs_you, stalls, warnings, detectors, capabilities } = ny;
+  section = 'evolution';
+  let evolution: CockpitSnapshot['evolution'] = null;
+  try { evolution = evolutionLineage(db, now, env); for (const m of evolution.errors) fail('evolution', new Error(m)); } catch (e) { fail('evolution', e); }
+  let unit_economics: UnitEconomics | null = null;
+  try { unit_economics = unitEconomics(db, now); for (const m of unit_economics.errors) fail('unit_economics', new Error(m)); } catch (e) { fail('unit_economics', e); }
+  const { armed, off, by_status, health: schedulersHealth } = listSchedulers(now);
+  const health = worstState([...guardrails.map((g) => g.state), errors.length || stalls.length ? 'DEGRADED' : 'HEALTHY',
+    // a failed detector leaves its subsystem unwatched; a scheduler that stopped ticking or fails is work that silently stopped
+    detectors.some((d) => d.status === 'error') ? 'UNKNOWN' : 'HEALTHY', schedulersHealth === 'BREACHED' ? 'DEGRADED' : 'HEALTHY']);
+  return {
+    at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
+    build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
+    scorecard, guardrails, stalls, warnings, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution, capabilities,
+    subtraction: subtractionKpi(env, now), unit_economics,
+  };
+}
+
+/** a stall dated in the future: a deadline the operator should meet (e.g. a runtime admission that expires in 15 d) */
+export type Warning = Stall & { due_in_days: number };
+/**
+ * Stalls whose remedy is an operator act — record a verdict, settle a trial, release a quarantined scheduler, reinstall a host
+ * agent or token, redeploy a drifted service, reassess an admission — not something a system retries (truth audit 11-12:
+ * experiment:ACE-001 "record a verdict or stop it" was listed under "system handles").
+ */
+const OPERATOR_STALL = /^(experiment:|gym:trial_blocked|scheduler:|fleet:agent_outdated:|fleet_drift:|host_token|runtime_admission:)/;
+
+/**
+ * W3 needs-you on its own (GET /api/health/needs-you: the sidebar badge, the tab title and the /decisions header show the
+ * cockpit's number without building the whole cockpit). Splits the stall watch into current stalls and future-dated warnings.
+ */
+export function needsYouSnapshot(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): {
+  needs_you: CockpitSnapshot['needs_you']; stalls: Stall[]; warnings: Warning[]; detectors: DetectorHealth[]; capabilities: CapabilityVerdict[]; errors: CockpitSnapshot['errors'] } {
+  const errors: CockpitSnapshot['errors'] = [];
+  const fail = (section: string, e: unknown) => { errors.push({ section, message: (e instanceof Error ? e.message : String(e)).slice(0, 200) }); };
+  const one = (sql: string, ...args: unknown[]): number | null => {
+    try { const r = db.prepare(sql).get(...args) as Record<string, unknown> | undefined; const v = r ? Object.values(r)[0] : null; return v === null || v === undefined ? null : Number(v); } catch (e) { fail('needs_you', e); return null; }
+  };
   const in60 = new Date(now + 3_600_000).toISOString();
-  section = 'needs_you';
   // same predicates as loop-draft-pr-service listDraftPrs().unsettled / countOpenLoopPrs, kept inline so a failure is recorded as a section error
-  let needs_you: CockpitSnapshot['needs_you'] = { approvals: scorecard.approvals_pending, requeue: null, labels: null, memory_review: null,
+  let needs_you: CockpitSnapshot['needs_you'] = { approvals: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"), requeue: null, labels: null, memory_review: null,
     proposals: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'proposed'"),
     // merged loop PRs still settling (survival not decided) — disjoint from open_prs, which counts never-polled PRs as open
     draft_prs: one("SELECT COUNT(*) FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL AND json_extract(metadata, '$.pr_outcome.state') = 'merged' AND json_extract(metadata, '$.pr_outcome.survived') IS NULL"),
     open_prs: one("SELECT COUNT(*) FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL AND COALESCE(json_extract(metadata, '$.pr_outcome.state'), 'open') = 'open'"),
-    stalls: null,
+    stalls: null, operator_stalls: null,
     approvals_expiring: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at <= ?", in60),
     join_requests: one("SELECT COUNT(*) FROM social_join_requests WHERE status = 'pending'"),
     shell_requests: one("SELECT COUNT(*) FROM fleet_commands WHERE status = 'pending_approval'"),
@@ -239,36 +282,27 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     if (Object.values(counts).some((c) => c === null)) fail('decisions', new Error('a decisions inbox count query failed'));
   } catch (e) { fail('decisions', e); }
   needs_you.optional_labelling = optionalLabelling(db, inbox, now);
-  let stalls: Stall[] = [];
+  let stalls: Stall[] = []; let warnings: Warning[] = [];
   // an empty list from a failed detector is not 'no stalls': stalls stays [] but needs_you.stalls null + an error
   let detectors: DetectorHealth[] = [];
   let capabilities: CapabilityVerdict[] = [];
   try {
-    const report = detectStallsWithHealth(db, now, env); stalls = report.stalls; detectors = report.detectors; capabilities = report.capabilities; needs_you.stalls = stalls.length;
+    const report = detectStallsWithHealth(db, now, env); detectors = report.detectors; capabilities = report.capabilities;
+    const future = (x: Stall) => x.since !== null && Date.parse(x.since) > now;
+    stalls = report.stalls.filter((x) => !future(x));
+    warnings = report.stalls.filter(future).map((x) => ({ ...x, due_in_days: Math.ceil((Date.parse(x.since as string) - now) / 86_400_000) }));
+    needs_you.operator_stalls = stalls.filter((x) => OPERATOR_STALL.test(x.subsystem)).length;
+    needs_you.stalls = stalls.length - needs_you.operator_stalls;
     for (const d of detectors) if (d.status === 'error') fail(`detector:${d.name}`, new Error(d.error ?? 'detector query failed'));
   } catch (e) { fail('stalls', e); }
-  // human decisions only; labels are optional_labelling and stalls are system health, so shared_subjects (a requeue row that
+  // human decisions only (operator-action stalls included); labels are optional_labelling and other stalls are system health, so shared_subjects (a requeue row that
   // is also an unlabelled pre-screen rejection) no longer double-counts and is not subtracted
   const human = [needs_you.approvals, needs_you.join_requests, needs_you.shell_requests, needs_you.requeue, needs_you.memory_review,
-    needs_you.audit_batch, needs_you.flagged_prs,
+    needs_you.audit_batch, needs_you.flagged_prs, needs_you.operator_stalls,
     ...(needs_you.dependency_tracked ? [needs_you.dependency_human] : []),
     ...(needs_you.system.proposals_auto_reviewed ? [] : [needs_you.proposals])];
   needs_you.total = human.some((x) => x === null) ? null : (human as number[]).reduce((a, b) => a + b, 0);
-  section = 'evolution';
-  let evolution: CockpitSnapshot['evolution'] = null;
-  try { evolution = evolutionLineage(db, now, env); for (const m of evolution.errors) fail('evolution', new Error(m)); } catch (e) { fail('evolution', e); }
-  let unit_economics: UnitEconomics | null = null;
-  try { unit_economics = unitEconomics(db, now); for (const m of unit_economics.errors) fail('unit_economics', new Error(m)); } catch (e) { fail('unit_economics', e); }
-  const { armed, off, by_status, health: schedulersHealth } = listSchedulers(now);
-  const health = worstState([...guardrails.map((g) => g.state), errors.length || stalls.length ? 'DEGRADED' : 'HEALTHY',
-    // a failed detector leaves its subsystem unwatched; a scheduler that stopped ticking or fails is work that silently stopped
-    detectors.some((d) => d.status === 'error') ? 'UNKNOWN' : 'HEALTHY', schedulersHealth === 'BREACHED' ? 'DEGRADED' : 'HEALTHY']);
-  return {
-    at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
-    build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution, capabilities,
-    subtraction: subtractionKpi(env, now), unit_economics,
-  };
+  return { needs_you, stalls, warnings, detectors, capabilities, errors };
 }
 
 /** Last deploy events written by the host's auto-deploy.sh into the mounted data dir (newest first). */

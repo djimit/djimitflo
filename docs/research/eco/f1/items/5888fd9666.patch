@@ -1,0 +1,68 @@
+diff --git a/packages/server/src/__tests__/goal-service.exports.test.ts b/packages/server/src/__tests__/goal-service.exports.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/server/src/__tests__/goal-service.exports.test.ts
+@@ -0,0 +1,62 @@
++import { describe, expect, it } from 'vitest';
++import { parseGoal, validateGoalInput } from '../services/goal-service';
++import type { GoalCreateInput } from '../services/goal-service';
++
++describe('parseGoal', () => {
++  it('parses a full database row into a GoalRecord', () => {
++    const row = {
++      id: 'goal-1',
++      objective: 'Cover untested exports',
++      constraints_json: JSON.stringify(['no-prod-edits']),
++      acceptance_criteria_json: JSON.stringify(['test passes']),
++      risk_class: 'low',
++      budget_json: JSON.stringify({ max_tokens: 30000 }),
++      status: 'created',
++      owner_user_id: 'user-1',
++      metadata: JSON.stringify({ goal_batch: { id: 'batch-1' } }),
++      created_at: '2026-10-03T00:00:00.000Z',
++      updated_at: '2026-10-03T00:00:01.000Z',
++    };
++
++    const goal = parseGoal(row);
++
++  });
++
++  it('defaults missing JSON fields to empty containers', () => {
++    const goal = parseGoal({
++      id: 'goal-2',
++      objective: 'Minimal row',
++      constraints_json: undefined,
++      acceptance_criteria_json: undefined,
++      budget_json: undefined,
++      metadata: undefined,
++      risk_class: undefined,
++      status: undefined,
++      owner_user_id: undefined,
++      created_at: undefined,
++      updated_at: undefined,
++    });
++
++  });
++});
++
++describe('validateGoalInput', () => {
++  it('passes for a well-formed input', () => {
++    const input: GoalCreateInput = {
++      objective: 'Add tests',
++      acceptance_criteria: ['Tests pass'],
++    };
++  });
++
++  it('throws GOAL_OBJECTIVE_REQUIRED when objective is blank', () => {
++  });
++
++  it('throws GOAL_OBJECTIVE_REQUIRED when objective is missing', () => {
++  });
++
++  it('throws GOAL_ACCEPTANCE_CRITERIA_REQUIRED when criteria is empty', () => {
++  });
++
++  it('throws GOAL_ACCEPTANCE_CRITERIA_REQUIRED when criteria is missing', () => {
++  });
++});
+\ No newline at end of file

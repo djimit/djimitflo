@@ -10,7 +10,7 @@ import { StatusPill } from './ui';
  * server's own settlement wrote) and the skill outcome record() wrote (GET /loops/runs/:id/gym-outcome).
  * Server-side checks and worker claims are kept in separate groups; a value no record holds reads "unknown", never 0.
  */
-export const GYM_LOOP_NAMES: readonly string[] = ['evolution-gym', 'tg-001', 'pl-001'];
+export const GYM_LOOP_NAMES: readonly string[] = ['evolution-gym', 'tg-001', 'pl-001', 'cv-001'];
 export const isGymRun = (run: Pick<LoopRunRecord, 'loop_name'>): boolean => GYM_LOOP_NAMES.includes(run.loop_name);
 
 /** Mirrors remote-gym-service.ts: the two settlements the server makes itself, and the P0-12 evidence discard. */

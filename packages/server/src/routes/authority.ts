@@ -33,6 +33,24 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
     next();
   };
 
+  // The correlation id names the task (approval flow) or goal (plan approval) an event is about; read-only lookup, null when
+  // it names neither (or the table is absent on this instance).
+  const withSubjects = (events: Array<Record<string, unknown>>) => {
+    const ids = [...new Set(events.map((e) => String(e.correlation_id)))];
+    const subjects = new Map<string, { kind: 'task' | 'goal'; id: string; title: string }>();
+    if (ids.length > 0) {
+      const marks = ids.map(() => '?').join(',');
+      const lookup = (kind: 'task' | 'goal', sql: string) => {
+        try {
+          for (const row of db.prepare(sql).all(...ids) as Array<{ id: string; title: string }>) if (!subjects.has(row.id)) subjects.set(row.id, { kind, id: row.id, title: row.title });
+        } catch { /* table absent: no subject of that kind */ }
+      };
+      lookup('task', `SELECT id, title FROM tasks WHERE id IN (${marks})`);
+      lookup('goal', `SELECT id, objective AS title FROM goals WHERE id IN (${marks})`);
+    }
+    return events.map((e) => ({ ...e, subject: subjects.get(String(e.correlation_id)) ?? null }));
+  };
+
   router.get('/trace/:correlationId', readLimiter, requirePermission('read:evidence'), requireLedger, (req, res) => {
     try {
       const { correlationId } = req.params;
@@ -94,6 +112,12 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
       const bySource = db.prepare(
         'SELECT source_system, COUNT(*) AS n FROM authority_events GROUP BY source_system',
       ).all();
+      // a HOLD stays open until a later ALLOW/DENY on the same correlation id; the HOLD total alone is history, not a backlog
+      const openHolds = (db.prepare(
+        `SELECT COUNT(*) AS n FROM authority_events h WHERE h.policy_decision = 'HOLD' AND NOT EXISTS (
+           SELECT 1 FROM authority_events l WHERE l.correlation_id = h.correlation_id AND l.sequence > h.sequence
+             AND l.policy_decision IN ('ALLOW', 'DENY'))`,
+      ).get() as { n: number }).n;
       const recent = db.prepare(
         `SELECT event_id, correlation_id, sequence, occurred_at, requested_state,
                 policy_decision, actor_subject, source_system
@@ -102,6 +126,7 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
       ).all();
       res.json({
         total,
+        open_holds: openHolds,
         by_decision: byDecision,
         by_requested_state: byState,
         by_source_system: bySource,
@@ -127,11 +152,11 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
         `SELECT id, event_id, correlation_id, sequence, occurred_at, previous_state,
                 requested_state, policy_decision, actor_subject, actor_type, source_system
          FROM authority_events ${where} ORDER BY occurred_at DESC LIMIT ? OFFSET ?`,
-      ).all(...params, limit, offset);
+      ).all(...params, limit, offset) as Array<Record<string, unknown>>;
       const total = (db.prepare(
         `SELECT COUNT(*) AS n FROM authority_events ${where}`,
       ).get(...params) as { n: number }).n;
-      res.json({ events: rows, total });
+      res.json({ events: withSubjects(rows), total });
     } catch (err) {
       next(err);
     }

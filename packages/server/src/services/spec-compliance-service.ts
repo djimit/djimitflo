@@ -38,6 +38,28 @@ export interface ComplianceReport {
   partialCount: number;
   noneCount: number;
   specs: SpecComplianceResult[];
+  /** Where the scan looked and which build it describes — so a missing directory is visible instead of a perfect score. */
+  sources?: SpecSources;
+}
+
+export interface SpecSources {
+  repoRoot: string;
+  commit: string | null;
+  dirs: Array<{ path: string; found: boolean }>;
+}
+
+const defaultRepoRoot = (): string => require('path').resolve(__dirname, '../../../..');
+
+/** The directories scanSpecsDirectory reads and whether each exists, plus the commit the running build was made from. */
+export function describeSpecSources(repoRoot = defaultRepoRoot()): SpecSources {
+  const fs = require('fs');
+  const path = require('path');
+  const dirs = [path.join(repoRoot, 'specs'), path.join(repoRoot, 'openspec', 'changes')];
+  return {
+    repoRoot,
+    commit: process.env.DJIMITFLO_BUILD_COMMIT || process.env.DJIMITFLO_COMMIT_SHA || null,
+    dirs: dirs.map((dir: string) => ({ path: dir, found: fs.existsSync(dir) })),
+  };
 }
 
 const LAYER_DEFINITIONS = [
@@ -87,7 +109,7 @@ export function evaluateSpecCompliance(
   };
 }
 
-export function generateComplianceReport(specs: Array<{ name: string; path: string; content: string; source?: SpecComplianceResult['source'] }>): ComplianceReport {
+export function generateComplianceReport(specs: Array<{ name: string; path: string; content: string; source?: SpecComplianceResult['source'] }>, sources?: SpecSources): ComplianceReport {
   const results = specs.map(s => evaluateSpecCompliance(s.content, s.name, s.path, s.source));
 
   return {
@@ -97,6 +119,7 @@ export function generateComplianceReport(specs: Array<{ name: string; path: stri
     partialCount: results.filter(r => !r.fullCompliance && r.score >= 3).length,
     noneCount: results.filter(r => r.score < 3).length,
     specs: results,
+    ...(sources ? { sources } : {}),
   };
 }
 
@@ -134,7 +157,7 @@ export function exportReportAsCsv(report: ComplianceReport): string {
   return csvLines.join('\n');
 }
 
-export function scanSpecsDirectory(repoRoot = require('path').resolve(__dirname, '../../../..')): Array<{ name: string; path: string; content: string; source: SpecComplianceResult['source'] }> {
+export function scanSpecsDirectory(repoRoot = defaultRepoRoot()): Array<{ name: string; path: string; content: string; source: SpecComplianceResult['source'] }> {
   const fs = require('fs');
   const path = require('path');
   const specsDir = path.join(repoRoot, 'specs');

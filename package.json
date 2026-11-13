@@ -15,7 +15,7 @@
     "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
-    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && node scripts/gen-agent-docs.mjs --check && node scripts/gen-agent-docs.test.mjs && node scripts/gym-worker.mjs --selfcheck && node scripts/gym-worker.test.mjs && node scripts/kb-sync.test.mjs && node scripts/mutation-gain.test.mjs && node scripts/skills/oracle-gate.test.mjs && node scripts/skills/oracle-gate-replay.test.mjs && node scripts/ci-workflows.test.mjs && node scripts/host-scripts-dry-run.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present && npm run test:skill-packages",
+    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && node scripts/gen-agent-docs.mjs --check && node scripts/gen-agent-docs.test.mjs && node scripts/gym-worker.mjs --selfcheck && node scripts/gym-worker.test.mjs && node scripts/gym-worker-research.test.mjs && node scripts/kb-sync.test.mjs && node scripts/mutation-gain.test.mjs && node scripts/skills/oracle-gate.test.mjs && node scripts/skills/oracle-gate-replay.test.mjs && node scripts/ci-workflows.test.mjs && node scripts/host-scripts-dry-run.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present && npm run test:skill-packages",
     "test:changed": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test -w @djimitflo/server -w @djimitflo/shared -w @djimitflo/agent-catalog -w @djimitflo/mcp-server -w @djimitflo/dashboard -- --changed",
     "test:mutation": "stryker run",
     "test:mutation:grounded": "node scripts/mutation-gain.mjs",
@@ -48,14 +48,14 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/express-serve-static-core": "5.1.3",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "jsdom": "^29.1.1",
     "npm-run-all": "^4.1.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "vitest": "^4.1.12",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.0"
+    "typescript-eslint": "8.72.1"
   },
   "engines": {
     "node": ">=22.0.0 <25.0.0",
@@ -64,7 +64,7 @@
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "vite": "^8.2.2",
-    "ws": "^8.21.1"
+    "ws": "^8.22.1"
   },
   "overrides": {
     "esbuild": "^0.28.1",
@@ -74,6 +74,7 @@
     "nanoid": "^3.3.18",
     "brace-expansion@1": "^1.1.12",
     "brace-expansion@5": "^5.0.12",
-    "qs": "^6.16.0"
+    "qs": "^6.16.0",
+    "minimatch@>=7 <11.0.1": "^11.0.5"
   }
 }
