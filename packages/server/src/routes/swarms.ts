@@ -274,10 +274,14 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     if (kind !== undefined && !kinds.includes(kind)) throw createError(400, `kind must be ${kinds.join(', ')}`, 'VALIDATION_ERROR');
     // The funnel counts the whole registry (the list is capped), per kind and lifecycle state.
     const funnel = db.prepare(`SELECT COALESCE(kind, 'person') AS kind, lifecycle_state AS state, COUNT(*) AS count FROM expert_identities ${persons ? '' : "WHERE COALESCE(kind, 'person') != 'person'"} GROUP BY 1, 2`).all();
-    const experts = registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, kind: kind as ExpertKind | undefined, excludePersons: !persons, limit });
+    const listFilter = { state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, kind: kind as ExpertKind | undefined, excludePersons: !persons };
+    const experts = registry().list({ ...listFilter, limit });
+    // total: how many match the filter (the list is capped); last_ingested_at: the newest paper/repository unit
+    const total = registry().count(listFilter);
+    const last_ingested_at = (db.prepare("SELECT MAX(created_at) AS t FROM expert_identities WHERE kind IN ('paper', 'repository')").get() as { t: string | null }).t;
     // K5 (EVOLUTION_FEEDBACK_MODE=on): read-only count of open knowledge gaps matching an area's capabilities
     const demand = gapDemandByCapability(db);
-    res.json({ experts: demand ? experts.map((e) => { const n = e.kind === 'area' ? e.capabilities.reduce((a, c) => a + (demand.get(c) ?? 0), 0) : 0; return n ? { ...e, gap_demand: n } : e; }) : experts, funnel });
+    res.json({ experts: demand ? experts.map((e) => { const n = e.kind === 'area' ? e.capabilities.reduce((a, c) => a + (demand.get(c) ?? 0), 0) : 0; return n ? { ...e, gap_demand: n } : e; }) : experts, funnel, total, last_ingested_at });
   }));
   router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
     const reg = registry();

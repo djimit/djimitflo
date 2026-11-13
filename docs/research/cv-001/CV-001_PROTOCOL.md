@@ -225,3 +225,21 @@ primary endpoint, test, alpha, decision rule, n and stop rule are as frozen: ver
    the stop dates frozen above.
 7. **Isolation detail.** Besides `loop_name = 'cv-001'`, the species breaker and tried-task bookkeeping (which select by
    species, not by loop name) skip any run carrying `gym.cv`, as they skip `gym.pl`.
+
+## Amendment 2026-11-10 (2): transcript from llama.cpp `/completion` requests
+
+Reason: the first physical attempt (`cv-001:7be716e9-769b-4432-b672-3914b4a1f09a`, arm A, claimed 2026-11-10 03:05Z) was VOID
+with "transcript: the worker could not read the maker transcript". Cause: atomic-agent's `llama-server` provider sends
+llama.cpp `/completion` requests (a rendered `prompt` string with a GBNF grammar), not chat requests with `messages`, so the
+worker never kept a transcript and every attempt in both arms would have been VOID and, after 2 retries, INFRA_CENSORED.
+Verified with a logging proxy on the workstation against the pinned runner image (atomic-agent 0.6.5). `CV_001_MODE` was set
+to `off` at 2026-11-10T03:41Z until this fix is installed; no attempt produced an outcome.
+
+1. **Observation, same counts.** For a `/completion` request the transcript is the prompt's `### conversation` section
+   (up to `### profile`): `assistant_tool_call: <tool> <json arguments>` lines are tool calls (broken when the arguments are
+   not valid JSON), `tool_result[<tool> <status>]: <output>` blocks are tool results (a fully passing vitest line in one sets
+   "first pass"). Loop, edits after the first pass and the edit-tool pattern are as frozen.
+2. **Which request.** The kept request is the last one that carries such a section (or chat messages). The session-title
+   request atomic sends at the end has none and is not kept.
+3. **The VOID attempt above stays recorded** as a physical attempt of its slot under the frozen retry rule. Hypothesis,
+   treatment, population, schedule, outcomes, delivery proof, test, alpha, decision rule, n and stop rule are unchanged.

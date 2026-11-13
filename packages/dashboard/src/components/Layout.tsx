@@ -7,6 +7,7 @@ import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
 import { PendingApprovalsBanner } from './PendingApprovalsBanner';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
+import { useNeedsYou } from '../hooks/useNeedsYou';
 import { api } from '../lib/api';
 import { NAV_PERMISSIONS } from '../lib/permissions';
 
@@ -100,11 +101,14 @@ export function Layout() {
   }, [location.pathname]);
 
   const pending = usePendingApprovals();
+  // truth audit 11-12: badge and tab title show the cockpit's needs-you total (approvals alone read 0 while 51 waited)
+  const needsYouTotal = useNeedsYou()?.needs_you.total;
+  const waiting = typeof needsYouTotal === 'number' ? needsYouTotal : pending.count;
   useEffect(() => {
     const base = document.title.replace(/^\(\d+\) /, '');
-    document.title = pending.count > 0 ? `(${pending.count}) ${base}` : base;
+    document.title = waiting > 0 ? `(${waiting}) ${base}` : base;
     return () => { document.title = base; };
-  }, [pending.count]);
+  }, [waiting]);
 
   // The authority ledger is provisioned outside this repo; hide its nav entry where the server says it is absent.
   const [authorityAvailable, setAuthorityAvailable] = useState(true);
@@ -187,7 +191,7 @@ export function Layout() {
                     icon={<item.icon className="w-5 h-5" />}
                     label={item.label}
                     active={item.to === '/' ? location.pathname === '/' : isActive(item.to)}
-                    badge={item.to === '/decisions' ? pending.count : undefined}
+                    badge={item.to === '/decisions' ? waiting : undefined}
                   />
                 ))}
               </div>

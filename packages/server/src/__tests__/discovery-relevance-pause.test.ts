@@ -292,6 +292,8 @@ it('the knowledge overview reports the pause: unjudged discoveries, calls avoide
   expect(p).toMatchObject({ paused: true, unjudged: { pending: 2, rejected: 5, unit: 0 }, calls_avoided: 4, mean_tokens_per_call: 900, tokens_avoided_estimate: 3600,
     backlog: 8, states: { unjudged: 7, rejudging: 1, judged: 1 }, oldest_unjudged_age_hours: 2 });
   expect(p.basis).toMatch(/estimate/);
+  // truth audit 2026-11-12: the page says since when and the date of the last real verdict (errors are not verdicts)
+  expect(p).toMatchObject({ unjudged_since: iso(2), last_verdict_at: iso(30) });
 });
 
 it('fleet source gate and N4 term yields treat paused-period discoveries as missing, not as "no"', () => {

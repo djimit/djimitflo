@@ -103,7 +103,7 @@ it('shows the operator snapshot with its age and a stale badge after 24 h; unrep
   const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
   const snap = within(c).getByRole('group', { name: 'Operator snapshot' });
   expect(within(snap).getByText(/^operator-reported 30 h ago/)).toBeTruthy();
-  expect(within(snap).getByText('stale')).toBeTruthy();
+  expect(within(snap).getByText(/^stale since /)).toBeTruthy();
   expect(within(snap).getByRole('meter', { name: 'operator snapshot · session' }).getAttribute('aria-valuenow')).toBe('42');
   expect(within(snap).getByText('weekly: unknown (not reported)')).toBeTruthy();
   expect(within(snap).getByText(/^Opus \(weekly\): 80 % used · separate cap/)).toBeTruthy();
@@ -120,7 +120,7 @@ it('a fresh snapshot has no stale badge; an account without one says so', async 
   render(<UsagePage />);
   const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
   expect(within(c).getByText(/^operator-reported 2 h ago/)).toBeTruthy();
-  expect(within(c).queryByText('stale')).toBeNull();
+  expect(within(c).queryByText(/stale/)).toBeNull();
   expect(within(c).getByText('session: unknown (not reported)')).toBeTruthy();
   expect(within(screen.getByRole('region', { name: 'ChatGPT Pro (Codex)' })).getByText('Operator snapshot: none reported')).toBeTruthy();
 });
@@ -150,4 +150,46 @@ it('the snapshot form is hidden without manage:config and posts the reported fig
   const [, init] = fetch.mock.calls.find(([u]) => String(u).includes('/snapshot'))!;
   expect(init?.method).toBe('POST');
   expect(JSON.parse(String(init?.body))).toEqual({ weekly: { used_pct: 55 }, note: 'from the usage page' });
+});
+
+// truth audit 2026-11-12
+const wins = (w7d: Record<string, unknown>) => ({ '5h': win(0, 0), today: win(0, 0), '7d': { ...win(0, 0), ...w7d }, month: { ...win(0, 0), ...w7d } });
+
+it('headlines fresh input + output and shows cache reads apart; one summary line; cards sorted by 7-day usage; page padding', async () => {
+  stub([
+    account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', windows: wins({ calls: 4, tokens: 900, fresh_tokens: 900, cache_read_tokens: null }) }),
+    account({ id: 'ollama_cloud', label: 'Ollama Cloud (subscription)', windows: wins({ calls: 201, tokens: 353033, fresh_tokens: 30568, cache_read_tokens: 322465 }),
+      consumers_7d: [{ consumer: 'lease:maker:x', calls: 1, tokens: 353033, fresh_tokens: 30568, cache_read_tokens: 322465, calls_without_tokens: 0 }] }),
+  ]);
+  const { container } = render(<UsagePage />);
+  const o = await screen.findByRole('region', { name: 'Ollama Cloud (subscription)' });
+  expect(within(o).getByRole('columnheader', { name: 'fresh tokens' })).toBeTruthy();
+  expect(within(o).getByRole('columnheader', { name: 'cache reads' })).toBeTruthy();
+  expect(within(o).getAllByText(/^30[,.]568$/).length).toBe(2); // 7 d + month
+  expect(within(o).getAllByText(/^322[,.]465$/).length).toBe(2);
+  expect(within(o).queryByText(/^353[,.]033$/)).toBeNull(); // the cache-inflated total is not the headline
+  expect(within(o).getByText(/1 calls · 30[,.]568 fresh tokens \(\+322[,.]465 cache reads\)/)).toBeTruthy();
+  // claude reports no cache split: not reported, never 0
+  expect(within(screen.getByRole('region', { name: 'Claude Max (subscription via Claude Code)' })).getAllByTitle('not reported').length).toBeGreaterThan(0);
+  // sorted by 7-day usage (fresh tokens): Ollama first although the API listed it second
+  expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['Ollama Cloud (subscription)', 'Claude Max (subscription via Claude Code)']);
+  expect(screen.getByRole('status', { name: 'Usage summary' }).textContent).toMatch(/7 d: 205 calls · 31[,.]468 fresh tokens \+ 322[,.]465 cache reads · 2 accounts/);
+  expect((container.firstElementChild as HTMLElement).className).toMatch(/\bp-4\b/);
+});
+
+it('a snapshot older than 24 h is greyed out and marked stale since, with passed resets and expired credits labelled', async () => {
+  const reported = hoursAgo(18 * 24);
+  stub([account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', plan: 'Max 5x',
+    operator_snapshot: { reported_at: reported, age_hours: 432, stale: true, session: { used_pct: 42, resets_at: hoursAgo(17 * 24) },
+      credits: [{ label: 'extra usage', remaining: 12.5, currency: 'USD', expires_at: hoursAgo(24) }] },
+    limits: [limit({ plan: 'Max 5x', window: 'weekly', active: true, comparable: true, used_pct: 42, pct_source: 'operator_snapshot', reported_at: reported })] })]);
+  render(<UsagePage />);
+  const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  const snap = within(c).getByRole('group', { name: 'Operator snapshot' });
+  expect(snap.className).toMatch(/opacity-60/);
+  expect(within(snap).getByText(/^stale since /)).toBeTruthy();
+  expect(within(snap).getByText(/reset .* \(passed\)/)).toBeTruthy();
+  expect(within(snap).getByText(/expired /)).toBeTruthy();
+  // the plan row drawn from the stale snapshot follows it
+  expect(within(c).getByText(/42 % used \(operator-reported .*\) · stale since /)).toBeTruthy();
 });

@@ -95,16 +95,53 @@ it('UX-14: the agent card names its connection state and the evidence for it, an
   expect(shown[0].textContent).toBe('Connection: token issued — token expired 26 h ago, never used');
 });
 
-it('SW-01: a zero-task agent is insufficient (no tasks), not 0 %, and lifetime counters are labelled apart from readiness', () => {
+it('SW-01 / truth audit 2026-11-12: counters are the 30-day aggregates, a zero-task agent is insufficient (not 0 %), lifetime columns are not shown', () => {
   useStore.setState({ agents: [
-    { id: 'fresh', name: 'Fresh agent', status: 'active', liveness: 'live', capabilities: [], total_tasks: 0, completed_tasks: 0, failed_tasks: 0 },
-    { id: 'worked', name: 'Worked agent', status: 'active', liveness: 'live', capabilities: [], total_tasks: 4, completed_tasks: 3, failed_tasks: 1 },
+    { id: 'fresh', name: 'Fresh agent', status: 'active', liveness: 'live', capabilities: [], total_tasks: 0, completed_tasks: 0, failed_tasks: 0, counters_30d: { window_days: 30, tasks: 0, completed: 0, failed: 0, outcomes: 0, outcomes_ok: 0 } },
+    { id: 'worked', name: 'Worked agent', status: 'active', liveness: 'live', capabilities: [], total_tasks: 10000, completed_tasks: 9995, failed_tasks: 5, counters_30d: { window_days: 30, tasks: 4, completed: 3, failed: 1, outcomes: 48, outcomes_ok: 45 } },
   ] as any });
   render(<MemoryRouter><AgentsPage /></MemoryRouter>);
   const rates = screen.getAllByTestId('agent-success-rate').map((n) => n.textContent);
-  expect(rates).toEqual(['insufficient — no tasks', '75 % (3/4)']);
+  expect(rates.sort()).toEqual(['75 % (3/4)', 'insufficient — no tasks']);
   expect(screen.queryByText('0%')).toBeNull();
-  expect(screen.getAllByText(/Lifetime reported counters/)).toHaveLength(2);
+  expect(screen.queryByText('10000')).toBeNull();
+  expect(screen.getAllByText('Tasks · 30 d')).toHaveLength(2);
+  expect(screen.getByTestId('agent-outcomes-30d').textContent).toBe('Outcomes · 30 d: 48 (45 ok)');
+});
+
+it('truth audit 2026-11-12: scorecards on top, cards grouped (factory workers / fleet agents / Commons residents), most recent first, linked to /agents/:id', () => {
+  const at = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  useStore.setState({ agents: [
+    { id: 'maker-old', name: 'old maker', status: 'active', agent_group: 'factory_worker', last_seen_at: at(30), capabilities: [] },
+    { id: 'hermes-ws', name: 'Hermes Workstation', status: 'active', liveness: 'live', agent_group: 'fleet_agent', last_seen_at: at(5), liveness_signal: 'outcome 5 h ago', connection_reason: 'fleet agent — not a Commons participant', capabilities: [] },
+    { id: 'maker-new', name: 'new maker', status: 'active', agent_group: 'factory_worker', last_seen_at: at(1), capabilities: [] },
+    { id: 'scout', name: 'Scout', status: 'active', agent_group: 'commons_resident', last_seen_at: null, connection_state: 'lapsed', connection_reason: 'no heartbeat in 24 h', capabilities: [] },
+  ] as any });
+  const { container } = render(<MemoryRouter><AgentsPage /></MemoryRouter>);
+  const headings = [...container.querySelectorAll('h2')].map((h) => h.textContent);
+  expect(headings).toEqual(['Scorecards (30 d)', 'Factory workers (2)', 'Fleet agents (1)', 'Commons residents (1)']);
+  const workers = screen.getByRole('region', { name: 'Factory workers' });
+  expect([...workers.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(['new maker', 'old maker']);
+  expect(screen.getByRole('link', { name: 'Hermes Workstation' }).getAttribute('href')).toBe('/agents/hermes-ws');
+  expect(screen.getByText('Last signal: outcome 5 h ago')).toBeTruthy();
+  const conn = screen.getAllByTestId('connection-state').map((n) => n.textContent);
+  expect(conn).toContain('Connection: not applicable — fleet agent — not a Commons participant');
+  expect(conn).toContain('Connection: lapsed — no heartbeat in 24 h');
+});
+
+it('truth audit 2026-11-12: the detail page is titled with the agent name and says "not monitored" without a governance row', async () => {
+  localStorage.setItem('djimitflo_auth_session', 'fixture-viewer-token');
+  useAuthStore.setState({ user: { id: 'viewer', role: 'viewer' } as any, token: 'fixture-viewer-token', isAuthenticated: true });
+  useStore.setState({ agents: [{ id: 'hermes-ws', name: 'Hermes Workstation', description: 'fleet', status: 'active', capabilities: [] }] as any });
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.endsWith('/runtime-governance/agents/hermes-ws')) return { ok: true, status: 200, json: async () => ({ quarantined: false, circuitBreakerTripped: false, violationCount: 0, baseline: null }) };
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  render(<MemoryRouter initialEntries={['/agents/hermes-ws']}><Routes><Route path="/agents/:agentId" element={<AgentsPage />} /></Routes></MemoryRouter>);
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Hermes Workstation');
+  expect((await screen.findByTestId('governance-not-monitored')).textContent).toMatch(/^Runtime governance: not monitored/);
+  expect(screen.queryByText('Circuit breaker: clear')).toBeNull();
+  expect(screen.queryByText('Recorded violations: 0')).toBeNull();
 });
 
 it('SW-02: the running task links to its execution', () => {

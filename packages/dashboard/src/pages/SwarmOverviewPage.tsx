@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { Users, Activity, Zap, Clock, AlertCircle, Brain, Server, TrendingUp, MessageSquare, Lightbulb } from "lucide-react";
 import type { Agent, Task } from "@djimitflo/shared";
 import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
+import { fmt } from '../lib/format';
 
 interface Discussion {
   id: string;
@@ -34,6 +35,8 @@ export interface UsageWindow {
   status: 'measured' | 'partial' | 'UNKNOWN';
 }
 
+const shownStatus = (a: Pick<Agent, 'status'> & { liveness?: string | null }) => (a.status === 'active' && a.liveness && a.liveness !== 'live' ? a.liveness : a.status);
+
 /** SW-01: "active" is current activity (liveness from heartbeat/registry), not the never-decaying agents.status */
 export function swarmActivity(agents: Array<Pick<Agent, 'status'> & { liveness?: string | null }>, fleetPools: Array<{ running_leases?: number }>) {
   return {
@@ -56,6 +59,8 @@ export function pickList<T>(value: unknown, keys: string[]): T[] {
   }
   return [];
 }
+
+const RECENT_TASKS = 20;
 
 function formatDuration(ms: number): string {
   if (!ms || ms < 1000) return `${ms}ms`;
@@ -111,9 +116,11 @@ export function SwarmOverviewPage() {
       setUsage(usageWindow && typeof usageWindow === 'object' ? usageWindow : null);
     });
   }, []);
-  const { agents, tasks } = useStore();
+  const { agents } = useStore();
   const [localAgents, setLocalAgents] = useState<Agent[]>([]);
   const [localTasks, setLocalTasks] = useState<Task[]>([]);
+  // Truth audit 2026-11-12: Total/completed/failed are the server's totals, not counts over the rows on this page
+  const [taskTotals, setTaskTotals] = useState<{ total: number; counts: Record<string, number> } | null>(null);
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [learnings, setLearnings] = useState<Learning[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,10 +130,11 @@ export function SwarmOverviewPage() {
     try {
       const [agentsRes, tasksRes] = await Promise.all([
         api.getAgents(),
-        api.getTasks(),
+        api.getTasks({ limit: RECENT_TASKS, view: 'summary' }),
       ]);
       setLocalAgents(pickList<Agent>(agentsRes, ["agents"]));
       setLocalTasks(pickList<Task>(tasksRes, ["tasks"]));
+      setTaskTotals(typeof tasksRes?.total === 'number' && tasksRes.counts ? { total: tasksRes.total, counts: tasksRes.counts } : null);
     } catch (err) {
       console.error("Failed to fetch swarm data:", err);
     } finally {
@@ -234,15 +242,11 @@ export function SwarmOverviewPage() {
     setLocalAgents(agents);
   }, [agents]);
 
-  useEffect(() => {
-    setLocalTasks(tasks);
-  }, [tasks]);
-
   const idleAgents = localAgents.filter(a => a.status === "idle");
   const errorAgents = localAgents.filter(a => a.status === "error");
-  const totalTasks = localTasks.length;
-  const completedTasks = localTasks.filter(t => t.status === "completed");
-  const failedTasks = localTasks.filter(t => t.status === "failed");
+  const totalTasks = taskTotals?.total ?? null;
+  const completedTasks = taskTotals?.counts.completed ?? 0;
+  const failedTasks = taskTotals?.counts.failed ?? 0;
   const fleetPools = asArray<any>(swarmStatus?.fleet_pools);
   // SW-01: agents.total_token_usage / total_execution_time_ms are not written by the execution path — never summed here
   const activity = swarmActivity(localAgents, fleetPools);
@@ -294,8 +298,8 @@ export function SwarmOverviewPage() {
             <Activity className="w-5 h-5 text-emerald-600" />
             <span className="text-sm font-medium text-slate-600">Total Tasks</span>
           </div>
-          <div className="text-3xl font-bold text-slate-900">{formatNumber(totalTasks)}</div>
-          <div className="text-xs text-slate-500 mt-1">{completedTasks.length} completed · {failedTasks.length} failed</div>
+          <div data-testid="swarm-total-tasks" className="text-3xl font-bold text-slate-900">{fmt(totalTasks)}</div>
+          <div className="text-xs text-slate-500 mt-1">{totalTasks === null ? 'task totals not loaded' : `${fmt(completedTasks)} completed · ${fmt(failedTasks)} failed`}</div>
         </div>
 
         <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
@@ -339,15 +343,16 @@ export function SwarmOverviewPage() {
                     <h3 className="font-semibold text-slate-900">{agent.name}</h3>
                     <p className="text-xs text-slate-500">{agent.model || "No model"}</p>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(agent.status)}`}>
-                    {agent.status}
+                  {/* truth audit 2026-11-12: a registered-active agent shows its liveness (same definition as /agents) */}
+                  <span data-testid="swarm-agent-status" className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(shownStatus(agent))}`}>
+                    {shownStatus(agent)}
                   </span>
                 </div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Lifetime reported (agents table)</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Tasks 30 d · tokens/time lifetime reported (agents table)</div>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div>
-                    <div className="text-lg font-bold text-slate-900">{agent.total_tasks || 0}</div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wider">Tasks</div>
+                    <div className="text-lg font-bold text-slate-900">{agent.counters_30d ? agent.counters_30d.tasks : 'not reported'}</div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wider">Tasks 30 d</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-slate-900">{agent.total_token_usage ? formatNumber(agent.total_token_usage) : 'not reported'}</div>
@@ -368,7 +373,7 @@ export function SwarmOverviewPage() {
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
           <TrendingUp className="w-5 h-5" />
-          Recent Tasks ({localTasks.length})
+          Recent Tasks ({totalTasks === null ? localTasks.length : `latest ${localTasks.length} of ${fmt(totalTasks)}`})
         </h2>
         {loading ? (
           <div className="text-center py-12 text-slate-500">Loading tasks…</div>
