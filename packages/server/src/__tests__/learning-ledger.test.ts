@@ -19,7 +19,7 @@ it('evolution-evidence carries the learning ledger: every mechanism, its source 
   expect(l.mechanisms.map((m) => m.mechanism)).toEqual(MECHANISMS);
   expect(l.loops_closed).toEqual({ k: 0, n: 11, headline: 'loops closed 0/11' });
   const status = Object.fromEntries(l.mechanisms.map((m) => [m.mechanism, m.status]));
-  expect(status).toEqual({ species_selection: 'NOT_MEASURED', effort_siblings: 'RUNNING', genomes: 'INSUFFICIENT', memory_rules: 'REJECTED', kb_retrieval: 'RUNNING',
+  expect(status).toEqual({ species_selection: 'NOT_MEASURED', effort_siblings: 'INSUFFICIENT', genomes: 'INSUFFICIENT', memory_rules: 'REJECTED', kb_retrieval: 'RUNNING',
     example_selection: 'RUNNING', skill_selection: 'NOT_MEASURED', maker_template: 'RUNNING', deps_prep: 'RUNNING', requeue: 'NOT_MEASURED', checker_family: 'RUNNING' });
   for (const m of l.mechanisms) expect(m.data_source, m.mechanism).toBeTruthy();
   // no statistic is invented: NOT_MEASURED and the Fisher-only experiments carry no estimate and no CI (null, never 0)
@@ -29,7 +29,8 @@ it('evolution-evidence carries the learning ledger: every mechanism, its source 
   }
   // empty arms: the experiments' own diff is null, so the ledger's is too
   expect(l.mechanisms.find((x) => x.mechanism === 'kb_retrieval')?.estimate).toBeNull();
-  expect(l.by_status).toEqual({ ADOPTED: 0, REJECTED: 1, RUNNING: 6, INSUFFICIENT: 1, NOT_MEASURED: 3 });
+  // X1 closed INSUFFICIENT_EVIDENCE (2026-11-07): effort_siblings reads INSUFFICIENT, not RUNNING
+  expect(l.by_status).toEqual({ ADOPTED: 0, REJECTED: 1, RUNNING: 5, INSUFFICIENT: 2, NOT_MEASURED: 3 });
 });
 
 it('reuses the experiment effect: closed only when ADOPTED with a CI excluding 0', () => {

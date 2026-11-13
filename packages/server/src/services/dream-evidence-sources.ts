@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { knowledgeFitness } from './knowledge-fitness';
+import { webResearchKnowledge } from './web-research';
 
 /**
  * EVO-K Darwinian step (DREAM_EVIDENCE_SOURCES, default '' = unchanged): the dream's mutation step is seeded from the K-batch
@@ -35,8 +36,12 @@ function fitnessRef(kind: string, id: string): string | null {
   return null; // memory_rule (credited via memory_access_log) and discovery (derived from units)
 }
 
-/** The pack for the enabled sources; cards of the day's failing lanes first. Pure read, fail-soft (a missing table adds nothing). */
-export function buildSourcePack(db: Database, sources: EvidenceSource[], lanes: string[], now = Date.now()): SourcePack {
+/**
+ * The pack for the enabled sources; cards of the day's failing lanes first. Pure read, fail-soft (a missing table adds nothing).
+ * WEB-001 (WEB_RESEARCH_MODE=on only): the knowledge source also carries ≤ 3 accepted web-research items (`knowledge:web:<id>`,
+ * the strategy line only), labelled unverified; off/shadow add nothing.
+ */
+export function buildSourcePack(db: Database, sources: EvidenceSource[], lanes: string[], now = Date.now(), env: NodeJS.ProcessEnv = process.env): SourcePack {
   const items: PackItem[] = [];
   const laneList = [...new Set(lanes)];
   const laneOrder = laneList.length ? `CASE WHEN lane IN (${laneList.map(() => '?').join(',')}) THEN 0 ELSE 1 END,` : '';
@@ -65,6 +70,9 @@ export function buildSourcePack(db: Database, sources: EvidenceSource[], lanes: 
     try { top = knowledgeFitness(db, now, 50).top; } catch { /* unknown: nothing */ }
     for (const k of top.filter((i) => i.status === 'used_with_value').slice(0, PACK_PER_SOURCE)) {
       items.push({ id: `${k.kind}:${k.id}`, source: 'knowledge', ref: fitnessRef(k.kind, k.id), text: clean(k.title ?? '(untitled)') });
+    }
+    for (const w of webResearchKnowledge(db, laneList, now, env)) {
+      if (!items.some((i) => i.ref === w.ref)) items.push({ id: w.ref, source: 'knowledge', ref: w.ref, text: clean(w.text, 280) });
     }
   }
   return { sources, items };

@@ -8,6 +8,7 @@ import { tg001Evidence, TG_TASKS } from './tg-001';
 import { d5NoEvidence, D5NO_ANALYSIS_N } from './d5-no';
 import { jevChallengerEvidence } from './jev-challenger';
 import { PL_MAX_DAYS, PL_PAIRS, PL_PROTOCOL, plFirstAttempt, plManifest, plManifestValidity, plState } from './pl-001';
+import { CV_MAX_DAYS, CV_PROTOCOL, CV_REPEATS, CV_TASKS, cvFirstAttempt, cvManifest, cvManifestValidity, cvState } from './cv-001';
 import { fisherExact, memoryHoldoutEvidence } from './evolution-evidence';
 
 /**
@@ -76,11 +77,20 @@ const MAKER_SELECTION_ENV = ['LOOP_DAEMON_MAKER_RUNTIME', 'LOOP_BANDIT_ENABLED',
  * goals exist). Each is a treatment variable of every running oracle-population experiment.
  */
 const ORACLE_POPULATION_ENV = ['LOOP_AUTO_MERGE_VALUE_GATE', 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', 'CONTENT_SAFETY_MODEL', 'CONTENT_SAFETY_IGNORE_CATEGORIES',
+  // which KB pages have a verdict (and so are served): windows past char 4 000, and how many checks get through the provider
+  'CONTENT_SAFETY_CHUNKING', 'CONTENT_SAFETY_RATE_LIMIT',
   'KB_CONTEXT_ENABLED', 'CAPABILITY_FACTORY_MODE', 'MUTATION_GAP_MAX_PER_DAY', 'TEST_GAP_MAX_PER_DAY',
   // L1: the skill route changes what oracle-lane makers receive (shadow → on delivers the block to the treatment arm)
   'SKILL_ROUTE_MODE',
   // the A4 brake's cache-read weight decides which opencode makers are stopped (15 of 31 braked in 7 d to 11-07), so their outcomes
-  'OPENCODE_BRAKE_CACHE_READ_WEIGHT'];
+  'OPENCODE_BRAKE_CACHE_READ_WEIGHT',
+  // evolve siblings (evolve-selection.ts) decide whose patch goes to review on oracle-lane goals; LOOP_EVOLVE_ENABLED=false at
+  // 2026-11-08T00:00:02Z (EXP-2 close) wrote no boundary, so it is in each protocol's 2026-11-08 amendment
+  'LOOP_EVOLVE_ENABLED', 'LOOP_EVOLVE_SPECIES',
+  // GENOME_APPLY_MODE=on appends a promoted genome's strategy lines to oracle-lane LOOP_WORK.md (genome-apply.ts)
+  'GENOME_APPLY_MODE',
+  // MAKER_SCOPE_REPAIR: restores an oracle-lane maker's out-of-scope package.json / lockfile, so the scope gate can pass a run it refused
+  'MAKER_SCOPE_REPAIR'];
 /** TG-001 closed by the operator: INCONCLUSIVE at 20 tasks, no extension to 40 (task supply). INCONCLUSIVE from the evidence
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
@@ -91,10 +101,19 @@ export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided
  *  (it is a single registered readout), so this close is what records it. */
 export const MEMORY_HOLDOUT_CLOSED: ExperimentClose = { verdict: 'FALSIFIED (rules not above withheld)', decided_on: '2026-10-27',
   source: 'docs/research/intelligence-metrics/EXP-3_RESULT.md#decision-under-the-registered-rules' };
+/** EXP-2 (X1) read out once at stop_by: on 56/79 settled verified (0.709) vs off 74/109 (0.679), Fisher p 0.75; the on arm
+ *  stopped below ~94 settled, so INSUFFICIENT_EVIDENCE. Siblings did not beat no-siblings → "no sibling" default: operator
+ *  2026-11-07, LOOP_EVOLVE_ENABLED=false since 2026-11-08T00:00:02Z. A single registered readout, so this close records it. */
+export const X1_CLOSED: ExperimentClose = { verdict: 'INSUFFICIENT_EVIDENCE (no sibling benefit at 79/109 settled)', decided_on: '2026-11-07',
+  source: 'docs/research/intelligence-metrics/EXP-2_RESULT.md#decision-under-the-registered-rules' };
 const X1_STARTED = '2026-10-09T00:00:00.000Z';
+const X1_STOP_BY = '2026-11-06T00:00:00.000Z';
 /** PL-001 runner amendment (2026-10-26): registered, not started; decide start or close by PL_DECIDE_START_BY (registered + 30 d) */
 const PL_REGISTERED_AT = '2026-10-26T00:00:00.000Z';
 const PL_DECIDE_START_BY = '2026-11-25T00:00:00.000Z';
+/** CV-001 (pre-registered 2026-11-07): not started; decide start or close by CV_DECIDE_START_BY (registered + 30 d) */
+const CV_REGISTERED_AT = '2026-11-07T00:00:00.000Z';
+const CV_DECIDE_START_BY = '2026-12-07T00:00:00.000Z';
 
 /** Literal dates (pinned against their source constants in experiment-registry.test.ts): X1 = start + 28 d, D5-NO = cutoff + 90 d.
  *  A function, not a constant: the imported targets are read at call time (stall-watch ↔ d5-no import cycle). */
@@ -124,11 +143,13 @@ export const experimentDefs = (): ExperimentDef[] => [
       return { n_per_arm: { A: e.arms.A.terminal, B: e.arms.B.terminal }, verdict: null,
         effects: { deps_prep: { metric: 'ITT verified rate, B (deps prepared) − A; cluster-bootstrap 95 % CI (descriptive)', estimate: e.diff, ci: e.diff_ci_descriptive, p: null } } }; } },
   { id: 'X1', flag: 'EFFORT_SIBLING_RANDOMISE', protocol: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2', started_at: X1_STARTED,
-    target_n: 94, stop_by: '2026-11-06T00:00:00.000Z', stop_note: 'EXP-2 registration: 4 weeks, ~94 settled per arm', stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2', population: 'oracle_goals',
+    target_n: 94, stop_by: X1_STOP_BY, stop_note: 'EXP-2 registration: 4 weeks, ~94 settled per arm', stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2', population: 'oracle_goals',
+    closed: X1_CLOSED,
     // makers on the shared oracle-goal population: the memory-rules switch (EXPERIMENT_PROTOCOL.md amendment 2026-10-27) alters them too
     treatment_env: ['EFFORT_SIBLING_RANDOMISE', 'LOOP_MEMORY_RULES_ENABLED', ...MAKER_SELECTION_ENV, ...ORACLE_POPULATION_ENV],
-    status: (db, env, _now, since) => { const e = effortX1Evidence(db, since, env, fisherExact);
-      return { n_per_arm: { on: e.on.verified + e.on.regressed, off: e.off.verified + e.off.regressed }, verdict: null,
+    // goals created in [since, stop_by): the registered horizon (EXP-2_RESULT.md), not every goal randomised after it
+    status: (db, env, _now, since) => { const e = effortX1Evidence(db, since, env, fisherExact, X1_STOP_BY);
+      return { n_per_arm: { on: e.on.verified + e.on.regressed, off: e.off.verified + e.off.regressed }, verdict: X1_CLOSED.verdict,
         effects: { effort_siblings: { metric: 'verified / settled, evolve siblings on vs off (Fisher exact; no effect size computed)', estimate: null, ci: null, p: e.fisher_p } } }; } },
   { id: 'F2', flag: 'CHECKER_FAMILY_RANDOMISE', protocol: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-1', started_at: '2026-10-17T00:00:00.000Z',
     target_n: CHECKER_FAMILY_TARGET_DEFAULT, stop_by: '2027-01-15T00:00:00.000Z',
@@ -161,6 +182,20 @@ export const experimentDefs = (): ExperimentDef[] => [
       if (!m || !plManifestValidity(db, m).valid) return { n_per_arm: null, verdict: null };
       const s = plState(db, m, now);
       if (since !== (first ?? PL_REGISTERED_AT)) return { n_per_arm: null, verdict: s.verdict };
+      return { n_per_arm: { pairs: s.completed.length }, verdict: s.verdict }; } },
+  { id: 'CV-001', flag: 'CV_001_MODE', protocol: CV_PROTOCOL, started_at: CV_REGISTERED_AT,
+    target_n: CV_TASKS * CV_REPEATS, stop_by: CV_DECIDE_START_BY,
+    stop_note: `protocol stop rule: every unit (task x repeat) complete or INVALID, or day ${CV_MAX_DAYS} after the first attempt (stop_by = first attempt + ${CV_MAX_DAYS} d once one exists); before the first attempt a decide-start-or-close date`,
+    stop_source: 'docs/research/cv-001/CV-001_PROTOCOL.md#stop-rule', population: 'gym_tasks',
+    // gym population only: the arms change the router model of gym attempts, never a production maker (no maker-selection env)
+    treatment_env: ['CV_001_MODE', 'CV_001_WINDOW_UTC', 'GYM_PROD_GATES', 'GYM_MAKER_TIMEOUT_MS', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', 'HACK_DETECTOR_MODE'],
+    schedule: (db) => { const f = cvFirstAttempt(db); return f ? { started_at: f, stop_by: new Date(Date.parse(f) + CV_MAX_DAYS * 86_400_000).toISOString() } : null; },
+    // n = completed pairs (task x repeat, both arms observed or censored) over the whole experiment; it cannot window
+    status: (db, _env, now, since) => {
+      const m = cvManifest(db); const first = cvFirstAttempt(db);
+      if (!m || !cvManifestValidity(db, m).valid) return { n_per_arm: null, verdict: null };
+      const s = cvState(db, m, now);
+      if (since !== (first ?? CV_REGISTERED_AT)) return { n_per_arm: null, verdict: s.verdict };
       return { n_per_arm: { pairs: s.completed.length }, verdict: s.verdict }; } },
   { id: 'D5-NO', flag: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', protocol: 'docs/research/eco/D5NO_PROTOCOL.md', started_at: '2026-10-11T21:00:00.000Z',
     target_n: D5NO_ANALYSIS_N, stop_by: '2027-01-09T21:00:00.000Z', stop_note: 'cutoff + 90 days → INSUFFICIENT_EVIDENCE', stop_source: 'docs/research/eco/D5NO_PROTOCOL.md', population: 'prescreen_proposals',

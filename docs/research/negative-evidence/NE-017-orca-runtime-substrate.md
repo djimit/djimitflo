@@ -24,3 +24,21 @@ Adapting a single Orca mechanism in-house, without Orca code or a dependency, wh
 
 ## Reopen
 Both must hold: (a) a measured DjimitFlo gap that only Orca closes, and (b) Orca running inside the workstation pull worker behind `remote_maker_jobs`, at a pinned version with a contract snapshot. Reopening permits a bounded, flagged evaluation, not adoption.
+
+## Reopen attempt 2026-11-07 → closed 2026-11-09 (ORCA-001, REJECT stands)
+The operator started the reopen path on 2026-11-07. Step 1 installed the pinned `v1.4.251` on the workstation and
+captured the CLI contract ([snapshot](../../orca/cli-snapshot-1.4.251.md)). Verifiable findings:
+
+- **No `worker_done` for agents outside Orca's list.** Supervised workers are Orca-known agent CLIs (claude, codex,
+  cursor, antigravity, muse, zcode, opencode, opencode2). Any other command runs only in an Orca terminal; Orca learns
+  that the work ended only if the agent itself sends `worker_done`, otherwise it raises an `escalation`.
+- **Consequence for the workstation pull worker.** The worker's maker species is `atomic-agent` against llama-router.
+  Under Orca it would be an unsupervised terminal, so Orca adds no supervision of the attempts whose losses
+  (crash/timeout without a change, lost results) were the only candidate gap. Putting Orca behind `remote_maker_jobs`
+  would also mean running `orca serve` on the workstation — headless operation, telemetry and network behaviour were
+  not tested and stay unknown.
+- **Integrity, not provenance.** sha512 (publisher) and sha256 (GitHub upload digest) matched; the release has no
+  build-provenance attestation.
+
+The draft ORCA-001 protocol's stop rule applied; it was never frozen and no experiment ran. The operator closed the
+reopen on 2026-11-09. The registry keeps it as `reopen_history`; the verdict, guard and reopen condition are unchanged.

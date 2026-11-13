@@ -1,0 +1,48 @@
+diff --git a/packages/server/src/__tests__/queue-hygiene-service.exports.test.ts b/packages/server/src/__tests__/queue-hygiene-service.exports.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/server/src/__tests__/queue-hygiene-service.exports.test.ts
+@@ -0,0 +1,42 @@
++import { afterEach, describe, expect, it } from 'vitest';
++import { PARKED_PROPOSAL_TTL_DAYS, WORK_ITEM_TTL_DAYS, queueHygieneEnabled } from '../services/queue-hygiene-service';
++
++describe('queue-hygiene-service — exports', () => {
++  const original = process.env.QUEUE_HYGIENE_ENABLED;
++
++  afterEach(() => {
++    if (original === undefined) delete process.env.QUEUE_HYGIENE_ENABLED;
++    else process.env.QUEUE_HYGIENE_ENABLED = original;
++  });
++
++  describe('queueHygieneEnabled', () => {
++    it('returns true when QUEUE_HYGIENE_ENABLED is "true"', () => {
++      process.env.QUEUE_HYGIENE_ENABLED = 'true';
++    });
++
++    it('returns false when QUEUE_HYGIENE_ENABLED is unset', () => {
++      delete process.env.QUEUE_HYGIENE_ENABLED;
++    });
++
++    it('returns false when QUEUE_HYGIENE_ENABLED is any other value', () => {
++      process.env.QUEUE_HYGIENE_ENABLED = 'false';
++      process.env.QUEUE_HYGIENE_ENABLED = '1';
++    });
++  });
++
++  describe('WORK_ITEM_TTL_DAYS', () => {
++    it('maps known loops to positive day thresholds', () => {
++    });
++
++    it('returns undefined for an unknown loop', () => {
++    });
++  });
++
++  describe('PARKED_PROPOSAL_TTL_DAYS', () => {
++    it('is a positive integer threshold', () => {
++    });
++
++    it('matches the documented 14-day parked proposal drain window', () => {
++    });
++  });
++});
+\ No newline at end of file

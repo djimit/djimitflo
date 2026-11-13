@@ -151,9 +151,15 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.get('/runs', requirePermission('read:evidence'), (_req, res, next) => {
+  router.get('/runs', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json({ runs: loopService.listLoopRuns() });
+      // ?synthetic=exclude: production runs only (no PR-review bookkeeping runs); default/include: every run
+      const synthetic = req.query.synthetic;
+      if (synthetic !== undefined && synthetic !== 'include' && synthetic !== 'exclude') {
+        res.status(400).json({ error: { message: 'synthetic must be include or exclude', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      res.json({ runs: loopService.listLoopRuns({ real_only: synthetic === 'exclude' }) });
     } catch (error) {
       next(error);
     }

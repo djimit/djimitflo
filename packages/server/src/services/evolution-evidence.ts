@@ -43,7 +43,7 @@ import { extraRepos } from './repo-registry';
 import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { activeGatePolicyInput, currentPolicyIdentity, gatePolicyClause, policyKey, requireGatePolicyHash } from './gym-gate-policy';
-import { experimentsReport } from './experiment-registry';
+import { experimentDefs, experimentsReport } from './experiment-registry';
 import { learningLedger } from './learning-ledger';
 import { fleetSignatureEvidence } from './fleet-event-signatures';
 import { makerWarmDepsEvidence } from './maker-warm-deps';
@@ -52,6 +52,7 @@ import { latestSettlements, runLanes, settlementExecutionEvidence, settlementVal
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
+import { cv001Evidence } from './cv-001';
 import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 import { realRunSql } from './synthetic-runs';
 import { fleetRepairEvidence } from './fleet-repair';
@@ -59,6 +60,11 @@ import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
 import { capabilityFactoryEvidence } from './capability-factory';
 import { skillRouteEvidence } from './skill-route';
+import { fitnessContractsReport } from './fitness-contracts';
+import { gymNativeToolsEvidence } from './gym-native-tools';
+import { genomeApplyEvidence } from './genome-apply';
+import { webResearchEvidence } from './web-research';
+import { benchmarkEvidence } from './benchmark-schedule';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -67,7 +73,7 @@ import { skillRouteEvidence } from './skill-route';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
-  { name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: true },
+  { name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: false }, // dashboard navigation UI only (routes/health.ts); no loop decision reads it
   { name: 'SKILL_FIRST_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_TRIGGERS', acting: true },
@@ -77,7 +83,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },
   { name: 'LOOP_RESUME_INTERRUPTED', acting: true },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
-  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
+  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: true }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: true },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
@@ -86,13 +92,13 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
   { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false }, { name: 'GYM_FAILURE_TASKS_ENABLED', acting: false }, { name: 'SPEC_GAP_LANE', acting: false },
-  { name: 'MODEL_SELECTOR_MODE', acting: true }, { name: 'EVOLUTION_ESTIMATORS_ENABLED', acting: false }, { name: 'GYM_IRT_SELECTION', acting: true },
+  { name: 'MODEL_SELECTOR_MODE', acting: true }, { name: 'COUNCIL_JUDGE_ROUTING_MODE', acting: true }, { name: 'EVOLUTION_ESTIMATORS_ENABLED', acting: false }, { name: 'GYM_IRT_SELECTION', acting: true },
   { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
   { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
   { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
   { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
-  { name: 'GYM_PROD_GATES', acting: false },
+  { name: 'GYM_PROD_GATES', acting: false }, { name: 'GYM_NATIVE_SKILL_TOOLS', acting: true },
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
   { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
   { name: 'INFERENCE_BUDGET_THROTTLE', acting: true }, { name: 'OLLAMA_WEEKLY_TOKEN_BUDGET', acting: true }, { name: 'OLLAMA_THROTTLE_AT', acting: true },
@@ -103,10 +109,10 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'OUTCOME_ATTRIBUTION_ENABLED', acting: true },
   { name: 'EFFORT_CONTROLLER_MODE', acting: false }, { name: 'EFFORT_LAMBDA_TOK', acting: false }, { name: 'EFFORT_LAMBDA_KWH', acting: false }, { name: 'EFFORT_EXPLORATION', acting: false },
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
-  { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_FITNESS_MUTANTS_V2', acting: true }, { name: 'GRADED_CONTEST_MODE', acting: true },
+  { name: 'GRADED_FITNESS_MODE', acting: true }, { name: 'GRADED_FITNESS_MUTANTS_V2', acting: true }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
-  { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true }, { name: 'MAKER_UID_SEPARATION', acting: true },
+  { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true }, { name: 'MAKER_UID_SEPARATION', acting: true }, { name: 'MAKER_SCOPE_REPAIR', acting: true },
   { name: 'POLICY_VIOLATION_LOG', acting: false }, { name: 'HOST_TOKEN_WATCH_MODE', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
   { name: 'CHECKER_FAMILY_VERSION', acting: true },
@@ -114,6 +120,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'STE_001_MODE', acting: true },
   { name: 'TG_001_MODE', acting: true },
   { name: 'PL_001_MODE', acting: true }, { name: 'PL_001_CAP_SHARE', acting: true },
+  { name: 'CV_001_MODE', acting: true }, { name: 'CV_001_WINDOW_UTC', acting: true },
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
@@ -124,10 +131,11 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'COMMONS_FALSIFIER_MODE', acting: false },
   { name: 'COMMONS_INVESTIGATION_MODE', acting: false },
   { name: 'ASG_MODE', acting: true },
-  { name: 'SETTLEMENT_EXECUTION_MODE', acting: false },
+  { name: 'SETTLEMENT_EXECUTION_MODE', acting: true },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
+  { name: 'WEB_RESEARCH_MODE', acting: true },
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
@@ -144,13 +152,14 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true },
   { name: 'CAPABILITY_LIFECYCLE_V2', acting: true },
   { name: 'SKILL_ROUTE_MODE', acting: true },
+  { name: 'SKILL_VALIDATION_REQUIRES_TESTS', acting: true },
   { name: 'SKILL_ARTIFACT_EVOLUTION_MODE', acting: true },
   { name: 'EGRESS_CLASS_MODE', acting: false },
   // re-20261105 E17 / P1-8: acting flags that were in no registry, or filed as non-evolution although they steer the loop
   { name: 'PROPOSAL_GROUNDING_REQUIRED', acting: true }, { name: 'SELF_IMPROVEMENT_GOAL_ON_APPROVE', acting: true },
   { name: 'REMOTE_MAKER_ENABLED', acting: true }, { name: 'GOVERNANCE_GATE_ENABLED', acting: true }, { name: 'LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED', acting: true },
   { name: 'MUTATION_GAP_ENABLED', acting: true }, { name: 'MUTATION_GAP_MAX_PER_DAY', acting: true },
-  { name: 'TEST_GAP_SOURCE_ENABLED', acting: true }, { name: 'TEST_GAP_EXPORTS_ENABLED', acting: true }, { name: 'TEST_GAP_PACKAGES_ENABLED', acting: true }, { name: 'TEST_GAP_MAX_PER_DAY', acting: true },
+  { name: 'TEST_GAP_SOURCE_ENABLED', acting: true }, { name: 'TEST_GAP_EXPORTS_ENABLED', acting: true }, { name: 'TEST_GAP_PACKAGES_ENABLED', acting: true }, { name: 'TEST_GAP_DASHBOARD_ENABLED', acting: true }, { name: 'TEST_GAP_MAX_PER_DAY', acting: true },
   // judgmentMode() builds TYPESAFE_<judgment id>_MODE at run time (TYPESAFE_PROPOSAL_PRESCREEN_MODE is listed above)
   { name: 'TYPESAFE_KB_PASSAGE_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_DECISION_CONTEXT_MODE', acting: true },
   { name: 'TYPESAFE_DISCOVERY_RELEVANCE_MODE', acting: true }, { name: 'TYPESAFE_REFLECTION_TRIAGE_MODE', acting: true },
@@ -158,6 +167,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'TYPESAFE_CHECKER_SECOND_OPINION_MODE', acting: false }, { name: 'TYPESAFE_RISK_ATOMIC_MODE', acting: false }, { name: 'TYPESAFE_COMMONS_IDEA_MODE', acting: false },
   { name: 'FLEET_SHELL_ENABLED', acting: true },
   { name: 'OPENCODE_BRAKE_CACHE_READ_WEIGHT', acting: true },
+  { name: 'BENCHMARK_SCHEDULE_MODE', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -298,7 +308,17 @@ export function gateRuleDisagreements(db: Database, since: string): number | nul
   return n;
 }
 
-export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
+/** the registered start of an experiment (experiment-registry.ts) — where its evidence section counts from; `fallback` if unregistered */
+function experimentSince(id: string, fallback: string): string {
+  return experimentDefs().find((d) => d.id === id)?.started_at ?? fallback;
+}
+
+/**
+ * `opts.ope` (default false): RX-15's off-policy value (banditOpe: one 10 000-draw Monte Carlo per logged bandit decision,
+ * ~4 s of the build on prod 2026-11-12) is report-only and no page reads it, so the default build leaves it out (ope: null,
+ * the ledger note says so); GET /api/health/evolution-evidence?ope=1 computes it.
+ */
+export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30, opts: { ope?: boolean } = {}) {
   const window = Math.min(90, Math.max(1, Math.floor(days) || 30));
   const since = new Date(now - window * 86_400_000).toISOString();
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
@@ -329,6 +349,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   try { prs = loopPrSettlements(db, now, undefined, env); } catch { /* loop_runs absent: settlement unknown */ }
   // E1: not settled yet = OPEN_BLOCKED (not closed) + MERGED_SURVIVAL_PENDING; anomalies are reported apart, never as waiting
   const openDrafts = (prs ?? []).filter((p) => (p.settlement.state === 'OPEN_BLOCKED' && !p.settlement.terminal) || p.settlement.state === 'MERGED_SURVIVAL_PENDING');
+  const openNow = openDrafts.filter((p) => p.settlement.state === 'OPEN_BLOCKED').length;
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
   const q = (p: number) => (ages.length ? +ages[Math.min(ages.length - 1, Math.floor(p * ages.length))].toFixed(1) : null);
   // E1: survival only over SETTLED_SURVIVED / SETTLED_REGRESSED — pending and anomalous PRs are in neither numerator nor denominator
@@ -453,7 +474,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       const ok = total >= 30 && pos >= 8 && total - pos >= 8;
       return { state: ok ? 'green' : 'red', reason: `${total} settled loop PRs (${pos} survived, ${total - pos} not); needs ≥ 30 with ≥ 8 per class` } as Gate;
     })(),
-    C: { state: openDrafts.length <= 5 ? 'unknown' : 'red', reason: `${openDrafts.length} loop PRs open or merged < 14 d ago (an upper bound on open drafts; target ≤ 5 open on 14 consecutive days)` },
+    // only PRs still waiting on a human count: merged PRs inside the 14-d survival window are not queue
+    C: { state: openNow <= 5 ? 'unknown' : 'red', reason: `${openNow} loop PRs open (${openDrafts.length - openNow} merged and inside the 14-d survival window, not counted; target ≤ 5 open on 14 consecutive days)` },
     D: (() => {
       // RX-7: decision-grade needs >= 10 positives, n >= 100 and a bootstrap skill CI that excludes 0
       if (!forecasts_v2.scored) return { state: 'unknown', reason: 'no forecaster scored yet' } as Gate;
@@ -479,8 +501,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     if (!t || t.estimator !== r.estimator || t.scope !== r.scope) { t = { estimator: r.estimator, scope: r.scope, days: [] }; estimates.push(t); }
     t.days.push({ day: r.day, value: r.value, ci_low: r.ci_low, ci_high: r.ci_high, n: r.n, status: r.status });
   }
-  // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit
-  const ope = (() => { try { return banditOpe(db, env); } catch { return null; } })();
+  // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit; only on request (opts.ope)
+  const ope = opts.ope ? (() => { try { return banditOpe(db, env); } catch { return null; } })() : null;
   // Batch-8: loop PRs whose read set (configs, lockfile, imports) changed on main between the checks and the PR
   const freshness = {
     by_state: all<{ state: string; n: number }>(`SELECT json_extract(metadata, '$.evidence_freshness.state') AS state, COUNT(*) AS n FROM loop_runs
@@ -491,9 +513,12 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
   const experiments = experimentsReport(db, env, now);
+  const ledger = learningLedger(db, experiments.experiments, opts.ope ? ope : undefined);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
+    // periodic fixed benchmarks (SEC-F1, F1-R, gym holdout readout): series, due / overdue and the regression verdict
+    benchmarks: (() => { try { return benchmarkEvidence(db, env, now); } catch { return null; } })(),
     // UX-20: where model calls send data (shadow report; nothing is blocked)
     egress: egressEvidence(db, env, now),
     // UX-21: vectors compared across dimensions since boot, per store (resampled by default; skipped under VECTOR_STRICT_DIM)
@@ -516,8 +541,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
     fail_before_pass_after: failBeforePassAfterEvidence(db, env, fisherExact, now),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
-    ace_001: ace001Evidence(db, since, env, now),
-    ste_001: ste001Evidence(db, since, env),
+    // ACE-001 / STE-001 count over the experiment's own analysis window, as the registry row does (from started_at; ace001Evidence
+    // takes max(started_at, analysis_since)), not the page window — a 30-d window cut ACE-001's first days (55/45/57/54 vs 62/50/60/58)
+    ace_001: ace001Evidence(db, experimentSince('ACE-001', since), env, now),
+    ste_001: ste001Evidence(db, experimentSince('STE-001', since), env),
     // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
     // MAKER_WARM_DEPS (nested; blocked_by_experiment while MAKER-DEPS-001 runs): leases per deps_source
     maker_deps_001: { ...makerDeps001Evidence(db, since, env), warm_deps: makerWarmDepsEvidence(db, since, env) },
@@ -558,7 +585,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
     experiments,
     // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
-    learning_ledger: learningLedger(db, experiments.experiments, ope),
+    learning_ledger: ledger,
     // P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host (window) and the host key list, no secrets (read-only)
     fleet_signatures: fleetSignatureEvidence(db, env, since),
     // AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main, per agent; insufficient below n 5
@@ -574,6 +601,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks — pairs, per-arm
     // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
     pl_001: pl001Evidence(db, env, now),
+    // CV-001 (CV_001_MODE): qwen38-27b vs the gym-only control-vector preset qwen38-27b-cvd15 on frozen mutant-repair tasks — the quiet
+    // window, pairs per (task, repeat), clean / plain success per arm, one-sided exact McNemar, the four-rule decision and the verdict
+    cv_001: cv001Evidence(db, env, now),
     // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
     memory_delivery: memoryDeliveryEvidence(db, env),
     // Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after success rate around a linked merged fix (read-only)
@@ -586,5 +616,33 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
     capability_factory: capabilityFactoryEvidence(db, env),
     // L1 skill route (SKILL_ROUTE_MODE): selected / delivered / invoked / passed / verified / credited per arm × lane; holdout contrast descriptive, withheld below n 30 per arm
-    skill_route: skillRouteEvidence(db, env, since) };
+    skill_route: skillRouteEvidence(db, env, since),
+    // fitness contracts (services/fitness-contracts.ts): which components can learn — counts by status, acting-flag coverage, the list (static)
+    fitness_contracts: fitnessContractsReport(EVOLUTION_FLAGS, ledger),
+    // GYM_NATIVE_SKILL_TOOLS: oracle_gate as a native tool on ordinary remote gym attempts — offered / called / pass rate when called /
+    // stopped within N steps after a pass (descriptive; not an experiment)
+    gym_native_tools: gymNativeToolsEvidence(db, since, env),
+    // GENOME_APPLY_MODE=on: promoted genomes in production makers — delivered vs 10 % holdout per genome (maker-clean), receipts, auto-retire decisions
+    genome_apply: genomeApplyEvidence(db, env),
+    // WEB-001 (WEB_RESEARCH_MODE): failure-driven web research — questions asked, candidates returned/accepted/rejected by reason,
+    // knowledge routed (on), dream genomes citing it and their trial result; null = no job yet
+    web_research: webResearchEvidence(db, env, now) };
+}
+
+/**
+ * The evidence route's cache: one build per (db, window, ope) for EVIDENCE_CACHE_MS. A build reads ~2 500 statements and
+ * blocks the event loop for seconds; the page polls, the numbers move on the scale of minutes. `fresh` rebuilds now.
+ */
+export const EVIDENCE_CACHE_MS = 5 * 60_000;
+const evidenceCache = new WeakMap<Database, Map<string, { at: number; value: ReturnType<typeof buildEvolutionEvidence> }>>();
+export function cachedEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30,
+  opts: { ope?: boolean; fresh?: boolean } = {}): ReturnType<typeof buildEvolutionEvidence> {
+  const key = `${Math.min(90, Math.max(1, Math.floor(days) || 30))}|${opts.ope ? 1 : 0}`;
+  let byKey = evidenceCache.get(db);
+  if (!byKey) { byKey = new Map(); evidenceCache.set(db, byKey); }
+  const hit = byKey.get(key);
+  if (hit && !opts.fresh && now >= hit.at && now - hit.at < EVIDENCE_CACHE_MS) return hit.value;
+  const value = buildEvolutionEvidence(db, env, now, days, { ope: opts.ope });
+  byKey.set(key, { at: now, value });
+  return value;
 }

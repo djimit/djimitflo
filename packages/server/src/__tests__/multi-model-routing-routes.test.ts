@@ -4,10 +4,30 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import { createMultiModelRoutes } from '../routes/multi-model';
 import { errorHandler } from '../middleware/error-handler';
+import { MultiModelIntelligence } from '../services/multi-model-intelligence';
 
 describe('multi-model routing capability chain', () => {
   const dbs: ReturnType<typeof createTestDb>[] = [];
   afterEach(() => { for (const db of dbs.splice(0)) db.close(); });
+
+  it('adds outcome evidence references without losing legacy rows', () => {
+    const db = createTestDb();
+    dbs.push(db);
+    db.exec(`CREATE TABLE model_execution_outcomes (
+      id TEXT PRIMARY KEY, model_id TEXT NOT NULL, task_type TEXT NOT NULL,
+      success INTEGER NOT NULL DEFAULT 0, score REAL, latency_ms INTEGER,
+      cost_dollars REAL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.prepare(`INSERT INTO model_execution_outcomes (id, model_id, task_type, success)
+      VALUES ('legacy', 'model-a', 'coding', 1)`).run();
+
+    new MultiModelIntelligence(db);
+
+    const outcome = db.prepare('SELECT id, success, evidence_ref FROM model_execution_outcomes WHERE id = ?').get('legacy') as {
+      id: string; success: number; evidence_ref: string | null;
+    };
+    expect(outcome).toEqual({ id: 'legacy', success: 1, evidence_ref: null });
+  });
 
   it('registers models, learns outcomes, routes by measured capability, and exposes proof state', async () => {
     const db = createTestDb();

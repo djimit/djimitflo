@@ -19,10 +19,11 @@ it('reports the process-group termination mode without changing runtime admissio
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'fail_before_pass_after', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'lane_policy', 'knowledge_gaps', 'jev_challenger', 'gate_rule_disagreements', 'experiments', 'learning_ledger', 'fleet_signatures', 'falsifier', 'settlement_execution', 'settlement_value', 'scheduler_capacity', 'procedure_selection', 'pl_001', 'memory_delivery', 'fleet_repair', 'advisory_exposure', 'content_drafts', 'capability_factory', 'skill_route']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'benchmarks', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'fail_before_pass_after', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'lane_policy', 'knowledge_gaps', 'jev_challenger', 'gate_rule_disagreements', 'experiments', 'learning_ledger', 'fleet_signatures', 'falsifier', 'settlement_execution', 'settlement_value', 'scheduler_capacity', 'procedure_selection', 'pl_001', 'cv_001', 'memory_delivery', 'fleet_repair', 'advisory_exposure', 'content_drafts', 'capability_factory', 'skill_route', 'fitness_contracts', 'gym_native_tools', 'genome_apply', 'web_research']);
   // capability factory: no judgments table → counts unknown (null), never 0
   expect(e.capability_factory).toEqual({ mode: 'off', requests: null, registered_downgraded: null });
   expect(e.skill_route).toMatchObject({ mode: 'off', by_arm_lane: null, contrast: null }); // unknown, never zero
+  expect(e.gym_native_tools).toBeNull(); // GYM_NATIVE_SKILL_TOOLS: no loop_runs → unknown, never 0
   // G3.5: no tables → genomes unknown (INSUFFICIENT), never 'none adopted' counted as 0
   expect(e.learning_ledger.mechanisms.find((m) => m.mechanism === 'genomes')?.status).toBe('INSUFFICIENT');
   // E3: no proposal table → every provenance answer is UNKNOWN, never a 0 count
@@ -62,7 +63,7 @@ it('RX-1: counts outcomes per source, loop PRs, genomes and gym tiers like hand 
     { domain: 'loop', skill: 'loop-maker:test-gap', n: 2, ok: 1 }, { domain: 'gym', skill: 'loop-maker:gym', n: 1, ok: 1 }, { domain: 'merge', skill: 'loop-maker:merge', n: 1, ok: 1 }]));
   expect(e.merge).toMatchObject({ merge_outcomes: 1, settled: [{ state: 'merged', survived: 1, n: 1 }] });
   expect(e.drafts).toMatchObject({ unsettled: 2, unsettled_open_or_recent: 2, anomalous: 0, age_days_max: 3 });
-  expect(e.gates.C.reason).toContain('open or merged < 14 d ago');
+  expect(e.gates.C.reason).toContain('inside the 14-d survival window, not counted');
   expect(e.genomes.by_status).toEqual([{ status: 'retired', origin: 'dream', n: 1 }]);
   expect(e.genomes.holdout).toEqual({ mined: 1, mutant: 0, write_test: 0 });
   expect(e.gym).toEqual(expect.arrayContaining([{ kind: 'mutant', tier: 4, status: 'failure', n: 1 }, { kind: 'mined', tier: null, status: 'success', n: 1 }]));
@@ -166,7 +167,7 @@ it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod 
   expect(e.graded.contest).toEqual({ contests: 3, agree: 2, agreement_rate: 0.667 });
   expect(e.graded.mode).toEqual({ fitness: 'shadow', contest: 'off' });
   expect(e.flags.find((f) => f.name === 'GRADED_CONTEST_MODE')).toMatchObject({ acting: true });
-  expect(e.flags.find((f) => f.name === 'GRADED_FITNESS_MODE')).toMatchObject({ acting: false, value: 'shadow' });
+  expect(e.flags.find((f) => f.name === 'GRADED_FITNESS_MODE')).toMatchObject({ acting: true, value: 'shadow' });
 });
 
 it('S7: hack_rate over 14 days per genome and task kind (checked = hack detector ran), canaries served/passed, Wilson 95 % and insufficient below n = 10', () => {

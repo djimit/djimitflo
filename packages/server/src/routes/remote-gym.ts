@@ -7,6 +7,8 @@ import { recordHostTokenOk, recordHostTokenRejection } from '../services/host-to
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
 import { ingestKbPages, kbPendingSafety, releaseKbPage } from '../services/kb-corpus';
 import { claimCommittee, committeeEnabled, recordCommittee } from '../services/committee-swarm';
+import { claimWebResearch, recordWebResearch, webResearchMode } from '../services/web-research';
+import { guardLines } from '../services/dream-evolution';
 
 /**
  * Plan I1: a compute host pulls evolution-gym work. claim/result authenticate with a host-scoped token
@@ -75,6 +77,26 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   router.post('/committee/:jobId/result', (req, res) => {
     const h = host(req, res); if (!h) return;
     try { res.json({ recorded: recordCommittee(db, String(req.params.jobId), h, req.body?.answers) }); } catch (error) { fail(res, error); }
+  });
+
+  // WEB-001: failure-driven research — the workstation pulls a question built from measured failures and returns ≤ 3
+  // untrusted candidates. Off (WEB_RESEARCH_MODE unset): 204 after the token check, no DB work (like committee/claim).
+  router.post('/research/claim', (req, res) => {
+    if (webResearchMode() === 'off') {
+      const h = String(req.get('X-Gym-Host') || '');
+      let rejected = true;
+      try { rejected = !h || spawnTokenRejection(resolveSpawnTokenSecret(), String(req.get('X-Gym-Worker-Token') || ''), h, REMOTE_GYM_SCOPE) !== null; } catch { /* no secret: refuse */ }
+      if (rejected) { res.status(401).json({ error: { code: 'GYM_WORKER_TOKEN_INVALID', message: 'Gym worker token is invalid, expired, or scoped to another host' } }); return; }
+      res.status(204).end(); return;
+    }
+    const h = host(req, res); if (!h) return;
+    const caps = Array.isArray(req.body?.capabilities) ? req.body.capabilities.map(String) : [];
+    try { res.json({ job: caps.includes('research_jobs') ? claimWebResearch(db, h) : null }); } catch (error) { fail(res, error); }
+  });
+  router.post('/research/:jobId/result', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    recordWebResearch(db, String(req.params.jobId), h, req.body || {}, process.env, new Date(), { guard: guardLines }).then((recorded) => res.json({ recorded }))
+      .catch((error) => { const code = error instanceof Error ? error.message : 'RESEARCH_ERROR'; res.status(code === 'RESEARCH_JOB_NOT_FOUND' ? 404 : code === 'RESEARCH_JOB_NOT_CLAIMED' ? 409 : 500).json({ error: { code, message: code } }); });
   });
 
   // plan L2: the workstation pushes changed DjimitKBWiki pages; stored after an embedding, unsafe quarantined, unverdicted reported 'pending'

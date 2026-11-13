@@ -1,7 +1,7 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { EvolutionBody, EvolutionPage } from './EvolutionPage';
+import { EvolutionBody, EvolutionPage, EVIDENCE_POLL_MS } from './EvolutionPage';
 import { api, type EvolutionEvidence } from '../lib/api';
 import { visibleText } from '../test/visible-text';
 
@@ -197,7 +197,7 @@ it('L6-04: each section states its own window; a grandfathered WIP exception is 
   const { container } = render(<EvolutionBody data={EXP_DATA} />);
   // MAKER-DEPS started before the 7-day evidence window: the section is not the whole experiment
   expect(detailText(container, 'MAKER-DEPS-001')).toContain('section counts the last 7 d only (from 2026-10-17); the registry row counts from 2026-10-01');
-  expect(detailText(container, 'ACE-001')).toContain('section counts from analysis_since 2026-10-17 (Amendment 1); 9 earlier outcomes excluded');
+  expect(detailText(container, 'ACE-001')).toContain('section counts from 2026-10-17 (the later of start and analysis_since, Amendment 1), as the registry row does; 9 earlier outcomes excluded');
   expect(detailText(container, 'TG-001')).toContain('section is not windowed (whole experiment)');
   expect(rowText(container, 'MAKER-DEPS-001')).toContain('grandfathered: running before the G1.5 WIP limit existed');
   expect(rowText(container, 'ACE-001')).toContain('counts toward WIP limit 4');
@@ -225,6 +225,17 @@ it('L6-04: the learning ledger shows mechanism, effect, CI and status, with null
 
 it('L6-04: a server without the experiment registry renders an honest empty state', () => {
   expect(renderToStaticMarkup(<EvolutionBody data={EMPTY} />)).toContain('Experiment registry not reported by this server.');
+});
+
+it('capability learning evidence marks absent agent, swarm, memory and knowledge comparisons as unproven', () => {
+  const html = renderToStaticMarkup(<EvolutionBody data={EMPTY} />);
+  expect(html).toContain('matched, per-agent task comparison');
+  expect(html).toContain('completion is not verified task success');
+  expect(html).toContain('watt-hours are not measured here');
+  expect(html).toContain('No readable skill-route funnel in this response.');
+  expect(html).toContain('Memory holdout evidence not reported.');
+  expect(html).toContain('ACE-001 evidence not reported.');
+  expect(html).toContain('insufficient samples unknown');
 });
 
 // UXE-00: value-gate decision card + settlement value (visibleText: shared helper, test/visible-text.ts)
@@ -325,4 +336,137 @@ it('UXE-00: visibleText ignores sr-only text', () => {
   const { container } = render(<p>shown <span className="sr-only">hidden-value</span></p>);
   expect(visibleText(container)).toContain('shown');
   expect(visibleText(container)).not.toContain('hidden-value');
+});
+
+const BENCH: EvolutionEvidence['benchmarks'] = { mode: 'on', token_cap: 6_000_000, margin: 0.05, benchmarks: [
+  { id: 'sec-f1', title: 'SEC-F1 security checker discrimination', metric: 'auc', cadence: 'monthly', execution: 'operator_runner', due: false, overdue: false, owed_at: '2026-12-01T02:00:00.000Z',
+    regression: { regressed: true, drop: 0.125, threshold: 0.05, basis: 'margin' }, series: [
+      { started_at: '2026-10-21T19:24:46Z', status: 'ok', value: 0.975, ci_low: 0.925, ci_high: 1, n: 46, catches: 19, false_rejects: 0, tokens: 2_000_000, models: ['ollama/glm-5.2:cloud'], prompt_sha256: 'dd10', reason: null },
+      { started_at: '2026-11-01T02:30:00Z', status: 'ok', value: 0.85, ci_low: 0.74, ci_high: 0.96, n: 46, catches: 15, false_rejects: 2, tokens: 2_100_000, models: ['ollama/glm-5.2:cloud'], prompt_sha256: 'ab12', reason: null },
+    ] },
+  { id: 'f1', title: 'F1-R checker discrimination', metric: 'auc', cadence: 'monthly', execution: 'operator_runner', due: true, overdue: false, owed_at: '2026-11-01T02:00:00.000Z',
+    regression: { regressed: false, drop: null, threshold: null, basis: null }, series: [] },
+  { id: 'gym-holdout', title: 'Gym frozen holdout readout', metric: 'pass_rate', cadence: 'weekly', execution: 'in_process', due: false, overdue: true, owed_at: '2026-11-02T03:00:00.000Z',
+    regression: { regressed: false, drop: null, threshold: null, basis: null }, series: [
+      { started_at: '2026-10-26T03:00:00Z', status: 'insufficient', value: null, ci_low: null, ci_high: null, n: 0, catches: null, false_rejects: null, tokens: 0, models: ['atomic@llama-router'], prompt_sha256: null, reason: '0 eligible result(s) on 85 holdout task(s) (< 10)' },
+    ] },
+] };
+
+it('fixed benchmarks: the series per benchmark with CIs, the regression, due command and overdue state; unknown values read —', () => {
+  render(<EvolutionBody data={{ ...EMPTY, benchmarks: BENCH }} />);
+  const t = visibleText(screen.getByTestId('benchmarks-card'));
+  expect(t).toContain('SEC-F1 security checker discrimination');
+  expect(t).toContain('regression: −0.125 > 0.050 (margin)');
+  expect(t).toContain('0.975');
+  expect(t).toContain('[0.740, 0.960]');
+  expect(t).toContain('15 / 2');
+  expect(t).toContain('due — bash scripts/benchmark-run.sh f1 --apply');
+  expect(t).toContain('No run recorded yet.');
+  expect(t).toContain('overdue since 2026-11-02');
+  expect(t).toContain('insufficient — 0 eligible result(s) on 85 holdout task(s) (< 10)');
+  expect(t).not.toMatch(/\b0\.000\b/); // a null pass rate is never shown as 0
+});
+
+it('fixed benchmarks: no card when the server does not report the section', () => {
+  render(<EvolutionBody data={EMPTY} />);
+  expect(screen.queryByTestId('benchmarks-card')).toBeNull();
+});
+
+// dashboard truth audit 2026-11-12 (/evolution): closed experiments, analysis windows, genomes, decisions, labels, polling
+it('a closed experiment (recorded verdict) does not count toward the WIP limit', () => {
+  const { container } = render(<EvolutionBody data={EXP_DATA} />);
+  const f2 = rowText(container, 'F2'); // oracle_goals, verdict 'reversed'
+  expect(f2).toContain('closed — not counted toward the WIP limit');
+  expect(f2).not.toContain('counts toward WIP');
+  expect(rowText(container, 'ACE-001')).toContain('counts toward WIP limit 4'); // running: still counted
+});
+
+it('ACE-001 / STE-001 sections state the experiment\'s own window (the registry\'s), also when it starts before the page window', () => {
+  const ste = exp({ id: 'STE-001', started_at: '2026-10-11T00:00:00.000Z', n_per_arm: { 0: 62, 1: 60 }, min_arm_n: 60 });
+  const data = { ...EXP_DATA, at: '2026-11-12T19:15:00.000Z', window_days: 30,
+    experiments: { ...EXP_DATA.experiments!, experiments: [...EXPERIMENTS, ste] },
+    ace_001: { ...EXP_DATA.ace_001!, analysis_since: '2026-10-12T00:00:00Z' },
+    ste_001: { mode: 'on', target_per_arm: 100, ste_template_hash: 'abc', diff: null, status: 'collecting', note: '',
+      arms: { 0: { n: 62, verified: 30, verified_rate: 0.484, ci: null, out_of_scope: 1, out_of_scope_share: 0.02, tokens_mean: null },
+        1: { n: 60, verified: 31, verified_rate: 0.517, ci: null, out_of_scope: 0, out_of_scope_share: 0, tokens_mean: null } } },
+  } as unknown as EvolutionEvidence;
+  const { container } = render(<EvolutionBody data={data} />);
+  const ace = detailText(container, 'ACE-001');
+  expect(ace).toContain('section counts from 2026-10-12 (the later of start and analysis_since, Amendment 1), as the registry row does');
+  expect(ace).not.toContain('last 30 d only');
+  const s = detailText(container, 'STE-001');
+  expect(s).toContain('section counts from the experiment start 2026-10-11, as the registry row does');
+  expect(s).toContain('arm 0: n = 62');
+});
+
+it('genomes: counts by status (with origin) and the genome in trial are rendered', () => {
+  const genomes = { by_status: [{ status: 'active', origin: 'dream', n: 2 }, { status: 'active', origin: 'baseline', n: 1 }, { status: 'trial', origin: 'dream', n: 1 }, { status: 'retired', origin: 'dream', n: 7 }],
+    recent: [{ id: 'g-7f3a', status: 'trial', note: 'narrow the diff to the failing test', updated_at: '2026-11-12T08:30:00Z' }, { id: 'g-1111', status: 'retired', note: null, updated_at: '2026-11-10T00:00:00Z' }],
+    holdout: { mined: 20, mutant: 20 } };
+  render(<EvolutionBody data={{ ...FULL, genomes }} />);
+  const g = screen.getByTestId('genomes').textContent ?? '';
+  expect(g).toContain('active 3 (dream 2, baseline 1)'); expect(g).toContain('trial 1 (dream 1)'); expect(g).toContain('retired 7 (dream 7)');
+  expect(g).toContain('In trial now: g-7f3a (since 2026-11-12 08:30) — narrow the diff to the failing test');
+  expect(g).not.toContain('g-1111');
+});
+
+it('genomes: none in trial and an empty table read as such, never as a blank', () => {
+  render(<EvolutionBody data={EMPTY} />);
+  const g = visibleText(screen.getByTestId('genomes'));
+  expect(g).toContain('No genome recorded'); expect(g).toContain('No genome in trial.');
+});
+
+it('needs a decision: overdue, stopping within 3 days, holdout reuse over the limit and red gates — closed experiments are not listed', () => {
+  const soon = exp({ id: 'STE-001', stop_by: '2026-10-26T00:00:00.000Z' }); // 2 d after EXP_DATA.at
+  const later = exp({ id: 'X9', stop_by: '2026-11-15T00:00:00.000Z' });
+  const closedPast = exp({ id: 'X1', verdict: 'INSUFFICIENT_EVIDENCE', stop_by: '2026-10-25T00:00:00.000Z' });
+  const data = { ...EXP_DATA, experiments: { ...EXP_DATA.experiments!, experiments: [...EXPERIMENTS, soon, later, closedPast] } } as EvolutionEvidence;
+  render(<EvolutionBody data={data} />);
+  const strip = screen.getByTestId('needs-decision');
+  const items = within(strip).getAllByRole('listitem').map((li) => li.textContent ?? '');
+  expect(items).toContain('MAKER-DEPS-001 overdue — every arm reached target 10 without a verdict');
+  expect(items).toContain('STE-001 stops by 2026-10-26 (in 2.0 d) — read out or close');
+  expect(items).toContain('mined holdout epoch 0: 11 candidates, over the reuse limit 10 — introduce a fresh epoch');
+  expect(items.some((t) => t.startsWith('Gate B (gold labels exist) red — 0 settled loop PRs'))).toBe(true);
+  expect(items.some((t) => t.startsWith('Gate C (human queue drains) red'))).toBe(true);
+  expect(items.join('\n')).not.toMatch(/X9|X1 |F2|mutant holdout|Gate A|Gate D/);
+  // it is the first section on the page
+  expect(screen.getAllByRole('heading', { level: 2 })[0].textContent).toBe('Needs a decision');
+});
+
+it('needs a decision: an all-clear snapshot says so', () => {
+  const green = { ...EMPTY, gates: { A: EMPTY.gates.A, B: { state: 'green', reason: 'ok' }, C: { state: 'unknown', reason: '' }, D: EMPTY.gates.D } } as EvolutionEvidence;
+  render(<EvolutionBody data={green} />);
+  expect(visibleText(screen.getByTestId('needs-decision'))).toContain('Nothing in this snapshot needs a decision.');
+});
+
+it('two "settled" numbers carry their windows: Gate B settled loop PRs vs merge outcomes', () => {
+  render(<EvolutionBody data={{ ...FULL, merge: { ...FULL.merge, merge_outcomes: 41, first_settled: '2026-09-02T10:00:00Z' } }} />);
+  const gateB = within(section(/realm gates/i)).getAllByRole('listitem')[1];
+  expect(gateB.textContent).toContain('Settled loop PRs: E1 settlement states, all time (no window) — not the merge outcomes under Loop draft PRs.');
+  expect(section(/loop draft prs/i).textContent).toContain("settled merge outcomes 41 (all time, since 2026-09-02; not Gate B's settled loop PRs)");
+});
+
+it('polls every 5 minutes only while the tab is visible; a return to a stale tab re-reads once', async () => {
+  vi.useFakeTimers();
+  let visibility: DocumentVisibilityState = 'visible';
+  const vis = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+  const get = vi.spyOn(api, 'getEvolutionEvidence').mockResolvedValue(EMPTY);
+  try {
+    render(<EvolutionPage />);
+    await act(async () => { await Promise.resolve(); });
+    expect(get).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(60_000); }); // the old 60-s poll
+    expect(get).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(EVIDENCE_POLL_MS - 60_000); });
+    expect(get).toHaveBeenCalledTimes(2);
+    visibility = 'hidden';
+    await act(async () => { vi.advanceTimersByTime(3 * EVIDENCE_POLL_MS); });
+    expect(get).toHaveBeenCalledTimes(2); // hidden: no polling
+    visibility = 'visible';
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(get).toHaveBeenCalledTimes(3); // back after > 5 min: one re-read
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(get).toHaveBeenCalledTimes(3); // not again within 5 min
+  } finally { vis.mockRestore(); vi.useRealTimers(); }
 });
