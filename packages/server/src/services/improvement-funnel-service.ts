@@ -35,7 +35,11 @@ export interface ImprovementFunnel {
     runs: number; runSuccessRate: number | null; tokensPerVerified: number | null;
   };
   /** UX-004: null = the read failed or its table is absent (reason in `unavailable`), never a healthy 0. */
-  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  hygiene: {
+    zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null;
+    /** in-flight work items (triaged/planned/leased/blocked) not updated for more than agedWorkItemsDays; candidates are backlog, not aged */
+    agedWorkItems: number | null; agedWorkItemsByStatus: Record<string, number>; agedWorkItemsOldest: string | null; agedWorkItemsDays: number;
+  };
   /**
    * UX-002: openWorkItems is COUNT(*) over every open row; workItemsByLoop is only the largest workItemsByLoopLimit
    * (loop, status) groups of workItemGroups.
@@ -72,6 +76,7 @@ const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'appli
 const OPEN_WORK = "status IN ('candidate','triaged','planned','leased','blocked')";
 const WORK_GROUP_LIMIT = 12;
 const MEDIAN_WINDOW_DAYS = 30;
+const AGED_WORK_DAYS = 14; // the queue-hygiene work-item TTL (WORK_ITEM_TTL_DAYS) for the shortest-lived loops
 
 const median = (sorted: number[]) => {
   if (!sorted.length) return null;
@@ -212,12 +217,18 @@ export class ImprovementFunnelService {
       approvalsPerRun: approvals?.runs ? Math.round((approvals.approvals / approvals.runs) * 10) / 10 : null,
       ...this.runCost(iso(7 * DAY), verified7 ?? 0),
     };
+    const aged = this.tryRows<{ status: string; n: number; oldest: string }>('agedWorkItems',
+      `SELECT status, COUNT(*) AS n, MIN(updated_at) AS oldest FROM work_items WHERE status IN ('triaged','planned','leased','blocked') AND updated_at < '${iso(AGED_WORK_DAYS * DAY)}' GROUP BY status`);
     const hygiene: ImprovementFunnel['hygiene'] = {
       zombieGoals: one('zombieGoals', `SELECT COUNT(*) AS n FROM goals WHERE ((status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
         OR (status = 'blocked' AND updated_at < '${iso(7 * DAY)}' AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval') IS NULL))
         AND NOT EXISTS (SELECT 1 FROM loop_runs sr WHERE sr.goal_id = goals.id AND ${syntheticRunSql('sr')})`),
       staleRuns: one('staleRuns', `SELECT COUNT(*) AS n FROM loop_runs WHERE (status = 'interrupted' AND updated_at < '${iso(2 * DAY)}' OR status = 'planning' AND updated_at < '${iso(DAY)}') AND ${realRunSql()}`),
       blockedBoardItems: one('blockedBoardItems', "SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
+      agedWorkItems: aged === null ? null : aged.reduce((a, r) => a + r.n, 0),
+      agedWorkItemsByStatus: Object.fromEntries((aged ?? []).map((r) => [r.status, r.n])),
+      agedWorkItemsOldest: aged?.length ? aged.map((r) => r.oldest).sort()[0] : null,
+      agedWorkItemsDays: AGED_WORK_DAYS,
     };
     return {
       judgments: this.judgmentAgreement(),

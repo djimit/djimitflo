@@ -10,6 +10,9 @@ const fetchFunnel = async () => {
 const pct = (n: number | null, d: number | null) => (n !== null && d !== null && d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
 /** UX-004: a failed or absent read is unknown, never 0 */
 const known = (value: number | null | undefined) => (value === null || value === undefined ? 'unknown' : value);
+const day = (value: string) => value.slice(0, 10); // ISO calendar day of a server timestamp
+/** Brier 0.25 is what always predicting 50 % scores; above it the panel's confidence is worse than a coin flip */
+const CHANCE_BRIER = 0.25;
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
@@ -29,6 +32,12 @@ export function ImprovementFunnelPage() {
   const decided = Object.values(funnel?.panel.decisions ?? {}).reduce((a, b) => a + b, 0);
   const linkedGoal = funnel?.panel.linkedDecisions.goal ?? 0;
   const childGoals = funnel?.refinement.childGoals;
+  const childOutcomes = funnel?.refinement.childOutcomes ?? {};
+  /** a completed goal is not a verified change: the child's own status says whether the change held */
+  const childVerified = (childOutcomes.verified ?? 0) + (childOutcomes.evaluating ?? 0) + (childOutcomes.applied ?? 0);
+  const childNoChange = childOutcomes.no_change ?? 0;
+  const hygiene = funnel?.hygiene;
+  const agedBreakdown = Object.entries(hygiene?.agedWorkItemsByStatus ?? {}).sort((a, b) => b[1] - a[1]).map(([status, n]) => `${n} ${status}`).join(', ');
   const unavailable = funnel?.unavailable ?? {};
   /** hint text with the read failure appended, so an unknown value says why */
   const why = (metric: string, hint?: string) => [hint, unavailable[metric] && `unavailable — ${unavailable[metric]}`].filter(Boolean).join(' · ') || undefined;
@@ -59,7 +68,7 @@ export function ImprovementFunnelPage() {
             <Stat label="Panel goal rate" value={funnel.panel.goalRate === null ? '—' : pct(linkedGoal, funnel.panel.linkedDecided)} hint={`${linkedGoal} of ${funnel.panel.linkedDecided} proposal-linked panel decisions (${decided} panels in total)`} />
             <Stat label="Refinement reached goal" value={childGoals ? pct(childGoals.reachedGoal, funnel.refinement.children) : 'unknown'}
               hint={childGoals
-                ? why('refinementChildren', `${childGoals.reachedGoal} of ${known(funnel.refinement.children)} refinements · ${childGoals.completed} completed · ${childGoals.failed} failed`)
+                ? why('refinementChildren', `${childGoals.reachedGoal} of ${known(funnel.refinement.children)} refinements · ${childGoals.completed} goals completed · ${childGoals.failed} failed · ${childVerified} verified${childNoChange ? ` (${childNoChange} ended no_change)` : ''}`)
                 : why('refinementChildGoals', `${known(funnel.refinement.children)} refinements · goal outcomes unknown`)} />
             <Stat label="Cognitive episodes" value={known(funnel.learning.cognitiveEpisodes)} hint={why('cognitiveEpisodes', `${known(funnel.learning.cognitiveStrategies)} strategies`)} />
           </div>
@@ -75,10 +84,12 @@ export function ImprovementFunnelPage() {
                 hint={why('medianHoursToVerified', `currently verified/evaluating/applied · updated in last ${medianWindow ?? '?'} d · n=${known(funnel.kpi.medianHoursN)} · not first-verification latency (no verification timestamp is stored)`)} />
               <Stat label="Approvals per run" value={funnel.kpi.approvalsPerRun ?? '—'} hint={`approved rows / distinct linked loop runs, last ${funnel.kpi.windowDays} d`} />
             </div>
-            <div className="grid grid-cols-3 gap-3 mt-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
               <Stat label="Zombie goals" value={known(funnel.hygiene.zombieGoals)} hint={why('zombieGoals', 'running >24 h / blocked >7 d without a wait reason')} />
               <Stat label="Stale runs" value={known(funnel.hygiene.staleRuns)} hint={why('staleRuns', 'interrupted >48 h / planning >24 h')} />
               <Stat label="Blocked board items" value={known(funnel.hygiene.blockedBoardItems)} hint={why('blockedBoardItems', 'expire after 14 d')} />
+              <Stat label="Aged work items" value={known(hygiene?.agedWorkItems)}
+                hint={why('agedWorkItems', `triaged/planned/leased/blocked, not updated for >${hygiene?.agedWorkItemsDays ?? 14} d${agedBreakdown ? ` · ${agedBreakdown}` : ''}${hygiene?.agedWorkItemsOldest ? ` · oldest since ${day(hygiene.agedWorkItemsOldest)}` : ''}`)} />
             </div>
           </section>
 
@@ -107,7 +118,8 @@ export function ImprovementFunnelPage() {
                 <tbody>
                   {calibration.map((c) => (
                     <tr key={c.specialistId} className="border-t border-border">
-                      <td>{c.specialistId}</td><td>{c.n}</td><td>{c.brier?.toFixed(3) ?? '—'}</td>
+                      <td>{c.specialistId}</td><td>{c.n}</td>
+                      <td>{c.brier?.toFixed(3) ?? '—'}{c.brier !== null && c.brier > CHANCE_BRIER && <span className="ml-1 text-status-error" title={`above ${CHANCE_BRIER}, the score of always predicting 50 %`}>· worse than chance</span>}</td>
                       <td>{c.meanPredicted?.toFixed(2) ?? '—'}</td><td>{c.observedSuccessRate?.toFixed(2) ?? '—'}</td>
                     </tr>
                   ))}

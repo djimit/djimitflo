@@ -27,6 +27,7 @@ import {
 } from '../lib/api';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { useDialog } from '../components/ConfirmDialog';
+import { objectiveLabel, readableObjective } from '../lib/external-content';
 import { WebSocketEventType } from '@djimitflo/shared';
 
 type RuntimeChoice = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -567,9 +568,12 @@ export function FleetCockpitPage() {
               </tr>
             </thead>
             <tbody>
-              {topology.slice(0, 40).map((item) => (
+              {topology.slice(0, 40).map((item) => { const goal = readableObjective(item.goal_objective); return (
                 <tr key={item.lease_id} className="border-b border-border/60">
-                  <td className="max-w-[220px] truncate py-3 pr-3 text-foreground-secondary">{item.goal_objective || item.goal_id || '-'}</td>
+                  <td className="max-w-[220px] py-3 pr-3 text-foreground-secondary" title={objectiveLabel(item.goal_objective) || item.goal_id || '-'}>
+                    <div className="truncate">{goal.text || item.goal_id || '-'}</div>
+                    {goal.external && <div className="text-xs text-foreground-tertiary">from external content</div>}
+                  </td>
                   <td className="py-3 pr-3">
                     <div className="text-foreground">{item.loop_name}</div>
                     <div className="text-xs text-foreground-tertiary">{item.run_status}</div>
@@ -588,7 +592,7 @@ export function FleetCockpitPage() {
                     </span>
                   </td>
                 </tr>
-              ))}
+              ); })}
               {topology.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-foreground-tertiary">
