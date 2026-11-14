@@ -2787,6 +2787,7 @@ export class LoopService {
   }
 
   private projectNestedSpawnStatus(leaseId: string, status: WorkerLeaseRecord['status']): void {
+    if (!this.workerLeases.getById(leaseId)?.spawn_tree_id) return;
     const spawn = this.db.prepare(`SELECT id, spawn_tree_id, status, token_budget_grant, wall_budget_ms, settled_at
       FROM sub_agent_spawns WHERE child_lease_id = ? ORDER BY created_at DESC LIMIT 1`).get(leaseId) as {
       id: string; spawn_tree_id: string; status: string; token_budget_grant: number | null;
