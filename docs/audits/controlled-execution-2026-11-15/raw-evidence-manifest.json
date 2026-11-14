@@ -1,5 +1,15 @@
 {
   "schema_version": 1,
-  "entries": [],
+  "entries": [
+    {
+      "id": "preflight-npm-ci-2026-11-15",
+      "kind": "command_output_summary",
+      "command": "npm ci",
+      "candidate_sha": "ecfc85d22e1a68307d63eaed9ce4bbcb87927e89",
+      "result": "PASS",
+      "summary": "Installed 779 packages; npm reported 0 vulnerabilities. One deprecated @types/bcryptjs stub warning was emitted.",
+      "sensitive_output_redacted": true
+    }
+  ],
   "redaction": "Do not include secrets, private data, full prompts or sensitive runtime payloads. Store reproducible commands and sanitized excerpts only."
 }

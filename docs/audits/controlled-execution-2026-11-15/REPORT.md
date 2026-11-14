@@ -6,7 +6,7 @@ This report is an active checkpoint, not a completed audit. The frozen baseline 
 
 ## Preflight
 
-Node and npm satisfy the required version range (`v22.23.2`, `10.9.8`). `npm ci`, the shared/catalog builds and the two nested-spawn test files have not yet been run in this session. No conclusion beyond that environment fact is drawn.
+Node and npm satisfy the required version range (`v22.23.2`, `10.9.8`). `npm ci` passed and installed 779 packages; npm reported zero vulnerabilities and one deprecation warning for the stub `@types/bcryptjs` package. The shared/catalog builds and the two nested-spawn test files are still pending. No conclusion beyond these results is drawn.
 
 ## Evidence limits
 
@@ -14,7 +14,7 @@ The mandate blocks real runtimes, production probes, paid calls, experiment regi
 
 ## Work and cost
 
-No product source has been changed in this session. Environment token and monetary cost are not exposed and are therefore not reported as zero. The initial audit package and frozen denominator are pending commit; after that, preflight and one M1 vertical improvement are the remaining authorized work.
+No product source has been changed in this session. Environment token and monetary cost are not exposed and are therefore not reported as zero. The initial audit package and frozen denominator are committed; preflight builds/tests and one M1 vertical improvement are the remaining authorized work.
 
 ## Proposed DoD status
 
