@@ -7,6 +7,7 @@ import { decisionsInbox } from '../services/decisions-inbox';
 import { ensureLaneTables } from '../services/dependency-lane';
 import { MemoryCandidateService } from '../services/memory-candidate-service';
 import { buildDigest } from '../services/operator-push';
+import { openLoopPrSplit } from '../services/needs-you-classes';
 
 // Human-only needs-you (operator 26-10): the headline counts decisions; labelling is optional; system work is shown apart.
 let db: Database.Database;
@@ -44,7 +45,9 @@ it('the headline total counts human decisions only; labels are optional labellin
   const n = operatorCockpit(db, NOW, ENV).needs_you;
   expect(n).toMatchObject({ approvals: 1, open_prs: 2, audit_batch: 1, flagged_prs: 1, dependency_human: 2, dependency_tracked: true, memory_review: 1, labels: 1, proposals: 1 });
   // approvals 1 + audit batch 1 + flagged PR 1 + Dependabot left to the human 2 + memory review (not the template duplicate) 1
-  expect(n.total).toBe(6);
+  // operator stalls come from the code registry too (an experiment past its stop_by, e.g. STE-001 from 2026-11-14) and do
+  // not depend on this fixture; the fixture's own human decisions are the fixed part
+  expect(n.total).toBe(6 + (n.operator_stalls ?? 0));
   expect(n.optional_labelling).toMatchObject({ d5: 1, car: 0, e1: 0 });
   expect(n.system.proposals_auto_reviewed).toBe(true); // the panel reviews 'proposed' rows: system work, not in total
   expect(decisionsInbox(db, NOW, ENV).totals).toMatchObject({ memory: 2, memory_human: 1 });
@@ -54,7 +57,7 @@ it('without the auto-review panel, proposals are a human decision again; with th
   seedAll();
   const n = operatorCockpit(db, NOW, { ...ENV, SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED: 'false', DEPENDENCY_LANE_MODE: 'off' }).needs_you;
   expect(n).toMatchObject({ dependency_human: null, dependency_tracked: false });
-  expect(n.total).toBe(1 + 1 + 1 + 1 + 1); // approvals, audit, flagged, memory, proposal
+  expect(n.total).toBe(1 + 1 + 1 + 1 + 1 + (n.operator_stalls ?? 0)); // approvals, audit, flagged, memory, proposal (+ registry stalls)
 });
 
 it('a count that cannot be read makes the total unknown, never 0', () => {
@@ -72,4 +75,17 @@ it('the digest says the same: human decisions in "Waiting for you", labelling ap
   expect(d.text).toContain('- 2 Dependabot PRs the lane leaves to you');
   expect(d.text).toContain('- 1 PRs in the weekly audit batch');
   expect(d.text).toMatch(/Optional labelling \(not decisions\): D5 1, CAR 0, E1 0/);
+});
+
+it('loop PRs the auto-merge lane is still handling (waiting, capped, transient ineligible) are system_prs, not flagged human decisions', () => {
+  const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
+  const pr = (id: string, n: number, auto_merge: Record<string, string>) => run.run(id, JSON.stringify({ pr_url: `https://github.com/o/r/pull/${n}`, auto_merge }), iso(5), iso(5));
+  pr('audit', 1, { decision: 'audit_sample', reason: 'deterministic 10 % sample: stays for the human' });
+  pr('permanent', 2, { decision: 'ineligible', reason: 'non_test_file: packages/server/src/services/a.ts' });
+  pr('waiting', 3, { decision: 'waiting', reason: 'branch_updated' });
+  pr('transient', 4, { decision: 'ineligible', reason: 'checks_failed' });
+  expect(openLoopPrSplit(db)).toEqual({ audit_batch: 1, flagged_prs: 1, system_prs: 2 });
+  const n = operatorCockpit(db, NOW, ENV).needs_you;
+  expect(n).toMatchObject({ open_prs: 4, audit_batch: 1, flagged_prs: 1, system_prs: 2 });
 });

@@ -53,7 +53,7 @@ export function subtractionKpi(env: NodeJS.ProcessEnv = process.env, now = Date.
     const routesAt = bounds.map((b) => {
       const sha = git('rev-list', '-1', `--before=${new Date(b).toISOString()}`, 'HEAD').trim();
       if (!sha) return null;
-      let out = '';
+      let out: string;
       try { out = git('grep', '-c', '-E', ROUTE_RE, sha, '--', ROUTES_DIR); } catch (e) { if ((e as { status?: number }).status === 1) return 0; throw e; } // exit 1 = no match
       return out.split('\n').filter(Boolean).reduce((s, l) => s + Number(l.slice(l.lastIndexOf(':') + 1)), 0);
     });
