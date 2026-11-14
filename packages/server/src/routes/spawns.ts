@@ -27,6 +27,9 @@ function mapSpawnError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   switch (message) {
     case 'SPAWN_PROMPT_REQUIRED': throw createError(400, 'prompt is required', 'SPAWN_PROMPT_REQUIRED');
+    case 'SPAWN_IDEMPOTENCY_KEY_INVALID': throw createError(400, 'Idempotency-Key is invalid', 'SPAWN_IDEMPOTENCY_KEY_INVALID');
+    case 'SPAWN_IDEMPOTENCY_CONFLICT': throw createError(409, 'Idempotency-Key was already used for a different request', 'SPAWN_IDEMPOTENCY_CONFLICT');
+    case 'SPAWN_TREE_BUDGET_TOO_SMALL_FOR_NESTED_WORK': throw createError(400, 'nested work requires at least two tokens and 2000ms of tree budget', 'SPAWN_TREE_BUDGET_TOO_SMALL_FOR_NESTED_WORK');
     case 'SPAWN_RUNTIME_INVALID': throw createError(400, 'runtime is invalid (codex|opencode|claude|gemini|editor|manual|mock)', 'SPAWN_RUNTIME_INVALID');
     case 'SPAWN_ROLE_INVALID': throw createError(400, 'role is invalid', 'SPAWN_ROLE_INVALID');
     case 'SPAWN_TREE_NOT_FOUND': throw createError(404, 'spawn tree not found', 'SPAWN_TREE_NOT_FOUND');
@@ -95,11 +98,12 @@ export function createSpawnRoutes(db: Database, auth?: AuthMiddleware, wsService
           runtime: body.runtime,
           prompt: body.prompt,
           capability_ids: body.capability_ids,
+          idempotency_key: req.get('Idempotency-Key') ?? body.idempotency_key,
           token,
         },
         { internal: false }
       );
-      res.status(result.status === 'prepared' ? 201 : 200).json(result);
+      res.status(result.status === 'prepared' ? 201 : result.status === 'requested' ? 202 : 200).json(result);
     } catch (error) {
       try {
         mapSpawnError(error);

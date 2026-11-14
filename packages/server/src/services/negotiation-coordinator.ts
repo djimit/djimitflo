@@ -104,6 +104,7 @@ export class NegotiationCoordinator {
           role: 'maker',
           runtime: runtime as any,
           prompt: `Help requested: ${req.reason}. Apply capability ${best.id} to resolve the issue.`,
+          idempotency_key: req.claim_id,
         }, { internal: true });
 
         if (child.child_lease_id) {

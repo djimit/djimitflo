@@ -349,7 +349,7 @@ describe('nested-spawn control loop (L1 real, L3 token-or-user auth)', () => {
       // 1. Token-only POST /spawns → 201 prepared (the real control-loop call).
       const ok = await fetch(api, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Spawn-Token': token },
+        headers: { 'Content-Type': 'application/json', 'X-Spawn-Token': token, 'Idempotency-Key': 'http-child-1' },
         body: JSON.stringify({
           requested_by_lease_id: root.root_lease_id,
           parent_lease_id: root.root_lease_id,
@@ -360,6 +360,21 @@ describe('nested-spawn control loop (L1 real, L3 token-or-user auth)', () => {
         }),
       });
       expect(ok.status).toBe(201);
+      const firstReceipt = await ok.json() as any;
+      const retry = await fetch(api, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Spawn-Token': token, 'Idempotency-Key': 'http-child-1' },
+        body: JSON.stringify({
+          requested_by_lease_id: root.root_lease_id,
+          parent_lease_id: root.root_lease_id,
+          spawn_tree_id: root.spawn_tree_id,
+          role: 'maker',
+          runtime: 'mock',
+          prompt: 'token-only child via HTTP',
+        }),
+      });
+      expect(retry.status).toBe(201);
+      expect((await retry.json() as any).child_lease_id).toBe(firstReceipt.child_lease_id);
 
       // 2. Neither header → 401 AUTH_REQUIRED (not anonymous).
       const none = await fetch(api, {
@@ -397,7 +412,7 @@ describe('nested-spawn control loop (L1 real, L3 token-or-user auth)', () => {
       expect(fakeInternal.status).toBe(401);
       expect((await fakeInternal.json()).error.code).toBe('SPAWN_TOKEN_INVALID');
 
-      const created = await ok.json() as any;
+      const created = firstReceipt;
       const childStatus = await fetch(`${api}/${created.child_lease_id}/status`, {
         headers: { 'X-Spawn-Token': created.control_token },
       });

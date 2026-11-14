@@ -1992,12 +1992,13 @@ export class LoopService {
       '',
       'To spawn a child, POST to the control endpoint (token forwarded as $DJIMITFLO_SPAWN_TOKEN):',
       '```sh',
+      'SPAWN_IDEMPOTENCY_KEY=$(uuidgen) # Generate once per logical child request; reuse this value on every retry.',
       `curl -sS -X POST "${url}" \\`,
-      `  -H "X-Spawn-Token: ${token}" -H "Content-Type: application/json" \\`,
+      `  -H "X-Spawn-Token: ${token}" -H "Idempotency-Key: $SPAWN_IDEMPOTENCY_KEY" -H "Content-Type: application/json" \\`,
       `  -d '{"requested_by_lease_id":"${input.leaseId}","parent_lease_id":"${input.leaseId}","spawn_tree_id":"${input.spawnTreeId}","role":"maker","runtime":"mock","prompt":"<sub-task>"}'`,
       '```',
-      'Poll a child status: GET $DJIMITFLO_CONTROL_URL/<child_lease_id>/status',
-      'Each child gets a tighter token/wall budget. Do not spawn cycles: the same prompt + role on your ancestry is rejected.',
+      'If the request returns requested, poll its spawn_id with the same parent token. If it becomes prepared, repeat the POST with the same key to recover the child token, then poll with that child token.',
+      'Each child gets a reserved token/wall grant. Reported maker usage can fail the post-run token gate; missing usage skips that gate. This does not stop an in-flight provider call or establish a provider-side hard cap. Do not spawn cycles: the same prompt + role on your ancestry is rejected.',
       '',
     ].join('\n');
   }
@@ -2784,6 +2785,11 @@ export class LoopService {
       this.workerLeases.updateStatus(id, status, metadataPatch);
       this.projectNestedSpawnStatus(id, status);
     })();
+  }
+
+  public reconcileNestedSpawnStatus(id: string): void {
+    const lease = this.workerLeases.getById(id);
+    if (lease) this.projectNestedSpawnStatus(id, lease.status);
   }
 
   private projectNestedSpawnStatus(leaseId: string, status: WorkerLeaseRecord['status']): void {

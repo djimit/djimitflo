@@ -61,7 +61,7 @@ function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; w
   return { db, loops, spawns, intelligence, tempDir, worktreeRoot, loopRunId: run.id, ...({ root } as any) } as any;
 }
 
-function spawnChild(h: Harness, parentId: string, opts: { role?: any; prompt?: string; capabilityIds?: string[]; internal?: boolean; token?: string } = {}) {
+function spawnChild(h: Harness, parentId: string, opts: { role?: any; prompt?: string; capabilityIds?: string[]; internal?: boolean; token?: string; idempotencyKey?: string } = {}) {
   return h.spawns.requestSpawn({
     spawn_tree_id: (h as any).root.spawn_tree_id,
     parent_lease_id: parentId,
@@ -70,6 +70,7 @@ function spawnChild(h: Harness, parentId: string, opts: { role?: any; prompt?: s
     runtime: 'mock',
     prompt: opts.prompt ?? `child task ${Math.random().toString(36).slice(2)}`,
     capability_ids: opts.capabilityIds,
+    idempotency_key: opts.idempotencyKey,
     token: opts.token,
   }, { internal: opts.internal ?? true });
 }
@@ -109,6 +110,112 @@ describe('nested-spawn-service (P1 gates)', () => {
       expect(child.status).toBe('gated_out');
       expect(child.reject_reason).toBe('depth_budget_exceeded');
       expect(child.child_lease_id).toBeNull();
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('leaves a minimum child budget when nested work is enabled and rejects impossible envelopes', () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 10, wallBudgetMs: 2_000 });
+    try {
+      const tree = h.spawns.getSpawnTree((h as any).root.spawn_tree_id)!;
+      expect(tree.reserved_tokens).toBe(5);
+      expect(tree.reserved_wall_ms).toBe(1_000);
+      const child = spawnChild(h, (h as any).root.root_lease_id, { prompt: 'minimum viable child' });
+      expect(child.status).toBe('prepared');
+      expect(child.token_budget_grant).toBe(5);
+      expect(child.wall_budget_ms).toBe(1_000);
+    } finally {
+      cleanup(h);
+    }
+
+    const tooSmall = setupHarness({ depthBudget: 0, tokenBudget: 1, wallBudgetMs: 1_999 });
+    try {
+      expect(() => tooSmall.spawns.createRoot({
+        loop_run_id: tooSmall.loopRunId, runtime: 'mock', role: 'maker', prompt: 'too small',
+        depth_budget: 1, total_token_budget: 1, total_wall_budget_ms: 1_999,
+      })).toThrow('SPAWN_TREE_BUDGET_TOO_SMALL_FOR_NESTED_WORK');
+    } finally {
+      cleanup(tooSmall);
+    }
+  });
+
+  it('reuses a durable spawn receipt by idempotency key and rejects changed intent', () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 100_000 });
+    try {
+      const root = (h as any).root;
+      const first = spawnChild(h, root.root_lease_id, { prompt: 'same intent', idempotencyKey: 'intent-1' });
+      const treeAfterFirst = h.spawns.getSpawnTree(root.spawn_tree_id)!;
+      const replay = spawnChild(h, root.root_lease_id, { prompt: 'same intent', idempotencyKey: 'intent-1' });
+      expect(replay.spawn_id).toBe(first.spawn_id);
+      expect(replay.child_lease_id).toBe(first.child_lease_id);
+      expect(h.spawns.getSpawnTree(root.spawn_tree_id)!.reserved_tokens).toBe(treeAfterFirst.reserved_tokens);
+      expect(h.spawns.listSpawnTree(root.spawn_tree_id).spawns.filter((spawn) => spawn.depth === 1)).toHaveLength(1);
+      expect(() => spawnChild(h, root.root_lease_id, { prompt: 'different intent', idempotencyKey: 'intent-1' }))
+        .toThrow('SPAWN_IDEMPOTENCY_CONFLICT');
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('replays a gated-out intent by key without creating another audit row', () => {
+    const h = setupHarness();
+    try {
+      const root = (h as any).root;
+      const first = spawnChild(h, root.root_lease_id, { prompt: 'disabled nested task', idempotencyKey: 'gated-intent' });
+      const replay = spawnChild(h, root.root_lease_id, { prompt: 'disabled nested task', idempotencyKey: 'gated-intent' });
+      expect(first.status).toBe('gated_out');
+      expect(replay.spawn_id).toBe(first.spawn_id);
+      expect(h.spawns.listSpawnTree(root.spawn_tree_id).spawns.filter((spawn) => spawn.depth === 1)).toHaveLength(1);
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('keeps an uncertain preparation as a durable intent and reconciles a lease found later', () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 100_000 });
+    try {
+      const root = (h as any).root;
+      const prepare = h.loops.prepareNestedLease.bind(h.loops);
+      (h.loops as any).prepareNestedLease = (...args: Parameters<LoopService['prepareNestedLease']>) => {
+        prepare(...args);
+        throw new Error('simulated loss after canonical lease creation');
+      };
+
+      const pending = spawnChild(h, root.root_lease_id, { prompt: 'uncertain prepare', idempotencyKey: 'uncertain-1' });
+      expect(pending.status).toBe('requested');
+      expect(pending.child_lease_id).toBeNull();
+      expect(pending.reject_reason).toBe('preparation_outcome_unknown');
+      const heldTree = h.spawns.getSpawnTree(root.spawn_tree_id)!;
+      expect(heldTree.reserved_tokens).toBeGreaterThan(0);
+
+      const parentToken = h.spawns.mintSpawnToken(root.root_lease_id, root.spawn_tree_id);
+      const reconciled = h.spawns.getSpawnStatus(pending.spawn_id, { token: parentToken, internal: false });
+      expect(reconciled.status).toBe('prepared');
+      expect(reconciled.child_lease_id).toBeTruthy();
+      expect(h.spawns.getSpawnTree(root.spawn_tree_id)!.reserved_tokens).toBe(heldTree.reserved_tokens);
+      expect(h.spawns.getSpawnStatus(pending.spawn_id).child_lease_id).toBe(reconciled.child_lease_id);
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('does not repeat an uncertain pre-start intent or let it bypass child concurrency', () => {
+    const h = setupHarness({ depthBudget: 1, tokenBudget: 1_000_000, maxConcurrent: 1 });
+    try {
+      const root = (h as any).root;
+      (h.loops as any).prepareNestedLease = () => { throw new Error('simulated crash before lease creation'); };
+      const request = { prompt: 'hold uncertain work', idempotencyKey: 'pre-start-uncertain' };
+      const pending = spawnChild(h, root.root_lease_id, request);
+      const reserved = h.spawns.getSpawnTree(root.spawn_tree_id)!.reserved_tokens;
+      const replay = spawnChild(h, root.root_lease_id, request);
+      expect(replay.spawn_id).toBe(pending.spawn_id);
+      expect(replay.status).toBe('requested');
+      expect(h.spawns.getSpawnTree(root.spawn_tree_id)!.reserved_tokens).toBe(reserved);
+
+      const second = spawnChild(h, root.root_lease_id, { prompt: 'second child', idempotencyKey: 'second-child' });
+      expect(second.status).toBe('gated_out');
+      expect(second.reject_reason).toBe('concurrency_exceeded');
     } finally {
       cleanup(h);
     }
