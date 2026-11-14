@@ -396,6 +396,40 @@ describe('OpenCodeExecutor', () => {
       expect(result.failure).toBeUndefined();
     });
 
+    // prod 2026-11-11 (run 0ee0cc71): a vitest call that touched /tmp outside the worktree was refused by the isolation
+    // rule; the maker re-ran the test inside the worktree, yet the whole run was failed as VERIFICATION_FAILED
+    it('a later completed run of the same check supersedes an earlier refused one', async () => {
+      const result = await resultAfter([
+        toolEvent('bash', {
+          status: 'error',
+          input: { command: 'cp /tmp/dbg.test.ts src/__tests__/dbg.test.ts && npx vitest run src/__tests__/dbg.test.ts' },
+          error: 'The user has specified a rule which prevents you from using this specific tool call.',
+        }),
+        toolEvent('bash', { status: 'completed', input: { command: 'npx vitest run src/__tests__/dbg.test.ts' }, output: 'Tests 3 passed' }),
+      ]);
+      expect(result.status).toBe('completed');
+    });
+
+    it('a refused check that never re-ran still fails, and another check passing does not clear it', async () => {
+      const result = await resultAfter([
+        toolEvent('bash', { status: 'error', input: { command: 'npx vitest run x.test.ts' }, error: 'The user has specified a rule which prevents you from using this specific tool call.' }),
+        toolEvent('bash', { status: 'completed', input: { command: 'npx eslint src' }, output: '' }),
+      ]);
+      expect(result.status).toBe('failed');
+      expect(result.message).toContain('vitest');
+    });
+
+    it('a check name inside a path is not a verification call (prod 2026-11-09: cat /opt/finding-fix-eslint/...)', async () => {
+      const result = await resultAfter([
+        toolEvent('bash', {
+          status: 'error',
+          input: { command: "cat /opt/finding-fix-eslint/node_modules/eslint/package.json | grep '\"version\"'" },
+          error: 'The user has specified a rule which prevents you from using this specific tool call.',
+        }),
+      ]);
+      expect(result.status).toBe('completed');
+    });
+
     it('does not fail the run for a recoverable non-verification tool error', async () => {
       const result = await resultAfter([
         toolEvent('read', {
