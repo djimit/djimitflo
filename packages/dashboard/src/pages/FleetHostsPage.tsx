@@ -41,7 +41,7 @@ export function FleetHostsPage() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Server className="w-7 h-7" />
-        <h1 className="text-2xl font-bold">Fleet hosts</h1>
+        <h2 className="text-xl font-bold">Fleet hosts</h2>
         <button onClick={() => void load()} className="ml-auto flex items-center gap-2 px-3 py-2 rounded-md border border-border"><RefreshCw className="w-4 h-4" /> Refresh</button>
       </div>
       <p className="text-sm text-foreground-secondary">
