@@ -43,6 +43,7 @@ export function needsYouItems(n: NeedsYouCounts) {
   const system: Item[] = [
     ...(n.system?.requeue_mode === 'on' ? [{ label: 'requeue rows the system will handle', count: n.system.requeue_will_handle, href: '/decisions#requeue' }] : []),
     { label: 'silent stalls', count: c(n.stalls), href: '/#stalls' },
+    ...(n.system_prs !== undefined ? [{ label: 'loop PRs the auto-merge lane is handling', count: n.system_prs, href: '/decisions#draft-prs' }] : []),
     ...(proposalsSystem ? [{ label: 'proposals in panel review', count: c(n.proposals), href: '/governance?tab=assurance' }] : []),
   ];
   // the server's total counts human decisions only; older servers send no total
