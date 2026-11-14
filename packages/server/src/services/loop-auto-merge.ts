@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import type { Database } from 'better-sqlite3';
 import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 import { AuditService } from './audit-service';
@@ -5,11 +6,12 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeFindingFixMode, autoMergeMaxPerDay, autoMergeMode, FINDING_FIX_AUTO_MERGE_DIFF_MAX, FINDING_FIX_AUTO_MERGE_JUDGMENT, type AutoMergeClass, autoMergeRecheck, autoMergeRecheckHours, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
+import { AUDIT_CHECKS_PENDING_HOURS, AUDIT_JUDGMENT, AUDIT_SAMPLE_REASON, auditSampleAutoMode, executedAuditVerdict, findingFixAuditVerdict, isAuditSpotCheck, type AuditInputs, autoMergeFindingFixMode, autoMergeMaxPerDay, autoMergeMode, FINDING_FIX_AUTO_MERGE_DIFF_MAX, FINDING_FIX_AUTO_MERGE_JUDGMENT, type AutoMergeClass, autoMergeRecheck, autoMergeRecheckHours, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
   readClassState, readLaneRevocations, reasonCode, RECHECK_PER_TICK, revokeClass, revokeLane, SETTLEMENT_REVOKE_JUDGMENT, SETTLEMENT_REVOKE_KILL_BELOW, SETTLEMENT_REVOKE_LANES, SETTLEMENT_REVOKE_SHARE,
-  SETTLEMENT_REVOKE_WINDOW, VALUE_GATE_REASONS, valueGateActsOn } from './loop-auto-merge-state';
-import { latestSettlements } from './settlement-execution';
-import { oracleLane } from './gym-failure-tasks';
+  SETTLEMENT_REVOKE_WINDOW, VALUE_GATE_REASONS, VALUE_KILL_SHARE_MIN, valueGateActsOn } from './loop-auto-merge-state';
+import { defaultSettlementExecutionDeps, latestSettlements, rescoreKillShare, type KillNow } from './settlement-execution';
+import { oracleLane, WRITE_TEST_MUTANTS } from './gym-failure-tasks';
+import type { LoopService } from './loop-service';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
@@ -24,6 +26,9 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * (testOnlyChange) and none is deleted; additions + deletions within the maker's lane limit; no outstanding
  * CHANGES_REQUESTED review; the maker's test:assertion-strength verdict is 'pass' (shadow or enforce — skipped, missing or
  * failed is ineligible: F1 09-10, the checker accepted toBeDefined-only tests). A deterministic 10 % (hash of the PR number) stays for the human as an audit sample.
+ * Executed audit (AUDIT_SAMPLE_AUTO_MODE off | shadow | act, loop-auto-merge-state): the sample is judged by fresh-mutant kill share,
+ * assertion strength and required checks instead of the human; act lets a pass continue below, keeps fail / unknown and a 1-in-5 spot check.
+ * A finding-fix sample (LOOP_AUTO_MERGE_FINDING_FIX) is never judged by kill share: its audit is the finding-fix gate + required checks.
  * Act: mark ready → update the branch when behind (branch protection wants up to date) → wait for every check on the head
  * to be green → squash-merge with the token the draft-PR service uses. Every step is one tick (15 min); nothing blocks.
  * Green (10-26, no false green): the newest run per name decides, and every required context of the base's branch protection
@@ -82,7 +87,7 @@ export const ORACLE_TEST_FILES = ['packages/server/src/__tests__/ui-fitness.test
 /** merge queue: a PR waiting this long on its CI (a required check that never reports) no longer holds the queue */
 export const QUEUE_HOLD_MAX_MS = 6 * 3_600_000;
 const IN_FLIGHT_REASONS = ['branch_updated', 'rechecking_after_update', 'checks_pending'];
-type Decision = 'merged' | 'would_merge' | 'audit_sample' | 'ineligible' | 'waiting' | 'capped' | 'revoked_hold';
+type Decision = 'merged' | 'would_merge' | 'audit_sample' | 'audit_passed' | 'ineligible' | 'waiting' | 'capped' | 'revoked_hold';
 export interface AutoMergeRecord {
   mode: 'shadow' | 'act'; decision: Decision; reason: string; at: string; pr_number: number;
   steps?: string[]; merge_commit_sha?: string; merged_at?: string; window_closed?: boolean; revoked?: string;
@@ -108,6 +113,9 @@ const RED = new Set(['failure', 'timed_out', 'action_required', 'startup_failure
 /** The newest item per name (by id, then time): a rerun replaces the run it re-ran, an old green never outvotes a newer red. */
 const newest = <T extends { id?: number }>(items: T[], name: (t: T) => string, at: (t: T) => string): T[] =>
   [...new Map([...items].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0) || at(a).localeCompare(at(b))).map((t) => [name(t), t] as const)).values()];
+
+/** The executed audit's (a): the fresh-mutant kill share of the PR's server unit test against its target at `head_sha`. */
+export type AuditKillExecutor = (c: { run_id: string; head_sha: string; test_files: string[]; target: string | null; maker_mutants: number }) => KillNow | Promise<KillNow>;
 
 /** Paths a finding-fix auto-merge never touches (finding-fix-gate.mjs FORBIDDEN_PATH, the config / dependency / CI part). */
 const FINDING_FIX_FORBIDDEN = /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|\.npmrc|eslint\.config\.[cm]?[jt]s|\.eslintrc(\.\w+)?|tsconfig[^/]*\.json|codeql[^/]*\.ya?ml|\.[\w-]*ignore|\.gitattributes)$|(^|\/)(\.github|\.security-review)\/|(^|\/)(vitest|jest|stryker|playwright)[^/]*\.(c|m)?[jt]s(on)?$/;
@@ -159,8 +167,8 @@ export function findingFixIneligible(db: Database, ev: string | null, grounding:
   return { reason: '', evidence };
 }
 
-export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, now = new Date()):
-  Promise<{ evaluated: number; merged: number; revoked: boolean }> {
+export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, now = new Date(),
+  auditKill: AuditKillExecutor | null = null): Promise<{ evaluated: number; merged: number; revoked: boolean }> {
   const mode = autoMergeMode(env);
   const ffMode = autoMergeFindingFixMode(env);
   const repo = env.GITHUB_REPOSITORY; const token = env.GITHUB_TOKEN;
@@ -267,7 +275,12 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   const valueGate = autoMergeValueGate(env);
   const valueLanes = autoMergeValueGateLanes(env);
   const recheckOn = autoMergeRecheck(env); const recheckMs = autoMergeRecheckHours(env) * 3_600_000;
-  let evaluated = 0; let merged = 0; let rechecks = 0;
+  const auditMode = auditSampleAutoMode(env);
+  // the audit judgment of this run's verified head in this mode (one per head and mode), or null when not yet audited
+  const audited = (runId: string, head: string) => {
+    try { return db.prepare('SELECT decision, reason FROM judgments WHERE id = ?').get(`${AUDIT_JUDGMENT}:${auditMode}:${runId}:${head}`) as { decision: string; reason: string | null } | undefined ?? null; } catch { return null; }
+  };
+  let evaluated = 0; let merged = 0; let rechecks = 0; let auditsExecuted = 0;
   // merge queue of one per repo: the PR in flight this tick, and the update-branch calls deferred until every PR was evaluated
   const inFlight = new Map<string, number>();
   const updates: Array<{ slug: string; number: number; update: () => Promise<boolean>; queue: (holder: number) => void }> = [];
@@ -281,13 +294,15 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     // U2 rollback: a rejection by the value gate alone is final only while the gate acts on the PR — off / shadow / its lane
     // leaving the list re-evaluates it through every gate (every other permanent reason stays final)
     const valueRejectionLifted = prev?.decision === 'ineligible' && !valueActs && (VALUE_GATE_REASONS as readonly string[]).includes(reasonCode(prev.reason));
+    // AUDIT_SAMPLE_AUTO_MODE shadow / act: an audit sample is final only once the executed audit judged its verified head
+    const auditDue = auditMode !== 'off' && prev?.decision === 'audit_sample' && !audited(run.id, String(meta.verified_head_sha ?? ''));
     // finding-fix class switched on: a finding-fix PR rejected as non_test_file before the class looked at it is evaluated once
     const findingFixLifted = ffMode !== 'off' && prev?.decision === 'ineligible' && reasonCode(prev.reason) === 'non_test_file' && prev.finding_fix === undefined
       && /"finding-fix:/.test(run.ev ?? '');
     // the mode this PR is decided in: the tick's, or for a finding-fix class PR the lower of both flags
     let pm: 'shadow' | 'act' = mode;
     let ffClass = false;
-    if (prev && !valueRejectionLifted && !findingFixLifted && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
+    if (prev && !valueRejectionLifted && !findingFixLifted && !auditDue && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
       // final, unless re-check is on and the ineligible reason is transient, its window has passed and this tick has room
       if (!recheckOn || prev.decision !== 'ineligible' || !isTransientReason(prev.reason) || rechecks >= RECHECK_PER_TICK) continue;
       const last = Date.parse(prev.rechecked_at ?? prev.at);
@@ -313,6 +328,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       return rec;
     };
     const write = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord>): AutoMergeRecord => {
+      // AUDIT_SAMPLE_AUTO_MODE=shadow re-reads a decided audit sample only to audit it: it never rewrites that record
+      if (auditDue && auditMode === 'shadow' && prev) return prev;
       // unchanged decision (shadow re-checks every tick): keep the first record, so `at` stays when it was first decided
       if (prev && prev.mode === pm && prev.decision === decision && prev.reason === reason && prev.would_block_value === wouldBlock && prev.finding_fix === extra.finding_fix) return prev;
       // a PR that was ever re-checked keeps its re-check stamp (evidence: re-checks per 24 h); absent otherwise
@@ -361,6 +378,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const diff = files.reduce((a, f) => a + (Number(f.additions) || 0) + (Number(f.deletions) || 0), 0);
     // finding-fix class evidence, written as a judgment once per decision
     let ffEvidence: Record<string, unknown> = {};
+    // the maker's assertion-strength verdict (test-only gate; the executed audit reads it too) — a finding-fix PR has none
+    let strength: ReturnType<typeof assertionStrengthVerdict> | null = null;
     if (!testOnlyChange(names)) {
       const nonTest = `non_test_file: ${names.find((f) => !testOnlyChange([f]))}`;
       if (ffMode === 'off' || !/"finding-fix:/.test(run.ev ?? '')) { record('ineligible', nonTest); continue; }
@@ -380,7 +399,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       if (removed) { record('ineligible', `removes_test: ${removed.filename}`); continue; }
       const limit = Number(maker.diff_max) > 0 ? Number(maker.diff_max) : TEST_ONLY_DIFF_MAX;
       if (diff > limit) { record('ineligible', `diff_over_limit: ${diff} > ${limit}`); continue; }
-      const strength = assertionStrengthVerdict(makerChecks);
+      strength = assertionStrengthVerdict(makerChecks);
       if (strength !== 'pass') { record('ineligible', `assertion_strength_${strength ?? 'missing'}`); continue; }
       if (valueGate !== 'off') {
         const value = autoMergeValueSignal(makerChecks, (() => { try { return JSON.parse(maker.graded || 'null'); } catch { return null; } })());
@@ -394,7 +413,62 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const latest = new Map<string, string>();
     for (const r of reviews) if (r.state && r.state !== 'COMMENTED' && r.state !== 'PENDING') latest.set(String(r.user?.login), r.state);
     if ([...latest.values()].includes('CHANGES_REQUESTED')) { record('ineligible', 'changes_requested'); continue; }
-    if (isAuditSample(number)) { record('audit_sample', 'deterministic 10 % sample: stays for the human'); continue; }
+    if (isAuditSample(number) && auditMode === 'off') { record('audit_sample', AUDIT_SAMPLE_REASON); continue; }
+    if (isAuditSample(number)) {
+      const prior = audited(run.id, verifiedHead);
+      // judged: shadow changes nothing; act keeps a failed / unknown / spot-checked PR for the human, a passed one goes on below
+      if (prior && (auditMode === 'shadow' || prior.decision !== 'audit_passed')) { record('audit_sample', auditMode === 'act' ? `${prior.decision}: ${prior.reason ?? ''}` : AUDIT_SAMPLE_REASON); continue; }
+      if (!prior) {
+        // (c) the merge gate's green on the head; pending defers the audit (CI still running) for at most AUDIT_CHECKS_PENDING_HOURS
+        const req = await requiredContexts(slug);
+        const c = req ? await checks(slug, sha, req) : null;
+        const cs: AuditInputs['checks'] = c ? { state: c.state, ...(c.reason ? { reason: c.reason } : {}) } : { state: 'unavailable' };
+        const sampledAt = prev?.decision === 'audit_sample' ? Date.parse(prev.at) : now.getTime();
+        const young = !Number.isFinite(sampledAt) || now.getTime() - sampledAt < AUDIT_CHECKS_PENDING_HOURS * 3_600_000;
+        if (cs.state === 'pending' && young) { record('audit_sample', AUDIT_SAMPLE_REASON); continue; }
+        if (cs.state === 'pending') cs.reason = `pending > ${AUDIT_CHECKS_PENDING_HOURS} h`;
+        // (a) executed only when (b) and (c) can still pass; at most one execution per tick (the kill runs block). A finding-fix
+        // PR's value is its scanner re-run, not mutant kill: it is never executed, and judged by findingFixAuditVerdict
+        const runnable = !ffClass && strength === 'pass' && cs.state === 'green';
+        if (runnable && auditKill && auditsExecuted >= 1) { record('audit_sample', AUDIT_SAMPLE_REASON); continue; }
+        const graded = (() => { try { return JSON.parse(maker.graded || 'null') as { score?: unknown; kind?: unknown; total?: unknown } | null; } catch { return null; } })();
+        const target = (db.prepare(`SELECT json_extract(s.grounding_json, '$.target') AS target FROM loop_runs r JOIN goals g ON g.id = r.goal_id
+          JOIN self_improvements s ON s.id = g.improvement_id WHERE r.id = ?`).get(run.id) as { target: string | null } | undefined)?.target ?? null;
+        let kill: KillNow | null = null;
+        if (runnable) {
+          if (!auditKill) kill = { score: null, reason: 'no audit executor (the tick runs without the loop worktree service)' };
+          else {
+            auditsExecuted++;
+            try {
+              kill = await auditKill({ run_id: run.id, head_sha: sha, test_files: names, target,
+                maker_mutants: typeof graded?.total === 'number' && Number.isInteger(graded.total) && graded.total > 0 ? graded.total : WRITE_TEST_MUTANTS });
+            } catch (e) { kill = { score: null, reason: `infra: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}` }; }
+          }
+        }
+        const { verdict, why } = ffClass ? findingFixAuditVerdict({ gate: ffEvidence.gate, checks: cs }) : executedAuditVerdict({ strength, checks: cs, kill });
+        const spot = verdict === 'pass' && isAuditSpotCheck(number);
+        const auditDecision = verdict === 'pass' ? (spot ? 'audit_spot_check' : 'audit_passed') : verdict === 'fail' ? 'audit_failed' : 'audit_unknown';
+        const auditReason = spot ? `${why}; 1 in 5 passes stays for the human` : why;
+        const answers = { pr_url: meta.pr_url, pr_number: number, head_sha: sha, verified_head_sha: verifiedHead, lane, test_files: names, target,
+          kill_share: kill?.score ?? null, killed: kill?.killed ?? null, total: kill?.total ?? null, mutants: kill?.mutants ?? null, kill_reason: kill?.reason ?? null,
+          kill_share_min: VALUE_KILL_SHARE_MIN, maker_graded: graded, assertion_strength: strength, checks: cs.state, checks_reason: cs.reason ?? null, verdict, spot_check: spot,
+          ...(ffClass ? { class: 'finding_fix', finding_fix_gate: ffEvidence.gate ?? null } : {}) };
+        try {
+          db.prepare(`INSERT OR IGNORE INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+            VALUES (?, ?, 'loop_pr', ?, ?, ?, ?, ?, ?, ?)`).run(`${AUDIT_JUDGMENT}:${auditMode}:${run.id}:${verifiedHead}`, AUDIT_JUDGMENT, run.id, verifiedHead.slice(0, 16), auditMode,
+            auditDecision, auditReason.slice(0, 300), JSON.stringify(answers), now.toISOString());
+        } catch { record('audit_sample', AUDIT_SAMPLE_REASON); continue; } // judgments absent: nothing judged, nothing acts
+        events.recordEvent(run.id, 'auto_merge_audit', verdict === 'pass' ? 'info' : 'warning', `Executed audit (${auditMode}) PR #${number}: ${auditDecision} — ${auditReason}`, { mode: auditMode, decision: auditDecision, ...answers });
+        if (auditMode === 'shadow') { record('audit_sample', AUDIT_SAMPLE_REASON); continue; }
+        try {
+          new AuditService(db).record({ event_type: AuditEventType.TASK_EXECUTED, action: `loop_pr_${auditDecision}`, resource_type: 'pull_request', resource_id: meta.pr_url,
+            risk_level: auditDecision === 'audit_passed' ? RiskLevel.MEDIUM : RiskLevel.LOW, metadata: { actor: 'loop-auto-merge-audit', loop_run_id: run.id, reason: auditReason, ...answers } });
+        } catch { /* the judgment and the loop event are the record */ }
+        if (auditDecision !== 'audit_passed') { record('audit_sample', `${auditDecision}: ${auditReason}`); continue; }
+        record('audit_passed', auditReason); continue; // the next tick takes the normal path below
+      }
+      // act, audited 'audit_passed': the normal auto-merge path
+    }
 
     const cls: AutoMergeClass = ffClass ? 'finding_fix' : 'test_only';
     const effective = pm === 'act' && readClassState(db, cls).state === 'revoked' ? 'held' : pm;
@@ -586,17 +660,41 @@ async function checkRevocations(db: Database, json: <T>(slug: string, p: string)
 }
 
 /** Every 15 min (first tick 2 min after boot) while LOOP_AUTO_MERGE_TEST_ONLY is shadow or act. */
-export function startLoopAutoMerge(db: Database, intervalMs = 15 * 60_000): (() => void) | null {
+export function startLoopAutoMerge(db: Database, intervalMs = 15 * 60_000, loops?: Pick<LoopService, 'prepareMakerWorktree'>): (() => void) | null {
   if (autoMergeMode() === 'off') return null;
+  const auditKill = loops && auditSampleAutoMode() !== 'off' ? defaultAuditKillExecutor(db, loops) : null;
   let running = false;
   const tick = () => {
     markRun('loop_auto_merge');
     if (running) return; running = true;
-    runAutoMergeTick(db).then((r) => { if (r.merged || r.revoked) console.log(`🤝 loop auto-merge: ${r.merged} merged, revoked=${r.revoked} (${r.evaluated} evaluated)`); })
+    runAutoMergeTick(db, fetch, process.env, new Date(), auditKill).then((r) => { if (r.merged || r.revoked) console.log(`🤝 loop auto-merge: ${r.merged} merged, revoked=${r.revoked} (${r.evaluated} evaluated)`); })
       .catch((e) => console.warn('loop auto-merge failed:', e instanceof Error ? e.message : String(e)))
       .finally(() => { running = false; });
   };
   const first = setTimeout(tick, 120_000); first.unref?.();
   const timer = setInterval(tick, intervalMs); timer.unref?.();
   return () => { clearTimeout(first); clearInterval(timer); };
+}
+
+/**
+ * The executed audit's kill share (AUDIT_SAMPLE_AUTO_MODE): the settlement re-score machinery (one throwaway worktree via
+ * WorktreeManager + prepareMakerWorktree, graded-fitness killShare on fresh seeded mutants) at the PR head instead of main.
+ * A head that is not in the deploy clone is fetched from origin once; unfetchable is an unknown, never a pass.
+ */
+// ponytail: the kill runs are spawnSync (≤ GRADED_KILL_BUDGET_MS) inside the 15-min tick; the ceiling is one execution per tick,
+// and only audit-sample PRs (10 % of eligible) execute. Upgrade trigger: a cockpit stall alarm during the tick → move to the async runChild.
+export function defaultAuditKillExecutor(db: Database, loops: Pick<LoopService, 'prepareMakerWorktree'>, env: NodeJS.ProcessEnv = process.env): AuditKillExecutor {
+  const deps = defaultSettlementExecutionDeps(db, loops);
+  return (c) => {
+    const repo = env.LOOP_DAEMON_REPOSITORY_PATH;
+    if (!repo) return { score: null, reason: 'no repository path (LOOP_DAEMON_REPOSITORY_PATH)' };
+    const git = (args: string[], timeout: number) => execFileSync('git', ['-C', repo, ...args], { stdio: 'ignore', timeout });
+    try { git(['cat-file', '-e', `${c.head_sha}^{commit}`], 60_000); } catch {
+      try { git(['fetch', '--no-tags', '--quiet', 'origin', c.head_sha], 180_000); } catch { return { score: null, reason: `head ${c.head_sha.slice(0, 12)} not in the repository and not fetchable` }; }
+    }
+    const wt = deps.openWorktree(repo, c.head_sha);
+    if ('error' in wt) return { score: null, reason: `infra: ${wt.error}`.slice(0, 300) };
+    try { return rescoreKillShare(wt.path, { run_id: c.run_id, target: c.target, maker_mutants: c.maker_mutants }, c.test_files, c.head_sha, deps.kill); }
+    finally { try { wt.dispose(); } catch { /* best effort */ } }
+  };
 }

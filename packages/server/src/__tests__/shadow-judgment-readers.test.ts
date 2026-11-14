@@ -16,7 +16,7 @@ import path from 'node:path';
 import { GATE_READ_JUDGMENTS, LEARNER_READ_JUDGMENTS, gateReadPredicate } from '../services/value-allocator';
 
 type Policy = 'enforce_only' | 'gate_read' | 'measurement' | 'non_shadow';
-interface Reader { policy: Policy; why: string; judgments?: string[]; flags?: string[] }
+interface Reader { policy: Policy; why: string; judgments?: string[]; flags?: string[]; /** enforce_only: the mode literal that acts, when not 'enforce' */ enforceMode?: string }
 
 const READERS: Record<string, Reader> = {
   // ── gate_read: a shadow-labelled row decides something (operator: see the PR's list before any shadow → enforce change) ──
@@ -53,6 +53,8 @@ const READERS: Record<string, Reader> = {
   // ── enforce_only ──
   'services/content-safety.ts': { policy: 'enforce_only', why: 'gateUntrustedForPrompt excludes text only under CONTENT_SAFETY_MODE=enforce; the rest reuses a verdict / dedupes its own record' },
   'services/decision-context-service.ts': { policy: 'enforce_only', why: "decision_context injects memories only when mode === 'enforce'" },
+  'services/loop-auto-merge.ts': { policy: 'enforce_only', enforceMode: 'act',
+    why: "auto_merge_audit: the tick reads only the row of the current AUDIT_SAMPLE_AUTO_MODE (the mode is part of the id); only an 'act' row lets a sample PR take the merge path, a 'shadow' row only stops a re-execution" },
   'services/self-improvement-auto-review-scheduler.ts': { policy: 'enforce_only', why: 'proposal_prescreen parks only under enforce with an enforce-labelled verdict' },
   // ── non_shadow: the acted-on judgments are never written with mode 'shadow' ──
   'services/outcome-attribution.ts': { policy: 'non_shadow', why: "outcome_attribution is mode 'annotation'; the gating list filters mode = 'enforce'; attribution_audit is operator_label" },
@@ -146,7 +148,7 @@ describe('judgments readers: every file that reads judgments declares its mode p
   });
 
   it('an enforce_only reader names enforce in code', () => {
-    for (const [f, r] of Object.entries(READERS)) if (r.policy === 'enforce_only') expect(code.get(f) ?? '', f).toMatch(/'enforce'/);
+    for (const [f, r] of Object.entries(READERS)) if (r.policy === 'enforce_only') expect(code.get(f) ?? '', f).toContain(`'${r.enforceMode ?? 'enforce'}'`);
   });
 
   it('the re-20261105 E8 acting-on-shadow couplings are declared gate_read', () => {

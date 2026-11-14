@@ -2,8 +2,8 @@ import type { Database } from 'better-sqlite3';
 import type { DecisionsInbox } from './decisions-inbox';
 import { dependencyLaneQueue, laneMode } from './dependency-lane';
 import { e1LabelQueue } from './e1-retrieval-labels';
-import { isTransientReason } from './loop-auto-merge-state';
 import { relevanceQueue } from './discovery-relevance-labels';
+import { AUDIT_HUMAN_REASONS, auditSampleAutoMode, isTransientReason, reasonCode } from './loop-auto-merge-state';
 
 /**
  * Human-only needs-you (operator 2026-10-26: "only big changes are tasked to me"). The headline count and the Telegram
@@ -30,15 +30,21 @@ export function optionalLabelling(db: Database, inbox: DecisionsInbox | null, no
 
 /**
  * Open loop PRs split into the audit sample (10 % kept for the human, reviewed as one weekly batch), system_prs (the auto-merge
- * lane is still handling them: 'waiting', 'capped', or 'ineligible' for a TRANSIENT reason it re-checks) and the rest (flagged:
- * a permanent ineligible reason, no auto-merge record, or a decision that waits on a human, e.g. revoked_hold).
+ * lane is still handling them: 'waiting', 'capped', 'audit_passed', or 'ineligible' for a TRANSIENT reason it re-checks) and the
+ * rest (flagged: a permanent ineligible reason, no auto-merge record, or a decision that waits on a human, e.g. revoked_hold).
+ * AUDIT_SAMPLE_AUTO_MODE=act: the executed audit decides the sample, so the batch is only what it left for the human — audit-sample
+ * PRs whose reason is audit_failed / audit_unknown / audit_spot_check; a sample whose audit is still running is system's, and an
+ * audit_passed PR is on the normal merge path (system). audit_batch + system_prs + flagged_prs = open loop PRs.
  */
-export function openLoopPrSplit(db: Database): { audit_batch: number | null; flagged_prs: number | null; system_prs: number | null } {
+export function openLoopPrSplit(db: Database, env: NodeJS.ProcessEnv = process.env): { audit_batch: number | null; flagged_prs: number | null; system_prs: number | null } {
   try {
     const rows = db.prepare(`SELECT json_extract(metadata, '$.auto_merge.decision') AS decision, json_extract(metadata, '$.auto_merge.reason') AS reason FROM loop_runs
       WHERE json_extract(metadata, '$.pr_url') IS NOT NULL AND COALESCE(json_extract(metadata, '$.pr_outcome.state'), 'open') = 'open'`).all() as Array<{ decision: string | null; reason: string | null }>;
-    const audit = rows.filter((r) => r.decision === 'audit_sample').length;
-    const system = rows.filter((r) => r.decision === 'waiting' || r.decision === 'capped' || (r.decision === 'ineligible' && isTransientReason(r.reason))).length;
+    const act = auditSampleAutoMode(env) === 'act';
+    const forHuman = (r: { reason: string | null }) => !act || (AUDIT_HUMAN_REASONS as readonly string[]).includes(reasonCode(r.reason));
+    const audit = rows.filter((r) => r.decision === 'audit_sample' && forHuman(r)).length;
+    const system = rows.filter((r) => r.decision === 'waiting' || r.decision === 'capped' || r.decision === 'audit_passed'
+      || (r.decision === 'audit_sample' && !forHuman(r)) || (r.decision === 'ineligible' && isTransientReason(r.reason))).length;
     return { audit_batch: audit, flagged_prs: rows.length - audit - system, system_prs: system };
   } catch { return { audit_batch: null, flagged_prs: null, system_prs: null }; }
 }

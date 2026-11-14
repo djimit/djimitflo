@@ -366,9 +366,9 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   // ── merge ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
   // loop-auto-merge.ts eligibility; loop-auto-merge-state.ts (no earn rule in code: missing row = active); checkRevocations (revert, survival
   // SETTLED_REGRESSED — cannot fire on test-only PRs — or main CI red twice); settlementRevocation (exports: ≥ 50 % of the last 20 settled
-  // below 0.2 → lane revoked); isAuditSample (10 % by sha256 of the PR number, left to the human — no contrast computed)
+  // below 0.2 → lane revoked); isAuditSample (10 % by sha256 of the PR number, left to the human — no contrast computed; AUDIT_SAMPLE_AUTO_MODE=act judges it by an executed audit and keeps fail / unknown + a 1-in-5 spot check)
   { component: 'auto_merge', class: 'merge', name: 'Test-only auto-merge', unit: 'one eligible loop PR',
-    flags: ['LOOP_AUTO_MERGE_TEST_ONLY', 'LOOP_AUTO_MERGE_FINDING_FIX', 'LOOP_AUTO_MERGE_MAX_PER_DAY', 'LOOP_AUTO_MERGE_RECHECK', 'LOOP_AUTO_MERGE_RECHECK_HOURS', 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', 'LOOP_AUTO_MERGE_REPOS', 'WEAK_ASSERTION_CHECK_MODE', 'SETTLEMENT_EXECUTION_MODE'],
+    flags: ['LOOP_AUTO_MERGE_TEST_ONLY', 'AUDIT_SAMPLE_AUTO_MODE', 'LOOP_AUTO_MERGE_FINDING_FIX', 'LOOP_AUTO_MERGE_MAX_PER_DAY', 'LOOP_AUTO_MERGE_RECHECK', 'LOOP_AUTO_MERGE_RECHECK_HOURS', 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', 'LOOP_AUTO_MERGE_REPOS', 'WEAK_ASSERTION_CHECK_MODE', 'SETTLEMENT_EXECUTION_MODE'],
     outcome: { metric: `${SETTLED_KILL}; reverts and main CI on the merge commit`, source: 'latestSettlements + checkRevocations (loop-auto-merge.ts)', independence: 'independent' },
     cost: { ...NO_COST }, comparison: { kind: 'none', ref: null },
     decision_rule: 'revoke only: a revert, SETTLED_REGRESSED or main CI red twice revokes the class; exports lane revoked when ≥ 50 % of its last 20 settled PRs kill < 0.2 of fresh mutants',
