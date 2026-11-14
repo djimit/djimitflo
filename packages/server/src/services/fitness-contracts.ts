@@ -398,6 +398,7 @@ export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
   LOOP_AUTO_APPROVE_TEST_GAP: 'approval routing for the test-gap lane (who approves), not a scored component',
   LOOP_AUTO_APPROVE_MUTATION_GAP: 'approval routing for the mutation-gap lane (who approves), not a scored component',
   ORACLE_LANES_AUTO_APPROVE: 'approval routing for the oracle lanes (who approves), not a scored component',
+  FINDING_FIX_AUTO_APPROVE: 'approval routing for the finding-fix lane (who approves), not a scored component',
   APPROVAL_INHERIT_ENABLED: 'approval plumbing: a re-run inherits the original approval within a TTL',
   LOOP_REVIEWER_APPROVAL_INHERIT: 'approval plumbing: reviewers inherit the run\'s one human approval',
   PROPOSAL_GROUNDING_REQUIRED: 'intake rule: ungrounded reflection proposals are parked before the panel',

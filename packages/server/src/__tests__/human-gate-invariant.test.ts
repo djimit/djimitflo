@@ -175,8 +175,8 @@ describe('reviewer inheritance: a human or an allowlisted rule approver only', (
     expect(inherits('checker-1')).toBe(false);
   });
 
-  // (c) the two allowlisted rule approvers, and (d) a human: inherited by the bound reviewer lease of the same run only
-  it.each(['autonomy:oracle-lane-v1', 'autonomy:test-gap-rule-v1', 'user-approver'])('a maker approval decided by %s is inherited by the bound reviewer of that run only', (decidedBy) => {
+  // (c) the allowlisted rule approvers, and (d) a human: inherited by the bound reviewer lease of the same run only
+  it.each(['autonomy:oracle-lane-v1', 'autonomy:test-gap-rule-v1', 'autonomy:finding-fix-v1', 'user-approver'])('a maker approval decided by %s is inherited by the bound reviewer of that run only', (decidedBy) => {
     makerApproval(decidedBy);
     expect(inherits('checker-1')).toBe(true);
     expect(inherits('checker-other-run')).toBe(false);
