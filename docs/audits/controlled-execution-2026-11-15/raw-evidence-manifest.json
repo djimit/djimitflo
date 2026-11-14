@@ -9,6 +9,15 @@
       "result": "PASS",
       "summary": "Installed 779 packages; npm reported 0 vulnerabilities. One deprecated @types/bcryptjs stub warning was emitted.",
       "sensitive_output_redacted": true
+    },
+    {
+      "id": "preflight-shared-catalog-build-2026-11-15",
+      "kind": "command_output_summary",
+      "command": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog",
+      "candidate_sha": "35e260dd5dce1e6dd11d365f5a3a61d1d850432e",
+      "result": "PASS",
+      "summary": "Both TypeScript project builds completed successfully.",
+      "sensitive_output_redacted": true
     }
   ],
   "redaction": "Do not include secrets, private data, full prompts or sensitive runtime payloads. Store reproducible commands and sanitized excerpts only."

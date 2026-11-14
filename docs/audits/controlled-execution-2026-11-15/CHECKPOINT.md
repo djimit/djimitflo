@@ -9,7 +9,7 @@
 - Worktree: `/private/tmp/djimitflo-functional-improvements-20261114`; clean before this audit package.
 - Existing PR: #1272, draft; no merge or deployment authorized.
 - Node/npm: v22.23.2 / 10.9.8.
-- Preflight: `npm ci` passed at candidate code SHA `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89` (779 packages installed; 0 reported vulnerabilities). Builds and focused tests remain pending.
+- Preflight: `npm ci` passed (779 packages installed; 0 reported vulnerabilities); shared and agent-catalog builds passed at `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`. Focused tests remain pending.
 
 ## Frozen denominators
 
@@ -32,12 +32,13 @@
 - `571a0ad39f5d6ed6eb587302242949fb513152cc`: froze baseline, critical-chain and scenario denominators before this session's preflight tests.
 - Checkpoint metadata follow-up: records this freeze commit; does not change the frozen lists.
 - `npm ci` completed; no package or lockfile changes are intended.
+- Shared and agent-catalog TypeScript builds passed; focused nested-spawn tests are the next preflight step.
 
 ## Open scenarios and milestones
 
 All S1–S16: `NOT_TESTED` at checkpoint creation. See `scenarios.json` for permitted evidence ceiling.
 
-- M0: preflight in progress; install passed, requested builds and focused tests pending.
+- M0: preflight in progress; install and requested builds passed, focused tests pending.
 - M1: one vertical improvement permitted after baseline reproduction. Existing PR work is prior candidate evidence only; it does not replace this session's preflight or normal-entry verification.
 - M2–M5: not started; default session budget does not authorize going beyond M0 + one M1 improvement.
 

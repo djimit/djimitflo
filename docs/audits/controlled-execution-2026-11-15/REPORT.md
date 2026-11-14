@@ -6,7 +6,7 @@ This report is an active checkpoint, not a completed audit. The frozen baseline 
 
 ## Preflight
 
-Node and npm satisfy the required version range (`v22.23.2`, `10.9.8`). `npm ci` passed and installed 779 packages; npm reported zero vulnerabilities and one deprecation warning for the stub `@types/bcryptjs` package. The shared/catalog builds and the two nested-spawn test files are still pending. No conclusion beyond these results is drawn.
+Node and npm satisfy the required version range (`v22.23.2`, `10.9.8`). `npm ci` passed and installed 779 packages; npm reported zero vulnerabilities and one deprecation warning for the stub `@types/bcryptjs` package. The shared and agent-catalog TypeScript builds passed at `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`. The two nested-spawn test files are still pending. No conclusion beyond these results is drawn.
 
 ## Evidence limits
 

@@ -6,7 +6,7 @@
   "preflight": {
     "node_npm": {"status":"PASS","command":"node -v && npm -v","observed":"Node v22.23.2; npm 10.9.8"},
     "npm_ci": {"status":"PASS","command":"npm ci","candidate_sha":"ecfc85d22e1a68307d63eaed9ce4bbcb87927e89","summary":"Installed 779 packages; npm reported 0 vulnerabilities."},
-    "shared_and_catalog_build": {"status":"NOT_TESTED","command":"npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog"},
+    "shared_and_catalog_build": {"status":"PASS","command":"npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog","candidate_sha":"35e260dd5dce1e6dd11d365f5a3a61d1d850432e","summary":"Both TypeScript project builds completed successfully."},
     "nested_spawn_tests": {"status":"NOT_TESTED","command":"npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts"}
   },
   "claims": [],
