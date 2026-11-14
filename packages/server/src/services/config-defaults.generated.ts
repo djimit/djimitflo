@@ -89,6 +89,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   LANE_POLICY_MODE: 'off (`shadow`)',
   LOOP_AUTO_APPROVE_TEST_GAP: 'off',
   LOOP_AUTO_DRAFT_PR_ENABLED: 'off',
+  LOOP_AUTO_MERGE_FINDING_FIX: 'off (`shadow` records `would_merge` with reason `finding_fix: …`; `act` merges like test-only)',
   LOOP_AUTO_MERGE_MAX_PER_DAY: '10 (rolling 24 h; counts `would_merge` in shadow)',
   LOOP_AUTO_MERGE_RECHECK: 'off (`on`)',
   LOOP_AUTO_MERGE_RECHECK_HOURS: '6 (a transient ineligible PR is re-checked at most once per window; > 0, else 6)',

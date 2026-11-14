@@ -247,6 +247,37 @@ it('act + red required checks: audit_failed without executing the kill share', a
   expect(record(706).reason).toBe('audit_failed: required checks not green');
 });
 
+it('finding-fix PR in the audit sample (LOOP_AUTO_MERGE_FINDING_FIX=act, AUDIT_SAMPLE_AUTO_MODE=act): judged by its finding-fix gate + required checks, never by kill share', async () => {
+  // a finding-fix PR the way finding-fix-source.ts proposes it: one modified source file = the finding's file, gate passed, verdicts accepted
+  const file = 'packages/server/src/services/forecasters.ts';
+  const seedFf = (n: number) => {
+    seedPr(n);
+    db.prepare('UPDATE self_improvements SET type = ?, source = ?, evidence_refs_json = ?, grounding_json = ? WHERE id = ?').run('refactor', 'finding-fix',
+      JSON.stringify([`finding-fix:primary/f${n}`, `finding-file:${file}`]), JSON.stringify({ target: file, artifactPath: file }), `si-${n}`);
+    db.prepare('UPDATE worker_leases SET metadata = ? WHERE id = ?').run(JSON.stringify({ diff_max_lines: 60,
+      deterministic_checks: ['test:changed', 'lint', 'type-check', 'test:finding-fix'].map((name) => ({ name, status: 'pass', exit_status: 0 })),
+      required_deterministic_checks: ['test:changed', 'lint', 'type-check'] }), `m-${n}`);
+    for (const role of ['checker', 'security_checker']) db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, ?, 'opencode', 'completed', ?, ?, ?)`)
+      .run(`${role}-${n}`, `run-${n}`, role, JSON.stringify({ verdict: 'accepted', maker_lease_id: `m-${n}` }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
+    prs.get(n)!.files = [{ filename: file, status: 'modified', additions: 2, deletions: 2 }];
+  };
+  seedFf(701); seedFf(706); checks.set('sha706', 'red');
+  const e = { ...env('act'), LOOP_AUTO_MERGE_FINDING_FIX: 'act' } as NodeJS.ProcessEnv;
+  const exec = killing(0); // a test-only PR with this kill share would be audit_failed
+  await tick(e, exec);
+  expect(exec).not.toHaveBeenCalled();
+  expect(record(701)).toMatchObject({ mode: 'act', decision: 'audit_passed', reason: 'finding-fix gate pass (scanner re-run), required checks green' });
+  expect(judgments(701)).toMatchObject([{ mode: 'act', decision: 'audit_passed' }]);
+  expect(JSON.parse(judgments(701)[0].answers_json)).toMatchObject({ class: 'finding_fix', finding_fix_gate: 'pass', kill_share: null, kill_reason: null, checks: 'green', verdict: 'pass' });
+  expect(record(706)).toMatchObject({ decision: 'audit_sample', reason: 'audit_failed: required checks not green' });
+  expect(writes()).toEqual([]);
+  // the next tick: the finding-fix class's normal path merges the passed sample
+  await tick(e, exec, new Date(NOW.getTime() + 15 * 60_000));
+  expect(exec).not.toHaveBeenCalled();
+  expect(record(701)).toMatchObject({ mode: 'act', decision: 'merged', merge_commit_sha: 'merge701' });
+  expect(record(701).reason).toMatch(/^finding_fix: squash-merged/);
+});
+
 it('spot check: a passing audit of a 1-in-5 PR still stays for the human (audit_spot_check), not merged', async () => {
   seedPr(712);
   await tick(env('act'), killing(1));
