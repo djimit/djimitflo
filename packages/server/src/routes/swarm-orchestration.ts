@@ -392,8 +392,9 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   function fail(res: any, error: unknown): void {
     const code = error instanceof Error ? error.message : 'SOCIAL_RUNTIME_ERROR';
     const status = code === 'SOCIAL_AGENT_NOT_FOUND' || code === 'SOCIAL_MESSAGE_NOT_FOUND' ? 404
-      : code.startsWith('SOCIAL_AGENT_NOT_ELIGIBLE') || code === 'SOCIAL_MESSAGE_EXPIRED' || code === 'SOCIAL_MESSAGE_NOT_ACTIONABLE' || code.startsWith('BOARD_') ? 409
-        : code.startsWith('SOCIAL_') && code.endsWith('_REQUIRED') ? 400 : 500;
+      : code.startsWith('SOCIAL_AGENT_NOT_ELIGIBLE') || code === 'SOCIAL_MESSAGE_EXPIRED' || code === 'SOCIAL_MESSAGE_NOT_ACTIONABLE'
+        || code === 'SOCIAL_LEASE_INVALID' || code === 'SOCIAL_LEASE_EXPIRED' || code === 'SOCIAL_RUNTIME_FAILURES_DISABLED' || code.startsWith('BOARD_') ? 409
+        : code.startsWith('SOCIAL_') && (code.endsWith('_REQUIRED') || code === 'SOCIAL_FAILURE_CLASS_INVALID') ? 400 : 500;
     const safeCode = status === 500 ? 'SOCIAL_RUNTIME_ERROR' : code;
     res.status(status).json({ error: { code: safeCode, message: safeCode } });
   }
@@ -425,6 +426,19 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
       const result = comms.respondSocial(req.params.agentId, req.params.messageId, req.body || {});
       // K1 (shadow): a reply from an external agent is untrusted text that later feeds prompts
       if (!result.duplicate && contentSafetyApplies('social_reply')) void checkContentSafety(db, { type: 'social_reply', id: String(req.params.messageId) }, JSON.stringify(req.body || {})).catch(() => undefined);
+      res.status(result.duplicate ? 200 : 201).json(result);
+    } catch (error) { fail(res, error); }
+  });
+
+  router.post('/:agentId/messages/:messageId/failure', (req, res) => {
+    if (!authorized(req, res)) return;
+    const body = req.body || {};
+    if (Object.keys(body).some((key) => !['delivery_lease_token', 'failure_class'].includes(key))) {
+      res.status(400).json({ error: { code: 'SOCIAL_FAILURE_FIELDS_INVALID', message: 'SOCIAL_FAILURE_FIELDS_INVALID' } });
+      return;
+    }
+    try {
+      const result = comms.reportRuntimeFailure(String(req.params.agentId), String(req.params.messageId), body);
       res.status(result.duplicate ? 200 : 201).json(result);
     } catch (error) { fail(res, error); }
   });

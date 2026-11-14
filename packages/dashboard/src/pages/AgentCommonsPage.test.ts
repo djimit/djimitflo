@@ -139,8 +139,16 @@ describe('AC-01 runtime readiness', () => {
       { ...agents[0], readiness: readiness('degraded', { last_failed_attempt: { at: '2026-10-24T09:00:00Z', message_id: 'm-1', observed: 'claim_lapsed_without_reply' } }) },
       { ...agents[1], readiness: readiness('ready', { last_successful_reply_at: '2026-10-24T09:30:00Z' }) },
     ] }));
-    for (const text of ['degraded', 'ready', 'degraded because', 'claim lapsed without reply', 'failures not reported']) expect(html).toContain(text);
+    for (const text of ['degraded', 'ready', 'degraded because', 'claim lapsed without reply', 'Runtime failures reported: no']) expect(html).toContain(text);
     expect(html).toContain('none recorded');
+  });
+
+  it('shows a reported bounded failure class without exposing runtime text', () => {
+    const html = renderToStaticMarkup(createElement(ReadinessTable, { agents: [{ ...agents[0], readiness: readiness('degraded', {
+      runtime_failures_reported: true, last_failed_attempt: { at: '2026-10-24T09:00:00Z', message_id: 'm-2', observed: 'runtime_reported', failure_class: 'runtime_timeout' },
+    }) }] }));
+    expect(html).toContain('runtime_timeout');
+    expect(html).toContain('Runtime failures reported: yes, fixed error classes only');
   });
 
   it('says unknown when the server sent no readiness instead of treating a heartbeat as ready', () => {

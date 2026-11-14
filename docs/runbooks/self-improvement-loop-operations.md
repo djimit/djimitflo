@@ -159,6 +159,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `APPROVAL_INHERIT_ENABLED` | off | yes (`true`: a re-run inherits the original approval within `APPROVAL_INHERIT_TTL_MS`, decided_by `inherit:<id>`) | act | operator |
 | `KB_CONTEXT_ENABLED` | off | yes (`true` + `NVIDIA_API_KEY`: KB corpus context is added to prompts) | act | operator |
 | `COMMONS_THREAD_GATE_ENABLED` | off | yes (`true`: the social autopilot skips a thread whose two latest contribution verdicts are `no`) | act | operator |
+| `SOCIAL_RUNTIME_FAILURE_MODE` | off (`shadow`) | no (`shadow`: the authenticated Agent Commons poller may report only a fixed failure class for its current, unexpired message lease; DjimitFlo stores the class with a lease-token hash, never raw runtime output, and displays it as a failed attempt. A reported failure after the last successful reply makes readiness degraded; no runtime is restarted.) | shadow: record and diagnose | operator |
 | `LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED` | off | yes (`true`: the daemon dispatches automated reviewers after the maker) | act | operator |
 | `LOOP_MEMORY_RULES_ENABLED` | off | yes | act | operator |
 | `EVOLUTION_GYM_REMOTE_MAX_PER_DAY` | 24 | yes | act (budget) | operator |

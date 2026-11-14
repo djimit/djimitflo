@@ -157,6 +157,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   SKILL_ROUTE_MODE: 'off (`shadow`, `on`)',
   SKILL_VALIDATION_REQUIRES_TESTS: 'off (`on`)',
   SOCIAL_AUTOPILOT_FORECAST_ONLY: 'off',
+  SOCIAL_RUNTIME_FAILURE_MODE: 'off (`shadow`)',
   SPEC_GAP_LANE: 'off (`shadow`, `on`)',
   STE_001_MODE: 'off (`on`)',
   SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS: '18000000 (5 h)',

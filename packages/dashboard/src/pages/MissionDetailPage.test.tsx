@@ -18,9 +18,12 @@ const detail = (over: Partial<MissionDetail> = {}): MissionDetail => ({
       closure: { eval_run_id: 'eval-1', score_delta: 0.1, created_at: '2026-10-20T01:35:00Z' }, attribution: { outcome: 'verified', reason: null, created_at: '2026-10-20T01:40:00Z', judgment_id: 'j1' } },
   ],
   leases: [
-    { id: 'mk-1', loop_run_id: 'run-1', role: 'maker', runtime: 'codex', status: 'completed', created_at: '2026-10-20T01:01:00Z', verdict: null, maker_lease_id: null },
-    { id: 'ck-1', loop_run_id: 'run-1', role: 'checker', runtime: 'claude', status: 'completed', created_at: '2026-10-20T01:02:00Z', verdict: 'accepted', maker_lease_id: 'mk-1' },
+    { id: 'mk-1', loop_run_id: 'run-1', role: 'maker', runtime: 'codex', status: 'completed', created_at: '2026-10-20T01:01:00Z', verdict: null, maker_lease_id: null, capability_id: 'skill-test', skill_version: '2', skill_digest: 'sha256:abc' },
+    { id: 'ck-1', loop_run_id: 'run-1', role: 'checker', runtime: 'claude', status: 'completed', created_at: '2026-10-20T01:02:00Z', verdict: 'accepted', maker_lease_id: 'mk-1', capability_id: null, skill_version: null, skill_digest: null },
   ],
+  spawns: [{ id: 'spawn-1', spawn_tree_id: 'tree-1', parent_lease_id: 'mk-1', child_lease_id: 'child-1', requested_by_lease_id: 'mk-1',
+    requested_role: 'maker', runtime: 'codex', status: 'completed', token_budget_grant: 1000, wall_budget_ms: 10000,
+    measured_tokens: null, measured_wall_ms: 5000, usage_source: 'unknown', settled_at: '2026-10-20T01:05:00Z', reject_reason: null }],
   tasks: [], decisions: [],
   blocker: { text: 'failed gates: tests_lint_typecheck', source: 'loop_runs.gates_json#run-2' },
   next_action: null,
@@ -61,6 +64,17 @@ it('shows relationships as a typed table and names the types the data does not r
   expect(rows).toEqual(['participation', 'participation', 'verification']);
   expect(table.textContent).toContain('maker lease mk-1');
   expect(screen.getByText(/Not recorded for this mission: delegation, agreement, reuse\./)).toBeTruthy();
+});
+
+it('shows nested execution, unknown usage and the exact skill artifact recorded on a lease', () => {
+  view(detail());
+  const delegations = screen.getByRole('table', { name: 'Delegations backed by nested spawn records' });
+  expect(delegations.textContent).toContain('child-1');
+  expect(delegations.textContent).toContain('1000 / unknown — not recorded');
+  expect(delegations.textContent).toContain('unknown');
+  const skills = screen.getByRole('table', { name: 'Skill versions recorded on worker leases' });
+  expect(skills.textContent).toContain('skill-test');
+  expect(skills.textContent).toContain('sha256:abc');
 });
 
 it('derives delegation and agreement only from task assignments and quorum decisions', () => {

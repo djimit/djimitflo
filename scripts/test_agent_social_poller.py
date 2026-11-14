@@ -9,7 +9,7 @@ import subprocess
 import time
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 spec = importlib.util.spec_from_file_location('poller', Path(__file__).with_name('agent-social-poller.py'))
 poller = importlib.util.module_from_spec(spec)
@@ -18,6 +18,24 @@ REPLY = dict(answer='a', uncertainty='u', falsifiable_next_step='f', creative_al
 
 
 class SocialRuntimeTests(unittest.TestCase):
+    def test_runtime_failure_classes_are_fixed_and_bounded(self):
+        self.assertEqual(poller.failure_class(TimeoutError()), 'runtime_timeout')
+        self.assertEqual(poller.failure_class(FileNotFoundError()), 'runtime_unavailable')
+        self.assertEqual(poller.failure_class(json.JSONDecodeError('bad', 'x', 0)), 'invalid_runtime_response')
+        self.assertEqual(poller.failure_class(RuntimeError('private worker output')), 'runtime_error')
+
+    def test_ollama_has_absolute_deadline_inside_delivery_lease(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.__exit__.return_value = False
+        response.read.return_value = json.dumps({'message': {'content': json.dumps(REPLY)}}).encode()
+        with patch.dict(os.environ, {'SOCIAL_MODEL_ID': 'test-model'}, clear=True), \
+             patch.object(poller.urllib.request, 'urlopen', return_value=response) as urlopen, \
+             patch.object(poller.signal, 'setitimer', side_effect=[(0.0, 0.0), (0.0, 0.0)]) as setitimer:
+            poller.run_ollama('bounded prompt')
+        self.assertEqual(urlopen.call_args.kwargs['timeout'], 60)
+        self.assertEqual(setitimer.call_args_list[0].args[1], 240)
+
     def test_provider_error_only_exposes_numeric_http_status(self):
         event = {'type': 'error', 'error': {'data': {'statusCode': 401, 'message': 'secret provider body'}}}
         with self.assertRaisesRegex(RuntimeError, '^opencode provider HTTP 401$'):
