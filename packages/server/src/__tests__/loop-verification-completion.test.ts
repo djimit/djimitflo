@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -161,4 +161,33 @@ it('J5: an auto-approved maker fails verification when it touched more than its 
   expect(loops.verifyLoopRun('run').gates.find((g) => g.name === 'auto_approved_scope')?.status).toBe('fail');
   loops.patchWorkerLeaseMetadata('maker-1', { changed_files: [scope] });
   expect(loops.verifyLoopRun('run').gates.find((g) => g.name === 'auto_approved_scope')?.status).toBe('pass');
+});
+
+describe('FINDING_FIX_AUTO_APPROVE: a finding-fix maker approved by autonomy:finding-fix-v1 is held to its finding file and 40 diff lines', () => {
+  const file = 'packages/server/src/services/ollama-outage-fallback.ts';
+  const scopeGate = (meta: Record<string, unknown>) => {
+    loops.patchWorkerLeaseMetadata('maker-1', { auto_approved_scope: file, auto_approved_max_lines: 40, diff_max_lines: 60, ...meta });
+    return loops.verifyLoopRun('run').gates.find((g) => g.name === 'auto_approved_scope')?.status;
+  };
+  it('passes with only the finding file and <= 40 diff lines', () => {
+    expect(scopeGate({ changed_files: [file], diff_lines: 40 })).toBe('pass');
+  });
+  it.each([
+    ['a second source file', [file, 'packages/server/src/services/other.ts']],
+    ['package.json', [file, 'packages/server/package.json']],
+    ['the lockfile', [file, 'package-lock.json']],
+    ['a config file', [file, 'packages/server/tsconfig.json']],
+    ['.github', [file, '.github/workflows/ci.yml']],
+    ['a removed test', [file, 'packages/server/src/__tests__/ollama-outage-fallback.test.ts']],
+    ['another file only', ['packages/server/src/services/other.ts']],
+  ])('fails when the maker also changed %s', (_label, changed) => {
+    expect(scopeGate({ changed_files: changed, diff_lines: 10 })).toBe('fail');
+  });
+  it('fails on a 41-line diff (the lane cap is 40, below the lane diff_max_lines 60)', () => {
+    expect(scopeGate({ changed_files: [file], diff_lines: 41 })).toBe('fail');
+    expect(loops.verifyLoopRun('run').gates.find((g) => g.name === 'diff_threshold_all_makers')?.status).toBe('pass');
+  });
+  it('fails when the diff size is not recorded', () => {
+    expect(scopeGate({ changed_files: [file], diff_lines: undefined })).toBe('fail');
+  });
 });

@@ -91,12 +91,13 @@ const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|4
 
 /**
  * Rule approvers whose maker approval a bound reviewer lease of the same run may inherit (exact match; never `inherit:*`,
- * `system`, `auto` or another `autonomy:*`). Both approve only an oracle-lane / test-gap maker on its deterministic one-file
- * scope, and the reviewer is read-only by contract.
- * ponytail: a fixed list, not a registry — prod 14 d: 232 of 240 reviewer inheritances came from these two, so excluding
- * them stalls every oracle-lane reviewer. Upgrade trigger: a third rule approver whose reviewers need to inherit.
+ * `system`, `auto` or another `autonomy:*`). Each approves only an oracle-lane / test-gap / finding-fix maker on its
+ * deterministic one-file scope (auto_approved_scope), and the reviewer is read-only by contract.
+ * ponytail: a fixed list, not a registry — prod 14 d: 232 of 240 reviewer inheritances came from the first two, so excluding
+ * them stalls every oracle-lane reviewer; autonomy:finding-fix-v1 (FINDING_FIX_AUTO_APPROVE) is the third. Upgrade trigger:
+ * a rule approver whose reviewers need a different inheritance rule.
  */
-export const REVIEWER_INHERITABLE_AUTONOMY_APPROVERS: readonly string[] = ['autonomy:oracle-lane-v1', 'autonomy:test-gap-rule-v1'];
+export const REVIEWER_INHERITABLE_AUTONOMY_APPROVERS: readonly string[] = ['autonomy:oracle-lane-v1', 'autonomy:test-gap-rule-v1', 'autonomy:finding-fix-v1'];
 
 export class ExecutionEngine {
   private db: Database;
