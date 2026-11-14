@@ -57,10 +57,10 @@ it('pushes only the maker files and opens one draft PR per run', async () => {
   expect(f).toHaveBeenCalledTimes(1);
 });
 
-it('D3: the commit and push in the maker worktree run none of its hooks or fsmonitor, and none of the remote hooks', async () => {
+it('D3: the commit and push in the maker worktree run none of its hooks or fsmonitor', async () => {
   const marker = path.join(path.dirname(wt), 'marker');
   for (const [dir, hook] of [[path.join(wt, '.git', 'hooks'), 'pre-commit'], [path.join(wt, '.git', 'hooks'), 'commit-msg'],
-    [path.join(wt, '.git', 'hooks'), 'pre-push'], [path.join(remote, 'hooks'), 'pre-receive']]) {
+    [path.join(wt, '.git', 'hooks'), 'pre-push'], [path.join(wt, '.git', 'hooks'), 'reference-transaction']]) {
     fs.writeFileSync(path.join(dir, hook), `#!/bin/sh\necho ${hook} "$GITHUB_TOKEN" >> "${marker}"\n`, { mode: 0o755 });
   }
   git(wt, 'config', 'core.fsmonitor', `sh -c 'echo fsmonitor >> "${marker}"; exit 0'`);

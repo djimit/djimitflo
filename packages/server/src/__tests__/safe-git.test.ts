@@ -39,13 +39,15 @@ describe('environment and transports', () => {
   });
 
   it('allows no transport unless the call names it (protocol config of the repo cannot re-enable one)', () => {
+    process.env.GITHUB_TOKEN = 'ghp_secret';
     const remote = path.join(dir, 'remote.git');
     execFileSync('git', ['init', '-q', '--bare', remote]);
-    fs.writeFileSync(path.join(remote, 'hooks', 'pre-receive'), `#!/bin/sh\necho pre-receive >> "${marker}"\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(remote, 'hooks', 'pre-receive'), `#!/bin/sh\necho "token=$GITHUB_TOKEN" >> "${marker}"\n`, { mode: 0o755 });
     git(repo, 'config', 'protocol.file.allow', 'always');
     expect(safeGitSpawn(repo, ['push', '-q', remote, 'HEAD:refs/heads/x']).stderr).toMatch(/transport 'file' not allowed/);
     expect(safeGitSpawn(repo, ['push', '-q', remote, 'HEAD:refs/heads/x'], { protocols: 'file' }).status).toBe(0);
     expect(git(remote, 'rev-parse', 'x')).toBe(git(repo, 'rev-parse', 'HEAD'));
-    expect(fired()).toBe(''); // the local receive-pack inherits core.hooksPath=/dev/null
+    // a local remote's own hooks may run (git-version dependent: file is a test-only transport), but never with a server secret
+    expect(fired()).not.toContain('ghp_secret');
   });
 });

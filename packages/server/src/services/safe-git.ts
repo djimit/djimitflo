@@ -5,10 +5,9 @@
  * the server's git reads. Without this, a repo-local hook, `core.fsmonitor` or filter/diff driver ran as the server uid with
  * the server's full environment (GITHUB_TOKEN, JWT_SECRET, ...). Every call here:
  *
- * Neutralised with `-c` (command-line config beats every config file, and reaches child git processes such as a local
- * receive-pack through GIT_CONFIG_PARAMETERS):
- * - core.hooksPath=/dev/null  every hook: pre-commit, commit-msg, post-checkout, reference-transaction, pre-push, a local
- *                             receive-pack's pre-receive, ...
+ * Neutralised with `-c` (command-line config beats every config file):
+ * - core.hooksPath=/dev/null  every hook of the repository git runs in: pre-commit, commit-msg, post-checkout,
+ *                             reference-transaction, pre-push, post-index-change, ...
  * - core.fsmonitor=false      the fsmonitor command (status, diff, add, commit, checkout run it)
  * - core.untrackedCache=false the untracked cache is the fsmonitor's companion; it is never trusted from a maker repo
  * - credential.helper=        an empty value resets the helper list (URL-scoped `credential.<url>.helper` included)
@@ -21,7 +20,9 @@
  * Transports: GIT_ALLOW_PROTOCOL is set on every call (it overrides protocol.* config of every scope). It is empty by
  * default, so a call cannot use any transport (no lazy fetch, no submodule clone, no `ext::`); a fetch/push names the
  * transports it needs (`protocols`). That also makes core.sshCommand, core.gitProxy and remote helpers (remote.<n>.vcs)
- * unreachable unless a caller allows ssh/git.
+ * unreachable unless a caller allows ssh/git. The file transport is for tests only: a push to a local path runs that
+ * repository's own receive-pack hooks (git drops GIT_CONFIG_PARAMETERS for local transports in Linux git 2.4x), with
+ * this minimal env; production pushes over https.
  *
  * Refused (SAFE_GIT_UNSAFE_CONFIG) when they appear in local or worktree scope, because `-c` cannot neutralise them (the
  * driver name is free, or an empty value makes the command fail instead of skipping the driver):
