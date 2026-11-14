@@ -68,8 +68,9 @@ export interface CockpitSnapshot {
      * labels (optional_labelling), system stalls, warnings and panel-reviewed proposals (system). null if any part is unknown.
      */
     total: number | null;
-    /** open_prs split: audit-sample PRs (one weekly batch) and the rest (flagged: the auto-merge lane did not take them) */
-    audit_batch: number | null; flagged_prs: number | null;
+    /** open_prs split: audit-sample PRs (one weekly batch), the rest (flagged: the auto-merge lane did not take them) and
+     * system_prs (waiting / capped / audit_passed / transient ineligible, and in AUDIT_SAMPLE_AUTO_MODE=act an audit not yet run: the lane still handles them — shown, not in total) */
+    audit_batch: number | null; flagged_prs: number | null; system_prs: number | null;
     /** open Dependabot PRs the dependency lane leaves to a human; null + dependency_tracked false when the lane is off */
     dependency_human: number | null; dependency_tracked: boolean;
     /** ground-truth labelling (D5, CAR, E1, DI-001): optional, its own count, never in total */
@@ -265,7 +266,7 @@ export function needsYouSnapshot(db: Database, now = Date.now(), env: NodeJS.Pro
     approvals_expiring: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at <= ?", in60),
     join_requests: one("SELECT COUNT(*) FROM social_join_requests WHERE status = 'pending'"),
     shell_requests: one("SELECT COUNT(*) FROM fleet_commands WHERE status = 'pending_approval'"),
-    shared_subjects: null, total: null, system_requeue: null, ...openLoopPrSplit(db),
+    shared_subjects: null, total: null, system_requeue: null, ...openLoopPrSplit(db, env),
     dependency_human: null, dependency_tracked: false, optional_labelling: null,
     system: { requeue_will_handle: null, requeue_mode: null, proposals_auto_reviewed: env.SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED === 'true' } };
   const dep = dependencyHuman(db, env, now);

@@ -38,6 +38,7 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
   if ((m = /^pulls\/(\d+)$/.exec(path))) { const p = prs.get(Number(m[1])); return p ? res(200, p) : res(404, {}); }
   if ((m = /^pulls\/(\d+)\/files$/.exec(path))) return res(200, prs.get(Number(m[1]))?.files ?? []);
   if ((m = /^pulls\/(\d+)\/reviews$/.exec(path))) return res(200, prs.get(Number(m[1]))?.reviews ?? []);
+  if ((m = /^pulls\/(\d+)\/update-branch$/.exec(path))) return res(202, {});
   if ((m = /^pulls\/(\d+)\/merge$/.exec(path))) { const p = prs.get(Number(m[1]))!; p.state = 'closed'; return res(200, { sha: `merge${p.number}`, merged: true }); }
   if (path === 'branches/main/protection/required_status_checks') return res(200, { contexts: ['build'], checks: [] });
   if ((m = /^commits\/([^/]+)\/check-runs$/.exec(path))) {
@@ -178,6 +179,29 @@ it('act + pass: audit_passed (judgment + audit row), then the normal auto-merge 
   expect(writes().map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/701/merge']);
 });
 
+it('act + pass: an audit_passed PR that is behind waits its turn in the merge queue like any other PR (never a direct update-branch)', async () => {
+  seedPr(700); seedPr(701);
+  prs.get(700)!.mergeable_state = 'behind';
+  await tick(env('act'), killing(0.667));
+  expect(record(700)).toMatchObject({ decision: 'waiting', reason: 'branch_updated' });
+  expect(record(701).decision).toBe('audit_passed');
+  expect(writes().map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/700/update-branch']);
+  // 700's CI runs on the updated head (in flight); 701 is now behind: it queues behind 700, no update-branch for it
+  prs.get(700)!.mergeable_state = 'clean'; checks.set('sha700', 'pending'); prs.get(701)!.mergeable_state = 'behind';
+  calls = [];
+  await tick(env('act'), killing(0.667), new Date(NOW.getTime() + 15 * 60_000));
+  expect(record(700)).toMatchObject({ decision: 'waiting', reason: 'checks_pending' });
+  expect(record(701)).toMatchObject({ decision: 'waiting', reason: 'queued_behind_pr:#700' });
+  expect(writes()).toEqual([]);
+  // 700 merges, which frees the queue: 701's update runs after the PR loop
+  checks.set('sha700', 'green'); calls = [];
+  await tick(env('act'), killing(0.667), new Date(NOW.getTime() + 30 * 60_000));
+  expect(record(700).decision).toBe('merged');
+  expect(record(701)).toMatchObject({ decision: 'waiting', reason: 'branch_updated' });
+  expect(writes().map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/700/merge', 'https://api.github.com/repos/o/r/pulls/701/update-branch']);
+  expect(judgments(701)).toHaveLength(1);
+});
+
 it('act + kill share 0: stays for the human as audit_failed, final, never merged', async () => {
   seedPr(706);
   const exec = killing(0);
@@ -235,7 +259,7 @@ it('spot check: a passing audit of a 1-in-5 PR still stays for the human (audit_
   expect(writes()).toEqual([]);
 });
 
-it('needs-you: in act the audit batch counts only audit_failed / audit_unknown / audit_spot_check; off and shadow count every sample', () => {
+it('needs-you: in act the audit batch counts only audit_failed / audit_unknown / audit_spot_check (the rest is system_prs); off and shadow count every sample', () => {
   const put = (id: string, am: Record<string, unknown> | null, state = 'open') => db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at)
     VALUES (?, 'test-gap', 'closed', 'completed', ?, '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z')`).run(id, JSON.stringify({ pr_url: `https://github.com/o/r/pull/${id}`, ...(am ? { auto_merge: am } : {}), pr_outcome: { state } }));
   put('1', { decision: 'audit_sample', reason: AUDIT_SAMPLE_REASON });
@@ -246,7 +270,9 @@ it('needs-you: in act the audit batch counts only audit_failed / audit_unknown /
   put('6', { decision: 'ineligible', reason: 'checks_failed' });
   put('7', { decision: 'audit_sample', reason: 'audit_failed: x' }, 'merged');
   put('8', null);
-  expect(openLoopPrSplit(db, {})).toEqual({ audit_batch: 4, flagged_prs: 3 });
-  expect(openLoopPrSplit(db, { AUDIT_SAMPLE_AUTO_MODE: 'shadow' })).toEqual({ audit_batch: 4, flagged_prs: 3 });
-  expect(openLoopPrSplit(db, { AUDIT_SAMPLE_AUTO_MODE: 'act' })).toEqual({ audit_batch: 3, flagged_prs: 3 });
+  // 5 (audit_passed: on the normal merge path) and 6 (transient checks_failed) are the lane's; 8 (no record) is flagged
+  expect(openLoopPrSplit(db, {})).toEqual({ audit_batch: 4, system_prs: 2, flagged_prs: 1 });
+  expect(openLoopPrSplit(db, { AUDIT_SAMPLE_AUTO_MODE: 'shadow' })).toEqual({ audit_batch: 4, system_prs: 2, flagged_prs: 1 });
+  // act: 1 (audit not yet run) is the system's too — never a human decision, never flagged
+  expect(openLoopPrSplit(db, { AUDIT_SAMPLE_AUTO_MODE: 'act' })).toEqual({ audit_batch: 3, system_prs: 3, flagged_prs: 1 });
 });

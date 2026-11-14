@@ -284,7 +284,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
   const open: { requeue: number | null; labels: number | null; memory_review: number | null } = inbox ? openDecisionCounts(inbox) : { requeue: null, labels: null, memory_review: null };
   const base = publicBase(env);
   const link = (anchor: string) => (base ? `${base}/decisions#${anchor}` : `/decisions#${anchor}`);
-  const prs = openLoopPrSplit(db); const dep = dependencyHuman(db, env, now);
+  const prs = openLoopPrSplit(db, env); const dep = dependencyHuman(db, env, now);
   // human decisions only (needs-you-classes.ts), one count + deep link per /decisions section (links only with an https DJIMITFLO_PUBLIC_URL)
   const sections = [
     { key: 'approvals', label: 'approvals', anchor: 'approvals', count: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'") },
