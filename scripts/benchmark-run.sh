@@ -105,8 +105,16 @@ if [ "$APPLY" = 1 ]; then
   docker rm -f "$NAME" >/dev/null 2>&1 || true
 fi
 AUTH_MOUNT=(); if [ -n "$AUTH" ]; then AUTH_MOUNT=(-v "$AUTH:/home/djimitflo/.local/share/opencode/auth.json:ro"); fi
+# prod opencode's provider list (Ollama base URL, models) lives in the bind-mounted /app/opencode.json, not in the image or
+# the env: without the same file mounted read-only every reviewer call fails in seconds (2026-11-13: exit 4, 0 tokens)
+CFG='<host-opencode.json>'
+echo "+ docker inspect $C → host source of /app/opencode.json"
+if [ "$APPLY" = 1 ]; then
+  CFG=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/app/opencode.json"}}{{.Source}}{{end}}{{end}}' "$C")
+  [ -n "$CFG" ] && [ -f "$CFG" ] || { echo "$C has no /app/opencode.json bind mount: the reviewer would run without a provider" >&2; exit 1; }
+fi
 x docker run -d --name "$NAME" --entrypoint "" --user 1001:1001 -v "$SRC/scripts:/bench/scripts:ro" -v "$SRC/docs/research/eco:/bench/docs/research/eco:ro" -v "$OUT:/out" -w /tmp \
-  --network bridge --env-file "$ENVF" --tmpfs /home/djimitflo:uid=1001,gid=1001 -e HOME=/home/djimitflo ${AUTH_MOUNT[@]+"${AUTH_MOUNT[@]}"} \
+  --network bridge --env-file "$ENVF" --tmpfs /home/djimitflo:uid=1001,gid=1001 -e HOME=/home/djimitflo -v "$CFG:/app/opencode.json:ro" ${AUTH_MOUNT[@]+"${AUTH_MOUNT[@]}"} \
   "$IMG" "${RUNNER[@]}" --cap "$CAP" --out /out/results.jsonl
 echo "+ every ${POLL}s: docker exec $C $CLI idle — exit 5 (a real lease started) → docker stop $NAME, reason in $OUT/abort.json"
 RC=0

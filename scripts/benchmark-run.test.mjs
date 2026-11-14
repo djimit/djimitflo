@@ -14,6 +14,8 @@ for (const bench of ['sec-f1', 'f1']) {
   const runs = r.stdout.split('\n').filter((l) => /^\+ docker run /.test(l));
   assert.ok(runs.length >= 2, `${bench}: the dry run prints its docker run commands`);
   for (const l of runs) assert.match(l, / --entrypoint /, `${bench}: every docker run resets the image entrypoint: ${l.slice(0, 80)}`);
+  const reviewer = runs.find((l) => / -d --name /.test(l));
+  assert.match(reviewer ?? '', /-v \S+:\/app\/opencode\.json:ro/, `${bench}: the reviewer container mounts prod's opencode.json (provider list) read-only`);
   assert.match(r.stdout, /printenv DJIMITFLO_BUILD_COMMIT/, `${bench}: the build sha comes from DJIMITFLO_BUILD_COMMIT`);
 }
 assert.match(fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8'), /^ENV DJIMITFLO_BUILD_SHA=\$VCS_REF$/m, 'the image sets DJIMITFLO_BUILD_SHA');
