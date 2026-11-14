@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run one bounded Djimitflo peer-learning poll for a real runtime."""
 import ipaddress, json, os, re, shutil, signal, subprocess, sys, tempfile, urllib.error, urllib.parse, urllib.request
+import socket
 from pathlib import Path
 
 def api(method, path, body=None):
@@ -10,6 +11,12 @@ def api(method, path, body=None):
     try:
         with urllib.request.urlopen(request, timeout=30) as response: return response.status, json.load(response)
     except urllib.error.HTTPError as error: raise RuntimeError(f'Djimitflo HTTP {error.code}: {error.read(500).decode("utf-8", "replace")}') from error
+
+def failure_class(error):
+    if isinstance(error, (TimeoutError, socket.timeout, subprocess.TimeoutExpired)): return 'runtime_timeout'
+    if isinstance(error, (FileNotFoundError, ConnectionError, urllib.error.URLError)): return 'runtime_unavailable'
+    if isinstance(error, json.JSONDecodeError) or 'no JSON object' in str(error) or 'omitted a required' in str(error): return 'invalid_runtime_response'
+    return 'runtime_error'
 
 def extract_object(text):
     decoder, objects = json.JSONDecoder(), []
@@ -214,7 +221,15 @@ def run_ollama(prompt):
     body = {'model': model, 'stream': False, 'format': 'json', 'options': {'temperature': 0.7, 'num_predict': 700},
             'messages': [{'role': 'system', 'content': 'You are a curious, creative specialist agent. Reply with exactly one JSON object.'}, {'role': 'user', 'content': prompt}]}
     request = urllib.request.Request(os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/') + '/api/chat', data=json.dumps(body).encode(), method='POST', headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(request, timeout=300) as response: data = json.load(response)
+    # Enforce a total deadline; the shorter socket timeout alone can reset on each read.
+    def deadline(_signum, _frame): raise TimeoutError('Ollama request exceeded 240-second deadline')
+    previous_handler = signal.signal(signal.SIGALRM, deadline)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, 240)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response: data = json.load(response)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+        signal.signal(signal.SIGALRM, previous_handler)
     usage = {key: data[key] for key in ('prompt_eval_count', 'eval_count', 'total_duration') if isinstance(data.get(key), (int, float))}
     return data.get('message', {}).get('content', ''), data.get('created_at', ''), usage
 
@@ -225,6 +240,9 @@ def self_test():
     assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","evidence_refs":[]}')['answer'] == 'a'
     assert 'artefact' not in extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","artefact":"x"}')
     assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","artefact":{"kind":"repro","command":"x"}}')['artefact'] == {'kind': 'repro', 'command': 'x'}
+    assert failure_class(TimeoutError()) == 'runtime_timeout'
+    assert failure_class(FileNotFoundError()) == 'runtime_unavailable'
+    assert failure_class(json.JSONDecodeError('bad json', 'x', 0)) == 'invalid_runtime_response'
     print('agent-social-poller self-test: PASS')
 
 def main():
@@ -242,7 +260,16 @@ def main():
             reply = extract_object(output); reply.update({'runtime': runtime, 'model_id': model, 'runtime_run_id': run_id, 'usage': usage, 'delivery_lease_token': message.get('deliveryLeaseToken', '')})
             status, result = api('POST', f"/api/swarm-v2/social-runtime/{agent}/messages/{message['id']}/respond", reply)
             print(json.dumps({'agent': agent, 'input': message['payload']['action'], 'output': result['message']['payload']['action'], 'status': status, 'duplicate': result['duplicate']})); processed += 1
-        except Exception as error: failures += 1; print(json.dumps({'agent': agent, 'message_id': message.get('id'), 'error': str(error)[:500]}), file=sys.stderr)
+        except Exception as error:
+            failures += 1
+            kind = failure_class(error)
+            if os.environ.get('SOCIAL_RUNTIME_FAILURE_MODE') == 'shadow' and message.get('deliveryLeaseToken'):
+                try:
+                    api('POST', f"/api/swarm-v2/social-runtime/{agent}/messages/{message['id']}/failure",
+                        {'delivery_lease_token': message['deliveryLeaseToken'], 'failure_class': kind})
+                except Exception:
+                    pass  # The lease may have expired; the server will retain its existing lapse evidence.
+            print(json.dumps({'agent': agent, 'message_id': message.get('id'), 'failure_class': kind, 'error': str(error)[:500]}), file=sys.stderr)
     print(json.dumps({'agent': agent, 'processed': processed, 'failures': failures}))
     if failures: raise SystemExit(1)
 if __name__ == '__main__': main()

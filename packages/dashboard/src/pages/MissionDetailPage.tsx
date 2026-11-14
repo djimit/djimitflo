@@ -95,6 +95,29 @@ export function MissionDetailView({ detail }: { detail: MissionDetail }) {
           ]} />
       </Section>
 
+      <Section id="mission-delegations" title="Nested delegations">
+        <DataTable caption="Delegations backed by nested spawn records" rows={detail.spawns ?? []} rowKey={(s) => s.id}
+          empty={detail.spawns === null ? 'Delegation records could not be read.' : 'No nested delegation record is linked to these runs.'}
+          columns={[
+            { key: 'child', label: 'Child lease', render: (s) => <code>{s.child_lease_id}</code> },
+            { key: 'parent', label: 'Parent lease', render: (s) => <code>{s.parent_lease_id}</code> },
+            { key: 'worker', label: 'Worker', render: (s) => `${s.requested_role} · ${s.runtime}` },
+            { key: 'status', label: 'Execution', render: (s) => s.status },
+            { key: 'budget', label: 'Grant / measured tokens', render: (s) => `${s.token_budget_grant ?? UNKNOWN} / ${s.measured_tokens ?? UNKNOWN}` },
+            { key: 'wall', label: 'Grant / measured time', render: (s) => `${s.wall_budget_ms === null ? UNKNOWN : `${fmt(s.wall_budget_ms)} ms`} / ${s.measured_wall_ms === null ? UNKNOWN : `${fmt(s.measured_wall_ms)} ms`}` },
+            { key: 'usage', label: 'Usage evidence', render: (s) => s.usage_source ?? UNKNOWN },
+            { key: 'reason', label: 'Blocker', render: (s) => s.reject_reason ?? 'none recorded' },
+          ]} />
+        <DataTable caption="Skill versions recorded on worker leases" rows={detail.leases.filter((l) => l.capability_id || l.skill_version || l.skill_digest)} rowKey={(l) => l.id}
+          empty="No skill route was recorded on these worker leases."
+          columns={[
+            { key: 'lease', label: 'Lease', render: (l) => <code>{l.id}</code> },
+            { key: 'capability', label: 'Capability', render: (l) => l.capability_id ?? UNKNOWN },
+            { key: 'version', label: 'Version', render: (l) => l.skill_version ?? UNKNOWN },
+            { key: 'digest', label: 'Artifact digest', render: (l) => l.skill_digest ? <code className="break-all">{l.skill_digest}</code> : UNKNOWN },
+          ]} />
+      </Section>
+
       <Section id="mission-outcome" title="Outcome">
         <ul className="list-disc space-y-1 pl-5 text-sm text-foreground-secondary">
           <li>Closures: {execution.execution ? (execution.execution.closed_runs === null ? 'unknown — closures table not readable' : `${execution.execution.closed_runs} of ${execution.execution.loop_runs} runs closed`) : 'unknown — no linked runs'}</li>

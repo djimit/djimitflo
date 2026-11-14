@@ -327,7 +327,10 @@ export class LoopWorkerExecutorService {
         `MAKER_WARM_DEPS: dependencies ${prep.warm_deps ? `from ${prep.warm_deps.deps_source}` : 'already present'} before the maker started (shared_built=${prep.shared_built}${prep.install_failed || prep.shared_failed ? '; failed, the maker runs without them' : ''}).`,
         { maker_lease_id: makerLease.id, ...prep });
     }
-    const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
+    const nestedGrant = makerLease.metadata.nested_budget_grant as { tokens?: unknown; wall_ms?: unknown } | undefined;
+    const requestedTimeout = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
+    const nestedWallLimit = Number(nestedGrant?.wall_ms);
+    const timeoutMs = Number.isFinite(nestedWallLimit) && nestedWallLimit > 0 ? Math.min(requestedTimeout, nestedWallLimit) : requestedTimeout;
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     // ASG-001 (ASG_MODE, default off; docs/research/asg-001): oracle-lane makers only. off = this block never runs.
@@ -378,7 +381,9 @@ export class LoopWorkerExecutorService {
     // §5 token accounting: what the runtime reported, never fabricated; a failure here is recorded, never changes the outcome
     const tokenAccounting = safeTokenAccounting(() => computeTokenAccounting({ runtime: makerLease.runtime, stdout: result.stdout || '',
       leaseMetadata: makerLease.metadata || {}, durationMs: Date.now() - makerStartedAt }), makerLease.runtime);
-    const tokenBudget = this.loopService.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
+    const nestedTokenLimit = Number(nestedGrant?.tokens);
+    const tokenBudget = this.loopService.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines,
+      Number.isFinite(nestedTokenLimit) && nestedTokenLimit > 0 ? nestedTokenLimit : undefined);
     const efficiency = this.loopService.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
     // ASG-001: expected vs observed effects; in `on`, a bounded timeout/brake whose declared test passes is succeeded_with_incident

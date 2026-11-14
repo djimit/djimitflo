@@ -735,6 +735,21 @@ function createNestedSpawnTables(db: BetterSqlite3Database) {
 
     CREATE INDEX IF NOT EXISTS idx_spawn_trees_status ON spawn_trees(status);
   `);
+
+  // Historical consumed_* counters contain grants, not measured usage. Keep them
+  // intact for conservative legacy admission and track new reservations/measurements separately.
+  addMissingColumns(db, 'spawn_trees', [
+    { name: 'reserved_tokens', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'reserved_wall_ms', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'measured_tokens', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'measured_wall_ms', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  ]);
+  addMissingColumns(db, 'sub_agent_spawns', [
+    { name: 'settled_at', definition: 'TEXT' },
+    { name: 'measured_tokens', definition: 'INTEGER' },
+    { name: 'measured_wall_ms', definition: 'INTEGER' },
+    { name: 'usage_source', definition: 'TEXT' },
+  ]);
 }
 
 // Added in telegram-swarm: extend agents with machine/telegram/okf fields

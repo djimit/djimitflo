@@ -148,29 +148,24 @@ describe('nested-spawn-service (P1 gates)', () => {
   });
 
   it('token budget: deeper spawns are gated once the tree budget is exhausted', () => {
-    // depth_budget=5 makes the depth gate loose; the token cap is the binding
-    // constraint. With tokenBudget=2 and a per-depth ceiling of 1 token per child,
-    // 2 children consume 2 tokens (grant=1 each), and the 3rd is gated by the
-    // cumulative token_budget_exceeded (remaining=0). The small ceiling keeps the
-    // per-child grant below the tree total so multiple children fit.
+    // The root holds one token and one child can reserve the remaining token.
     process.env.SPAWN_PER_DEPTH_TOKEN_CAP = '1';
     const h = setupHarness({ depthBudget: 5, tokenBudget: 2, maxConcurrent: 20 });
     try {
       const root = (h as any).root;
       const c1 = spawnChild(h, root.root_lease_id, { prompt: 't1' });
+      expect(c1.status).toBe('prepared');
       const c2 = spawnChild(h, root.root_lease_id, { prompt: 't2' });
-      expect([c1, c2].every((c) => c.status === 'prepared')).toBe(true);
-      const c3 = spawnChild(h, root.root_lease_id, { prompt: 't3' });
-      expect(c3.status).toBe('gated_out');
-      expect(c3.reject_reason).toBe('token_budget_exceeded');
+      expect(c2.status).toBe('gated_out');
+      expect(c2.reject_reason).toBe('token_budget_exceeded');
     } finally {
       cleanup(h);
     }
   });
 
   it('L2 ceiling: per-depth grant is a configurable ceiling, not total/(depth+1)', () => {
-    // total=200000 + default ceiling 50000 → 4 depth-1 children (50k each), then
-    // the cumulative total binds and the 5th is gated. The OLD formula
+    // total=200000 + root reserve 50000 → 3 depth-1 children (50k each), then
+    // the cumulative total binds and the 4th is gated. The OLD formula
     // total/(depth_budget+1)=200000/3=66666 would have granted ~66k each and
     // exhausted at depth_budget+1=3 children; the ceiling lets real swarm sizes
     // use the full tree budget across many small children.
@@ -178,15 +173,15 @@ describe('nested-spawn-service (P1 gates)', () => {
     try {
       const root = (h as any).root;
       const grants: number[] = [];
-      for (let i = 0; i < 4; i += 1) {
+      for (let i = 0; i < 3; i += 1) {
         const c = spawnChild(h, root.root_lease_id, { prompt: `ceiling-child-${i}` });
         expect(c.status).toBe('prepared');
         expect(c.token_budget_grant).toBe(50_000);
         grants.push(c.token_budget_grant);
       }
-      const fifth = spawnChild(h, root.root_lease_id, { prompt: 'ceiling-child-5' });
-      expect(fifth.status).toBe('gated_out');
-      expect(fifth.reject_reason).toBe('token_budget_exceeded');
+      const fourth = spawnChild(h, root.root_lease_id, { prompt: 'ceiling-child-4' });
+      expect(fourth.status).toBe('gated_out');
+      expect(fourth.reject_reason).toBe('token_budget_exceeded');
     } finally {
       cleanup(h);
     }

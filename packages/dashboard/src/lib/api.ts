@@ -1523,7 +1523,11 @@ export type MissionDetail = {
   runs: Array<{ id: string; loop_name: string; status: string; created_at: string; updated_at: string; completed_at: string | null; failed_gates: string[]; next_actions: string[];
     closure: { eval_run_id: string; score_delta: number | null; created_at: string } | null;
     attribution: { outcome: string; reason: string | null; created_at: string; judgment_id: string } | null }>;
-  leases: Array<{ id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null }>;
+  leases: Array<{ id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null;
+    capability_id: string | null; skill_version: string | null; skill_digest: string | null }>;
+  spawns: Array<{ id: string; spawn_tree_id: string; parent_lease_id: string | null; child_lease_id: string | null; requested_by_lease_id: string;
+    requested_role: string; runtime: string; status: string; token_budget_grant: number | null; wall_budget_ms: number | null;
+    measured_tokens: number | null; measured_wall_ms: number | null; usage_source: string | null; settled_at: string | null; reject_reason: string | null }> | null;
   tasks: Array<{ id: string; title: string; status: string; assigned_lease_id: string | null; capability_id: string | null }>;
   decisions: Array<{ id: string; task_id: string | null; decision_type: string; decision: string; reason: string; actor: string; blocked_reasons: string[]; created_at: string }>;
   blocker: { text: string; source: string } | null;
@@ -1643,8 +1647,8 @@ export type CommonsThreadKind = 'discussion' | 'record';
 export type CommonsRuntimeReadiness = {
   state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
   last_heartbeat_at: string | null; last_successful_reply_at: string | null;
-  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
-  runtime_failures_reported: false;
+  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' | 'runtime_reported'; failure_class?: 'runtime_timeout' | 'runtime_unavailable' | 'invalid_runtime_response' | 'runtime_error' } | null;
+  runtime_failures_reported: boolean;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };

@@ -65,6 +65,31 @@ describe('signed agent social runtime', () => {
     expect(db.prepare('SELECT status FROM agent_messages WHERE id = ?').get(question.id)).toEqual({ status: 'delivered' });
   });
 
+  it('accepts only a lease-bound fixed runtime failure class in shadow mode', async () => {
+    const previous = process.env.SOCIAL_RUNTIME_FAILURE_MODE;
+    process.env.SOCIAL_RUNTIME_FAILURE_MODE = 'shadow';
+    try {
+      const tokenB = mintSpawnToken(secret, 'agent-b', 'social-runtime', 60_000);
+      const received = await fetch(`${base}/agent-b/messages`, { headers: { 'X-Agent-Social-Token': tokenB } });
+      const [question] = (await received.json()).messages;
+      const url = `${base}/agent-b/messages/${question.id}/failure`;
+      const headers = { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB };
+      const badToken = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ delivery_lease_token: 'wrong', failure_class: 'runtime_timeout' }) });
+      expect(badToken.status).toBe(409);
+      const failureBody = { delivery_lease_token: question.deliveryLeaseToken, failure_class: 'runtime_timeout' };
+      const accepted = await fetch(url, { method: 'POST', headers, body: JSON.stringify(failureBody) });
+      expect(accepted.status).toBe(201);
+      expect(await accepted.json()).toEqual({ duplicate: false, recorded: true });
+      expect((await fetch(url, { method: 'POST', headers, body: JSON.stringify(failureBody) })).status).toBe(200);
+      const freeText = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ ...failureBody, error: 'secret=should-not-be-stored' }) });
+      expect(freeText.status).toBe(400);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM agent_runtime_failures WHERE message_id = ?').get(question.id)).toEqual({ n: 1 });
+    } finally {
+      if (previous === undefined) delete process.env.SOCIAL_RUNTIME_FAILURE_MODE;
+      else process.env.SOCIAL_RUNTIME_FAILURE_MODE = previous;
+    }
+  });
+
   it('does not let a social heartbeat reactivate an operator-paused agent', async () => {
     db.prepare("UPDATE agents SET status = 'paused' WHERE id = 'agent-b'").run();
     const tokenB = mintSpawnToken(secret, 'agent-b', 'social-runtime', 60_000);

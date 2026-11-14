@@ -230,9 +230,32 @@ describe('nested-spawn control loop (L1 real, L3 token-or-user auth)', () => {
         prompt: 'inspect only',
       }, { internal: true });
 
+      const reserved = h.spawns.getSpawnTree(h.root.spawn_tree_id)!;
+      expect(reserved).toMatchObject({ consumed_tokens: 0, reserved_tokens: 100_000, measured_tokens: 0 });
+      expect(h.loops.getWorkerLeasePublic(child.child_lease_id!).metadata.nested_budget_grant).toEqual({ tokens: 50_000, wall_ms: 120_000 });
+
       const result = await h.loops.executeWorker(h.loopRunId, { lease_id: child.child_lease_id! });
       expect(result.lease.role).toBe('planner');
       expect(result.lease.status).toBe('completed');
+      expect(h.spawns.getSpawnStatus(child.child_lease_id!).status).toBe('completed');
+      expect(h.spawns.getSpawnTree(h.root.spawn_tree_id)).toMatchObject({
+        consumed_tokens: 0,
+        reserved_tokens: 50_000,
+        measured_tokens: 3,
+      });
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('reserves the root share until the root runtime settles, then records reported use', async () => {
+    const h = setupHarness({ depthBudget: 1 });
+    try {
+      expect(h.spawns.getSpawnTree(h.root.spawn_tree_id)).toMatchObject({ reserved_tokens: 50_000, reserved_wall_ms: 120_000 });
+      const result = await h.loops.executeWorker(h.loopRunId, { lease_id: h.root.root_lease_id });
+      expect(result.lease.status).toBe('completed');
+      expect(h.spawns.getSpawnStatus(h.root.root_lease_id).status).toBe('completed');
+      expect(h.spawns.getSpawnTree(h.root.spawn_tree_id)).toMatchObject({ reserved_tokens: 0, measured_tokens: 3 });
     } finally {
       cleanup(h);
     }

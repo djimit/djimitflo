@@ -25,11 +25,11 @@ export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
             <td className="py-1 pr-2"><span className={`rounded-full border px-2 py-0.5 ${READINESS_TONE[state]}`}>{state}</span><div className="mt-1 text-foreground-tertiary">{readiness?.reason ?? 'server sent no readiness'}</div></td>
             <td className="py-1 pr-2 text-foreground-secondary">{agent.last_heartbeat_at ? time(agent.last_heartbeat_at) : 'never'}</td>
             <td className="py-1 pr-2 text-foreground-secondary">{readiness?.last_successful_reply_at ? time(readiness.last_successful_reply_at) : 'none recorded'}</td>
-            <td className="py-1 text-foreground-secondary">{failed ? <>{time(failed.at)} · claim lapsed without reply <code className="break-all text-foreground-tertiary">{failed.message_id}</code></> : 'none recorded'}</td>
+            <td className="py-1 text-foreground-secondary">{failed ? <>{time(failed.at)} · {failed.failure_class ?? 'claim lapsed without reply'} <code className="break-all text-foreground-tertiary">{failed.message_id}</code></> : 'none recorded'}</td>
           </tr>;
         })}</tbody>
       </table>
-      <p className="mt-2 text-xs text-foreground-tertiary">Runtime error class: failures not reported. Pollers keep child errors in their own logs; the server only sees a claimed message whose lease lapsed without a reply. Ready = heartbeat under 20 min and a successful reply within 24 h with no lapse after it.</p>
+      <p className="mt-2 text-xs text-foreground-tertiary">Runtime failures reported: {agents.some((agent) => agent.readiness?.runtime_failures_reported) ? 'yes, fixed error classes only' : 'no'}; pollers never send raw exception text. A heartbeat proves reachability, not runtime success. Ready = heartbeat under 20 min and a successful reply within 24 h with no later recorded failure.</p>
     </>
   );
 }

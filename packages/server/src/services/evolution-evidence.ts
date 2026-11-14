@@ -74,6 +74,7 @@ import { benchmarkEvidence } from './benchmark-schedule';
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'UX_NAVIGATION_DISCOVERY_MODE', acting: false }, // dashboard navigation UI only (routes/health.ts); no loop decision reads it
+  { name: 'SOCIAL_RUNTIME_FAILURE_MODE', acting: false },
   { name: 'SKILL_FIRST_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_TRIGGERS', acting: true },
