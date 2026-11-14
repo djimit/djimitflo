@@ -68,7 +68,7 @@ export function GovernanceScorecardPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Governance Scorecard</h1>
+          <h2 className="text-xl font-bold text-foreground">Governance Scorecard</h2>
           <p className="text-foreground-secondary mt-2">
             OpenMythos Governance Benchmark results per agent — latest score, category breakdown, and trend (0–5 scale).
           </p>
