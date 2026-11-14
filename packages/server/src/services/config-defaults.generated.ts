@@ -8,6 +8,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   APPROVAL_INHERIT_ENABLED: 'off',
   ARENA_GATE_ENABLED: 'off',
   ASG_MODE: 'off (`shadow`, `on`)',
+  AUDIT_SAMPLE_AUTO_MODE: 'off (`shadow`, `act`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
   BENCHMARK_SCHEDULE_MODE: 'off (`on`: hourly scheduler `benchmark_schedule`. Weekly (Monday 03:00Z) it writes one `benchmark_runs` row with the gy…',
   CAPABILITY_FACTORY_MODE: 'off (`on`)',
