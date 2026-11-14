@@ -54,6 +54,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   EVOLUTION_GYM_REMOTE_MAX_PER_DAY: '24',
   EXTRA_REPOS_ENABLED: 'off (`shadow`, `on`)',
   FAIL_BEFORE_PASS_AFTER_MODE: 'off (`shadow`: R2, operator-approved 20-10, protocol `docs/research/eco/R2-FBPA_PROTOCOL.md`. For a completed test-gap,…',
+  FINDING_FIX_AUTO_APPROVE: 'off (`on`)',
   FINDING_FIX_LANE: 'off',
   FINDING_FIX_MAX_PER_DAY: '2 (in flight: 1)',
   FITNESS_SHADOW_ENABLED: 'off',
