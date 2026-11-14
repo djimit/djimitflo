@@ -22,8 +22,4 @@ export const SHELL_RESPONSES: Record<string, unknown> = {
   'GET /api/agents': { agents: [] },
 };
 
-// pages that load nothing until the operator presses a button
-const NO_MOUNT_DATA: Record<string, PageFixture> = Object.fromEntries(['/agi-reasoning', '/predictive-analytics', '/self-healing', '/pipeline-builder']
-  .map((path) => [path, { primary: null, responses: {}, shows: null }]));
-
-export const PAGE_FIXTURES: Record<string, PageFixture> = { ...A, ...B, ...C, ...NO_MOUNT_DATA };
+export const PAGE_FIXTURES: Record<string, PageFixture> = { ...A, ...B, ...C };

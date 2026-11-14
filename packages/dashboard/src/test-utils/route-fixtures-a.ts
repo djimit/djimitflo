@@ -35,14 +35,6 @@ export const FIXTURES: Record<string, PageFixture> = {
     },
     shows: 'fixture-guardrail-alpha',
   },
-  '/dashboard': {
-    primary: 'GET /api/tasks',
-    responses: {
-      'GET /api/tasks': { tasks: [TASK], total: 1 },
-      'GET /api/agents': { agents: [AGENT] },
-    },
-    shows: 'Task: fixture-alpha-task',
-  },
   '/tasks': {
     primary: 'GET /api/tasks',
     responses: {
@@ -58,37 +50,6 @@ export const FIXTURES: Record<string, PageFixture> = {
       'GET /api/health/scorecards': { runtimes: [], agents: [] },
     },
     shows: 'fixture-alpha-agent',
-  },
-  '/catalog': {
-    primary: 'GET /api/catalog/agents',
-    responses: {
-      'GET /api/catalog/counts': { imported: 1, evaluated: 1, active: 0, duplicate: 0, rejected: 0 },
-      'GET /api/catalog/agents': { agents: [{ id: 'fixture-cat-1', name: 'fixture-catalog-agent', division: 'engineering', status: 'imported', evaluation: null, activation: null }] },
-    },
-    shows: 'fixture-catalog-agent',
-  },
-  '/swarm': {
-    primary: 'GET /api/swarms/status',
-    responses: {
-      'GET /api/swarms/status': {
-        registry_agent_count: 1, live_agent_count: 1, worker_lease_count: 0, active_execution_count: 0,
-        task_count: { open_work_items: 0, open_loop_runs: 0, open_tasks: 0, total: 0 },
-        backlog_count: {}, stale_agents: [],
-        resource_snapshot: { cpu_threads: 8, total_memory_bytes: 16e9, free_memory_bytes: 8e9, load_average: [0.1, 0.1, 0.1], uptime_seconds: 3600 },
-        fleet_pools: [{
-          runtime: 'fixture-runtime-pool-a', available: true, prepared_leases: 0, queued_leases: 0, running_leases: 0,
-          completed_24h: 0, failed_24h: 0, average_runtime_ms: null, failure_rate_24h: 0, tokens_used_24h: 0,
-          tokens_per_successful_worker: null, tokens_per_diff_line: null, recommended_concurrency: 2, capacity_used_percent: 0,
-          oldest_queued_age_ms: null, next_recommended_action: 'wait', bottleneck_reason: null, blocked_capacity_reasons: [], queue_depth_by_risk: {},
-        }],
-        fleet_topology: [],
-      },
-      'GET /api/swarms/intelligence/capabilities': { capabilities: [] },
-      'GET /api/swarms/usage-window': { window_days: 7, events: 0, known_events: 0, total_tokens: null, coverage: null, status: 'UNKNOWN' },
-      'GET /api/discussions': { discussions: [] },
-      'GET /api/learning': { learnings: [] },
-    },
-    shows: 'fixture-runtime-pool-a',
   },
   '/policies': {
     primary: 'GET /api/policies',

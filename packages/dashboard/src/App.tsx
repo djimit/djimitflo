@@ -11,18 +11,9 @@ import { api } from './lib/api';
 // UX-28: every page is a lazy chunk; a stale chunk after a deploy is handled by lib/chunk-reload (main.tsx + GlobalErrorBoundary).
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })));
-const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then((module) => ({ default: module.TasksPage })));
 const AgentsPage = lazy(() => import('./pages/AgentsPage').then((module) => ({ default: module.AgentsPage })));
-const AgentCatalogPage = lazy(() => import('./pages/AgentCatalogPage').then((module) => ({ default: module.AgentCatalogPage })));
-const AgiReasoningPage = lazy(() => import('./pages/AgiReasoningPage').then((module) => ({ default: module.AgiReasoningPage })));
-const ConsensusDebatePage = lazy(() => import('./pages/ConsensusDebatePage').then((module) => ({ default: module.ConsensusDebatePage })));
-const PredictiveAnalyticsPage = lazy(() => import('./pages/PredictiveAnalyticsPage').then((module) => ({ default: module.PredictiveAnalyticsPage })));
-const SelfHealingPage = lazy(() => import('./pages/SelfHealingPage').then((module) => ({ default: module.SelfHealingPage })));
-const CognitiveRuntimePage = lazy(() => import('./pages/CognitiveRuntimePage').then((module) => ({ default: module.CognitiveRuntimePage })));
-const SelfDrivingDashboard = lazy(() => import('./pages/SelfDrivingDashboard').then((module) => ({ default: module.SelfDrivingDashboard })));
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })));
-const SwarmOverviewPage = lazy(() => import('./pages/SwarmOverviewPage').then((module) => ({ default: module.SwarmOverviewPage })));
 const PolicyCenterPage = lazy(() => import('./pages/PolicyCenterPage').then((module) => ({ default: module.PolicyCenterPage })));
 const MCPPermissionsPage = lazy(() => import('./pages/MCPPermissionsPage').then((module) => ({ default: module.MCPPermissionsPage })));
 const ObservabilityPage = lazy(() => import('./pages/ObservabilityPage').then((module) => ({ default: module.ObservabilityPage })));
@@ -33,26 +24,19 @@ const KnowledgePage = lazy(() => import('./pages/KnowledgePage').then((module) =
 const OperatorCockpitPage = lazy(() => import('./pages/OperatorCockpitPage').then((module) => ({ default: module.OperatorCockpitPage })));
 const DecisionsInboxPage = lazy(() => import('./pages/DecisionsInboxPage').then((module) => ({ default: module.DecisionsInboxPage })));
 const ConfigurationPage = lazy(() => import('./pages/ConfigurationPage').then((module) => ({ default: module.ConfigurationPage })));
-const FleetHostsPage = lazy(() => import('./pages/FleetHostsPage').then((module) => ({ default: module.FleetHostsPage })));
 const ImprovementFunnelPage = lazy(() => import('./pages/ImprovementFunnelPage').then((module) => ({ default: module.ImprovementFunnelPage })));
 const AuthorityTracePage = lazy(() => import('./pages/AuthorityTracePage').then((module) => ({ default: module.AuthorityTracePage })));
 const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage').then((module) => ({ default: module.RepositoriesPage })));
 const RepositoryDetailPage = lazy(() => import('./pages/RepositoryDetailPage').then((module) => ({ default: module.RepositoryDetailPage })));
+const FleetHubPage = lazy(() => import('./pages/FleetHubPage').then((module) => ({ default: module.FleetHubPage })));
+const AgentCommonsHubPage = lazy(() => import('./pages/AgentCommonsHubPage').then((module) => ({ default: module.AgentCommonsHubPage })));
 const GoalsLoopsPage = lazy(() => import('./pages/GoalsLoopsPage').then((module) => ({ default: module.GoalsLoopsPage })));
-const FleetCockpitPage = lazy(() => import('./pages/FleetCockpitPage').then((module) => ({ default: module.FleetCockpitPage })));
-const SwarmResourcesPage = lazy(() => import('./pages/SwarmResourcesPage').then((module) => ({ default: module.SwarmResourcesPage })));
 const SwarmMissionControlPage = lazy(() => import('./pages/SwarmMissionControlPage').then((module) => ({ default: module.SwarmMissionControlPage })));
-const AgentCommonsPage = lazy(() => import('./pages/AgentCommonsPage').then((module) => ({ default: module.AgentCommonsPage })));
 const FrontierExpertsPage = lazy(() => import('./pages/FrontierExpertsPage').then((module) => ({ default: module.FrontierExpertsPage })));
-const InteractionBoardPage = lazy(() => import('./pages/InteractionBoardPage').then((module) => ({ default: module.InteractionBoardPage })));
 const ProofRunDetailPage = lazy(() => import('./pages/ProofRunDetailPage').then((module) => ({ default: module.ProofRunDetailPage })));
 const MissionDetailPage = lazy(() => import('./pages/MissionDetailPage').then((module) => ({ default: module.MissionDetailPage })));
 const UsagePage = lazy(() => import('./pages/UsagePage').then((module) => ({ default: module.UsagePage })));
-const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({ default: module.EconomyPage })));
-const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
-const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
 const GovernanceHubPage = lazy(() => import('./pages/GovernanceHubPage').then((module) => ({ default: module.GovernanceHubPage })));
-const ExplainerFleetPage = lazy(() => import('./pages/explore/ExplainerFleetPage').then((module) => ({ default: module.ExplainerFleetPage })));
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
@@ -101,13 +85,10 @@ export function App() {
           </ProtectedRoute>
         }>
           <Route index element={<OperatorCockpitPage />} />
-          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="agents/:agentId" element={<AgentsPage />} />
-          <Route path="catalog" element={<AgentCatalogPage />} />
-          <Route path="swarm" element={<SwarmOverviewPage />} />
           <Route path="approvals" element={<Navigate to="/decisions#approvals" replace />} />
           <Route path="policies" element={<PolicyCenterPage />} />
           <Route path="governance" element={<GovernanceHubPage />} />
@@ -120,34 +101,38 @@ export function App() {
           <Route path="cockpit" element={<Navigate to="/" replace />} />
           <Route path="decisions" element={<DecisionsInboxPage />} />
           <Route path="configuration" element={<ConfigurationPage />} />
-          <Route path="fleet" element={<FleetHostsPage />} />
+          <Route path="fleet" element={<FleetHubPage />} />
           <Route path="improvement-funnel" element={<ImprovementFunnelPage />} />
           <Route path="authority" element={<AuthorityTracePage />} />
           <Route path="usage" element={<UsagePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
           <Route path="goals-loops" element={<GoalsLoopsPage />} />
-          <Route path="fleet-cockpit" element={<FleetCockpitPage />} />
-          <Route path="swarm-resources" element={<SwarmResourcesPage />} />
           <Route path="swarm-mission-control" element={<SwarmMissionControlPage />} />
-          <Route path="interaction-board" element={<InteractionBoardPage />} />
-          <Route path="agent-commons" element={<AgentCommonsPage />} />
+          <Route path="agent-commons" element={<AgentCommonsHubPage />} />
           <Route path="evolution" element={<EvolutionPage />} />
           <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="frontier-experts" element={<FrontierExpertsPage />} />
           <Route path="frontier-experts/:expertId" element={<FrontierExpertsPage />} />
           <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
           <Route path="swarm-mission-control/missions/:missionId" element={<MissionDetailPage />} />
-          <Route path="economy" element={<EconomyPage />} />
-          <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
-          <Route path="federation" element={<FederationPage />} />
-          <Route path="agi-reasoning" element={<AgiReasoningPage />} />
-          <Route path="consensus-debates" element={<ConsensusDebatePage />} />
-          <Route path="predictive-analytics" element={<PredictiveAnalyticsPage />} />
-          <Route path="self-healing" element={<SelfHealingPage />} />
-          <Route path="cognitive" element={<CognitiveRuntimePage />} />
-          <Route path="self-driving" element={<SelfDrivingDashboard />} />
-          <Route path="explainers" element={<ExplainerFleetPage />} />
+          {/* Nav cut (UX-30, truth audit 2026-11-12): retired pages and pages merged into another page keep their URL as a redirect */}
+          <Route path="dashboard" element={<Navigate to="/" replace />} />
+          <Route path="swarm" element={<Navigate to="/agents" replace />} />
+          <Route path="economy" element={<Navigate to="/usage" replace />} />
+          <Route path="explainers" element={<Navigate to="/repositories" replace />} />
+          <Route path="cognitive" element={<Navigate to="/evolution" replace />} />
+          <Route path="agi-reasoning" element={<Navigate to="/" replace />} />
+          <Route path="predictive-analytics" element={<Navigate to="/improvement-funnel" replace />} />
+          <Route path="consensus-debates" element={<Navigate to="/decisions" replace />} />
+          <Route path="catalog" element={<Navigate to="/agents" replace />} />
+          <Route path="federation" element={<Navigate to="/fleet" replace />} />
+          <Route path="pipeline-builder" element={<Navigate to="/goals-loops" replace />} />
+          <Route path="self-healing" element={<Navigate to="/observability#health-checks" replace />} />
+          <Route path="interaction-board" element={<Navigate to="/agent-commons?tab=interactions" replace />} />
+          <Route path="fleet-cockpit" element={<Navigate to="/fleet?tab=workers" replace />} />
+          <Route path="self-driving" element={<Navigate to="/configuration#runtime-tuned" replace />} />
+          <Route path="swarm-resources" element={<Navigate to="/governance?tab=swarm" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

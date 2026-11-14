@@ -1,8 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AgiReasoningPage } from './AgiReasoningPage';
-import { PredictiveAnalyticsPage } from './PredictiveAnalyticsPage';
-import { SelfHealingPage } from './SelfHealingPage';
+import { SelfHealingSection } from './SelfHealingSection';
 import { api } from '../lib/api';
 
 beforeEach(() => localStorage.setItem('djimitflo_auth_session', 'test-session'));
@@ -10,9 +8,7 @@ afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.unst
 
 describe('authenticated intelligence actions', () => {
   it.each([
-    { Page: AgiReasoningPage, button: 'Run Reasoning', endpoint: '/api/agi/reason', method: 'POST', response: { observations: { observations: ['Observed fixture'], anomalies: [], opportunities: [] }, hypotheses: [], strategies: [] }, visible: 'Observed fixture' },
-    { Page: PredictiveAnalyticsPage, button: 'Run Prediction', endpoint: '/api/intelligence/predict', method: 'POST', response: { successProbability: 0.8, expectedDurationMs: 60000, expectedCostDollars: 0.1, riskFactors: [], recommendations: [] }, visible: '80%' },
-    { Page: SelfHealingPage, button: 'Run Health Check', endpoint: '/api/intelligence/health', method: undefined, response: { checks: [{ name: 'Fixture health', status: 'healthy', message: 'Observed fixture' }] }, visible: 'Fixture health' },
+    { Page: SelfHealingSection, button: 'Run Health Check', endpoint: '/api/intelligence/health', method: undefined, response: { checks: [{ name: 'Fixture health', status: 'healthy', message: 'Observed fixture' }] }, visible: 'Fixture health' },
   ])('$button uses the authenticated client and renders the response', async ({ Page, button, endpoint, method, response, visible }) => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => response });
     vi.stubGlobal('fetch', fetch);
@@ -23,7 +19,7 @@ describe('authenticated intelligence actions', () => {
     expect(fetch.mock.calls[0][1].method).toBe(method);
   });
 
-  it.each([PredictiveAnalyticsPage, SelfHealingPage])('shows denied requests instead of silently presenting no result', async Page => {
+  it.each([SelfHealingSection])('shows denied requests instead of silently presenting no result', async Page => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }));
     render(<Page />);
     fireEvent.click(screen.getByRole('button'));

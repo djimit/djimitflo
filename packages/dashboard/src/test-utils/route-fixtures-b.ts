@@ -3,21 +3,6 @@ import type { PageFixture } from './route-fixtures';
 const AT = '2026-01-15T10:00:00.000Z';
 
 const RESOURCES = { cpu_threads: 8, total_memory_bytes: 8589934592, free_memory_bytes: 4294967296, load_average: [0.5, 0.4, 0.3], uptime_seconds: 3600 };
-const SWARM_STATUS = {
-  registry_agent_count: 0, live_agent_count: 0, worker_lease_count: 0, active_execution_count: 0,
-  task_count: { open_work_items: 0, open_loop_runs: 0, open_tasks: 0, total: 0 },
-  backlog_count: {},
-  stale_agents: [{ id: 'agent-fixture-1', name: 'fixture-stale-agent-alpha', status: 'idle', last_active_at: null }],
-  resource_snapshot: RESOURCES,
-  fleet_pools: [{
-    runtime: 'fixture-runtime-alpha', available: true, prepared_leases: 0, queued_leases: 0, running_leases: 0, completed_24h: 0, failed_24h: 0,
-    average_runtime_ms: null, failure_rate_24h: 0, tokens_used_24h: 0, tokens_per_successful_worker: null, tokens_per_diff_line: null,
-    recommended_concurrency: 1, capacity_used_percent: 0, oldest_queued_age_ms: null, next_recommended_action: 'wait', bottleneck_reason: null,
-    blocked_capacity_reasons: [], queue_depth_by_risk: {},
-  }],
-  fleet_topology: [],
-  reality_check: { agent_count_is_registry_only: false, active_execution_requires_runtime_evidence: true },
-};
 const POOL_PLAN = { decisions: [], eligible_count: 0, blocked_count: 0, running_count: 0, max_workers: 1, capacity_snapshot: RESOURCES };
 const LOOP_RUN = {
   id: 'run-fixture-1', goal_id: null, loop_name: 'fixture-loop-alpha', mode: 'closed', status: 'completed', repository_path: null, state_file: null,
@@ -145,31 +130,6 @@ export const FIXTURES: Record<string, PageFixture> = {
       'GET /api/loops/runs/run-fixture-1/review-bundle': { run: LOOP_RUN, leases: [], events: [], state_content: null },
     },
     shows: 'fixture-loop-alpha',
-  },
-  '/fleet-cockpit': {
-    primary: 'GET /api/swarms/status',
-    responses: {
-      'GET /api/swarms/status': SWARM_STATUS,
-      'POST /api/swarms/worker-pool/plan': POOL_PLAN,
-      'GET /api/loops/runtime-contracts': { runtimes: {} },
-    },
-    shows: 'fixture-runtime-alpha',
-  },
-  '/swarm-resources': {
-    primary: 'GET /api/swarms/status',
-    responses: {
-      'GET /api/swarms/status': SWARM_STATUS,
-      'GET /api/swarms/rsi/safety': { enabled: false, mutationsToday: 0, mutationsLimit: 0, lastMutation: null, frozenComponents: [], auditLogEntries: 0 },
-      'GET /api/work-items': { work_items: [] },
-      'GET /api/swarms/memory/candidates': { candidates: [] },
-      'GET /api/swarms/specialists/catalog': { specialists: [] },
-      'GET /api/swarms/specialist-panels': { panels: [] },
-      'GET /api/swarms/assurance/summary': {
-        trace_count: 0, trace_span_count: 0, checkpoint_count: 0, eval_run_count: 0, active_capability_count: 0, pending_capability_count: 0,
-        reflection_review_required_count: 0, latest_evals: [], guardrails: { external_writes_from_evals: 0, replay_copies_worker_leases: false },
-      },
-    },
-    shows: 'fixture-stale-agent-alpha',
   },
   '/swarm-mission-control': {
     primary: 'GET /api/swarms/intelligence/mission-control',

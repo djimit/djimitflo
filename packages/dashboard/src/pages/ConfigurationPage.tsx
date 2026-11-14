@@ -3,6 +3,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { api, type RuntimeConfigEntry as Entry } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
+import { RuntimeTunedSection } from './RuntimeTunedSection';
 
 // DF-08: task areas in the order the server assigns them (runtime-config-view.ts CONFIG_AREAS)
 const AREAS = ['models/routing', 'budgets/caps', 'schedulers', 'experiments', 'integrations', 'security/auth', 'knowledge', 'other'];
@@ -46,7 +47,7 @@ export function ConfigurationPage() {
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-center gap-3">
         <SlidersHorizontal className="w-7 h-7" />
-        <h1 className="text-2xl font-bold">Runtime configuration</h1>
+        <h1 className="text-2xl font-bold">Configuration</h1>
       </div>
       <p className="text-sm text-foreground-secondary">
         What the running server is configured with (read-only). Secrets are masked and never shown. Changes still go through runtime.env with a backup and a restart.
@@ -130,6 +131,7 @@ export function ConfigurationPage() {
           ))}
         </>
       )}
+      <RuntimeTunedSection />
     </div>
   );
 }

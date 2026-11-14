@@ -10,7 +10,7 @@ const tabs = [
   { id: 'trace', label: 'Trace', element: <p>trace body</p> },
   { id: 'chain', label: 'Chain', element: <p>chain body</p> },
 ];
-const renderTabs = () => render(<MemoryRouter initialEntries={['/audit']}><TabbedPage tabs={tabs} /></MemoryRouter>);
+const renderTabs = () => render(<MemoryRouter initialEntries={['/audit']}><TabbedPage title="Fixture" tabs={tabs} /></MemoryRouter>);
 
 it('UX-25b: tabs are wired to their panel (aria-controls ↔ id, aria-labelledby) with a roving tabindex', () => {
   renderTabs();

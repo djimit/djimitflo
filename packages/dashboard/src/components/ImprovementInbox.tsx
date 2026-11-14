@@ -96,7 +96,7 @@ export function ImprovementInbox() {
                   <span>{proposal.source}</span>
                   <span>{proposal.evidenceRefs.length} evidence ref(s)</span>
                   <span>panel: {panel?.status ?? 'loading'}</span>
-                  {proposal.panelId && <Link to={`/swarm-resources#panel-${proposal.panelId}`} className="text-accent hover:underline">Review panel</Link>}
+                  {proposal.panelId && <Link to={`/governance?tab=swarm#panel-${proposal.panelId}`} className="text-accent hover:underline">Review panel</Link>}
                   {proposal.status !== 'proposed' ? (
                     <span className="ml-auto italic">
                       {proposal.refinedAt ? 'Refinement in progress' : 'Awaiting refinement'}

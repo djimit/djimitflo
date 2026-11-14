@@ -6,8 +6,9 @@ export interface TabSpec { id: string; label: string; element: ReactNode }
 /**
  * Tabs backed by ?tab=, so a merged page keeps deep links (/audit?tab=logs) and the browser back button.
  * UX-25b: WAI-ARIA tabs pattern — tab ↔ tabpanel wiring, roving tabindex, Left/Right/Home/End (automatic activation).
+ * Nav cut: `title` is the page's one h1 (= its nav label) on every tab; the tab components' own titles are h2.
  */
-export function TabbedPage({ tabs, param = 'tab' }: { tabs: TabSpec[]; param?: string }) {
+export function TabbedPage({ tabs, param = 'tab', title }: { tabs: TabSpec[]; param?: string; title: string }) {
   const [params, setParams] = useSearchParams();
   const active = tabs.find((tab) => tab.id === params.get(param)) ?? tabs[0];
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -28,7 +29,8 @@ export function TabbedPage({ tabs, param = 'tab' }: { tabs: TabSpec[]; param?: s
   };
   return (
     <div>
-      <div role="tablist" className="flex gap-2 border-b border-border px-8 pt-4">
+      <h1 className="px-8 pt-6 text-3xl font-bold text-foreground">{title}</h1>
+      <div role="tablist" aria-label={title} className="flex gap-2 border-b border-border px-8 pt-4">
         {tabs.map((tab) => (
           <button
             key={tab.id}

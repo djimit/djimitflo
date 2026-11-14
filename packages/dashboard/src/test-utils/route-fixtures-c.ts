@@ -1,6 +1,5 @@
 import type { PageFixture } from './route-fixtures';
 import type {
-  AgentInteractionRecord,
   ExpertSummary,
   KnowledgeOverview,
   SkillCardsView,
@@ -8,13 +7,6 @@ import type {
 } from '../lib/api';
 
 const AT = '2026-10-01T12:00:00Z';
-
-const INTERACTION: AgentInteractionRecord = {
-  id: 'ix-fixture-1', timestamp: AT, correlation_id: 'corr-fixture-1', causation_id: null,
-  actor: { type: 'agent', id: 'fixture-alpha-agent', role: 'maker', runtime: null, model: null },
-  action: 'review.requested', target: { type: 'agent', id: 'fixture-beta-agent' }, capability_id: null, decision: null,
-  status: 'recorded', evidence_refs: [], effect_scope: 'simulated', source: 'fixture', summary: 'Fixture interaction summary',
-};
 
 const COMMONS: SocialCommons = {
   agents: [{
@@ -59,14 +51,7 @@ const EXPERT: ExpertSummary = {
   version: 1, updated_at: AT, capabilities: ['fixture-capability'], provenance_json: '{}', kind: 'area',
 };
 
-const COGNITIVE_STATS = { totalEpisodes: 4217, totalPatterns: 12, totalStrategies: 3, overallSuccessRate: 0.75, bestGoalType: null };
-
 export const FIXTURES: Record<string, PageFixture> = {
-  '/interaction-board': {
-    primary: 'GET /api/swarms/intelligence/interactions',
-    responses: { 'GET /api/swarms/intelligence/interactions': { interactions: [INTERACTION] } },
-    shows: 'fixture-alpha-agent',
-  },
   '/agent-commons': {
     primary: 'GET /api/swarm-v2/social/commons',
     responses: { 'GET /api/swarm-v2/social/commons': COMMONS },
@@ -86,71 +71,5 @@ export const FIXTURES: Record<string, PageFixture> = {
     primary: 'GET /api/swarms/expert/experts',
     responses: { 'GET /api/swarms/expert/experts': { experts: [EXPERT] }, 'GET /api/swarms/expert/history': [] },
     shows: 'Fixture Area Alpha',
-  },
-  '/economy': {
-    primary: 'GET /api/swarms/economy',
-    responses: {
-      'GET /api/swarms/economy': {
-        capabilities: [{
-          capability_id: 'fixcap-econ1', capability_kind: 'skill', status: 'validated', n_runs: 7, n_completed: 6, success_rate: 0.86,
-          p50_tokens: 1000, p95_tokens: 2000, p50_dollars: 0.0123, p95_dollars: 0.0456, verified_artifacts_per_dollar: 12.5,
-        }],
-        recent_runs: [],
-        summary: { total_capabilities: 1, total_verified_artifacts: 4217, total_completed_unverified: 2, total_dollars_spent: 1.5 },
-      },
-    },
-    shows: 'fixcap-econ1',
-  },
-  '/federation': {
-    primary: 'GET /api/federation/peers',
-    responses: {
-      'GET /api/federation/peers': { peers: [{ id: 'peer-fixture-1', url: 'http://host-a.example.test', trust_level: 'medium', registered_at: AT, last_seen: AT, metadata: {} }] },
-      'GET /api/federation/capabilities': { capabilities: [] },
-    },
-    shows: 'http://host-a.example.test',
-  },
-  '/consensus-debates': {
-    primary: 'GET /api/council/sessions',
-    responses: {
-      'GET /api/council/sessions': [{
-        id: 'session-fixture-1', task_description: 'Fixture debate alpha', status: 'completed', final_output: null,
-        final_confidence: null, cost_dollars: 0, token_usage: 0,
-      }],
-    },
-    shows: 'Fixture debate alpha',
-  },
-  '/cognitive': {
-    primary: 'GET /api/cognitive/stats',
-    responses: { 'GET /api/cognitive/stats': COGNITIVE_STATS, 'GET /api/cognitive/meta-learning': { records: [] } },
-    shows: '4217',
-  },
-  '/self-driving': {
-    primary: 'GET /api/cognitive/stats',
-    responses: {
-      'GET /api/cognitive/stats': COGNITIVE_STATS,
-      'GET /api/memory/stats': { total: 10, active: 8, candidates: 1, archived: 1, decayed: 0, avgRelevance: 0.5, totalRelations: 3 },
-      'GET /api/meta/stats': { enabled: false },
-      'GET /api/compliance/status': { totalAuditEntries: 20, chainIntegrity: true, lastReportScore: 0.9, lastReportStatus: 'pass' },
-    },
-    shows: '4217',
-  },
-  '/explainers': {
-    primary: 'GET /api/explainer/fleet/overview',
-    responses: {
-      'GET /api/explainer/fleet/status': {
-        total_repositories: 1, active_repositories: 1, pending_jobs: 0, running_jobs: 0, completed_today: 0, failed_today: 0, paused: false,
-        budget: { llm_calls_used: 0, llm_calls_remaining: 10, github_api_calls_used: 0, github_api_calls_remaining: 10, git_ops_used: 0, git_ops_remaining: 10 },
-      },
-      'GET /api/explainer/fleet/overview': {
-        repositories: [{
-          id: 'repo-fixture-1', full_name: 'djimit/djimitflo', priority_tier: 1, language: 'TypeScript', license: null, stargazers_count: 0,
-          open_issues_count: 0, last_commit_at: null, last_commit_sha: null, is_active: 1, last_generated: null,
-        }],
-      },
-      'GET /api/explainer/fleet/health-drift': { drift_count: 0, drift: [] },
-      'GET /api/explainer/review-queue': { count: 0, items: [] },
-      'GET /api/explainer/fleet/calibration-stats': { ratings: 0 },
-    },
-    shows: 'djimit/djimitflo',
   },
 };
