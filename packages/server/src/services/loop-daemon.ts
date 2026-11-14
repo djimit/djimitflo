@@ -1,6 +1,6 @@
 import fs from 'fs';
 import type { Database } from 'better-sqlite3';
-import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
+import { FINDING_FIX_AUTO_APPROVE_MAX_LINES, FINDING_FIX_AUTO_APPROVER, findingFixAutoApproveScope, recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
 import { mutationCheckEnv } from './test-gap-source-service';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { FINDING_FIX_DIFF_MAX, findingFixCheckEnv } from './finding-fix-source';
@@ -418,6 +418,22 @@ export class LoopDaemon {
       this.loops.decideWorkerApproval(approvalId, true, oracleLane ? 'autonomy:oracle-lane-v1' : 'autonomy:test-gap-rule-v1', why)
         .catch((err: unknown) => console.warn(`[loop-daemon] auto-approve ${approvalId} failed:`, err instanceof Error ? err.message : String(err)));
     }
+    // FINDING_FIX_AUTO_APPROVE=on (operator 11-14): a finding-fix maker on its finding file, the same mechanism and scope gate,
+    // plus this lane's diff cap; null with the flag off, for every other lane, and once the lane revoked itself.
+    const findingFix = !scope && role === 'maker' ? findingFixAutoApproveScope(this.db, goal.id) : null;
+    if (findingFix) {
+      const why = `finding-fix lane, scope ${findingFix}, <= ${FINDING_FIX_AUTO_APPROVE_MAX_LINES} diff lines${shadow ? `; rule-v1: ${shadow.reason}` : ''}`;
+      this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?, '$.auto_approved_max_lines', ?) WHERE id = ?")
+        .run(findingFix, FINDING_FIX_AUTO_APPROVE_MAX_LINES, lease.id);
+      try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved ${approvalId} (finding-fix lane, scope ${findingFix})`, { goal_id: goal.id, approval_id: approvalId, reason: why }); } catch { /* best-effort */ }
+      try {
+        this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, latency_ms, model, created_at)
+          VALUES (?, 'finding_fix_auto_approve', 'approval', ?, '', 'act', 'approve', ?, ?, 0, 'rule-v1', ?)`)
+          .run(randomUUID(), approvalId, why, JSON.stringify({ goal_id: goal.id, run_id: runId, lease_id: lease.id, scope: findingFix, max_lines: FINDING_FIX_AUTO_APPROVE_MAX_LINES, approver: FINDING_FIX_AUTO_APPROVER }), new Date().toISOString());
+      } catch { /* evidence; the approval's own audit row is written by the engine */ }
+      this.loops.decideWorkerApproval(approvalId, true, FINDING_FIX_AUTO_APPROVER, why)
+        .catch((err: unknown) => console.warn(`[loop-daemon] auto-approve ${approvalId} failed:`, err instanceof Error ? err.message : String(err)));
+    }
     console.warn(`[loop-daemon] goal ${goal.id} waits for approval ${approvalId} (run ${runId})`);
     swarmEventBus.emit('convergence', { daemon: 'goal_awaiting_approval', goal_id: goal.id, run_id: runId, approval_id: approvalId });
     return true;
@@ -426,7 +442,8 @@ export class LoopDaemon {
   /** N6: approve an evolve sibling when the run's first maker was auto-approved (J5), with the same scope. */
   private async autoApproveSibling(runId: string, primaryLeaseId: string, siblingLeaseId: string): Promise<boolean> {
     const lease = (id: string) => this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata: string } | undefined;
-    const scope = (JSON.parse(lease(primaryLeaseId)?.metadata || '{}') as { auto_approved_scope?: string }).auto_approved_scope;
+    const primary = JSON.parse(lease(primaryLeaseId)?.metadata || '{}') as { auto_approved_scope?: string; auto_approved_max_lines?: number };
+    const scope = primary.auto_approved_max_lines === undefined ? primary.auto_approved_scope : undefined; // finding-fix lane: siblings stay with the human
     const meta = JSON.parse(lease(siblingLeaseId)?.metadata || '{}') as { approval_id?: string; execution_task_id?: string };
     const approvalId = meta.approval_id ?? (meta.execution_task_id
       ? (this.db.prepare("SELECT id FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(meta.execution_task_id) as { id: string } | undefined)?.id
