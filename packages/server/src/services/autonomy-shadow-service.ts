@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { AuditEventType, RiskLevel } from '@djimitflo/shared';
+import { AuditService } from './audit-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { riskAtomic, riskAtomicState } from './judgments/risk-atomic';
 
@@ -68,4 +70,69 @@ export function testGapAutoApproveScope(db: Database, goalId: string): string | 
     return proven >= 1 ? imp.artifact : null;
   }
   return null;
+}
+
+/**
+ * FINDING_FIX_AUTO_APPROVE = off (default: nothing past the flag is read) | on (operator 2026-11-14). The finding-fix lane
+ * (finding-fix-source.ts) was "never auto-approved": testGapAutoApproveScope above only scopes a single new test file, so every
+ * finding-fix maker waited for the human. With on, a finding-fix lane maker is approved by FINDING_FIX_AUTO_APPROVER through
+ * the same daemon path and the same `auto_approved_scope` gate as the oracle lanes, when the proposal carries its
+ * `finding-fix:` and `finding-file:` refs and its grounding artifactPath is that file — a non-test source file in
+ * packages/server/src, so any other change (a second file, a manifest / lockfile / config / .github, a removed test) fails the
+ * scope gate. `auto_approved_max_lines` adds this lane's cap (diff_lines <= 40) to that gate. Checker, security checker, the
+ * finding-fix gate, the panel and the human merge are unchanged.
+ * Self-revocation: when a run whose maker FINDING_FIX_AUTO_APPROVER approved regressed (proposal regressed, merge survival
+ * settled regressed, a failed/removed settlement, or a revoked auto-merge window = revert / red main), one
+ * `finding_fix_auto_approve_revoked` judgment is recorded (audited) and from then on the lane is never auto-approved again;
+ * that row is the revoked state. There is no re-enable path yet (the operator turns the flag off; re-enabling is a later step).
+ */
+export const FINDING_FIX_AUTO_APPROVER = 'autonomy:finding-fix-v1';
+export const FINDING_FIX_AUTO_APPROVE_MAX_LINES = 40;
+export const FINDING_FIX_AUTO_APPROVE_REVOKED = 'finding_fix_auto_approve_revoked';
+export const findingFixAutoApproveOn = (env: NodeJS.ProcessEnv = process.env): boolean => env.FINDING_FIX_AUTO_APPROVE === 'on';
+const FINDING_FIX_SOURCE = /^packages\/server\/src\/[\w./-]+\.(?:ts|js|mjs|cjs)$/;
+const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]s$/;
+const isFindingFixSource = (file: string): boolean => FINDING_FIX_SOURCE.test(file) && !TEST_FILE.test(file) && !file.split('/').includes('..');
+
+/** The finding file a finding-fix maker may change when FINDING_FIX_AUTO_APPROVE=on and the lane is not revoked, else null. */
+export function findingFixAutoApproveScope(db: Database, goalId: string): string | null {
+  if (!findingFixAutoApproveOn()) return null;
+  const imp = db.prepare(`SELECT s.evidence_refs_json AS refs, json_extract(s.grounding_json, '$.artifactPath') AS artifact
+    FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE g.id = ?`).get(goalId) as { refs: string | null; artifact: string | null } | undefined;
+  let refs: unknown[] = [];
+  try { refs = JSON.parse(imp?.refs || '[]'); } catch { return null; }
+  const strings = Array.isArray(refs) ? refs.filter((r): r is string => typeof r === 'string') : [];
+  const file = strings.find((r) => r.startsWith('finding-file:'))?.slice('finding-file:'.length);
+  if (!file || imp?.artifact !== file || !strings.some((r) => r.startsWith('finding-fix:')) || !isFindingFixSource(file)) return null;
+  return findingFixAutoApproveRevoked(db) ? null : file;
+}
+
+/** The lane's revoked state: the first revocation judgment, else a regression of an auto-approved run (recorded once). Fails closed. */
+export function findingFixAutoApproveRevoked(db: Database, now = new Date()): { run_id: string; reason: string } | null {
+  try {
+    const prior = db.prepare('SELECT subject_id, reason FROM judgments WHERE judgment = ? ORDER BY created_at LIMIT 1').get(FINDING_FIX_AUTO_APPROVE_REVOKED) as { subject_id: string; reason: string | null } | undefined;
+    if (prior) return { run_id: prior.subject_id, reason: prior.reason ?? '' };
+    const rows = db.prepare(`SELECT DISTINCT r.id AS run_id, a.id AS approval_id, s.status AS status, json_extract(r.metadata, '$.pr_outcome.state') AS pr_state,
+        json_extract(r.metadata, '$.pr_outcome.survived') AS survived, json_extract(r.metadata, '$.auto_merge.revoked') AS reverted,
+        (SELECT j.decision FROM judgments j WHERE j.judgment = 'settlement_execution' AND j.subject_id = r.id ORDER BY j.created_at DESC, j.rowid DESC LIMIT 1) AS settlement
+      FROM approvals a
+      JOIN worker_leases l ON l.role = 'maker' AND (json_extract(l.metadata, '$.approval_id') = a.id OR json_extract(l.metadata, '$.execution_task_id') = a.task_id)
+      JOIN loop_runs r ON r.id = l.loop_run_id
+      LEFT JOIN goals g ON g.id = r.goal_id LEFT JOIN self_improvements s ON s.id = g.improvement_id
+      WHERE a.decided_by = ? AND a.status = 'approved' ORDER BY a.decided_at`).all(FINDING_FIX_AUTO_APPROVER) as Array<{ run_id: string; approval_id: string; status: string | null; pr_state: string | null; survived: number | null; reverted: string | null; settlement: string | null }>;
+    for (const r of rows) {
+      const why = [r.status === 'regressed' && 'outcome regressed', r.pr_state === 'merged' && r.survived === 0 && 'merge survival settled regressed',
+        (r.settlement === 'fail' || r.settlement === 'removed') && `settlement ${r.settlement}`, r.reverted && `auto-merge window revoked: ${r.reverted}`].filter(Boolean) as string[];
+      if (!why.length) continue;
+      const reason = `run ${r.run_id} (approval ${r.approval_id}, ${FINDING_FIX_AUTO_APPROVER}): ${why.join('; ')}`.slice(0, 500);
+      db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, latency_ms, model, created_at)
+        VALUES (?, ?, 'loop_run', ?, '', 'act', 'revoked', ?, ?, 0, 'rule-v1', ?)`).run(randomUUID(), FINDING_FIX_AUTO_APPROVE_REVOKED, r.run_id, reason, JSON.stringify({ ...r, signals: why }), now.toISOString());
+      try {
+        new AuditService(db).record({ event_type: AuditEventType.CONFIG_CHANGED, action: FINDING_FIX_AUTO_APPROVE_REVOKED, resource_type: 'finding_fix_auto_approve', resource_id: r.run_id,
+          risk_level: RiskLevel.HIGH, metadata: { reason, approval_id: r.approval_id, signals: why } });
+      } catch { /* the judgment row is the revoked state either way */ }
+      return { run_id: r.run_id, reason };
+    }
+    return null;
+  } catch { return { run_id: '', reason: 'revocation state unreadable' }; }
 }

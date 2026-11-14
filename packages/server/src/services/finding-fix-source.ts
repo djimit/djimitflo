@@ -18,7 +18,9 @@ import { SENSITIVE_SERVICE } from './gym-task-miner';
  *   shadow — the scan runs and a `finding_fix_candidates` judgments row records the counts, the top ids and the proposals
  *            the lane would make. No self_improvements row is written, so nothing can reach a maker;
  *   on     — proposals via generateFromGroundedGap within FINDING_FIX_MAX_PER_DAY (default 2) and 1 in flight per repo.
- *            Normal risk like the dead-code lane: the panel stays, never auto-approved, the maker approval and merge are human.
+ *            Normal risk like the dead-code lane: the panel stays; the maker approval is human unless FINDING_FIX_AUTO_APPROVE=on
+ *            (autonomy-shadow-service.ts findingFixAutoApproveScope: autonomy:finding-fix-v1 on the finding file, <= 40 diff lines);
+ *            the merge is human.
  * Every finding-fix run gets the in-code check `test:finding-fix` (Djimitflo's copy of the gate, cwd = the worktree);
  * a missing gate, scanner or input FAILS it (never skipped).
  * TODO(G2.2): the security-review-commons scanner as a "no new security finding" regression gate — it is not in the
