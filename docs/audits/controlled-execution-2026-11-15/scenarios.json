@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "frozen_before_preflight_tests": true,
+  "scenario_count": 16,
+  "scenarios": [
+    {"id":"S1","description":"Normal entry reaches runtime start, result, independent verification, accounting and correct UI status.","frozen_status":"NOT_TESTED","allowed_level":"E3 mock; E4 blocked"},
+    {"id":"S2","description":"Prepared but unstarted work remains visibly not started, never fictitious success.","frozen_status":"NOT_TESTED","allowed_level":"E2/E3 mock"},
+    {"id":"S3","description":"Duplicate delivery does not duplicate uncontrolled external effects or settlement.","frozen_status":"NOT_TESTED","allowed_level":"E2; E3 mock if route available"},
+    {"id":"S4","description":"Expired/revoked lease or newer attempt prevents stale writes.","frozen_status":"NOT_TESTED","allowed_level":"E2"},
+    {"id":"S5","description":"Crash around dispatch/effect/result storage reconciles, including OUTCOME_UNKNOWN.","frozen_status":"NOT_TESTED","allowed_level":"E2; E3 mock if route available"},
+    {"id":"S6","description":"Parent cancellation and budget exhaustion bound descendants and retries.","frozen_status":"NOT_TESTED","allowed_level":"E2"},
+    {"id":"S7","description":"Scheduled task is triggered and processed; stuck scheduler/poller visible within its detection bound.","frozen_status":"NOT_TESTED","allowed_level":"E2/E3 mock"},
+    {"id":"S8","description":"Missing metering stays unknown; reservation is not consumption and unknown is not zero.","frozen_status":"NOT_TESTED","allowed_level":"E2"},
+    {"id":"S9","description":"Causal identifiers remain useful across queue, child task and retry; gaps visible.","frozen_status":"NOT_TESTED","allowed_level":"E2"},
+    {"id":"S10","description":"Synthetic or stale evidence cannot support current runtime/promotion claim.","frozen_status":"NOT_TESTED","allowed_level":"E2"},
+    {"id":"S11","description":"Wrong actor/scope, expired authority, manipulated input or unauthorized tool path produces no prohibited effect.","frozen_status":"NOT_TESTED","allowed_level":"E2 with isolated fixtures"},
+    {"id":"S12","description":"Two workers collaborate through the normal route and produce a correctly integrated result.","frozen_status":"NOT_TESTED","allowed_level":"E3 mock proves orchestration only; runtime collaboration E4 blocked"},
+    {"id":"S13","description":"Faulty control candidate is rejected; candidate cannot change evaluator/holdout/policy boundary.","frozen_status":"NOT_TESTED","allowed_level":"E2; holdout-specific claims blocked"},
+    {"id":"S14","description":"Qualified candidate reused on new tasks, retained after restart and rollback works.","frozen_status":"NOT_TESTED","allowed_level":"E2 fixture only; holdout and real task claims blocked"},
+    {"id":"S15","description":"Unreachable integration/incomplete scan/missing verifier stays unproven.","frozen_status":"NOT_TESTED","allowed_level":"E2 contract; live integration blocked"},
+    {"id":"S16","description":"DjimitSec finding stays open until valid matching retest evidence supports closure.","frozen_status":"NOT_TESTED","allowed_level":"E2 contract; live lifecycle blocked"}
+  ],
+  "allowed_scenarios_for_this_session": ["S1","S2","S3","S4","S5","S6","S7","S8","S9","S10","S11","S12","S13","S14","S15","S16"],
+  "excluded_claims": ["real runtime behavior E4", "production observation E5", "evolutionary improvement on a protected holdout"]
+}

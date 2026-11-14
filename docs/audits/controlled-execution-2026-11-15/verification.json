@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+  "candidate_sha_at_freeze": "ecfc85d22e1a68307d63eaed9ce4bbcb87927e89",
+  "frozen_denominators_commit": "PENDING",
+  "preflight": {
+    "node_npm": {"status":"PASS","command":"node -v && npm -v","observed":"Node v22.23.2; npm 10.9.8"},
+    "npm_ci": {"status":"NOT_TESTED","command":"npm ci"},
+    "shared_and_catalog_build": {"status":"NOT_TESTED","command":"npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog"},
+    "nested_spawn_tests": {"status":"NOT_TESTED","command":"npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts"}
+  },
+  "claims": [],
+  "note": "Append each verification with exact baseline and candidate SHAs, command, selected output, test-file SHA-256, and result. Never upgrade prior evidence without rerunning it at the recorded SHA."
+}

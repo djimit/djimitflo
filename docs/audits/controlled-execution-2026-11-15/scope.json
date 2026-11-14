@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "repository": "djimit/djimitflo",
+  "session_date": "2026-11-15",
+  "baseline": {
+    "ref": "origin/main",
+    "sha": "7758d153e415177de8e977721011c9675482934c",
+    "source": "locally available remote-tracking ref"
+  },
+  "candidate": {
+    "branch": "codex/functional-improvements-20261114",
+    "sha_at_freeze": "ecfc85d22e1a68307d63eaed9ce4bbcb87927e89",
+    "worktree": "/private/tmp/djimitflo-functional-improvements-20261114",
+    "worktree_clean_at_freeze": true,
+    "existing_pr": "https://github.com/djimit/djimitflo/pull/1272"
+  },
+  "environment": {
+    "node": "v22.23.2",
+    "npm": "10.9.8",
+    "preflight": "PENDING",
+    "local_server": "permitted only with mock/deterministic executor; not yet started",
+    "real_runtime": "not authorized",
+    "production_probe": "not authorized",
+    "paid_or_quota_model_calls": "not authorized",
+    "holdout_access_or_creation": "not authorized",
+    "experiment_registration": "not authorized",
+    "merge_deploy_restart_or_flag_change": "not authorized"
+  },
+  "mandate": {
+    "budget": "default: M0 plus one vertical M1 improvement; elapsed time and token cost not exposed by environment",
+    "protected_paths_authorized": [],
+    "draft_pr_limit": 5,
+    "real_runtimes_from_tests": false,
+    "paid_model_calls": false,
+    "production_read_only_probe": false,
+    "new_experiment_registration": false,
+    "holdout_access": false,
+    "production_mutations": false
+  },
+  "scope": {
+    "focus": "nested spawn normal execution, accounting, terminal projection and user-visible status; recheck related H1-H10 hypotheses against current baseline and candidate",
+    "out_of_scope": [
+      "production mutation or deployment",
+      "real provider/runtime execution",
+      "opening or freezing an evolution holdout",
+      "registering a new experiment",
+      "changing protected paths or feature-flag defaults",
+      "general performance benchmark"
+    ]
+  },
+  "frozen_critical_chains": [
+    {"id":"C1","chain":"nested spawn admission -> reservation -> lease preparation -> normal worker dispatch -> settlement -> parent projection","why_critical":"rights, budget and execution state"},
+    {"id":"C2","chain":"maker execution -> independent checker -> verification gate -> completion projection","why_critical":"selects or verifies results"},
+    {"id":"C3","chain":"runtime admission -> executor/tool boundary -> external effect -> recovery","why_critical":"rights and external effects"},
+    {"id":"C4","chain":"budget grant -> reservation -> measured/unknown usage -> release/settlement","why_critical":"money or quota accounting"},
+    {"id":"C5","chain":"GitHub change -> CI/review -> merge/publication control","why_critical":"publishes or merges code"},
+    {"id":"C6","chain":"DjimitSec task -> scan -> finding verification -> remediation -> retest","why_critical":"security decision and external handoff"},
+    {"id":"C7","chain":"skill/memory/genome candidate -> evaluation -> admission/promotion -> runtime delivery","why_critical":"selects or promotes capabilities"},
+    {"id":"C8","chain":"scheduler/poller trigger -> claim/lease -> work progress -> health projection","why_critical":"autonomous execution and recovery"}
+  ],
+  "frozen_denominator_note": "These eight categories are frozen before this session's preflight tests. Their current existence and reachability remain to be reconciled using generated inventories. Do not remove a category after observing results; refine only with an explicit deviation in REPORT.md.",
+  "preflight_scenarios_allowed_by_mandate": ["S1","S2","S3","S4","S5","S6","S7","S8","S9","S10","S11","S12","S13","S14","S15","S16"],
+  "evidence_ceiling": {
+    "without_runtime_authorization": "E3 for locally executed normal HTTP/scheduler routes with mock executor; E2 for isolated tests",
+    "production": "E5 BLOCKED because read-only probe is not authorized",
+    "real_runtime": "E4 BLOCKED because runtime start is not authorized"
+  },
+  "historical_hypotheses": [
+    {"id":"H1","resolution_observation":"Normal HTTP spawn request followed by dispatch without direct worker-function invocation, or explicit reasoned rejection; mere prepared receipt is not start."},
+    {"id":"H2","resolution_observation":"Reservation, measured use and release separately visible; unstarted/aborted reservations released; missing use remains null."},
+    {"id":"H3","resolution_observation":"Normal settlement projects terminal status or spawn state is derived and not treated as independent truth; proof-run performs no required repair."},
+    {"id":"H4","resolution_observation":"Each executor's enforced uid/sandbox/network/worktree boundary demonstrated separately from prompt-only restrictions."},
+    {"id":"H5","resolution_observation":"Selection, delivery, runtime load and effect separately evidenced for identical content hash."},
+    {"id":"H6","resolution_observation":"Fitness contract contains independent outcomes, fair comparison and decision rule, or honestly labels measured_no_selection/unmeasured/circular."},
+    {"id":"H7","resolution_observation":"Configured, triggered, poller reachable and work progressed represented as distinct signals with unknown states."},
+    {"id":"H8","resolution_observation":"Source, synthetic status, commit, freshness and method retained through explainer/export, including a test tracing synthetic row to output."},
+    {"id":"H9","resolution_observation":"DjimitSec request, scan, verification, repair and retest bound to artifact/commit/scope/environment/time; live remains blocked without access."},
+    {"id":"H10","resolution_observation":"Recurring-loop costs and delivered value visible with denominator; repeated work without new information counted."}
+  ]
+}
