@@ -4,7 +4,7 @@ Deze stappen volgen uit FINDINGS.json; het zijn aanbevelingen, geen uitgevoerde 
 
 ## Voorkeursvolgorde
 
-1. **Sluit nested settlement en accounting.** Behoud de #1272-fix; voeg concurrency- en recoverytests toe voor dubbele settlement, grant-reservering en gemeten usage. Acceptatie: eenmaal reserveren, usage eenmaal boeken, terminale lease en spawnprojectie overeenstemmen; ontbrekende usage blijft onbekend.
+1. **Review de geneste intent-/recoveryfix op #1272 en stel herstelbeleid vast.** De branch reserveert idempotent, bewaart `requested` intents vóór worktree/lease-side-effects en reconciliëert alleen bij een gevonden canonical lease. Een intent zonder lease blijft bewust held; vóór verdere autonomie is een operator-/recoveryactie nodig die geen mogelijke worktreewijziging overschrijft. Token grants zijn geen harde mid-inference limiet.
 2. **Maak normale runtime-uitvoering toetsbaar vóór swarmuitbreiding.** Gebruik een geïsoleerde repository, huidige admission, bestaande maker en onafhankelijke checker. Bewaar run/lease/attempt/artifact/evaluator-identiteiten. Start geen live modelrun zonder aantoonbare admission, begrensd budget en geïsoleerde werkruimte.
 3. **Herstel graph-evidence-provenance.** Geef per feit scan/commit, bron, freshness, analysemethode en synthetic-status door. Accepteer geen oud of synthetisch bewijs als actuele runtime- of promotieclaim.
 4. **Maak pollerfouten zichtbaar via readiness.** PR #1231 staat open tegen een oudere base. Herbeoordeel de exacte head tegen huidige main; toets leasevalidatie, foutprovenance en timeoutbudget. Een shadow-proef vereist een afzonderlijk toegelaten poller; productieflags bleven hier ongemoeid.
