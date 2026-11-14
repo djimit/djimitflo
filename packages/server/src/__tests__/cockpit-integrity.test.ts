@@ -61,7 +61,9 @@ it('counts each loop PR once; a pre-screen label is optional labelling, so a pro
   expect([n.requeue, n.labels, n.shared_subjects]).toEqual([1, 1, 1]);
   // human decisions only: 2 open loop PRs (flagged, no audit sample) + 1 requeue; the D5 label is optional_labelling
   expect([n.flagged_prs, n.audit_batch, n.optional_labelling?.d5]).toEqual([2, 0, 1]);
-  expect(n.total).toBe(2 + 1);
+  // operator stalls come from the code registry too (an experiment past its stop_by, e.g. STE-001 from 2026-11-14) and do
+  // not depend on this fixture; the fixture's own human decisions are the fixed part
+  expect(n.total).toBe(2 + 1 + (n.operator_stalls ?? 0));
 });
 
 it('reflection inflow is NOT_APPLICABLE with reflection proposals capped at 0; the expired-approvals limit names its rule', () => {
