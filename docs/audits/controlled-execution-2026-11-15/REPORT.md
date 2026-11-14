@@ -2,7 +2,7 @@
 
 ## Current status
 
-This report is an active checkpoint, not a completed audit. The frozen baseline is `7758d153e415177de8e977721011c9675482934c`; the candidate branch at freeze is `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`. See `scope.json` and `CHECKPOINT.md`.
+This report is an active checkpoint, not a completed audit. The frozen baseline is `7758d153e415177de8e977721011c9675482934c`; the candidate code SHA at freeze is `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`. The denominator commit is `571a0ad39f5d6ed6eb587302242949fb513152cc`. See `scope.json` and `CHECKPOINT.md`.
 
 ## Preflight
 

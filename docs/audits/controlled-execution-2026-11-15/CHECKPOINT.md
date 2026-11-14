@@ -15,7 +15,7 @@
 - Critical chains: C1–C8 in `scope.json` (8 categories).
 - Scenarios: S1–S16 in `scenarios.json` (16 scenarios).
 - Historical hypotheses: H1–H10; resolution observations frozen in `scope.json`.
-- Freeze commit: pending. No tests for these denominators have run in this session before that commit.
+- Frozen denominator commit: `571a0ad3` (`docs: freeze controlled execution audit scope`). No tests for these denominators ran before that commit.
 - Executable ceiling: E3 only with local normal route and mock/deterministic executor; E4 real runtime and E5 production are blocked by mandate.
 
 ## Completed steps
@@ -24,7 +24,12 @@
 - Confirmed primary checkout has unrelated user changes and is not used for edits.
 - Confirmed isolated worktree is clean at candidate SHA above.
 - Confirmed remote `origin/main` currently resolves to the frozen baseline SHA above.
-- Created initial audit package and froze C1–C8, S1–S16 and H1–H10 resolution observations. This documentation is not yet committed.
+- Created initial audit package and froze C1–C8, S1–S16 and H1–H10 resolution observations in commit `571a0ad39f5d6ed6eb587302242949fb513152cc`.
+
+## Commits
+
+- `571a0ad39f5d6ed6eb587302242949fb513152cc`: froze baseline, critical-chain and scenario denominators before this session's preflight tests.
+- Checkpoint metadata follow-up: records this freeze commit; does not change the frozen lists.
 
 ## Open scenarios and milestones
 

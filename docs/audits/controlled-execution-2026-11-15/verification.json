@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
   "candidate_sha_at_freeze": "ecfc85d22e1a68307d63eaed9ce4bbcb87927e89",
-  "frozen_denominators_commit": "PENDING",
+  "frozen_denominators_commit": "571a0ad39f5d6ed6eb587302242949fb513152cc",
   "preflight": {
     "node_npm": {"status":"PASS","command":"node -v && npm -v","observed":"Node v22.23.2; npm 10.9.8"},
     "npm_ci": {"status":"NOT_TESTED","command":"npm ci"},
