@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
+import { safeGit } from './safe-git';
 import type { Database } from 'better-sqlite3';
 import { CHECKER_PACKET_MAX_CHARS, LoopService } from './loop-service';
 import { ComplianceAuditService } from './compliance-audit-service';
@@ -333,7 +334,7 @@ export class GithubPrReviewService {
         now,
       });
       const worktreePath = this.loops.createWorktree(input.repositoryPath, input.loopRunId, findingId, makerBranch);
-      execFileSync('git', ['reset', '--hard', input.headSha], { cwd: worktreePath, timeout: GH_TIMEOUT_MS });
+      safeGit(worktreePath, ['reset', '--hard', input.headSha], { timeout: GH_TIMEOUT_MS });
       this.loops.updateWorkerLeaseWorktree(makerLeaseId, worktreePath, makerBranch);
 
       // buildCheckerPrompt() shows `git diff -- .` from the maker worktree,
@@ -344,8 +345,8 @@ export class GithubPrReviewService {
       // CODE-005: the diff comes from git, merge-base..headSha in this worktree,
       // never from `gh pr diff <number>` (whatever head the PR has now).
       this.assertHeadUnchanged(input, 'before_packet');
-      const mergeBaseSha = execFileSync('git', ['merge-base', baseTipSha, input.headSha], { cwd: worktreePath, encoding: 'utf8', timeout: GH_TIMEOUT_MS }).trim();
-      const diffText = execFileSync('git', ['diff', '--no-color', '--no-ext-diff', mergeBaseSha, input.headSha], { cwd: worktreePath, encoding: 'utf8', timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
+      const mergeBaseSha = safeGit(worktreePath, ['merge-base', baseTipSha, input.headSha], { timeout: GH_TIMEOUT_MS }).trim();
+      const diffText = safeGit(worktreePath, ['diff', '--no-color', '--no-ext-diff', mergeBaseSha, input.headSha], { timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
       const packetText = [
         'BEGIN_EXTERNAL_CONTENT source=github_pull_request_diff trust=untrusted',
         `PR #${input.number} (${input.owner}/${input.repo}) at ${input.headSha} (merge base ${mergeBaseSha})`,
@@ -470,7 +471,7 @@ export class GithubPrReviewService {
   }
 
   private gitStat(cwd: string, baseSha: string, headSha: string): PrStat {
-    const raw = execFileSync('git', ['diff', '--numstat', '--no-renames', baseSha, headSha], { cwd, encoding: 'utf8', timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
+    const raw = safeGit(cwd, ['diff', '--numstat', '--no-renames', baseSha, headSha], { timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
     const rows = raw.split('\n').filter(Boolean).map((line) => line.split('\t'));
     return {
       additions: rows.reduce((sum, [added]) => sum + (Number(added) || 0), 0), // binary files report '-'

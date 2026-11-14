@@ -40,6 +40,7 @@ import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } 
 import { skillRouteEventMeta } from './skill-route';
 import { firstJsonObject } from './model-json';
 import { isHighRiskPath } from './diff-capture';
+import { safeGitSpawn } from './safe-git';
 import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopName,
@@ -1218,7 +1219,7 @@ export class LoopService {
     if (freshnessMode() !== 'off') {
       try {
         const wt = makerLease.worktree_path!;
-        const g = (...a: string[]) => spawnSync('git', ['-C', wt, ...a], { encoding: 'utf8' }).stdout ?? '';
+        const g = (...a: string[]) => safeGitSpawn(wt, a).stdout ?? '';
         const changed = [...g('diff', '--name-only').split('\n'), ...g('ls-files', '--others', '--exclude-standard').split('\n')]
           .filter((f) => f && !f.split('/').includes('node_modules'));
         evidenceReadSet = captureReadSet(wt, changed);

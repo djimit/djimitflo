@@ -131,6 +131,18 @@ it('eligibility: only verified, test-only, in-limit, unreviewed loop PRs; never 
   expect(decision(713).decision).toBe('would_merge');
 });
 
+it('D4: a PR touching agent config (AGENTS.md, CLAUDE.md, .opencode/, ...) is never auto-merged, even when every path counts as a test path', async () => {
+  seedPr(720, { files: ['packages/server/src/__tests__/CLAUDE.md'] });
+  seedPr(721, { files: ['packages/server/src/__tests__/x.test.ts', 'packages/server/src/__tests__/.opencode/agent/review.md'] });
+  seedPr(722, { files: ['AGENTS.md'], evidence: ['finding-fix:f1', 'finding-file:AGENTS.md'] });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_FINDING_FIX: 'act' }), NOW);
+  expect(decision(720)).toMatchObject({ decision: 'ineligible', reason: 'high_risk_file: packages/server/src/__tests__/CLAUDE.md' });
+  expect(decision(721)).toMatchObject({ decision: 'ineligible', reason: 'high_risk_file: packages/server/src/__tests__/.opencode/agent/review.md' });
+  expect(decision(722)).toMatchObject({ decision: 'ineligible', reason: 'high_risk_file: AGENTS.md' });
+  expect(isTransientReason(decision(720).reason)).toBe(false); // permanent: a re-check never merges it
+  expect(writes()).toEqual([]);
+});
+
 it('sampling: a deterministic 10 % stays for the human, flagged in /decisions and the digest', async () => {
   expect([701, 706, 708].map(isAuditSample)).toEqual([true, true, true]);
   expect([700, 702, 703].map(isAuditSample)).toEqual([false, false, false]);
