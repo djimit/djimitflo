@@ -1,0 +1,115 @@
+{
+  "base_sha": "b496916b029dd4555c648203f4244706628ce79e",
+  "findings": [
+    {
+      "id": "H1",
+      "claim": "H1",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1+E2 (nested-spawn tests 21/21 on b496916b) + E5 (M0 probe on 7758d153, still the running build)",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "requestSpawn ends at 'prepared'; only proof-run-service starts a prepared child; 52 sub_agent_spawns rows, all proof-run, last 2026-06-29",
+      "uncertainty": "dormant in prod (depth budget 0, no control URL); no normal-route child start exists to test",
+      "resolution": "proposal: wire the prepared child to the engine or reject with reason (M3 scope)",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H2",
+      "claim": "H2",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1 + E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "grant added to consumed_tokens at prepare (nested-spawn-service.ts ~390), never settled; no token/wall limit reaches the child (granted 1.3 M, used 6.41 M)",
+      "uncertainty": "dormant",
+      "resolution": "proposal (M0 fix 3-4)",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H3",
+      "claim": "H3",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1 + E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "only proof-run writes sub_agent_spawns completed / spawn_trees closed; 8/52 spawns and 4/26 trees stale",
+      "uncertainty": "dormant",
+      "resolution": "proposal: lease-status mirror (M0 fix 3)",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H4",
+      "claim": "H4",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1 + E5 (details private: ~/.djimit/m0-20261114/H4-security-boundaries.md)",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "ToolBroker / mcp_tool_permissions consulted on no executor path; makers share the server's uid; repo-local git config and maker-edited agent config reached server-side git / the checker",
+      "uncertainty": "maker uid isolation is a protected-path + image change",
+      "resolution": "partial fix #1277 (safeGit + checker config); uid isolation = operator decision",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H5",
+      "claim": "H5",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1 + E2 + E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "no artefact class proves use in production; memory rules/examples credited on delivery alone (102 + 193 credits in 30 d)",
+      "uncertainty": "no use signal exists yet for rules/examples",
+      "resolution": "fix #1275 (no delivery credit, per-block receipts)",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H6",
+      "claim": "H6",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1 + E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "bandit reward = verified label; retention label cannot fail (110/110 survived); memory holdout no benefit",
+      "uncertainty": "Gate B redesign is the operator's (13-10 rule)",
+      "resolution": "measurement proposals in M2 value-contracts",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H7",
+      "claim": "H7",
+      "status": "BEVESTIGD",
+      "evidence_level": "E3 (S7) + E1 + E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "a scheduler that throws every tick shows running+HEALTHY (D-S7-1); guardTick sticky failing (D-S7-3, E2); stuck schedulers never escalate in shadow (D-S7-2); #1231 open",
+      "uncertainty": "live last_run per scheduler needs an admin token",
+      "resolution": "fix in progress: fix/scheduler-health-truth",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H8",
+      "claim": "H8",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1 + E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "120/120 explainer graph snapshots synthetic, shown as fact in 91/91 architecture sections; synthetic flag dropped before the text",
+      "uncertainty": "-",
+      "resolution": "proposal (not built this session)",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H9",
+      "claim": "H9",
+      "status": "BEVESTIGD",
+      "evidence_level": "E1 + E2 + E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "finding closure accepts any non-empty rescan_ref/remediation_ref; no commit binding; DjimitSec UNKNOWN receipt recorded as completed",
+      "uncertainty": "live DjimitSec part BLOCKED (no test resource)",
+      "resolution": "proposal; check FINDING_FIX_AUTO_APPROVE/LOOP_AUTO_MERGE_FINDING_FIX against FR-004 in M2",
+      "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "H10",
+      "claim": "H10",
+      "status": "GEWIJZIGD",
+      "evidence_level": "E5",
+      "current_source": "base b496916b (server source unchanged vs M0 base 7758d153 except experiment-registry.ts)",
+      "evidence": "218/218 proposals (30 d) from gap_analysis; discovery/refinement/reflection off; 1 838 agent messages, 0 proposals",
+      "uncertainty": "-",
+      "resolution": "M2 value-contract table",
+      "owner": "operator (decisions) / builder PRs"
+    }
+  ]
+}
