@@ -75,6 +75,7 @@ const READERS: Record<string, Reader> = {
   'services/loop-worker-executor-service.ts': { policy: 'measurement', why: 'checker second opinion recorded, never a verdict' },
   'services/ace-001.ts': { policy: 'measurement', why: 'proposal_embedding error → ACE fallback reason label' },
   'services/advisory-exposure.ts': { policy: 'measurement', why: 'own dedupe + evidence' },
+  'services/date-bomb-source.ts': { policy: 'measurement', why: 'cadence of its own date_bomb_scan rows (one scan per 7 d); never feeds a decision' },
   'services/auto-requeue.ts': { policy: 'measurement', why: 'dedupe of its own shadow would_* rows' },
   'services/checker-family.ts': { policy: 'measurement', why: 'F2 arm evidence' },
   'services/commons-investigation.ts': { policy: 'measurement', why: 'own dedupe' },
