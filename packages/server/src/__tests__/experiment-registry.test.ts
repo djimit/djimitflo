@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, X1_CLOSED, experimentDefs, experimentsReport, recordTreatmentEnvBoundaries, wipCheck, type ExperimentDef } from '../services/experiment-registry';
+import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, STE_001_CLOSED, TG_001_CLOSED, X1_CLOSED, experimentDefs, experimentsReport, recordTreatmentEnvBoundaries, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { EVOLUTION_FLAGS, buildEvolutionEvidence } from '../services/evolution-evidence';
 import { existsSync, readFileSync } from 'fs';
@@ -77,10 +77,14 @@ it("stall watch 'experiment_overdue' fires after a registered stop date and name
   expect(det?.status).toBe('ok');
   // every experiment has a stop date now: the detector names none as missing one
   expect(det?.detail ?? '').not.toContain('no stop date');
-  // X1 (stop_by 11-06) is closed; STE-001 (stop_by 11-14) is the first open experiment past its stop date
-  const after = detectStallsWithHealth(db, Date.parse('2026-11-15T00:00:00Z'), {});
-  expect(after.stalls.find((s) => s.subsystem === 'experiment:STE-001')?.detail).toContain('past stop_by 2026-11-14');
+  // X1 (stop_by 11-06) and STE-001 (stop_by 11-14) are closed; every open experiment past its stop date is raised with it
+  const at = Date.parse('2026-12-17T00:00:00Z');
+  const after = detectStallsWithHealth(db, at, {});
+  const pastOpen = experimentDefs().filter((d) => !d.closed && d.stop_by !== null && at > Date.parse(d.stop_by));
+  expect(pastOpen.map((d) => d.id)).toContain('MAKER-DEPS-001');
+  for (const d of pastOpen) expect(after.stalls.find((s) => s.subsystem === `experiment:${d.id}`)?.detail, d.id).toContain(`past stop_by ${d.stop_by}`);
   expect(after.stalls.map((s) => s.subsystem)).not.toContain('experiment:X1');
+  expect(after.stalls.map((s) => s.subsystem)).not.toContain('experiment:STE-001');
 });
 
 it('TG-001 is closed INCONCLUSIVE at 20 tasks by the operator (amendment 2026-10-26); the stall watch no longer reports it after stop_by', () => {
@@ -105,9 +109,10 @@ it('TG-001 is closed INCONCLUSIVE at 20 tasks by the operator (amendment 2026-10
   // the same definition without the close is reported past stop_by: the close is what stops it, not the stop date passing
   const open: ExperimentDef = { ...tg, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
   expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['TG-001']);
-  // other experiments are unchanged: only X1, TG-001 and memory-holdout carry a close, and an open one past its stop date is still overdue
-  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['X1', 'TG-001', 'memory-holdout']);
-  expect(stalls).toContain('experiment:STE-001');
+  // other experiments are unchanged: only STE-001, X1, TG-001 and memory-holdout carry a close, and an open one past its stop date is still overdue
+  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['STE-001', 'X1', 'TG-001', 'memory-holdout']);
+  for (const d of experimentDefs().filter((x) => !x.closed && x.stop_by !== null && late > Date.parse(x.stop_by))) expect(stalls).toContain(`experiment:${d.id}`);
+  expect(stalls).not.toContain('experiment:STE-001');
 });
 
 it('EXP-3 memory-holdout is closed FALSIFIED at its single registered readout (2026-10-27); experiment_overdue no longer raises it', () => {
@@ -156,6 +161,44 @@ it('EXP-2 X1 is closed INSUFFICIENT_EVIDENCE at its single readout (operator 202
   expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['X1']);
 });
 
+it('STE-001 is closed INSUFFICIENT_EVIDENCE at its stop_by (arm 1 at 99 of 100; Amendment 1, 2026-11-14); experiment_overdue no longer raises it', () => {
+  expect(STE_001_CLOSED).toEqual({ verdict: 'INSUFFICIENT_EVIDENCE (target 100/arm not reached by stop_by: arm 0 135, arm 1 99)', decided_on: '2026-11-14',
+    source: 'docs/research/ace/STE-001_RESULT.md#decision-under-the-registered-rules' });
+  const ste = experimentDefs().find((d) => d.id === 'STE-001')!;
+  expect(ste.closed).toBe(STE_001_CLOSED);
+  expect(ste.stop_by).toBe('2026-11-14T00:00:00.000Z'); // the registered date is unchanged; no extension
+  // the prod state at stop_by: 135 / 99 analysable outcomes; the one outage-fallback outcome of arm 1 does not count (ste001Evidence)
+  new SkillEvolutionEngine(db);
+  const ins = db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at)
+    VALUES (?, 'loop-maker:doc-drift-and-small-fix-loop:opencode', ?, 1000, 1, 'x', ?, 'a', ?, '2026-11-01T00:00:00.000Z')`);
+  for (const [arm, n] of [['0', 135], ['1', 99]] as const) for (let i = 0; i < n; i++) ins.run(`o-${arm}-${i}`, i % 2, `t-${arm}-${i}`, JSON.stringify([`ste-001-arm:${arm}`]));
+  ins.run('o-1-fallback', 0, 't-1-fallback', JSON.stringify(['ste-001-arm:1', 'runtime_fallback:ollama_outage']));
+  const at = Date.parse('2026-11-14T12:00:00Z');
+  expect(ste.status(db, {}, at, ste.started_at)).toMatchObject({ n_per_arm: { 0: 135, 1: 99 }, verdict: STE_001_CLOSED.verdict });
+  const r = experimentsReport(db, {}, at);
+  expect(r.experiments.find((e) => e.id === 'STE-001')).toMatchObject({ min_arm_n: 99, verdict: STE_001_CLOSED.verdict, overdue: false, overdue_reason: null, closed: STE_001_CLOSED });
+  expect(r.overdue).not.toContain('STE-001');
+  expect(r.wip.active).not.toContain('STE-001');
+  expect(detectStallsWithHealth(db, at, {}).stalls.map((s) => s.subsystem)).not.toContain('experiment:STE-001');
+  // the same definition without the close is overdue past stop_by: the close is what stops it, not the stop date passing
+  const open: ExperimentDef = { ...ste, closed: undefined, status: (d, e, n, since) => ({ ...ste.status(d, e, n, since), verdict: null }) };
+  expect(experimentsReport(db, {}, at, [open]).experiments[0]).toMatchObject({ overdue: true, overdue_reason: expect.stringContaining('past stop_by 2026-11-14') });
+  // the close cites the result document and a heading that exists in it
+  const [file, anchor] = STE_001_CLOSED.source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Decision under the registered rules');
+});
+
+it('STE_001_MODE off after the STE-001 stop is a period boundary for every open oracle-population experiment, recorded at boot', () => {
+  const t = (d: string) => Date.parse(`2026-11-${d}T06:00:00Z`);
+  expect(recordTreatmentEnvBoundaries(db, { STE_001_MODE: 'on' }, t('14'))).toEqual([]);
+  const rows = recordTreatmentEnvBoundaries(db, {}, t('15'));
+  const open = experimentDefs().filter((d) => d.population === 'oracle_goals' && !d.closed).map((d) => d.id);
+  expect(rows.map((r) => [r.experiment_id, r.env_name, r.previous, r.current])).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'F2'].map((id) => [id, 'STE_001_MODE', 'on', null]));
+  for (const id of open) expect(rows.map((r) => r.experiment_id), id).toContain(id);
+});
+
 it('X1 counts settled goals in its registered horizon [started_at, stop_by): start-day goals in SQLite format in, post-stop goals out', () => {
   new SkillEvolutionEngine(db); // skill_outcomes (the infra_failed tag)
   const imp = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at) VALUES (?, 'f', 't', 'd', 'r', 's', ?, ?, ?)`);
@@ -174,7 +217,8 @@ it('evolve siblings: every env name evolve-selection reads is a treatment variab
   const names = [...new Set(envNames(readFileSync(join(__dirname, '../services/evolve-selection.ts'), 'utf8')))].sort();
   expect(names).toEqual(['LOOP_EVOLVE_ENABLED', 'LOOP_EVOLVE_SPECIES']);
   const open = experimentDefs().filter((d) => d.population === 'oracle_goals' && !d.closed);
-  expect(open.map((d) => d.id)).toEqual(Object.keys(BOUNDARY_DOCS));
+  // STE-001 carried the amendment while open (checked below) and is closed since its 2026-11-14 stop
+  expect(open.map((d) => d.id)).toEqual(Object.keys(BOUNDARY_DOCS).filter((id) => id !== 'STE-001'));
   for (const d of open) expect(names.filter((n) => !d.treatment_env?.includes(n)), d.id).toEqual([]);
   // a later change between boots records the boundary itself
   expect(recordTreatmentEnvBoundaries(db, { LOOP_EVOLVE_ENABLED: 'true' }, Date.parse('2026-11-07T23:00:00Z'))).toEqual([]);
@@ -232,9 +276,10 @@ it('CI guard: the registered oracle-population experiments fit the WIP limit; a 
 
 it('reports active vs the limit and over_wip_limit; a read-out experiment is no longer active', () => {
   const r = experimentsReport(db, {}, NOW);
-  // memory-holdout (FALSIFIED 2026-10-27) and X1 (INSUFFICIENT_EVIDENCE 2026-11-07) read out: four active, two counted against the limit
-  expect(r.wip).toMatchObject({ limit: 4, active_count: 4, over_wip_limit: false, guard_ok: true });
-  expect(r.wip.counted).toEqual(['ACE-001', 'STE-001']);
+  // memory-holdout (FALSIFIED 2026-10-27), X1 (INSUFFICIENT_EVIDENCE 2026-11-07) and STE-001 (INSUFFICIENT_EVIDENCE 2026-11-14) read out:
+  // three active, one counted against the limit
+  expect(r.wip).toMatchObject({ limit: 4, active_count: 3, over_wip_limit: false, guard_ok: true });
+  expect(r.wip.counted).toEqual(['ACE-001']);
   const def = (id: string, verdict: string | null): ExperimentDef => ({ id, flag: 'T', protocol: 'p.md', started_at: '2026-10-01T00:00:00.000Z', target_n: 10, stop_by: null,
     stop_note: '', stop_source: 's', population: 'oracle_goals', status: () => ({ n_per_arm: { a: 1 }, verdict }) });
   const five = ['A', 'B', 'C', 'D', 'E'].map((id) => def(id, null));
@@ -311,7 +356,7 @@ it('C8: every env name read by loop-daemon maker selection is a treatment variab
   const names = makerSelectionEnv();
   for (const n of ['LOOP_BANDIT_ENABLED', 'LOOP_BANDIT_SPECIES', 'LOOP_BANDIT_MAX_SHARE', 'REMOTE_MAKER_ENABLED', 'META_TUNING_MIN_CONFIDENCE']) expect(names).toContain(n);
   const oracle = experimentDefs().filter((d) => d.population === 'oracle_goals' && !d.closed);
-  expect(oracle.map((d) => d.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'F2']);
+  expect(oracle.map((d) => d.id)).toEqual(['ACE-001', 'MAKER-DEPS-001', 'F2']);
   for (const d of oracle) {
     const undeclared = names.filter((n) => !d.treatment_env?.includes(n));
     expect(undeclared, `${d.id}: maker-selection env not declared as treatment_env`).toEqual([]);
