@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { safeGitSpawn } from './safe-git';
 import type { Database } from 'better-sqlite3';
 import { targetMutants } from './gym-failure-tasks';
 import { GRADED_KILL_BUDGET_MS } from './graded-fitness';
@@ -44,7 +45,7 @@ type Tri = boolean | null;
 export interface FbpaRecord { name: string; mode: 'shadow'; status: 'skipped'; shadow_status: 'pass' | 'fail' | 'skipped'; exit_status: null;
   fail_before: Tri; pass_after: Tri; pass_to_pass: Tri; before: 'parent_source' | 'seeded_mutant' | null; tests: string[]; p2p_tests: number; reasons: string[]; ms: number }
 
-const sh = (cwd: string, args: string[]) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+const sh = (cwd: string, args: string[]) => safeGitSpawn(cwd, args, { maxBuffer: 8 * 1024 * 1024 });
 const atParent = (wt: string, file: string): string | null => { const r = sh(wt, ['show', `HEAD:${file}`]); return r.status === 0 ? r.stdout : null; };
 const read = (wt: string, file: string): string | null => { try { return fs.readFileSync(path.join(wt, file), 'utf8'); } catch { return null; } };
 /** Writes each file's content, or removes it when null. */

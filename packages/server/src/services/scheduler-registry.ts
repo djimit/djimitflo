@@ -21,6 +21,8 @@ export interface SchedulerState extends SchedulerInfo { status: SchedulerStatus 
 const registry = new Map<string, SchedulerInfo>();
 // ticks are kept apart: a scheduler that ticks at start runs before its noteScheduler call
 const ticks = new Map<string, { last_run: string; last_error: string | null }>();
+// markRun calls per scheduler: guardTick records a success only when its fn did not report its own outcome meanwhile
+const runs = new Map<string, number>();
 let bootAt = Date.now();
 
 /** Records a scheduler's armed state and returns it, so `if (noteScheduler(...))` is a drop-in for the original check. */
@@ -32,6 +34,7 @@ export function noteScheduler(name: string, flag: string, armed: boolean, interv
 export function markRun(name: string, error?: unknown): void {
   try {
     ticks.set(name, { last_run: new Date().toISOString(), last_error: error === undefined ? null : (error instanceof Error ? error.message : String(error)).slice(0, 200) });
+    runs.set(name, (runs.get(name) ?? 0) + 1);
   } catch { /* never break the scheduler */ }
 }
 
@@ -43,12 +46,16 @@ export function markTick(name: string): void {
 /**
  * Restore Evolutionary Health P0.1: every tick reports itself first and can never throw into its timer — a sync throw
  * or a rejected promise becomes the scheduler's last_error (status 'failing'), the interval keeps running.
+ * D-S7-3: a tick that returns (or resolves) records a success, which clears an earlier error — unless the fn reported its
+ * own outcome (markRun) meanwhile; then that outcome stands.
  */
 export function guardTick(name: string, fn: () => unknown): () => void {
   return () => {
     markTick(name);
+    const seen = runs.get(name) ?? 0;
+    const ok = () => { if ((runs.get(name) ?? 0) === seen) markRun(name); };
     const fail = (e: unknown) => { markRun(name, e); console.warn(`scheduler ${name} tick failed:`, e instanceof Error ? e.message : String(e)); };
-    try { const r = fn(); if (r && typeof (r as Promise<unknown>).then === 'function') (r as Promise<unknown>).catch(fail); } catch (e) { fail(e); }
+    try { const r = fn(); if (r && typeof (r as Promise<unknown>).then === 'function') (r as Promise<unknown>).then(ok, fail); else ok(); } catch (e) { fail(e); }
   };
 }
 
@@ -85,8 +92,9 @@ export function schedulerHealth(now = Date.now()): { health: SchedulerHealth; by
  * Invariant: armed AND no tick after its SLA (2× interval past the boot grace) ⇒ unhealthy ⇒ diagnose ⇒ one safe restart
  * through the scheduler's own start function ⇒ verify (a tick within one interval + grace) ⇒ else quarantine + escalate.
  * At most one restart per scheduler per 6 h. Every step is a recovery action (failure_id, strategy, attempt, result,
- * next_action); the caller persists them. SCHEDULER_SELF_HEAL_MODE: shadow (default) diagnoses + escalates without
- * restarting, act restarts, off does nothing.
+ * next_action); the caller persists them. SCHEDULER_SELF_HEAL_MODE: shadow (default) diagnoses without restarting, act
+ * restarts, off does nothing. In shadow a stuck scheduler is escalated (quarantined → stall `scheduler:<name>` → needs-you)
+ * only when it has no restart function — or, for every stuck scheduler, with SCHEDULER_STUCK_ESCALATE=shadow (D-S7-2).
  */
 export interface RecoveryAction { scheduler: string; failure_id: string; strategy: 'restart' | 'none'; attempt: number; result: 'diagnosed' | 'restarted' | 'restart_failed' | 'recovered' | 'quarantined'; next_action: string; diagnosis: { last_run: string | null; last_error: string | null; interval_ms: number | null }; at: string }
 const restarters = new Map<string, () => unknown>();
@@ -101,7 +109,11 @@ export function registerRestart(name: string, restart: () => unknown): void { re
 export type SelfHealMode = 'off' | 'shadow' | 'act';
 export const selfHealMode = (env: NodeJS.ProcessEnv = process.env): SelfHealMode => (env.SCHEDULER_SELF_HEAL_MODE === 'act' || env.SCHEDULER_SELF_HEAL_MODE === 'off' ? env.SCHEDULER_SELF_HEAL_MODE : 'shadow');
 
-export function healSchedulers(now = Date.now(), mode: SelfHealMode = selfHealMode()): RecoveryAction[] {
+/** SCHEDULER_STUCK_ESCALATE: off (default) | shadow — escalate a stuck scheduler in shadow self-heal mode too (record, no restart). */
+export type StuckEscalateMode = 'off' | 'shadow';
+export const stuckEscalateMode = (env: NodeJS.ProcessEnv = process.env): StuckEscalateMode => (env.SCHEDULER_STUCK_ESCALATE === 'shadow' ? 'shadow' : 'off');
+
+export function healSchedulers(now = Date.now(), mode: SelfHealMode = selfHealMode(), escalate: StuckEscalateMode = stuckEscalateMode()): RecoveryAction[] {
   if (mode === 'off') return [];
   const out: RecoveryAction[] = [];
   const at = new Date(now).toISOString();
@@ -125,7 +137,11 @@ export function healSchedulers(now = Date.now(), mode: SelfHealMode = selfHealMo
       continue; // still inside the verify window
     }
     if (!rec.diagnosed) { rec.diagnosed = true; act('diagnosed', restart ? 'restart' : 'none', mode === 'act' && restart ? 'restart' : 'escalate', rec); }
-    if (mode !== 'act') { if (!restart) quarantine('none', 'no restart function registered'); continue; }
+    if (mode !== 'act') {
+      if (!restart) quarantine('none', 'no restart function registered');
+      else if (escalate === 'shadow') quarantine('none', 'self-heal shadow mode: restart not attempted (SCHEDULER_STUCK_ESCALATE=shadow)');
+      continue;
+    }
     if (!restart) { quarantine('none', 'no restart function registered'); continue; }
     if (now - (lastRestartAt.get(s.name) ?? -Infinity) < RESTART_COOLDOWN_MS) { quarantine('restart', 'already restarted within 6 h'); continue; }
     rec.attempt += 1; rec.restarted_at = now; lastRestartAt.set(s.name, now);
@@ -138,4 +154,4 @@ export function healSchedulers(now = Date.now(), mode: SelfHealMode = selfHealMo
 /** Quarantined schedulers, for the stall watch (escalation = a stall, so it reaches needs-you). */
 export const quarantinedSchedulers = (): string[] => [...recovery.entries()].filter(([, r]) => r.quarantined).map(([n]) => n);
 
-export const resetSchedulers = (bootTime = Date.now()): void => { registry.clear(); ticks.clear(); restarters.clear(); recovery.clear(); lastRestartAt.clear(); bootAt = bootTime; };
+export const resetSchedulers = (bootTime = Date.now()): void => { registry.clear(); ticks.clear(); runs.clear(); restarters.clear(); recovery.clear(); lastRestartAt.clear(); bootAt = bootTime; };
