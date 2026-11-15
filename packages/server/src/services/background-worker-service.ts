@@ -15,6 +15,10 @@ import type { Database } from 'better-sqlite3';
 import { realRunIdSql, realRunSql } from './synthetic-runs';
 import { randomUUID } from 'node:crypto';
 import { buildLeaseFailure, CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
+import { ApprovalService } from './approval-service';
+import { AuditService } from './audit-service';
+
+const NO_SOCKET = { broadcastTaskEventById: () => {} };
 
 type WorkerStatus = 'idle' | 'running' | 'completed' | 'failed';
 
@@ -281,7 +285,10 @@ export class BackgroundWorkerService {
         AND updated_at < ?
       `).run(hung('checker'), hung('maker'), ago(runningThreshold));
 
-      return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases`;
+      // M0-F: a lease ended here or anywhere else (operator stop, evolve supersede, retirement) leaves no approval pending
+      let expired = 0;
+      try { expired = new ApprovalService(this.db, NO_SOCKET, new AuditService(this.db)).expirePendingForEndedWorkers(); } catch { /* best-effort; the engine refuses them anyway */ }
+      return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases${expired ? `, ${expired} approvals of ended workers expired` : ''}`;
     } catch { return 'Orphan lease cleanup skipped (no worker_leases table)'; }
   }
 
