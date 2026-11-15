@@ -99,7 +99,7 @@
         "Full CI has not yet rerun at the corrected PR head",
         "No runtime, holdout or production validation"
       ],
-      "candidate_sha": "f75dda7c95582efc0e52c229879d057a7bcc7f63",
+      "candidate_sha": "df07cd90b1021e1550544087f5d38b8300367b7b",
       "test_sha256": "390e3e87f9d233aa640a4220ff682cf08ec3215e52aa1f385006394174d509c0"
     }
   ],
