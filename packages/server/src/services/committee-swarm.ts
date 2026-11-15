@@ -4,7 +4,7 @@ import { kbContext } from './kb-corpus';
 import { filterForPrompt } from './content-safety';
 import { forecastScores, RESOLVED } from './forecast-scoring';
 import { knowledgeOverview } from './knowledge-overview';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 
 /**
  * AR-W (operator 04-10): committee swarms on the workstation. For every new proposal a committee of member genomes
@@ -223,7 +223,8 @@ export function evolveCommittee(db: Database, now = new Date(), env: NodeJS.Proc
 /** Hourly check; evolution itself runs at most once a day. */
 export function startCommitteeEvolution(db: Database, intervalMs = 3_600_000): (() => void) | null {
   if (!committeeEnabled()) return null;
-  const tick = () => { markRun('committee_evolution'); try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
+  // D-S7-1: markTick records the attempt, markRun the outcome after the work (with its error)
+  const tick = () => { markTick('committee_evolution'); try { const r = evolveCommittee(db); markRun('committee_evolution'); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { markRun('committee_evolution', e); console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
   const t = setInterval(tick, intervalMs); t.unref?.();
   return () => clearInterval(t);
 }

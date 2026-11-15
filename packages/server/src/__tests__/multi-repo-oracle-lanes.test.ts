@@ -98,7 +98,8 @@ describe('B2: a draft PR goes to the repo of the goal, or nowhere', () => {
   }
   const created = (slug: string) => vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ html_url: `https://github.com/${slug}/pull/3`, draft: true, state: 'open', body: 'Opened by the djimitflo loop for run `run-1`.', head: { ref: 'agent/loop/run-1', sha: git(path.join(tmp, 'wt'), 'rev-parse', 'HEAD'), repo: { full_name: slug } }, base: { ref: 'main', repo: { full_name: slug } } }) });
   const failure = () => (db.prepare("SELECT message FROM loop_events WHERE event_type = 'draft_pr_failed'").get() as { message: string } | undefined)?.message;
-  const base = { LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken' };
+  // the test remote is a local path: safe-git allows the file transport only when GIT_ALLOW_PROTOCOL names it (production: https)
+  const base = { LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', GIT_ALLOW_PROTOCOL: 'file' };
 
   it('refuses (no push, no PR) when the worktree remote is another repo than the goal', async () => {
     draftRun('https://github.com/djimit/roborev.git', ['test-gap:x']);

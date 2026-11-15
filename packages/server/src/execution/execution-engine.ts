@@ -67,6 +67,9 @@ import { recordPolicyViolation } from '../services/policy-violations';
 // Probe rows written before this process started may describe a binary from the previous image.
 const ENGINE_BOOT_ISO = new Date().toISOString();
 
+/** M0-F: the reason a worker task is cancelled instead of executed when its approval arrives after the lease or run ended. */
+export const LEASE_NOT_ACTIVE_AT_APPROVAL = 'lease_not_active_at_approval';
+
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
   approvalId?: string;
@@ -915,6 +918,10 @@ export class ExecutionEngine {
   }
 
   async handleApprovalDecision(approvalId: string, approved: boolean, decidedBy?: string, reason?: string): Promise<ExecuteTaskResult | null> {
+    if (approved) {
+      const refused = this.refuseEndedWorker(approvalId);
+      if (refused) return refused;
+    }
     const approval = this.approvalService.decideApproval(approvalId, approved, decidedBy || 'system', reason);
     if (approval.metadata?.manual_action === true) {
       this.evidenceService.captureEvidence({
@@ -989,6 +996,41 @@ export class ExecutionEngine {
     return this.executeTask(approval.task_id, executorKind, decidedBy);
   }
   
+  /**
+   * M0-F: an approval is evidence for live work, not authority to run a worker whose lease already ended or whose loop run
+   * is terminal (prod lease ac827d48: superseded 05:48Z, approved 06:44Z, its task completed 06:50Z with nobody reading it).
+   * The approval is expired (never recorded as approved, so it cannot be inherited), the task cancelled with the reason.
+   */
+  private refuseEndedWorker(approvalId: string): ExecuteTaskResult | null {
+    const pending = this.approvalService.getApproval(approvalId);
+    if (!pending || pending.status !== 'pending' || pending.metadata?.manual_action === true) return null;
+    const ended = this.approvalService.endedWorker(approvalId);
+    if (!ended || !this.approvalService.expireForEndedWorker(approvalId, LEASE_NOT_ACTIVE_AT_APPROVAL)) return null;
+    const taskId = pending.task_id;
+    const evidence = { reason: LEASE_NOT_ACTIVE_AT_APPROVAL, lease_id: ended.lease_id, lease_status: ended.lease_status, loop_run_id: ended.loop_run_id, run_status: ended.run_status };
+    this.db.prepare("UPDATE tasks SET metadata = json_set(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.cancellation_reason', ?) WHERE id = ?")
+      .run(LEASE_NOT_ACTIVE_AT_APPROVAL, taskId);
+    if (!['cancelled', 'completed', 'failed'].includes(this.getTask(taskId).status)) this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
+    this.persistEvent({
+      task_id: taskId,
+      event_type: ExecutionEventType.TASK_CANCELLED,
+      message: `Not executed: worker lease ${ended.lease_id} is ${ended.lease_status}, loop run ${ended.loop_run_id} is ${ended.run_status ?? 'unknown'}`,
+      level: LogLevel.WARNING,
+      approval_id: approvalId,
+      metadata: evidence,
+    });
+    this.auditService.record({
+      event_type: AuditEventType.EXECUTION_DENIED,
+      action: 'execution_refused_worker_ended',
+      resource_type: 'task',
+      resource_id: taskId,
+      task_id: taskId,
+      risk_level: pending.risk_level,
+      metadata: { approvalId, ...evidence },
+    });
+    return { status: 'denied', reason: LEASE_NOT_ACTIVE_AT_APPROVAL };
+  }
+
   /**
    * Cancel a running task
    */
