@@ -65,17 +65,19 @@ export class ComplianceReportScheduler {
 
   /** Generate a report unless one of the configured type already exists within the current interval. */
   tick(): ComplianceReport | null {
-    markRun('compliance_report'); // Cockpit 3.0: execution evidence for the scheduler registry
     const type = this.reportType();
     const since = new Date(Date.now() - this.intervalHours() * HOUR_MS).toISOString();
     const recent = this.db.prepare(
       'SELECT 1 FROM compliance_reports WHERE type = ? AND generated_at >= ? LIMIT 1',
     ).get(type, since);
-    if (recent) return null;
+    if (recent) { markRun('compliance_report'); return null; } // Cockpit 3.0: execution evidence for the scheduler registry
 
     try {
-      return this.audit.generateReport({ type });
+      const report = this.audit.generateReport({ type });
+      markRun('compliance_report');
+      return report;
     } catch (err) {
+      markRun('compliance_report', err); // D-S7-1: the run is recorded after the work, with its error (guardTick already recorded the attempt)
       console.warn('ComplianceReportScheduler: report generation failed:', err instanceof Error ? err.message : err);
       return null;
     }

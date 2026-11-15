@@ -152,6 +152,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   RESOURCE_SCHEDULER_MODE: 'off (`shadow`)',
   RETRIEVAL_NORMALISE_SCORES: 'off',
   SCHEDULER_SELF_HEAL_MODE: 'shadow',
+  SCHEDULER_STUCK_ESCALATE: 'off (`shadow`)',
   SETTLEMENT_EXECUTION_MODE: 'off (`shadow`)',
   SHIPPED_CODE_SCAN_MODE: 'off (`shadow`: once a day (first run 15 min after boot) the installed runtime packages — `<node prefix>/lib/node_module…',
   SKILL_ARTIFACT_EVOLUTION_MODE: 'off (`on`)',

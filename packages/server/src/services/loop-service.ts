@@ -36,10 +36,11 @@ import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { MAKER_TEMPLATE_RULES_STE, steRulesFor } from './ste-001';
 import { extraRepoByPath, extraRepoChecks } from './repo-registry';
-import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
+import { assignmentContext, assignmentContextMarkdown, assignmentReceipt, type AssignmentContext, type AssignmentReceipt } from './assignment-context';
 import { skillRouteEventMeta } from './skill-route';
 import { firstJsonObject } from './model-json';
 import { isHighRiskPath } from './diff-capture';
+import { safeGitSpawn } from './safe-git';
 import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopName,
@@ -412,6 +413,8 @@ export class LoopService {
 
   private db: Database;
   public evidenceRoot: string;
+  /** D3: the per-block receipt of each LOOP_WORK.md this service wrote, keyed by file, until a lease on that file is inserted */
+  private readonly pendingAssignmentReceipts = new Map<string, AssignmentReceipt>();
   public assurance: AgentAssuranceService;
   private intelligence: SwarmIntelligenceService;
   private budget: LoopBudgetService;
@@ -1222,7 +1225,7 @@ export class LoopService {
     if (freshnessMode() !== 'off') {
       try {
         const wt = makerLease.worktree_path!;
-        const g = (...a: string[]) => spawnSync('git', ['-C', wt, ...a], { encoding: 'utf8' }).stdout ?? '';
+        const g = (...a: string[]) => safeGitSpawn(wt, a).stdout ?? '';
         const changed = [...g('diff', '--name-only').split('\n'), ...g('ls-files', '--others', '--exclude-standard').split('\n')]
           .filter((f) => f && !f.split('/').includes('node_modules'));
         evidenceReadSet = captureReadSet(wt, changed);
@@ -2488,7 +2491,10 @@ export class LoopService {
           // L1 receipt: capability id, version, artifact digest, block sha256, arm and the sha256 of this LOOP_WORK.md
           ...(extra.skill_route ? { skill_route: skillRouteEventMeta(extra.skill_route, content) } : {}) });
     }
-    fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
+    const file = this.workAssignmentPath(worktreePath);
+    fs.writeFileSync(file, content, 'utf8');
+    if (this.pendingAssignmentReceipts.size >= 256) this.pendingAssignmentReceipts.clear(); // written but never leased: bounded
+    this.pendingAssignmentReceipts.set(file, assignmentReceipt(extra, content));
   }
 
   public writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number, capabilitiesManifest?: string): string {
@@ -2753,7 +2759,24 @@ export class LoopService {
   }
 
   public insertWorkerLease(input: Parameters<WorkerLeaseRepo['insert']>[0]): void {
-    this.workerLeases.insert(this.withAssignmentPacketProvenance(input));
+    this.workerLeases.insert(this.withAssignmentReceipt(this.withAssignmentPacketProvenance(input)));
+  }
+
+  /**
+   * D3 (M0 H5): the per-block receipt of the LOOP_WORK.md this lease will run (assignmentReceipt), attached only while the file
+   * is still byte-identical to what writeWorkAssignment wrote, and only to the first lease on it. Additive metadata only.
+   */
+  private withAssignmentReceipt(input: Parameters<WorkerLeaseRepo['insert']>[0]): Parameters<WorkerLeaseRepo['insert']>[0] {
+    const file = input.metadata.assignment_file;
+    const receipt = typeof file === 'string' ? this.pendingAssignmentReceipts.get(file) : undefined;
+    if (typeof file !== 'string' || !receipt || input.metadata.assignment_receipt !== undefined) return input;
+    this.pendingAssignmentReceipts.delete(file);
+    try {
+      if (createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex') !== receipt.assignment_sha256) return input;
+      return { ...input, metadata: { ...input.metadata, assignment_receipt: receipt } };
+    } catch {
+      return input; // unreadable file: no receipt, as before
+    }
   }
 
   /**

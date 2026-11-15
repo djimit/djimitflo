@@ -102,7 +102,6 @@ export class FrontierExpertScheduler {
   }
 
   async tick(): Promise<FrontierExpertTickResult> {
-    markRun('frontier_experts'); // Cockpit 3.0: execution evidence for the scheduler registry
     const result: FrontierExpertTickResult = { ingested: false, enriched: 0, reviewed: [], failed: [] };
 
     try {
@@ -162,6 +161,7 @@ export class FrontierExpertScheduler {
     }
     if (frontierExpertPersonsEnabled() && !throttled) await this.reviewCapabilityInferred(result);
     this.report(result);
+    markRun('frontier_experts', result.failed.length ? `${result.failed.length} failed: ${result.failed[0].error}` : undefined); // D-S7-1: the run is recorded after the work, with its error (guardTick already recorded the attempt)
     return result;
   }
 
