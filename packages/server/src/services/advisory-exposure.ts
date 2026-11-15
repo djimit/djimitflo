@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { safeGitSpawn } from './safe-git';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
@@ -465,7 +465,7 @@ export function advisoryExposureCheck(db: Database, goalId: string | null | unde
     if (p.status === 'affected') reasons.push(`still_affected:${id}:${(p.affected_versions ?? []).join(',')}`);
     else if (p.status === 'unknown') reasons.push(`unknown:${id}:${p.reason}`);
   }
-  const git = spawnSync('git', ['-C', worktree, 'status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' });
+  const git = safeGitSpawn(worktree, ['status', '--porcelain', '--untracked-files=all']);
   const changed = new Set((git.stdout || '').split('\n').filter(Boolean).map((l) => l.slice(3).split(' -> ').pop()!.replace(/^"|"$/g, '')));
   if (Array.isArray(changedFiles)) for (const f of changedFiles) if (typeof f === 'string') changed.add(f);
   if (git.status !== 0 && !Array.isArray(changedFiles)) reasons.push('changed_files_unreadable');

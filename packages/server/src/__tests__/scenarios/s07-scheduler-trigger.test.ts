@@ -11,7 +11,9 @@
  *
  * Fault injection: the "stuck" cases use only the scheduler's own seams — the report generator constructor parameter
  * (a generator that throws) and the scheduler's stop() (a timer that no longer fires). No registry or DB row is written
- * by the test. "FAIL D-…" tests are `it.fails` (see s01); SCENARIO_STRICT=1 runs them as plain `it`.
+ * by the test. The three defects the audit found (D-S7-1/2/3, docs/audits/controlled-execution-2026-11-15) are plain `it`
+ * here: they failed on origin/main and pass with fix/scheduler-health-truth. D-S7-2 runs with SCHEDULER_STUCK_ESCALATE=shadow
+ * (new flag, default off); S7-c pins the default (off) to the old behaviour: diagnosed, not escalated.
  */
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { startHarness, envSnapshot, until, recordObs, type Harness } from './harness';
@@ -19,7 +21,6 @@ import { ComplianceReportScheduler } from '../../services/compliance-report-sche
 import { guardTick, markRun, noteScheduler, registerRestart, resetSchedulers } from '../../services/scheduler-registry';
 import { startSchedulerWatchdog } from '../../services/stall-watch';
 
-const failing = process.env.SCENARIO_STRICT === '1' ? it : it.fails;
 const INTERVAL_HOURS = '0.0002'; // 720 ms
 const INTERVAL_MS = Number(INTERVAL_HOURS) * 3_600_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -33,11 +34,12 @@ describe('S7 scheduler trigger + stuck visibility (E3)', { timeout: 60_000 }, ()
   beforeAll(async () => { h = await startHarness(); });
   afterAll(async () => { await h.close(); });
   beforeEach(() => {
-    restore = envSnapshot(['COMPLIANCE_REPORT_SCHEDULER_ENABLED', 'COMPLIANCE_REPORT_INTERVAL_HOURS', 'COMPLIANCE_REPORT_TYPE', 'SCHEDULER_SELF_HEAL_MODE']);
+    restore = envSnapshot(['COMPLIANCE_REPORT_SCHEDULER_ENABLED', 'COMPLIANCE_REPORT_INTERVAL_HOURS', 'COMPLIANCE_REPORT_TYPE', 'SCHEDULER_SELF_HEAL_MODE', 'SCHEDULER_STUCK_ESCALATE']);
     process.env.COMPLIANCE_REPORT_SCHEDULER_ENABLED = 'true';
     process.env.COMPLIANCE_REPORT_INTERVAL_HOURS = INTERVAL_HOURS;
     process.env.COMPLIANCE_REPORT_TYPE = 'custom';
     delete process.env.SCHEDULER_SELF_HEAL_MODE;
+    delete process.env.SCHEDULER_STUCK_ESCALATE;
     resetSchedulers(Date.now()); // a fresh boot of the in-memory registry (index.ts builds it once at boot)
   });
   afterEach(() => { sched?.stop(); sched = null; stopWatchdog?.(); stopWatchdog = null; restore(); });
@@ -102,9 +104,15 @@ describe('S7 scheduler trigger + stuck visibility (E3)', { timeout: 60_000 }, ()
     expect(reg.health).toBe('BREACHED');
     expect(obs.detected_after_last_tick_ms).toBeLessThanOrEqual(2 * INTERVAL_MS + 1_000); // the registry's own rule: > 2× interval
     expect(judgments.map((j) => j.decision)).toContain('diagnosed');
+    // SCHEDULER_STUCK_ESCALATE unset (off): unchanged from before the flag — diagnosed only, no stall, no quarantine
+    expect(judgments.map((j) => j.decision)).not.toContain('quarantined');
+    expect(schedulerStalls).toEqual([]);
   });
 
-  failing('FAIL D-S7-2 stuck scheduler with a restart function is never escalated to the stall watch in the default (shadow) self-heal mode', async () => {
+  it('D-S7-2 SCHEDULER_STUCK_ESCALATE=shadow: a stuck scheduler with a restart function reaches the stall watch and needs-you in shadow self-heal mode, without a restart', async () => {
+    process.env.SCHEDULER_STUCK_ESCALATE = 'shadow';
+    const before = (await h.api('GET', '/health/needs-you')).body.needs_you.operator_stalls as number;
+    const since = new Date().toISOString(); // S7-c wrote its own judgments on the same subject
     expect(armComplianceScheduler()).toBe(true);
     sched!.stop();
     stopWatchdog = startSchedulerWatchdog(h.db, 200);
@@ -112,12 +120,21 @@ describe('S7 scheduler trigger + stuck visibility (E3)', { timeout: 60_000 }, ()
     await sleep(1_500);
     const stalls = await h.api('GET', '/health/stalls');
     const subsystems = ((stalls.body.stalls ?? []) as Array<{ subsystem: string }>).map((s) => s.subsystem);
-    recordObs('S7-c-escalation', { subsystems, health: stalls.body.health });
-    // expected: "shadow (default) diagnoses + escalates without restarting" (scheduler-registry.ts header of healSchedulers)
-    expect(subsystems.some((s) => s.includes('compliance_report'))).toBe(true);
+    const needsYou = await h.api('GET', '/health/needs-you');
+    const reg = await registryEntry();
+    const judgments = h.db.prepare("SELECT decision, answers_json FROM judgments WHERE judgment = 'scheduler_recovery' AND subject_id = 'compliance_report' AND created_at >= ? ORDER BY created_at").all(since) as Array<{ decision: string; answers_json: string }>;
+    recordObs('S7-c-escalation', { subsystems, health: stalls.body.health, needs_you: needsYou.body.needs_you, registry: reg, judgments: judgments.map((j) => j.decision) });
+    expect(subsystems).toContain('scheduler:compliance_report');
+    expect(needsYou.status).toBe(200);
+    expect(needsYou.body.needs_you.operator_stalls).toBe(before + 1); // scheduler:* is an operator stall (operator-cockpit.ts OPERATOR_STALL)
+    // shadow: escalated, never restarted (a restart would re-arm the timer and the boot tick would make it 'executing')
+    expect(judgments.map((j) => j.decision)).toEqual(['diagnosed', 'quarantined']);
+    expect(judgments.every((j) => JSON.parse(j.answers_json).attempt === 0)).toBe(true);
+    expect(reg.entry?.status).toBe('quarantined');
+    expect(reg.health).toBe('BREACHED');
   });
 
-  failing('FAIL D-S7-1 a tick whose work throws is never "failing": markRun runs before the work and the error is swallowed', async () => {
+  it('D-S7-1 a tick whose work throws is "failing": the run is recorded after the work, with its error', async () => {
     const thrower = { generateReport: () => { throw new Error('S7 injected report failure'); } } as unknown as ConstructorParameters<typeof ComplianceReportScheduler>[1];
     const since = new Date().toISOString();
     expect(armComplianceScheduler(thrower)).toBe(true);
@@ -129,10 +146,11 @@ describe('S7 scheduler trigger + stuck visibility (E3)', { timeout: 60_000 }, ()
     expect(obs.reports_written).toBe(0); // the work really failed on every tick since it was armed
     // the registry's rule: "failing: its last tick reported an error"
     expect(reg.entry?.status).toBe('failing');
+    expect(reg.entry?.last_error).toContain('S7 injected report failure');
     expect(reg.health).toBe('BREACHED');
   });
 
-  failing('FAIL D-S7-3 (E2, primitive) guardTick never clears an earlier error for a tick fn that does not call markRun itself', async () => {
+  it('D-S7-3 (E2, primitive) guardTick clears an earlier error once a tick fn that does not call markRun itself succeeds', async () => {
     // the shape of inference_failover_probe / operator_digest: setInterval(guardTick(name, () => work()))
     noteScheduler('s7_guardtick_probe', 'S7_PROBE', true, 60_000);
     let fail = true;

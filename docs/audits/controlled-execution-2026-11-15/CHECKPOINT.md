@@ -21,3 +21,5 @@
 
 ## Resume
 `cd <scratchpad>/wt-ce && git pull --ff-only && cat docs/audits/controlled-execution-2026-11-15/CHECKPOINT.md`
+
+- 2026-11-15: main merged in after #1279/#1280 landed — D-S1-2 and D-S7-1/2/3 are plain `it` from those PRs (pass); D-S1-1 and D-S2-1/2 stay `it.fails` (open). Scenario suite: 13 pass + 3 expected fail.

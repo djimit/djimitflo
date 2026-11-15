@@ -136,7 +136,8 @@ describe('S1 normal entry (E3, mock executor)', { timeout: 120_000 }, () => {
     expect(r.run.status).not.toBe('blocked');
   });
 
-  failing('FAIL D-S1-2 cost: the maker ledger row loses the in/out token split the lease recorded (prompt/completion keys)', async () => {
+  // D-S1-2 (fixed): the maker row read only input_/output_tokens while the lease records prompt_/completion_tokens
+  it('D-S1-2 cost: the maker ledger row keeps the in/out token split the lease recorded (prompt/completion keys)', async () => {
     const r = await runGoal('S1 scenario: document the fixture README');
     const maker = r.leases.find((l) => l.role === 'maker')!;
     const makerRow = r.ledger.find((x) => x.consumer === 'maker')!;

@@ -4,6 +4,7 @@ import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 import { AuditService } from './audit-service';
 import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
+import { isHighRiskPath } from './diff-capture';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
 import { AUDIT_CHECKS_PENDING_HOURS, AUDIT_JUDGMENT, AUDIT_SAMPLE_REASON, auditSampleAutoMode, executedAuditVerdict, findingFixAuditVerdict, isAuditSpotCheck, type AuditInputs, autoMergeFindingFixMode, autoMergeMaxPerDay, autoMergeMode, FINDING_FIX_AUTO_MERGE_DIFF_MAX, FINDING_FIX_AUTO_MERGE_JUDGMENT, type AutoMergeClass, autoMergeRecheck, autoMergeRecheckHours, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
@@ -12,7 +13,7 @@ import { AUDIT_CHECKS_PENDING_HOURS, AUDIT_JUDGMENT, AUDIT_SAMPLE_REASON, auditS
 import { defaultSettlementExecutionDeps, latestSettlements, rescoreKillShare, type KillNow } from './settlement-execution';
 import { oracleLane, WRITE_TEST_MUTANTS } from './gym-failure-tasks';
 import type { LoopService } from './loop-service';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
 import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type ProtectionChecks, type RequiredCheck } from './required-checks';
@@ -380,6 +381,10 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     let ffEvidence: Record<string, unknown> = {};
     // the maker's assertion-strength verdict (test-only gate; the executed audit reads it too) — a finding-fix PR has none
     let strength: ReturnType<typeof assertionStrengthVerdict> | null = null;
+    // D4: agent config (AGENTS.md, CLAUDE.md, .opencode/, ...) and every other high-risk path is never merged unattended,
+    // even where testOnlyChange counts it as a test path (`__tests__/CLAUDE.md`) or it is a finding-fix lane's one file
+    const highRisk = names.find(isHighRiskPath);
+    if (highRisk) { record('ineligible', `high_risk_file: ${highRisk}`); continue; }
     if (!testOnlyChange(names)) {
       const nonTest = `non_test_file: ${names.find((f) => !testOnlyChange([f]))}`;
       if (ffMode === 'off' || !/"finding-fix:/.test(run.ev ?? '')) { record('ineligible', nonTest); continue; }
@@ -665,10 +670,11 @@ export function startLoopAutoMerge(db: Database, intervalMs = 15 * 60_000, loops
   const auditKill = loops && auditSampleAutoMode() !== 'off' ? defaultAuditKillExecutor(db, loops) : null;
   let running = false;
   const tick = () => {
-    markRun('loop_auto_merge');
+    // D-S7-1: markTick records the attempt (also while the previous tick still runs), markRun the outcome after the work
+    markTick('loop_auto_merge');
     if (running) return; running = true;
-    runAutoMergeTick(db, fetch, process.env, new Date(), auditKill).then((r) => { if (r.merged || r.revoked) console.log(`🤝 loop auto-merge: ${r.merged} merged, revoked=${r.revoked} (${r.evaluated} evaluated)`); })
-      .catch((e) => console.warn('loop auto-merge failed:', e instanceof Error ? e.message : String(e)))
+    runAutoMergeTick(db, fetch, process.env, new Date(), auditKill).then((r) => { markRun('loop_auto_merge'); if (r.merged || r.revoked) console.log(`🤝 loop auto-merge: ${r.merged} merged, revoked=${r.revoked} (${r.evaluated} evaluated)`); })
+      .catch((e) => { markRun('loop_auto_merge', e); console.warn('loop auto-merge failed:', e instanceof Error ? e.message : String(e)); })
       .finally(() => { running = false; });
   };
   const first = setTimeout(tick, 120_000); first.unref?.();

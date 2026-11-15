@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
-import { execFileSync } from 'child_process';
+import { safeGit } from './safe-git';
 
 /**
  * Evidence freshness (dream-machine ADR-0010 pattern, Batch-8): a check passes against the files it READ, not only the
@@ -42,13 +42,13 @@ const sha = (s: string | null) => (s === null ? 'missing' : createHash('sha256')
 
 /** Read set at a git ref of the worktree (`git show <ref>:<path>`; 'missing' when the path is absent there). */
 export function fingerprintAt(worktree: string, ref: string, paths: string[]): Record<string, string> {
-  const show = (p: string) => { try { return execFileSync('git', ['-C', worktree, 'show', `${ref}:${p}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 20 * 1024 * 1024 }); } catch { return null; } };
+  const show = (p: string) => { try { return safeGit(worktree, ['show', `${ref}:${p}`], { maxBuffer: 20 * 1024 * 1024 }); } catch { return null; } };
   return Object.fromEntries(paths.map((p) => [p, sha(show(p))]));
 }
 
 /** Computed when deterministic checks run: base = the worktree HEAD (the maker's changes are not committed yet). */
 export function captureReadSet(worktree: string, changed: string[]): ReadSet {
-  const git = (...a: string[]) => execFileSync('git', ['-C', worktree, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const git = (...a: string[]) => safeGit(worktree, a).trim();
   const base = git('rev-parse', 'HEAD');
   const read = (rel: string) => { try { return fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch { return null; } };
   const list = (rel: string) => { try { return fs.readdirSync(path.join(worktree, rel)); } catch { return []; } };
