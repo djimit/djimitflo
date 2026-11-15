@@ -211,6 +211,100 @@
         }
       ],
       "evidence_level": "E2"
+    },
+    {
+      "pr": 1279,
+      "claim": "D-S1-2 maker ledger token split",
+      "state": "OPEN",
+      "head": "9daae443012a2d4d7a6f1a270d438a48396e280e",
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": {
+        "source": "builder run on a clean b496916b worktree with only the new test files added (logs in the session scratchpad)",
+        "lines": [
+          "Tests 2 failed | 8 passed | 1 expected fail (model-call-ledger.test.ts + scenarios/s01-normal-entry.test.ts on b496916b with model-call-ledger.ts at origin/main)"
+        ]
+      },
+      "green_on": "9daae443012a2d4d7a6f1a270d438a48396e280e",
+      "green_evidence": "10 passed | 1 expected fail (D-S1-1 still open); CI red only on the 2 ace-001 date tests fixed by #1278",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/model-call-ledger.test.ts",
+          "sha256": "1fa0aa727a5c9080edb6882e838fef317ae1b85fa310c7f9b09658a2f25d82a8"
+        },
+        {
+          "path": "packages/server/src/__tests__/scenarios/harness.ts",
+          "sha256": "8c3c6e03fe904a4434cbaa46043beb4b2628b250eb56f586a2be408b0f74bca3"
+        },
+        {
+          "path": "packages/server/src/__tests__/scenarios/s01-normal-entry.test.ts",
+          "sha256": "8c6e0f72696e319bcdae5b3bd515c8d41f00127acbe3d044a29b4facb6c06173"
+        }
+      ],
+      "evidence_level": "E3"
+    },
+    {
+      "pr": 1280,
+      "claim": "D-S7-1/2/3 scheduler health truth",
+      "state": "OPEN",
+      "head": "2972601fb9175c5a324c929215b9187686571324",
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": {
+        "source": "builder run on a clean b496916b worktree with only the new test files added (logs in the session scratchpad)",
+        "lines": [
+          "Tests 20 failed | 3 passed (23) (scheduler-health-truth.test.ts + scenarios/s07-scheduler-trigger.test.ts on b496916b)"
+        ]
+      },
+      "green_on": "2972601fb9175c5a324c929215b9187686571324",
+      "green_evidence": "23 passed (23); CI red only on the 2 ace-001 date tests fixed by #1278",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/scenarios/harness.ts",
+          "sha256": "8c3c6e03fe904a4434cbaa46043beb4b2628b250eb56f586a2be408b0f74bca3"
+        },
+        {
+          "path": "packages/server/src/__tests__/scenarios/s07-scheduler-trigger.test.ts",
+          "sha256": "adf81f8a3cbafeb0903216bebc65fd825b040daf81567594b3af7069ce94a022"
+        },
+        {
+          "path": "packages/server/src/__tests__/scheduler-health-truth.test.ts",
+          "sha256": "fd2f6e01ba106fe239f2d1b712d83217cac3f17dd8501d05987e538e3b83bba2"
+        }
+      ],
+      "evidence_level": "E3"
+    },
+    {
+      "pr": 1281,
+      "claim": "M2 loop stop conditions in shadow",
+      "state": "OPEN",
+      "head": "482d5204fc7e4bacca943ded89e184fe0942afbc",
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": {
+        "source": "builder run on a clean b496916b worktree with only the new test files added (logs in the session scratchpad)",
+        "lines": [
+          "Tests 3 failed | 1 passed (4) (loop-daemon-stop-conditions.test.ts on b496916b; the pass is the off pin)"
+        ]
+      },
+      "green_on": "482d5204fc7e4bacca943ded89e184fe0942afbc",
+      "green_evidence": "4 passed; 65 adjacent files 809 passed; CI red only on the 2 ace-001 date tests fixed by #1278",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/evolution-evidence.test.ts",
+          "sha256": "a6d509f904c54d1c514b781daa0f6ee9ef30e036dba2675be2069a62d93a5702"
+        },
+        {
+          "path": "packages/server/src/__tests__/loop-daemon-stop-conditions.test.ts",
+          "sha256": "e705f539d2ecc8be17f2d66e883b503a67727bf9e2c0d74c9715079567ad1046"
+        },
+        {
+          "path": "packages/server/src/__tests__/loop-stop-conditions.test.ts",
+          "sha256": "ba9f648a3763360352a246cf6b12513e82647816a14426f1b3d77a506a300898"
+        },
+        {
+          "path": "packages/server/src/__tests__/shadow-judgment-readers.test.ts",
+          "sha256": "99a749feef466cce0e1af248e68bbf6d1a27001b4b77d5194e5e82da339ff2f3"
+        }
+      ],
+      "evidence_level": "E3"
     }
   ]
 }
