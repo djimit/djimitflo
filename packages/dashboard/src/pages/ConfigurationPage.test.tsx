@@ -8,6 +8,8 @@ import { useAuthStore } from '../lib/auth-store';
 beforeEach(() => { useAuthStore.setState({ user: { id: 'admin-fixture', email: 'admin@example.test', role: 'admin' } as never }); });
 
 beforeEach(() => vi.restoreAllMocks());
+// nav cut: the page also holds the runtime-tuned parameters section (former /self-driving); disabled here unless a case says otherwise
+beforeEach(() => { vi.spyOn(api, 'getMetaStats').mockResolvedValue({ enabled: false }); });
 
 const entry = (e: Partial<RuntimeConfigEntry> & { name: string }): RuntimeConfigEntry => ({
   value: null, masked: false, group: e.name.split('_')[0], area: 'other', source: 'env', default: null, overridden: null, takes_effect: 'restart', ...e,
@@ -96,4 +98,12 @@ it('shows a masked value as "set" only, the accepted values of a mode flag, and 
   const short = within(row('ASG_MODE')).getByText('shadow', { selector: 'td' });
   expect(short.className).not.toMatch(/break-all/);
   expect(within(row('LONG_LIST')).getByText('x'.repeat(80)).className).toMatch(/break-all/);
+});
+
+it('nav cut: holds the runtime-tuned parameters of the former /self-driving page', async () => {
+  vi.spyOn(api, 'getRuntimeConfig').mockResolvedValue(fixture());
+  render(<ConfigurationPage />);
+  expect(await screen.findByRole('heading', { name: 'Runtime-tuned parameters' })).toBeTruthy();
+  expect(await screen.findByText(/Meta orchestration is disabled on this instance/)).toBeTruthy();
+  expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Configuration']);
 });

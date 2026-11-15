@@ -2,7 +2,7 @@ import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConnectionBanner } from './WebSocketProvider';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal, Library, Dna } from 'lucide-react';
+import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Workflow, BrainCircuit, Gauge, Menu, X, Sparkles, SlidersHorizontal, Library, Dna } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
 import { PendingApprovalsBanner } from './PendingApprovalsBanner';
@@ -14,55 +14,40 @@ import { NAV_PERMISSIONS } from '../lib/permissions';
 
 // W4 (2026-09-30): one operator's jobs, ≤ 20 top-level items; experimental or dormant pages live in a collapsed Lab.
 // Page-view telemetry (S4, 28-30 Sep) decided what is top-level; Lab pages stay reachable, once each.
+// Nav cut (UX-30, truth audit 2026-11-12): 37 → 21 items; retired and merged pages redirect (App.tsx). Each label is its page's h1.
 const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: string; label: string; keywords?: string; icon: LucideIcon }> }> = [
   { title: 'Operate', items: [
     { to: '/', label: 'Cockpit', icon: Activity },
-    { to: '/decisions', label: 'Decisions', icon: CheckSquare },
-    { to: '/goals-loops', label: 'Goals & Loops', keywords: 'workflows goals runs doelen', icon: Workflow },
+    { to: '/decisions', label: 'Decisions', keywords: 'inbox backlog triage memory candidates', icon: CheckSquare },
+    { to: '/goals-loops', label: 'Goals & Loops', keywords: 'workflows goals runs doelen pipelines', icon: Workflow },
     { to: '/tasks', label: 'Tasks', icon: ListTodo },
-    { to: '/repositories', label: 'Repositories', icon: FolderGit },
+    { to: '/repositories', label: 'Repositories', keywords: 'explainers', icon: FolderGit },
   ] },
   { title: 'Improve', items: [
     { to: '/improvement-funnel', label: 'Improvement funnel', keywords: 'verification outcomes proposals improvements verbetering', icon: Gauge },
     { to: '/evolution', label: 'Evolution', icon: Dna },
-    { to: '/observability', label: 'Observability', keywords: 'traces metrics latency diagnostics diagnose', icon: BarChart3 },
-    { to: '/usage', label: 'Usage', keywords: 'tokens costs usage verbruik kosten', icon: DollarSign },
+    { to: '/observability', label: 'Observability', keywords: 'traces metrics latency diagnostics diagnose health checks self-healing', icon: BarChart3 },
+    { to: '/usage', label: 'Usage', keywords: 'tokens costs usage verbruik kosten economy', icon: DollarSign },
   ] },
   { title: 'Knowledge', items: [
     { to: '/knowledge', label: 'Knowledge', keywords: 'skills cards research retrieval kennis vaardigheden', icon: Library },
     { to: '/frontier-experts', label: 'Frontier Experts', icon: GraduationCap },
-    { to: '/agent-commons', label: 'Agent Commons', keywords: 'reflection proposals collaboration reflectie samenwerken', icon: Sparkles },
+    { to: '/agent-commons', label: 'Agent Commons', keywords: 'reflection proposals collaboration reflectie samenwerken interaction board', icon: Sparkles },
   ] },
   { title: 'Fleet', items: [
-    { to: '/fleet', label: 'Fleet hosts', icon: Network },
-    { to: '/agents', label: 'Agents', keywords: 'subagents specialists agenten specialisten', icon: Users },
+    { to: '/fleet', label: 'Fleet', keywords: 'hosts worker pool cockpit federation', icon: Network },
+    { to: '/agents', label: 'Agents', keywords: 'subagents specialists agenten specialisten swarm catalog', icon: Users },
   ] },
   { title: 'Govern', items: [
+    { to: '/governance', label: 'Governance & Assurance', keywords: 'scorecard sdd compliance swarm mutation gate panels', icon: ShieldCheck },
     { to: '/policies', label: 'Policies', icon: Shield },
-    { to: '/governance', label: 'Governance & Assurance', icon: ShieldCheck },
     { to: '/mcp-permissions', label: 'MCP Permissions', keywords: 'tools integrations permissions rechten integraties', icon: PlugZap },
     { to: '/audit', label: 'Audit', keywords: 'logs events fouten', icon: ScrollText },
     { to: '/authority', label: 'Authority ledger', icon: ShieldCheck },
-    { to: '/configuration', label: 'Configuration', keywords: 'models providers routing flags budgets instellingen modellen', icon: SlidersHorizontal },
+    { to: '/configuration', label: 'Configuration', keywords: 'models providers routing flags budgets instellingen modellen tuning', icon: SlidersHorizontal },
   ] },
   { title: 'Lab', lab: true, items: [
-    { to: '/dashboard', label: 'Activity overview', icon: Activity },
-    { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
-    { to: '/swarm', label: 'Swarm', icon: Cpu },
-    { to: '/fleet-cockpit', label: 'Fleet Cockpit', icon: Gauge },
     { to: '/swarm-mission-control', label: 'Swarm Mission Control', keywords: 'memory capabilities runtime geheugen mogelijkheden', icon: BrainCircuit },
-    { to: '/explainers', label: 'Repository explainers', icon: BookUser },
-    { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
-    { to: '/catalog', label: 'Agent Catalog', icon: BookUser },
-    { to: '/interaction-board', label: 'Interaction Board', icon: MessageSquare },
-    { to: '/self-driving', label: 'Self-Driving', icon: Activity },
-    { to: '/cognitive', label: 'Cognitive', icon: Brain },
-    { to: '/consensus-debates', label: 'Consensus debates', keywords: 'committee committees comite consensus', icon: MessageSquare },
-    { to: '/agi-reasoning', label: 'Goal reasoning', icon: Brain },
-    { to: '/predictive-analytics', label: 'Predictive analytics', icon: BarChart3 },
-    { to: '/self-healing', label: 'Health checks', icon: Activity },
-    { to: '/economy', label: 'Economy', icon: DollarSign },
-    { to: '/federation', label: 'Federation', icon: Network },
   ] },
 ];
 
@@ -152,10 +137,11 @@ export function Layout() {
         <div className="flex items-start justify-between border-b border-border p-6">
            <div className="flex min-w-0 w-full flex-col gap-2">
              <div>
-               <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+               {/* nav cut: the product name is not a heading, so each page has exactly one h1 (its own title) */}
+               <div className="text-xl font-bold text-foreground flex items-center gap-2">
                  <Activity className="w-6 h-6 text-accent" />
                  Djimitflo
-               </h1>
+               </div>
                <p className="text-sm text-foreground-tertiary mt-1">
                  Agent Control Plane
                </p>
