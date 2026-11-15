@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "denominator_frozen_in_commit": "571a0ad39f5d6ed6eb587302242949fb513152cc",
+  "denominator": 8,
+  "chains": [
+    {"id":"C1","result":"INCONCLUSIVE","evidence_level":"E2 partial","reason":"Nested reservation/idempotency/settlement regression tests pass, but prepared child is not dispatched through normal intake; full chain not tested."},
+    {"id":"C2","result":"NOT_TESTED","evidence_level":"E1","reason":"No maker-to-independent-checker completion journey run."},
+    {"id":"C3","result":"NOT_TESTED","evidence_level":"E1","reason":"No runtime executor isolation test; protected runtime-admission code unchanged."},
+    {"id":"C4","result":"PASS_PARTIAL","evidence_level":"E2","reason":"Reservation versus reported/unknown usage regression cases pass; provider measurement and crash-safe concurrent settlement remain unverified."},
+    {"id":"C5","result":"NOT_TESTED","evidence_level":"E1","reason":"No CI/PR publication effect performed; merge and deploy prohibited."},
+    {"id":"C6","result":"NOT_TESTED","evidence_level":"E1","reason":"No DjimitSec scan/finding/remediation/retest execution."},
+    {"id":"C7","result":"NOT_TESTED","evidence_level":"E1","reason":"No candidate admission, promotion or runtime skill delivery evaluated."},
+    {"id":"C8","result":"NOT_TESTED","evidence_level":"E1","reason":"No scheduler trigger or poller host probe."}
+  ],
+  "count_at_e3_or_higher": "0/8",
+  "note":"The denominator is unchanged. E2 tests do not satisfy E3 normal-route evidence. The partial C1/C4 results are not counted as E3 passes."
+}

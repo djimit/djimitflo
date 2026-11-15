@@ -1,23 +1,56 @@
-# Controlled execution report — 2026-11-15
+# Controlled execution — interim delivery and evidence
 
-## Current status
+## What DjimitFlo can demonstrably do on the examined source
 
-This report is an active checkpoint, not a completed audit. The frozen baseline is `7758d153e415177de8e977721011c9675482934c`; the candidate code SHA at freeze is `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`. The denominator commit is `571a0ad39f5d6ed6eb587302242949fb513152cc`. See `scope.json` and `CHECKPOINT.md`.
+At baseline `7758d153e415177de8e977721011c9675482934c`, the nested-spawn API can accept a request and persist a prepared/requested child record (E1 code evidence; local service tests E2). The candidate branch adds durable request idempotency, nested budget reservation separate from measured/unknown usage, preparation reconciliation and normal settlement projection for covered service paths (E2). The existing execute-worker API is present, but no ordinary consumer of prepared nested spawn records was found in the inspected source path. Therefore the full normal dispatch chain is not established.
 
-## Preflight
+The route inventory is generated and retained in `capability-matrix.json` and `route-contracts.json`; these describe static declarations and references, not observed execution. The frozen critical-chain denominator remains 8; 0/8 chains reached E3 in this bounded session. Scope, frozen scenarios and test limitations are in `scope.json`, `scenarios.json`, `critical-chain-assessment.json` and `verification.json`.
 
-Node and npm satisfy the required version range (`v22.23.2`, `10.9.8`). `npm ci` passed and installed 779 packages; npm reported zero vulnerabilities and one deprecation warning for the stub `@types/bcryptjs` package. The shared and agent-catalog TypeScript builds passed at `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`. The two nested-spawn test files are still pending. No conclusion beyond these results is drawn.
+## Problems reproduced and candidate fix
 
-## Evidence limits
+The baseline regression run used `7758d153e415177de8e977721011c9675482934c` with only the two regression test files, test database helper and additive migration overlaid. It failed as expected: 10 failed, 17 passed. The candidate at `3bff1c0d14f224040df9d3c1daf357d80e5032dc` passed the same focused command: 2 files, 27 tests. See `evidence/baseline-spawn-red.txt`; exact test and overlay hashes plus commands are in `verification.json`.
 
-The mandate blocks real runtimes, production probes, paid calls, experiment registration, holdout access, protected-path edits, flags, merge and deploy. The maximum runtime evidence available under this mandate is E3 through a local normal route with mock/deterministic execution. No runtime, production, UI journey or evolution claim has yet been verified in this session.
+The product fix is commit `e7baf39fdca9c7602cbf3644e7ffb11cc448c473` on the existing review branch / draft PR #1272. It keeps grant, reservation, measured usage and unknown usage semantically separate in the tested code path and makes repeated admission idempotent. The branch also projects normal nested lease settlement into the spawn view for tested cases. No production flags were changed. Draft PR: https://github.com/djimit/djimitflo/pull/1272. This session did not push its new audit commits, so the PR’s currently published head does not yet include this report/checkpoint update.
 
-## Work and cost
+## Claims by evidence level
 
-No product source has been changed in this session. Environment token and monetary cost are not exposed and are therefore not reported as zero. The initial audit package and frozen denominator are committed; preflight builds/tests and one M1 vertical improvement are the remaining authorized work.
+- E1: route/service call graph, runtime/tool boundary and integration-source inspection; generated route and MCP inventory.
+- E2: baseline-red/candidate-green isolated SQLite/fake-runtime tests (27 candidate tests).
+- E3+: none in this session. No local server journey, real runtime, browser, host or production observation.
+- Static inventory reported 596 routes; 551 have static test references; four critical routes are unclassified. It reported 61 MCP tools; 60 referenced; one noncritical tool unclassified. `assurance:contracts` and `assurance:route-contracts` exit nonzero on these gaps. A static reference is not test execution.
 
-## Proposed DoD status
+## Value, reliability, cost and time
 
-- A. Work iteration complete: not yet achieved.
-- B. Functional objective proven: not achieved.
-- C. Evolutionary improvement proven: not achieved.
+The verified improvement is narrower failure-resistant admission/accounting behavior in the covered local tests; no change in user outcome, runtime reliability, latency, throughput or monetary/token cost was measured. Session token and cost telemetry were unavailable, so cost is unknown, not zero. No value-per-success ratio is calculable.
+
+## Historical hypotheses
+
+See `findings.json` for traceable statuses. Summary: H1 BEVESTIGD (prepared child dispatch gap); H2 and H3 GEWIJZIGD in candidate code with E2 evidence only; H4 BEVESTIGD as an executor-boundary gap; H5/H6 NIET VERIFIEERBAAR; H7 GEWIJZIGD (open PR/source changes, live poller status unknown); H8 BEVESTIGD only as a provenance verification gap; H9 NIET VERIFIEERBAAR; H10 BEVESTIGD as a measurement gap, with no current net-value measurement. These statuses do not claim production failure or production behavior.
+
+## Limits and the one action that removes each blocker
+
+- Normal child dispatch (S1/H1): implement or identify an authorized dispatcher/admission consumer, then test through normal HTTP intake to execution and settlement. Do not auto-start prepared leases without the existing gates.
+- Real-runtime collaboration (S12): operator must authorize a runtime and bounded model budget; after that run two workers on the normal route and independently check the joined artifact.
+- Production and poller/DjimitSec status (S7/S15/S16): operator must authorize the named read-only probes or isolated integrations; no probe was performed here.
+- Evolution/holdout (S13/S14/H5/H6): operator-only holdout and experiment prerequisites remain; this session did not open/register either.
+- UI journey: run the existing app with a permitted test database and browser; not done.
+- Route assurance gaps: assign and classify the four critical unclassified routes and one MCP tool, then rerun the generated assurance commands.
+
+## Milestone judgments (proposed, not independently approved)
+
+- A. Work iteration complete: **partially complete**. M0 preflight, frozen denominators and baseline revalidation are packaged; the scoped M1 nested-accounting/idempotency improvement has red/green E2 proof. Independent read-only verification remains pending.
+- B. Functional objective proven: **not proven**. Normal full execution, independent checker, UI, runtime and production evidence are absent; 0/8 critical chains reached E3.
+- C. Evolutionary improvement proven: **not proven**. No candidate/holdout/task transfer, retained version or rollback evaluation was run.
+
+## First follow-up investment (best-supported)
+
+**Close the normal nested dispatch chain before adding autonomy.** Missing capability: durable, policy-admitted dispatch of a prepared child through existing leases and `executeWorker`, with unambiguous ownership and no duplicate starts. Goal: make a delegated task submitted through the normal API either start under current gates or remain visibly prepared with a reason. Reuse `NestedSpawnService`, `LoopService`, `LoopWorkerExecutorService`, existing leases/outbox and Mission Detail. Smallest slice: first establish whether a current scheduler/daemon is intended to consume prepared nested rows; if none, propose the smallest opt-in admission hook without changing protected defaults. Baseline: prepared receipt with no normal dispatch. Measure: one normal HTTP request’s child lease/attempt state, exact artifact, independent checker receipt, reservation/usage settlement and UI projection; include duplicate request and crash-before-dispatch cases. Cost ceiling: existing local test budget only; no model calls or production action. Acceptance: one route-level journey reaches actual mock runtime start and verified result without direct worker function calls or DB writes; duplicate request does not duplicate lease/reservation. Stop if existing authority cannot be established. Rollback: feature flag default off; retain durable intents/evidence; no merge/deploy in this session. First files to inspect/change only after admission design is approved: `routes/spawns.ts`, `services/nested-spawn-service.ts`, existing scheduler/dispatcher consumer, `services/loop-service.ts`, Mission Detail projection and focused route tests.
+
+Other follow-up investments, in priority order:
+
+1. Verify runtime containment by executor: absent capability is concrete shell/filesystem/network enforcement evidence. Reuse existing executor policy and sandbox; no new framework. Baseline each runtime’s enforced boundary. Stop if it requires protected runtime-admission edits without explicit authorization. Rollback is revert of an isolated adapter change.
+2. Preserve evidence provenance end-to-end: trace a synthetic row to explainer/export and keep source, synthetic flag, commit, freshness and method. Baseline is the existing serializer path; acceptance is a fixture assertion at final export, not merely at source. Use local fixtures only.
+3. Improve loop/value observability through existing metric contracts: eligible-task denominator, delivered result, cost coverage and repeated/no-new-information status. Baseline from existing contract and local synthetic data. Do not change operator-owned thresholds.
+4. Run one preregistered skill/memory evaluation only after operator opens the experiment and protected holdout process; baseline vs candidate on untouched tasks, exact hashes, failures included, independent judge and rollback. No cost or improvement claim before that.
+
+See `CHECKPOINT.md` for exact resumption command and worktree state. No protected file, runtime flag, production resource or deployment was changed.

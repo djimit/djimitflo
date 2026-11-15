@@ -1,0 +1,9 @@
+Baseline reproduction (sanitized summary)
+
+Repository: djimit/djimitflo
+Baseline SHA: 7758d153e415177de8e977721011c9675482934c
+Command: npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts
+Exit: 1
+Method: detached baseline worktree; overlaid only the two candidate regression test files, test database helper, and additive migration. No candidate service or route implementation was overlaid.
+Result: 10 failed, 17 passed. Failing assertions covered grant counted as consumed before execution, missing reservation/accounting invariant, same idempotency key creating duplicate work, uncertain preparation not retained as durable intent, and concurrent budget over-admission.
+Sensitive runtime output was excluded. Exact overlays and hashes are in verification.json.

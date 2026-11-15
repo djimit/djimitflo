@@ -2,62 +2,55 @@
 
 ## Baseline and work context
 
-- Repository: `djimit/djimitflo`
-- Baseline: `origin/main` at `7758d153e415177de8e977721011c9675482934c`
-- Work branch: `codex/functional-improvements-20261114`
-- Candidate SHA at frozen denominator: `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`
-- Worktree: `/private/tmp/djimitflo-functional-improvements-20261114`; clean before this audit package.
-- Existing PR: #1272, draft; no merge or deployment authorized.
-- Node/npm: v22.23.2 / 10.9.8.
-- Preflight: `npm ci` passed (779 packages installed; 0 reported vulnerabilities); shared and agent-catalog builds passed at `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`. Focused tests remain pending.
+- Repository: `djimit/djimitflo`; baseline `origin/main` `7758d153e415177de8e977721011c9675482934c`.
+- Worktree: `/private/tmp/djimitflo-functional-improvements-20261114`; branch `codex/functional-improvements-20261114`.
+- Frozen candidate reference: `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`; current branch head before this checkpoint update: `3bff1c0d14f224040df9d3c1daf357d80e5032dc`.
+- Frozen denominator commit: `571a0ad39f5d6ed6eb587302242949fb513152cc`; scope is C1–C8, S1–S16, H1–H10. Lists were committed before tests.
+- Existing draft PR #1272 is the candidate delivery route; no merge/deploy is authorized.
+- Primary user checkout contains unrelated changes and was not edited.
 
-## Frozen denominators
+## Preflight outcome: GREEN (E2 ceiling reached)
 
-- Critical chains: C1–C8 in `scope.json` (8 categories).
-- Scenarios: S1–S16 in `scenarios.json` (16 scenarios).
-- Historical hypotheses: H1–H10; resolution observations frozen in `scope.json`.
-- Frozen denominator commit: `571a0ad3` (`docs: freeze controlled execution audit scope`). No tests for these denominators ran before that commit.
-- Executable ceiling: E3 only with local normal route and mock/deterministic executor; E4 real runtime and E5 production are blocked by mandate.
+- Node `v22.23.2`, npm `10.9.8`.
+- `npm ci`: PASS, 779 packages; 0 reported vulnerabilities, one deprecated stub package warning.
+- Shared and agent-catalog builds: PASS at `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`.
+- Focused tests: PASS, 2 files / 27 tests at `3bff1c0d14f224040df9d3c1daf357d80e5032dc`.
+- Baseline reproduction: same two suites on baseline with only regression tests, test DB helper and additive migration overlaid: FAIL as expected, 10 failed / 17 passed. Candidate service code was not overlaid. Sanitized evidence is in `evidence/baseline-spawn-red.txt`.
+- This is E2 test evidence. No server, real runtime, production, browser or live integration was run. E3–E5 claims remain blocked or unverified.
 
-## Completed steps
+## Completed steps and commits
 
-- Read repository loader, project commands, SOUL, USER and core-invariants. The supplied user mandate is the controlling session budget and disallows protected path changes, real runtime starts, production probes, paid calls, holdout access, new experiment registration, merge and deploy.
-- Confirmed primary checkout has unrelated user changes and is not used for edits.
-- Confirmed isolated worktree is clean at candidate SHA above.
-- Confirmed remote `origin/main` currently resolves to the frozen baseline SHA above.
-- Created initial audit package and froze C1–C8, S1–S16 and H1–H10 resolution observations in commit `571a0ad39f5d6ed6eb587302242949fb513152cc`.
+- `571a0ad39f5d6ed6eb587302242949fb513152cc`: freeze denominator before tests.
+- `14b1472345840160e0a733fc2b6f9fbf8e7fe060`: record preflight install evidence.
+- `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`: record shared/catalog build evidence.
+- `3bff1c0d14f224040df9d3c1daf357d80e5032dc`: record focused test evidence.
+- Existing candidate fix commit `e7baf39fdca9c7602cbf3644e7ffb11cc448c473` changes nested spawn reservation/idempotency/reconciliation and terminal projection. Red/green test evidence is E2 only.
+- Static generated inventory commands were also run; route assurance reports inventory gaps documented in `REPORT.md`.
 
-## Commits
+## Frozen scenarios and current outcomes
 
-- `571a0ad39f5d6ed6eb587302242949fb513152cc`: froze baseline, critical-chain and scenario denominators before this session's preflight tests.
-- Checkpoint metadata follow-up: records this freeze commit; does not change the frozen lists.
-- `npm ci` completed; no package or lockfile changes are intended.
-- Shared and agent-catalog TypeScript builds passed; focused nested-spawn tests are the next preflight step.
+- S1: INCONCLUSIVE — prepared HTTP spawn is not normally dispatched; full route not run.
+- S2: PASS at E2 for durable prepared receipt/status; not evidence of dispatch.
+- S3/S4/S5/S6/S7/S9/S10/S11/S12/S13/S14/S15/S16: NOT_TESTED in this bounded iteration.
+- S8: PASS at E2 for reservation versus measured/unknown use on covered nested-spawn tests; runtime provider metering remains unknown.
+- See `scenarios.json` and `verification.json` for exact scope and limitations.
 
-## Open scenarios and milestones
+## Hypotheses
 
-All S1–S16: `NOT_TESTED` at checkpoint creation. See `scenarios.json` for permitted evidence ceiling.
+- H1 BEVESTIGD: normal spawn intake prepares but does not dispatch; see `verification.json` and route/service source references.
+- H2 GEWIJZIGD: candidate branch separates reservation from measured/unknown use; baseline red and candidate E2 green. No hard mid-call enforcement proven.
+- H3 GEWIJZIGD: candidate branch projects nested lease settlement in normal LoopService; only focused E2 tests, no real worker lifecycle.
+- H4 BEVESTIGD (E1): CLI-internal tools are not mediated by ToolBroker; executor isolation varies and protected runtime-admission changes are outside mandate.
+- H5 NIET VERIFIEERBAAR: no same-hash selection→delivery→runtime-load→effect chain proven.
+- H6 NIET VERIFIEERBAAR: no independent held-out selection/evolution claim proven.
+- H7 GEWIJZIGD: poller diagnostics/Agent Commons work is tracked separately in #1231; current live pollers not probed.
+- H8 BEVESTIGD (E1): provenance continuity requires further trace-to-export verification.
+- H9 NIET VERIFIEERBAAR: live DjimitSec lifecycle not run; its checkout is dirty and untouched.
+- H10 BEVESTIGD as an evidence gap (E1): no net value conclusion from activity counts; no value/cost cohort measured here.
 
-- M0: preflight in progress; install and requested builds passed, focused tests pending.
-- M1: one vertical improvement permitted after baseline reproduction. Existing PR work is prior candidate evidence only; it does not replace this session's preflight or normal-entry verification.
-- M2–M5: not started; default session budget does not authorize going beyond M0 + one M1 improvement.
+## Budget, blockers and next action
 
-## Budget
-
-- Operator-provided wall-time/token budget: not provided.
-- Applicable cap: M0 plus one vertical M1 improvement.
-- Environment-reported token/cost usage: unavailable / not measured.
-- Model calls, production access, runtime starts, holdout work and experiment registration: prohibited by default mandate.
-
-## Open operator decisions
-
-- None required for the permitted M0 and one M1 iteration.
-- Any required protected-path, live-runtime, production, holdout, experiment, merge or deployment step remains unauthorized and must be proposed separately.
-
-## Resume command
-
-```bash
-cd /private/tmp/djimitflo-functional-improvements-20261114 && git status --short --branch && npm ci
-```
-
-After dependency install, run the two frozen build/test commands from `verification.json`, update this checkpoint and verification artifacts, then investigate the frozen critical chains and select at most one M1 vertical fix.
+- Session budget supplied: no numeric wall-clock/token budget; contractual cap is M0 plus one M1 vertical improvement. Cost telemetry unavailable, so cost is not measured (not zero).
+- The allowed M1 work is complete: nested spawn reservation/idempotency/reconciliation candidate is tested red/green at E2. H1 dispatch remains a separate normal-route gap; do not add an unapproved dispatch authority/flag.
+- No operator decision is needed for local evidence packaging. Real runtime, production, UI, protected-path, experiment/holdout, merge and deploy are explicitly not authorized.
+- Resume: `cd /private/tmp/djimitflo-functional-improvements-20261114 && git status --short --branch && python3 -m json.tool docs/audits/controlled-execution-2026-11-15/verification.json >/dev/null`

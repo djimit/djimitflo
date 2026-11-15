@@ -18,6 +18,33 @@
       "result": "PASS",
       "summary": "Both TypeScript project builds completed successfully.",
       "sensitive_output_redacted": true
+    },
+    {
+      "id": "preflight-focused-tests-2026-11-15",
+      "kind": "command_output_summary",
+      "command": "npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts",
+      "candidate_sha": "3bff1c0d14f224040df9d3c1daf357d80e5032dc",
+      "result": "PASS",
+      "summary": "2 files, 27 tests passed; test source hashes recorded in verification.json.",
+      "sensitive_output_redacted": true
+    },
+    {
+      "id": "baseline-spawn-red-2026-11-15",
+      "kind": "reproduction_summary",
+      "command": "npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "result": "EXPECTED_FAILURE_REPRODUCED",
+      "summary": "10 failed, 17 passed with regression tests/test helper/additive migration overlaid; candidate service code absent. See evidence/baseline-spawn-red.txt and overlay hashes in verification.json.",
+      "sensitive_output_redacted": true
+    },
+    {
+      "id": "static-route-contract-inventory-2026-11-15",
+      "kind": "generated_inventory",
+      "command": "npm run assurance:contracts && npm run assurance:route-contracts",
+      "candidate_sha": "3bff1c0d14f224040df9d3c1daf357d80e5032dc",
+      "result": "GAPS_REPORTED",
+      "summary": "Generated inventory: 596 routes, 551 with static test references, four critical routes unclassified; 61 MCP tools, 60 referenced, one noncritical unclassified. This is static inventory evidence only.",
+      "sensitive_output_redacted": true
     }
   ],
   "redaction": "Do not include secrets, private data, full prompts or sensitive runtime payloads. Store reproducible commands and sanitized excerpts only."
