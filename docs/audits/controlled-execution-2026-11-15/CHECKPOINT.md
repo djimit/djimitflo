@@ -24,7 +24,7 @@
 - `14b1472345840160e0a733fc2b6f9fbf8e7fe060`: record preflight install evidence.
 - `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`: record shared/catalog build evidence.
 - `3bff1c0d14f224040df9d3c1daf357d80e5032dc`: record focused test evidence.
-- `44838961a1bb8096996ebf39664b3e2da2d3565c`: complete evidence package; pushed to draft PR #1272. The final PR head after the subsequent report correction is recorded by GitHub.
+- `44838961a1bb8096996ebf39664b3e2da2d3565c`: complete evidence package; pushed to draft PR #1272. The exact current PR head and CI status must be refreshed with `gh pr view 1272 --repo djimit/djimitflo --json headRefOid,statusCheckRollup` and `gh pr checks 1272 --repo djimit/djimitflo`.
 - Existing candidate fix commit `e7baf39fdca9c7602cbf3644e7ffb11cc448c473` changes nested spawn reservation/idempotency/reconciliation and terminal projection. Red/green test evidence is E2 only.
 - Static generated inventory commands were also run; route assurance reports inventory gaps documented in `REPORT.md`.
 
@@ -45,7 +45,7 @@
 - H5 NIET VERIFIEERBAAR: no same-hash selection→delivery→runtime-load→effect chain proven.
 - H6 NIET VERIFIEERBAAR: no independent held-out selection/evolution claim proven.
 - H7 GEWIJZIGD: poller diagnostics/Agent Commons work is tracked separately in #1231; current live pollers not probed.
-- H8 BEVESTIGD (E1): provenance continuity requires further trace-to-export verification.
+- H8 NIET VERIFIEERBAAR: builder marks synthetic/source metadata at E1; propagation to exports was not tested.
 - H9 NIET VERIFIEERBAAR: live DjimitSec lifecycle not run; its checkout is dirty and untouched.
 - H10 BEVESTIGD as an evidence gap (E1): no net value conclusion from activity counts; no value/cost cohort measured here.
 

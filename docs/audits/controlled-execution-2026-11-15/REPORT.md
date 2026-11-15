@@ -25,7 +25,7 @@ The verified improvement is narrower failure-resistant admission/accounting beha
 
 ## Historical hypotheses
 
-See `findings.json` for traceable statuses. Summary: H1 BEVESTIGD (prepared child dispatch gap); H2 and H3 GEWIJZIGD in candidate code with E2 evidence only; H4 BEVESTIGD as an executor-boundary gap; H5/H6 NIET VERIFIEERBAAR; H7 GEWIJZIGD (open PR/source changes, live poller status unknown); H8 BEVESTIGD only as a provenance verification gap; H9 NIET VERIFIEERBAAR; H10 BEVESTIGD as a measurement gap, with no current net-value measurement. These statuses do not claim production failure or production behavior.
+See `findings.json` for traceable statuses. Summary: H1 BEVESTIGD (prepared child dispatch gap); H2 and H3 GEWIJZIGD in candidate code with E2 evidence only; H4 BEVESTIGD as an executor-boundary gap; H5/H6 NIET VERIFIEERBAAR; H7 GEWIJZIGD (open PR/source changes, live poller status unknown); H8 NIET VERIFIEERBAAR (the builder sets synthetic/source metadata, but downstream continuity was not tested); H9 NIET VERIFIEERBAAR; H10 BEVESTIGD as a measurement gap, with no current net-value measurement. These statuses do not claim production failure or production behavior.
 
 ## Limits and the one action that removes each blocker
 
