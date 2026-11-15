@@ -49,6 +49,12 @@
 - H9 NIET VERIFIEERBAAR: live DjimitSec lifecycle not run; its checkout is dirty and untouched.
 - H10 BEVESTIGD as an evidence gap (E1): no net value conclusion from activity counts; no value/cost cohort measured here.
 
+## CI follow-up
+
+- Exact-head workflow on `b11b716c6b014d502d5edd6c7280d17667e2c837` failed two `ace-001.test.ts` assertions in Node 22/24; typecheck, lint and build had passed. The test also failed identically on baseline `7758d153e415177de8e977721011c9675482934c`.
+- Cause: pre-readout tests used default wall-clock time after `ACE_001_STOP_BY=2026-11-15T00:00:00Z`; production code correctly entered the registered readout.
+- Test-only fixture correction pins those assertions to `STOP_BY - 1ms`; focused tests now pass 53/53, server typecheck and workspace lint pass (one pre-existing lint warning). Full CI rerun is pending after push. No experiment/evaluation code or protocol was changed.
+
 ## Budget, blockers and next action
 
 - Session budget supplied: no numeric wall-clock/token budget; contractual cap is M0 plus one M1 vertical improvement. Cost telemetry unavailable, so cost is not measured (not zero).

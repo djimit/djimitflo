@@ -166,5 +166,21 @@
       "resolution": "Use existing metric contracts with a fixed eligible-task denominator and observable outcomes; do not invent revenue.",
       "verification": "No value delta measured; cost remains unknown."
     }
+  ],
+  "supplemental_findings": [
+    {
+      "id": "CI-001",
+      "claim": "Two ACE-001 tests assumed the wall clock was before the registered readout deadline; after 2026-11-15T00:00:00Z they failed although the implementation correctly evaluated the deadline condition.",
+      "status": "FIXED_TEST_FIXTURE_ONLY",
+      "evidence_level": "E2",
+      "source": [
+        "packages/server/src/services/ace-001.ts:26-28,134-144",
+        "packages/server/src/__tests__/ace-001.test.ts:96-114,282-291"
+      ],
+      "reproduction": "Full PR CI at head b11b716c failed two assertions in ace-001.test.ts. The same two assertions failed locally on both candidate and origin/main 7758d153. The test passed a default now=Date.now() after ACE_001_STOP_BY.",
+      "change": "Pin the two pre-readout assertions to Date.parse(ACE_001_STOP_BY)-1. Production/evaluation code and experiment protocol are unchanged.",
+      "verification": "After test-only correction, focused ace-001 plus nested-spawn suites passed 53/53; server tsc passed; workspace lint passed with one pre-existing unused eslint-disable warning.",
+      "limitation": "The full CI suite has not yet rerun on the corrected PR head; no holdout or experiment was opened."
+    }
   ]
 }

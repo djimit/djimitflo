@@ -45,6 +45,16 @@
       "result": "GAPS_REPORTED",
       "summary": "Generated inventory: 596 routes, 551 with static test references, four critical routes unclassified; 61 MCP tools, 60 referenced, one noncritical unclassified. This is static inventory evidence only.",
       "sensitive_output_redacted": true
+    },
+    {
+      "id": "ci-ace-001-test-correction-2026-11-15",
+      "kind": "baseline_reproduction_and_test_only_fix",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "pre_fix_candidate_sha": "b11b716c6b014d502d5edd6c7280d17667e2c837",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43656628071",
+      "result": "RED_REPRODUCED_BOTH_BASELINE_AND_CANDIDATE; GREEN_AFTER_TEST_FIX",
+      "summary": "Two ACE-001 assertions assumed pre-deadline wall clock. Corrected tests inject now=STOP_BY-1; focused 53/53 pass. Implementation/protocol unchanged.",
+      "sensitive_output_redacted": true
     }
   ],
   "redaction": "Do not include secrets, private data, full prompts or sensitive runtime payloads. Store reproducible commands and sanitized excerpts only."

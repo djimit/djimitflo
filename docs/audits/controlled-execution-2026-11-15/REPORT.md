@@ -19,6 +19,10 @@ The product fix is commit `e7baf39fdca9c7602cbf3644e7ffb11cc448c473` on the exis
 - E3+: none in this session. No local server journey, real runtime, browser, host or production observation.
 - Static inventory reported 596 routes; 551 have static test references; four critical routes are unclassified. It reported 61 MCP tools; 60 referenced; one noncritical tool unclassified. `assurance:contracts` and `assurance:route-contracts` exit nonzero on these gaps. A static reference is not test execution.
 
+## Exact-head CI follow-up
+
+The published PR head `b11b716c6b014d502d5edd6c7280d17667e2c837` failed the full test step in `ace-001.test.ts` on Node 22 and 24. The two failures reproduce locally on both this candidate and frozen `origin/main` `7758d153e415177de8e977721011c9675482934c`: test cases assumed `Date.now()` was before `ACE_001_STOP_BY`, but the registered stop time (`2026-11-15T00:00:00Z`) had passed. The implementation intentionally permits the readout at/after that deadline. I changed only those tests to pass `STOP_BY - 1ms` when asserting pre-readout withholding; the ACE implementation and experiment protocol were not changed. The corrected focused set passed 53/53; server typecheck passed and workspace lint passed with one pre-existing unused-eslint-disable warning. Exact-head full CI must rerun after pushing this test-only correction.
+
 ## Value, reliability, cost and time
 
 The verified improvement is narrower failure-resistant admission/accounting behavior in the covered local tests; no change in user outcome, runtime reliability, latency, throughput or monetary/token cost was measured. Session token and cost telemetry were unavailable, so cost is unknown, not zero. No value-per-success ratio is calculable.
