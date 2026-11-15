@@ -45,6 +45,7 @@ import { startEvidenceRoom } from '../services/commons-evidence-room';
 import { startInvestigationOutcomes } from '../services/commons-investigation';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
+import { startDateBombLane } from '../services/date-bomb-source';
 import { startFleetRepair } from '../services/fleet-repair';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
@@ -305,6 +306,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopSettlementExec) { lifecycleManager.register({ serviceName: 'SettlementExecution', stop: stopSettlementExec }); console.log('🧪 Settlement execution on (shadow, daily).'); }
   } catch (error) {
     console.warn('⚠️  Settlement execution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Date-bomb lane: weekly time-travel scan of recently changed server tests at origin/main (the settlement worktree path);
+  // shadow records judgments, on proposes test-only fixes (<= 2/day, panel + human approval and merge). DATE_BOMB_LANE, default off.
+  try {
+    const stopDateBomb = startDateBombLane(db, recoverySvc);
+    if (stopDateBomb) { lifecycleManager.register({ serviceName: 'DateBombLane', stop: stopDateBomb }); console.log('💣 Date-bomb lane on (weekly scan, max 2 proposals/day).'); }
+  } catch (error) {
+    console.warn('⚠️  Date-bomb lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Track B EVE-V cron repair (shadow): fleet jobs with >= 3 verified agent.outcome failures in 7 d → one fleet_repair_candidate judgment / day. FLEET_REPAIR_MODE=shadow.
