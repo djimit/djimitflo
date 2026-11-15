@@ -12,7 +12,7 @@
 | 2 | scope + checkpoint | done | this commit |
 | 3 | frozen denominators | pending | — |
 | 4 | static re-verification 3.2 + H1–H3 on b496916b | pending | — |
-| 5 | S1/S2 on E3 (local server, mock executor) | pending | — |
+| 5 | S1/S2/S7 on E3 (local server, mock executor) | done: S1 FAIL, S2 FAIL, S7 FAIL (E3; S7-d E2) — 7 defects D-S1-1/2, D-S2-1/2, D-S7-1/2/3, see `scenarios.json` | 90b68b25 (tests) + this commit (scenarios.json) |
 | 6 | M1 batch (red-green) | in review | #1278 (new), #1276 #1275 #1277 (opened 2026-11-14, counted as prior work) |
 | 7 | M2 value / stop rules on existing carriers | pending | — |
 
