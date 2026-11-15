@@ -55,6 +55,21 @@
       "result": "RED_REPRODUCED_BOTH_BASELINE_AND_CANDIDATE; GREEN_AFTER_TEST_FIX",
       "summary": "Two ACE-001 assertions assumed pre-deadline wall clock. Corrected tests inject now=STOP_BY-1; focused 53/53 pass. Implementation/protocol unchanged.",
       "sensitive_output_redacted": true
+    },
+    {
+      "id": "ci-web-research-baseline-failure-2026-11-15",
+      "kind": "exact_head_ci_and_baseline_reproduction",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "candidate_sha": "8c3476471a1223df42e494bdbe84064ab6d18b72",
+      "candidate_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "candidate_result": "1 failed, 10 passed; expected job is null at web-research.test.ts:250",
+      "baseline_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "baseline_result": "Same 1 failed, 10 passed at the same assertion on detached origin/main worktree",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43707335553",
+      "result": "BASELINE_FAILURE_REPRODUCED; exact-head CI red on Node 22; Node 24 test job cancelled after fail-fast",
+      "test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5",
+      "summary": "The route fixture seeds records at a fixed 2026-11-08 time while the claim route uses current time; the seven-day query window excludes them. Not fixed because unrelated to the frozen M1 nested-spawn slice.",
+      "sensitive_output_redacted": true
     }
   ],
   "redaction": "Do not include secrets, private data, full prompts or sensitive runtime payloads. Store reproducible commands and sanitized excerpts only."

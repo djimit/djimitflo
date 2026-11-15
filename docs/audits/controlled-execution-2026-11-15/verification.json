@@ -101,6 +101,25 @@
       ],
       "candidate_sha": "df07cd90b1021e1550544087f5d38b8300367b7b",
       "test_sha256": "390e3e87f9d233aa640a4220ff682cf08ec3215e52aa1f385006394174d509c0"
+    },
+    {
+      "id": "ci-web-research-baseline-failure-2026-11-15",
+      "status": "BASELINE_FAILURE_REPRODUCED; UNRELATED_TO_CANDIDATE",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "candidate_sha": "8c3476471a1223df42e494bdbe84064ab6d18b72",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43707335553",
+      "ci_head_sha": "8c3476471a1223df42e494bdbe84064ab6d18b72",
+      "ci_node_22_summary": "Typecheck, lint, build, fleet-auth-infra passed. Full test job: 873 files passed, 1 failed, 2 skipped; 8200 tests passed, 1 failed, 1 expected failure, 24 skipped. Failure: web-research.test.ts:250 expected a job but received null. Node 24 test job was cancelled after Node 22 failed; its typecheck, lint and build passed.",
+      "candidate_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "candidate_exit_code": 1,
+      "candidate_summary": "1 failed, 10 passed. WEB-001 route test receives null at line 250.",
+      "baseline_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "baseline_exit_code": 1,
+      "baseline_summary": "Same 1 failed, 10 passed and same null job at line 250 on detached origin/main worktree 7758d153e415177de8e977721011c9675482934c.",
+      "test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5",
+      "cause": "The fixture seeds failures relative to 2026-11-08T06:00:00Z, while the route claim uses the real current time. After the seven-day research window has advanced, failureUnits excludes those rows and no claim is produced. This is a time-dependent baseline test fixture failure.",
+      "evidence_level": "E2",
+      "scope_decision": "Not changed: unrelated WEB-001 test fixture and research surface are outside the frozen M1 nested-spawn vertical slice."
     }
   ],
   "note": "Append each verification with exact baseline and candidate SHAs, command, selected output, test-file SHA-256, and result. Never upgrade prior evidence without rerunning it at the recorded SHA."
