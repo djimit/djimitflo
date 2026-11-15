@@ -5,7 +5,8 @@ import { mutationCheckEnv } from './test-gap-source-service';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { FINDING_FIX_DIFF_MAX, findingFixCheckEnv } from './finding-fix-source';
 import { ADVISORY_DIFF_MAX, advisoryGoalRefs } from './advisory-exposure';
-import { LoopService } from './loop-service';
+import { DEFAULT_MAX_FINDINGS, LoopService, loopContractStopConditions } from './loop-service';
+import { recordStopConditions, stopConditionsMode } from './loop-stop-conditions';
 import { randomUUID } from 'node:crypto';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
@@ -363,7 +364,7 @@ export class LoopDaemon {
 
         // Non-blocking: start the goal and don't wait for it to finish.
         this.executing.add(goal.id);
-        this.executeGoal(goal, { allowObjectiveMode }).catch((err) => {
+        this.executeGoal(goal, { allowObjectiveMode, tickId }).catch((err) => {
           console.error('[LoopDaemon] goal execution error:', err instanceof Error ? err.message : String(err));
         }).finally(() => this.executing.delete(goal.id));
       }
@@ -564,7 +565,7 @@ export class LoopDaemon {
    * The daemon discovers findings, creates leases, executes the maker+checker, runs
    * deterministic checks, and certifies the result.
    */
-  private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean } = { allowObjectiveMode: false }): Promise<void> {
+  private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean; tickId?: string } = { allowObjectiveMode: false }): Promise<void> {
     let runId: string | null = null;
     const startedAtMs = Date.now();
     // The cognitive/meta layer keys tuning by the run's loop name (loop-service getActiveLoopTuning), not by execution mode.
@@ -610,6 +611,16 @@ export class LoopDaemon {
         : this.loops.startDocDriftAndSmallFixLoop({ goal_id: goal.id });
       runId = run.id;
       loopName = (run as { loop_name?: string }).loop_name ?? loopName;
+      // M2 (LOOP_STOP_CONDITIONS_MODE=shadow): the run's declared stop conditions, evaluated where it would go on to its maker
+      // dispatch — one judgments row per run per tick; never stops anything. off: no-op (loop-stop-conditions.ts).
+      if (stopConditionsMode() === 'shadow') {
+        const contractStops = (run.metadata as { contract?: { stop_conditions?: unknown } } | undefined)?.contract?.stop_conditions;
+        recordStopConditions(this.db, {
+          runId: run.id, goalId: goal.id, loopName, tickId: opts.tickId ?? randomUUID(), run,
+          declared: Array.isArray(contractStops) ? contractStops.filter((c): c is string => typeof c === 'string') : loopContractStopConditions(loopName) ?? [],
+          scanBudget: DEFAULT_MAX_FINDINGS, daemonAction: run.findings.length === 0 ? 'complete_no_findings' : resumeRunId ? 'resume' : 'dispatch',
+        });
+      }
 
       // 3. Skip execution if no findings were discovered.
       if (run.findings.length === 0) {

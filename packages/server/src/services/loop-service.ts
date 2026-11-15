@@ -137,7 +137,8 @@ interface RunChecksInput {
 }
 
 const LOOP_NAME = 'doc-drift-and-small-fix-loop';
-const DEFAULT_MAX_FINDINGS = 50;
+/** startLoop's discovery cap when the caller names none (the loop daemon never does): the run's scan budget. */
+export const DEFAULT_MAX_FINDINGS = 50;
 const LOOP_RUNTIME_MANIFEST_POLICY_VERSION = 'loop-runtime-bridge-v1';
 
 const MONOREPO_ROOT = process.cwd().includes('/packages/server')
@@ -270,6 +271,9 @@ const LOOP_CONTRACTS: LoopContract[] = [
     stop_conditions: ['policy_drift_findings_planned', 'human_required_for_mutating_policy_change'],
   },
 ];
+
+/** A catalog loop's declared stop_conditions (null for a name outside LOOP_CONTRACTS); LOOP_STOP_CONDITIONS_MODE evaluates them. */
+export const loopContractStopConditions = (name: string): string[] | null => LOOP_CONTRACTS.find((c) => c.name === name)?.stop_conditions ?? null;
 
 /**
  * LoopService — facade for the loop subsystem.
