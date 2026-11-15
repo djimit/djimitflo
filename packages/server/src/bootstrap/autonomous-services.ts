@@ -4,7 +4,7 @@
  * Extracted from index.ts for separation of concerns.
  */
 import { lifecycleManager } from '../services/lifecycle-manager';
-import { guardTick, noteScheduler, registerRestart } from '../services/scheduler-registry';
+import { guardTick, markRun, noteScheduler, registerRestart } from '../services/scheduler-registry';
 import { LoopService } from '../services/loop-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { NestedSpawnService } from '../services/nested-spawn-service';
@@ -408,7 +408,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   }
 
   // P0.1 scheduler self-heal watchdog: armed-but-not-ticking ⇒ diagnose ⇒ one bounded restart (act) ⇒ verify ⇒ quarantine + escalate.
-  // SCHEDULER_SELF_HEAL_MODE=shadow (default: diagnose + escalate, no restart) | act | off.
+  // SCHEDULER_SELF_HEAL_MODE=shadow (default: diagnose, no restart; escalate with SCHEDULER_STUCK_ESCALATE=shadow) | act | off.
   try {
     const stopWatchdog = startSchedulerWatchdog(db);
     if (stopWatchdog) { lifecycleManager.register({ serviceName: 'SchedulerWatchdog', stop: stopWatchdog }); console.log(`🩹 Scheduler watchdog on (${process.env.SCHEDULER_SELF_HEAL_MODE || 'shadow'}, every 15 min).`); }
@@ -499,8 +499,9 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     // Panel-authorised (scheduled) proposals used to become goals only at boot: a requeued or late-scheduled proposal
     // waited for the next restart (prod 2026-09-25: dc1143b8 sat 'scheduled' for 40+ min). Only this generator, hourly.
     const scheduledTick = guardTick('scheduled_proposal_goals', () => {
+      // D-S7-1: the error was only logged, so guardTick never saw it; it is now the scheduler's last_error (guardTick records success)
       try { const n = autonomousGoals.generateFromSelfImprovements(); if (n) console.log(`🎯 ${n} goal(s) from scheduled proposals`); }
-      catch (err) { console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
+      catch (err) { markRun('scheduled_proposal_goals', err); console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
     });
     const scheduledInterval = Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000;
     let scheduledTimer = setInterval(scheduledTick, scheduledInterval);

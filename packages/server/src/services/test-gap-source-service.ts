@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { extraRepos, extraReposMode, registeredExtraRepos, type ExtraRepo } from './repo-registry';
 import { recordSpecGapShadow, specGapMode, specRepo } from './spec-gap-source';
 
@@ -269,11 +269,13 @@ export class TestGapSourceService {
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !testGapSourceEnabled()) return;
     const run = () => {
-      markRun('test_gap_source');
+      markTick('test_gap_source'); // D-S7-1: the attempt; the outcome (with the first error) is recorded after both passes
+      let error: unknown;
       const note = (lane: 'test-gap' | 'mutation-gap', r: { created: number; skipped: string }) => gapLaneResults.set(lane, { ...r, at: new Date().toISOString() });
       const failed = (err: unknown) => ({ created: 0, skipped: `failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200) });
-      try { const r = this.run(); note('test-gap', r); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { note('test-gap', failed(err)); console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
-      try { const r = this.runMutationGaps(); note('mutation-gap', r); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { note('mutation-gap', failed(err)); console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      try { const r = this.run(); note('test-gap', r); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { error ??= err; note('test-gap', failed(err)); console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      try { const r = this.runMutationGaps(); note('mutation-gap', r); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { error ??= err; note('mutation-gap', failed(err)); console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      markRun('test_gap_source', error);
     };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 90_000).unref?.();
