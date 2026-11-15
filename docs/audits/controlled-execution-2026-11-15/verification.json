@@ -100,7 +100,7 @@
         "No runtime, holdout or production validation"
       ],
       "candidate_sha": "f75dda7c95582efc0e52c229879d057a7bcc7f63",
-      "test_sha256_pending_commit": "390e3e87f9d233aa640a4220ff682cf08ec3215e52aa1f385006394174d509c0"
+      "test_sha256": "390e3e87f9d233aa640a4220ff682cf08ec3215e52aa1f385006394174d509c0"
     }
   ],
   "note": "Append each verification with exact baseline and candidate SHAs, command, selected output, test-file SHA-256, and result. Never upgrade prior evidence without rerunning it at the recorded SHA."
