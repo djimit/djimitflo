@@ -1,0 +1,216 @@
+{
+  "base_sha": "b496916b029dd4555c648203f4244706628ce79e",
+  "note": "red runs recorded by the main session on the base SHA (not stored as CI artefacts except #1278); independent re-run is the verifier session's job",
+  "claims": [
+    {
+      "pr": 1278,
+      "claim": "ACE-001 test clock (main red since stop_by)",
+      "state": "OPEN",
+      "head": "81b22944dc803ddffe1e9f0f4c65e755f020f3ae",
+      "merge_commit": null,
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": {
+        "source": "GitHub CI run 43656497600 on main b496916b (base test file, real clock after stop_by 2026-11-15T00:00Z)",
+        "lines": [
+          "FAIL src/__tests__/ace-001.test.ts > evidence counts production outcomes per arm (gym outcomes and other refs excluded)",
+          "FAIL src/__tests__/ace-001.test.ts > ace001Evidence main-effect diff is null (withheld) when an arm has zero outcomes before readout"
+        ]
+      },
+      "green_on": "81b22944dc803ddffe1e9f0f4c65e755f020f3ae",
+      "green_evidence": "GitHub CI on head (build-and-test 22+24 and required checks)",
+      "command": "npm run test -w @djimitflo/server -- ace-001.test.ts",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/ace-001.test.ts",
+          "sha256": "0ff751e08a1cfa64f02976cf5993ef661abf4df69c39cbdf521b4ef30802c1ab"
+        }
+      ],
+      "evidence_level": "E2",
+      "green_local": [
+        "Test Files  1 passed (1)",
+        "Tests  26 passed (26)"
+      ]
+    },
+    {
+      "pr": 1276,
+      "claim": "M1-A/F retry approval parked; ended-worker approval never runs",
+      "state": "OPEN",
+      "head": "fb2716eef48a1b6df19b8f5d085b2831cc87e96e",
+      "merge_commit": null,
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": {
+        "source": "local run 2026-11-15 by the main session: the PR's test files checked out onto the base SHA, product code unchanged (Node v22.23.2, deps from npm ci)",
+        "command": "cd packages/server && node ../../node_modules/vitest/vitest.mjs run src/__tests__/approval-ended-worker.test.ts src/__tests__/loop-daemon-retry-approval.test.ts",
+        "lines": [
+          "\u00d7 blocks the goal on the retry approval instead of verifying and failing it 116ms",
+          "\u00d7 after approval resumes the run on the retry, reads its result and evaluates it 104ms",
+          "\u00d7 does not execute an approved task when the lease was cancelled (evolve supersede) 186ms",
+          "\u00d7 does not execute an approved task when the lease failed (stale_timeout) 174ms",
+          "\u00d7 does not execute an approved task when the loop run was cancelled 174ms",
+          "\u00d7 does not execute an approved task when the loop run completed 167ms",
+          "\u00d7 the orphan lease cleanup expires a pending approval whose lease was cancelled, with an audit row 172ms",
+          "Test Files  2 failed (2)",
+          "Tests  7 failed | 3 passed (10)"
+        ]
+      },
+      "green_on": "fb2716eef48a1b6df19b8f5d085b2831cc87e96e",
+      "green_evidence": "GitHub CI on head (build-and-test 22+24 and required checks)",
+      "command": "npm run test -w @djimitflo/server -- approval-ended-worker.test.ts loop-daemon-retry-approval.test.ts",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/approval-ended-worker.test.ts",
+          "sha256": "2ea8278b6532f1a8a555439122b36b9704de09e0ba1837f723c811b58fbb4b5a"
+        },
+        {
+          "path": "packages/server/src/__tests__/loop-daemon-retry-approval.test.ts",
+          "sha256": "6b2372024823f3ab2a140f53af21d108288a652c8fcefdea9e85dacc61b745a7"
+        }
+      ],
+      "evidence_level": "E2"
+    },
+    {
+      "pr": 1275,
+      "claim": "H5 D1/D3/D4 no credit on delivery, per-block receipts",
+      "state": "OPEN",
+      "head": "ccab0210513486590c28590cad2766b14838caf3",
+      "merge_commit": null,
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": {
+        "source": "local run 2026-11-15 by the main session: the PR's test files checked out onto the base SHA, product code unchanged (Node v22.23.2, deps from npm ci)",
+        "command": "cd packages/server && node ../../node_modules/vitest/vitest.mjs run src/__tests__/assignment-receipts.test.ts src/__tests__/evolution-feedback.test.ts src/__tests__/knowledge-fitness.test.ts src/__tests__/outcome-attribution.test.ts",
+        "lines": [
+          "\u00d7 names every block that is in the text, with the sha256 of that block as it appears there 1ms",
+          "\u00d7 a block that is not in the text has no receipt: no rules, a held-out or undelivered skill route 0ms",
+          "\u00d7 assignment_receipt = sha256 of the written LOOP_WORK.md + rules and examples blocks; the text is unchanged 61ms",
+          "\u00d7 D1: a legacy memory_rule credit (delivery, not use) is no use edge; the memory read edge stays 53ms",
+          "\u00d7 D1/D4: most-credited patterns name only credited genomes \u2014 never delivered-only rules/examples or the empty baseline genome 55ms",
+          "\u00d7 records one annotation per settled run and credits the contributors of a verified run 56ms",
+          "\u00d7 D1: delivered-only memory rules and examples are never credited, and legacy delivery credits leave the top contributors 53ms",
+          "\u00d7 D4: the baseline genome has no content, so it is never credited 53ms",
+          "Test Files  4 failed (4)",
+          "Tests  8 failed | 36 passed (44)"
+        ]
+      },
+      "green_on": "ccab0210513486590c28590cad2766b14838caf3",
+      "green_evidence": "GitHub CI on head (build-and-test 22+24 and required checks)",
+      "command": "npm run test -w @djimitflo/server -- assignment-receipts.test.ts evolution-feedback.test.ts knowledge-fitness.test.ts outcome-attribution.test.ts",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/assignment-receipts.test.ts",
+          "sha256": "50a88a9c515fba1e0abb5c193481123bb3342871ed598121d40a24aa2384fbee"
+        },
+        {
+          "path": "packages/server/src/__tests__/evolution-feedback.test.ts",
+          "sha256": "a37ca4d1f50b5471695b197f22775b2922ac4f9cf9b43ec9c22639e58455370c"
+        },
+        {
+          "path": "packages/server/src/__tests__/knowledge-fitness.test.ts",
+          "sha256": "5cf0625da0a5c43a0590b01cd8340c5f38c0de966378930ea1998a09a93a0bff"
+        },
+        {
+          "path": "packages/server/src/__tests__/outcome-attribution.test.ts",
+          "sha256": "35ccaa0bbb8df87237e272df5e2ed001cebb84275c6a498b742cc0d7a03dcbe8"
+        }
+      ],
+      "evidence_level": "E2"
+    },
+    {
+      "pr": 1277,
+      "claim": "H4 D3/D4 safeGit + checker agent config",
+      "state": "OPEN",
+      "head": "3c80b732bf75de5382e9ab9cd820b4d1558aa97c",
+      "merge_commit": null,
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": {
+        "source": "local run 2026-11-15 by the main session: the PR's test files checked out onto the base SHA, product code unchanged (Node v22.23.2, deps from npm ci)",
+        "command": "cd packages/server && node ../../node_modules/vitest/vitest.mjs run src/__tests__/checker-agent-config.test.ts src/__tests__/evidence-freshness.test.ts src/__tests__/loop-auto-merge.test.ts src/__tests__/loop-draft-pr-idempotent.test.ts src/__tests__/loop-draft-pr-service.test.ts src/__tests__/multi-repo-oracle-lanes.test.ts src/__tests__/safe-git.test.ts src/__tests__/server-git-hardening.test.ts",
+        "lines": [
+          "\u00d7 core.fsmonitor in the maker repo config does not run on the gate git calls (status/diff) 119ms",
+          "\u00d7 hooks (core.hooksPath and .git/hooks) do not run when the checker worktree is cut from a maker worktree 372ms",
+          "\u00d7 refuses a repo-local filter driver instead of running it 98ms",
+          "\u00d7 refuses repo-local diff drivers and an external diff 71ms",
+          "\u00d7 a repointed .git file (maker-made gitdir) is held to the same rules 179ms",
+          "\u00d7 AGENTS.md 3ms",
+          "\u00d7 CLAUDE.md 0ms",
+          "\u00d7 opencode.json 0ms",
+          "\u00d7 opencode.jsonc 0ms",
+          "\u00d7 .mcp.json 1ms",
+          "\u00d7 .opencode/agent/review.md 0ms",
+          "\u00d7 .opencode 0ms",
+          "\u00d7 .claude/settings.json 0ms",
+          "\u00d7 .codex/config.toml 1ms",
+          "\u00d7 .github/copilot-instructions.md 0ms",
+          "\u00d7 packages/server/AGENTS.md 0ms",
+          "\u00d7 packages/server/src/__tests__/CLAUDE.md 0ms",
+          "\u00d7 a maker that touched one gets a changed-files risk reason (security checker, no auto-approval) 64ms",
+          "\u00d7 restores maker-edited, maker-added and maker-deleted agent config in the checker worktree and keeps the maker change 520ms",
+          "\u00d7 D4: a PR touching agent config (AGENTS.md, CLAUDE.md, .opencode/, ...) is never auto-merged, even when every path counts as a test path 61ms",
+          "\u00d7 D3: the commit and push in the maker worktree run none of its hooks or fsmonitor 382ms",
+          "Test Files  5 failed | 3 passed (8)",
+          "Tests  21 failed | 149 passed (170)"
+        ]
+      },
+      "green_on": "3c80b732bf75de5382e9ab9cd820b4d1558aa97c",
+      "green_evidence": "GitHub CI on head (build-and-test 22+24 and required checks)",
+      "command": "npm run test -w @djimitflo/server -- checker-agent-config.test.ts evidence-freshness.test.ts loop-auto-merge.test.ts loop-draft-pr-idempotent.test.ts loop-draft-pr-service.test.ts multi-repo-oracle-lanes.test.ts safe-git.test.ts server-git-hardening.test.ts",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/checker-agent-config.test.ts",
+          "sha256": "e5c80046b6e28a4a9fde4a9b6d638925ed12517b11612277b65441c62c5d5e4e"
+        },
+        {
+          "path": "packages/server/src/__tests__/evidence-freshness.test.ts",
+          "sha256": "812f04fd08c1d852f1ef0401ebcbb4d483e53bb4066ac74a72f05ddab8ba1baa"
+        },
+        {
+          "path": "packages/server/src/__tests__/loop-auto-merge.test.ts",
+          "sha256": "859394d966fc9c4331ca4dadc94ac5404292f2a3523a7a58857914bfdec36a8e"
+        },
+        {
+          "path": "packages/server/src/__tests__/loop-draft-pr-idempotent.test.ts",
+          "sha256": "36c4d5bcb78c60a61e8018464ba538d172a6eb2ee8916494c2a51a6f4becef72"
+        },
+        {
+          "path": "packages/server/src/__tests__/loop-draft-pr-service.test.ts",
+          "sha256": "d008d4f9373960c1c32cffa3dbbb6932b2b75947b2c6c519e3615263ed1e77f4"
+        },
+        {
+          "path": "packages/server/src/__tests__/multi-repo-oracle-lanes.test.ts",
+          "sha256": "bcdd5a5c8ff6cc288701e92d39abdd94d6447bdd3b80e4bce363d33baf00be72"
+        },
+        {
+          "path": "packages/server/src/__tests__/safe-git.test.ts",
+          "sha256": "42ebef9514428520161dc881a99ebc5c28beb1f137610df87c7707e17443fe5c"
+        },
+        {
+          "path": "packages/server/src/__tests__/server-git-hardening.test.ts",
+          "sha256": "a3245c3630893b260683a40e28dc769df12085f3cc7290c4ade49fecb7ee5cec"
+        }
+      ],
+      "evidence_level": "E2"
+    },
+    {
+      "pr": 1270,
+      "claim": "needs-you tests independent of registry stop dates (merged)",
+      "state": "MERGED",
+      "head": "0a1061614c635ec10393adfa22a814a5a7b11c8d",
+      "merge_commit": "8b7ed663ad3c71c059006d226736afbd72fafce1",
+      "red_on": "b496916b029dd4555c648203f4244706628ce79e",
+      "red_evidence": "builder report: new tests fail on the base (run before the fix); CI of the base for #1278 (run 43656497600 build-and-test (24))",
+      "green_on": "0a1061614c635ec10393adfa22a814a5a7b11c8d",
+      "green_evidence": "GitHub CI on head (build-and-test 22+24 and required checks)",
+      "command": "npm run test -w @djimitflo/server -- cockpit-integrity.test.ts needs-you-human.test.ts",
+      "test_files": [
+        {
+          "path": "packages/server/src/__tests__/cockpit-integrity.test.ts",
+          "sha256": "9cde962c605a9eda3bf839c82f6b6b5d5d3621c616c68b7f90f7e3c7ada3f6cc"
+        },
+        {
+          "path": "packages/server/src/__tests__/needs-you-human.test.ts",
+          "sha256": "4fcd89d0b6fd729f9e545b49f5366aa8865ca1ef97f9120f4cd94683dbe7ff25"
+        }
+      ],
+      "evidence_level": "E2"
+    }
+  ]
+}
