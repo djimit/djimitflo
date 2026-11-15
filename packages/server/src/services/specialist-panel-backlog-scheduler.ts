@@ -66,7 +66,6 @@ export class SpecialistPanelBacklogScheduler {
   }
 
   tick(): BacklogTickResult {
-    markRun('specialist_panel_backlog'); // Cockpit 3.0: execution evidence for the scheduler registry
     const result: BacklogTickResult = { projected: [], failed: [] };
     const candidates = this.panels.listPanels(500).filter((panel) =>
       panel.status === 'consensus_ready'
@@ -82,6 +81,7 @@ export class SpecialistPanelBacklogScheduler {
         result.failed.push({ id: panel.id, error: err instanceof Error ? err.message : String(err) });
       }
     }
+    markRun('specialist_panel_backlog', result.failed.length ? `${result.failed.length} failed: ${result.failed[0].error}` : undefined); // D-S7-1: the run is recorded after the work, with its error (guardTick already recorded the attempt)
     return result;
   }
 }

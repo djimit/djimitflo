@@ -98,6 +98,17 @@ it('K1: proposal refs, memory reads, genome refs and credits are use edges; a un
   expect(item(f, 'kb_page', 'credited.md')).toMatchObject({ n_verified: 1 });
 });
 
+it('D1: a legacy memory_rule credit (delivery, not use) is no use edge; the memory read edge stays', () => {
+  db.prepare(`INSERT INTO memory_candidates (id, title, content, memory_type, status, promotion_status, human_required, sensitivity, metadata, created_at, updated_at, store)
+    VALUES ('rule-2', 'Delivered only', 'c', 'engineering_rule', 'promoted', 'promoted', 0, 'normal', '{}', ?, ?, 'procedural')`).run(ago(9), ago(9));
+  const r = run('verified', []);
+  db.exec('CREATE TABLE IF NOT EXISTS outcome_credits (run_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (run_id, kind, ref))');
+  db.prepare('INSERT INTO outcome_credits VALUES (?, ?, ?, ?)').run(r, 'memory_rule', 'rule-2', ago(1));
+  const f = knowledgeFitness(db, NOW);
+  expect(item(f, 'memory_rule', 'rule-2')).toBeUndefined();
+  expect(f.by_kind.find((k) => k.kind === 'memory_rule')).toMatchObject({ inventory: 1, unused: 1 });
+});
+
 it('K1: pure helpers and the knowledge overview section', () => {
   expect(knowledgeItem('kb:x.md')).toEqual({ kind: 'kb_page', id: 'x.md' });
   expect(knowledgeItem('claim:c1')).toEqual({ kind: 'expert_claim', id: 'c1' });

@@ -107,7 +107,6 @@ export class MemoryCandidateReviewScheduler {
   }
 
   async tick(): Promise<MemoryReviewTickResult> {
-    markRun('memory_candidate_review'); // Cockpit 3.0: execution evidence for the scheduler registry
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const result: MemoryReviewTickResult = { reviewed: [], promoted: [], parked: [], failed: [], evolutionProposalGenerated: false };
 
@@ -128,6 +127,7 @@ export class MemoryCandidateReviewScheduler {
     if (result.reviewed.length || result.promoted.length || result.parked.length || result.failed.length || result.evolutionProposalGenerated) {
       console.log(`🧬 memory-candidate review tick: reviewed=${result.reviewed.length} promoted=${result.promoted.length} parked=${result.parked.length} failed=${result.failed.length} evolutionProposal=${result.evolutionProposalGenerated}`);
     }
+    markRun('memory_candidate_review', result.failed.length ? `${result.failed.length} failed: ${result.failed[0].error}` : undefined); // D-S7-1: the run is recorded after the work, with its error (guardTick already recorded the attempt)
 
     return result;
   }
