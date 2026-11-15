@@ -4,6 +4,7 @@ import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 import { AuditService } from './audit-service';
 import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
+import { isHighRiskPath } from './diff-capture';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
 import { AUDIT_CHECKS_PENDING_HOURS, AUDIT_JUDGMENT, AUDIT_SAMPLE_REASON, auditSampleAutoMode, executedAuditVerdict, findingFixAuditVerdict, isAuditSpotCheck, type AuditInputs, autoMergeFindingFixMode, autoMergeMaxPerDay, autoMergeMode, FINDING_FIX_AUTO_MERGE_DIFF_MAX, FINDING_FIX_AUTO_MERGE_JUDGMENT, type AutoMergeClass, autoMergeRecheck, autoMergeRecheckHours, autoMergeSettlementRevoke, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
@@ -380,6 +381,10 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     let ffEvidence: Record<string, unknown> = {};
     // the maker's assertion-strength verdict (test-only gate; the executed audit reads it too) — a finding-fix PR has none
     let strength: ReturnType<typeof assertionStrengthVerdict> | null = null;
+    // D4: agent config (AGENTS.md, CLAUDE.md, .opencode/, ...) and every other high-risk path is never merged unattended,
+    // even where testOnlyChange counts it as a test path (`__tests__/CLAUDE.md`) or it is a finding-fix lane's one file
+    const highRisk = names.find(isHighRiskPath);
+    if (highRisk) { record('ineligible', `high_risk_file: ${highRisk}`); continue; }
     if (!testOnlyChange(names)) {
       const nonTest = `non_test_file: ${names.find((f) => !testOnlyChange([f]))}`;
       if (ffMode === 'off' || !/"finding-fix:/.test(run.ev ?? '')) { record('ineligible', nonTest); continue; }

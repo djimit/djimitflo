@@ -7,7 +7,7 @@ import { makerDiffSource } from './egress-classification';
  * Maker runs (opencode / remote / atomic CLIs) spend their tokens outside the server's HTTP clients, so their call is
  * recorded here from the lease's runtime_usage when the run settles — once per run, with the experiment arms it ran in.
  */
-type Usage = { input_tokens?: unknown; output_tokens?: unknown; total_tokens?: unknown; usage_source?: unknown };
+type Usage = { input_tokens?: unknown; output_tokens?: unknown; prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown; usage_source?: unknown };
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /** 'ACE-001:01,STE-001:1,F2:cross' — the arms a goal's maker ran in; null when it ran in none. */
@@ -39,7 +39,9 @@ export function recordWorkerCall(db: Database, c: {
 }): void {
   const usage = c.meta.runtime_usage ?? {};
   // a runtime that reported only a total keeps tokens_in = total, tokens_out = null (split unknown) — never 0
-  const input = num(usage.input_tokens); const output = num(usage.output_tokens); const total = num(usage.total_tokens);
+  // D-S1-2: a lease's runtime_usage carries prompt_/completion_tokens (LoopService.extractRuntimeUsage) — the same split
+  const input = num(usage.input_tokens) ?? num(usage.prompt_tokens); const output = num(usage.output_tokens) ?? num(usage.completion_tokens);
+  const total = num(usage.total_tokens);
   const tokensIn = input !== null && (input > 0 || (output ?? 0) > 0) ? input : total;
   const tokensOut = input !== null && (input > 0 || (output ?? 0) > 0) ? output : null;
   const maker = c.consumer === 'maker';

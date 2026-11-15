@@ -5,11 +5,11 @@
  * into a single testable service.
  */
 
-import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import type { LoopFinding, LoopGate, LoopName } from './loop-types';
 import type { GoalRecord } from './goal-service';
+import { safeGit } from './safe-git';
 
 export interface LoopStateInput {
   loopName: LoopName;
@@ -42,7 +42,7 @@ export class LoopPersistenceService {
       try { stat = fs.lstatSync(path.join(repositoryPath, file)); } catch { return `# new entry: ${file} (unreadable)`; }
       if (!stat.isFile()) return `# new ${stat.isSymbolicLink() ? 'symlink' : 'entry'}: ${file}`;
       try {
-        return execFileSync('git', ['-C', repositoryPath, 'diff', '--no-index', '--', '/dev/null', file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+        return safeGit(repositoryPath, ['diff', '--no-index', '--', '/dev/null', file]).trim();
       } catch (error) {
         // exit 1 = "files differ", which is the expected outcome here
         const out = (error as { stdout?: Buffer | string }).stdout?.toString() || '';
@@ -54,14 +54,11 @@ export class LoopPersistenceService {
   }
 
   /**
-   * Execute a git command in a repository.
+   * Execute a git command in a repository (D3: through safe-git — maker/checker worktrees are maker-controlled).
    */
   git(repositoryPath: string, args: string[]): string {
     try {
-      return execFileSync('git', ['-C', repositoryPath, ...args], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }).trim();
+      return safeGit(repositoryPath, args).trim();
     } catch (error) {
       const stderr = (error as { stderr?: Buffer | string }).stderr?.toString() || '';
       throw new Error(stderr.trim() || `git ${args.join(' ')} failed`);
