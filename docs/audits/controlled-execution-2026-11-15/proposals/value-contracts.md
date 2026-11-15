@@ -284,7 +284,7 @@ run, so the shadow will record no row for them. That is no observation, not gree
 ## 6. Proposed negative-evidence entry (text only; `NEGATIVE_EVIDENCE.yaml` is protected and not edited)
 
 ```yaml
-- id: NE-018 (proposed)
+- id: NE-0xx (proposed; NE-018 is already claimed by open PR #1260 — the operator assigns the next free id)
   title: Loop-contract stop_conditions written for the read-only planning slice are not a maker-cycle stop rule
   status: CANDIDATE (confirm with >= 14 d of loop_stop_condition shadow rows before the operator files it)
   evidence:
