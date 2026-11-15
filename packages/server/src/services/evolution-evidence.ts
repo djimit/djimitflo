@@ -65,6 +65,7 @@ import { gymNativeToolsEvidence } from './gym-native-tools';
 import { genomeApplyEvidence } from './genome-apply';
 import { webResearchEvidence } from './web-research';
 import { benchmarkEvidence } from './benchmark-schedule';
+import { loopStopConditionEvidence } from './loop-stop-conditions';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -88,6 +89,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'AUDIT_SAMPLE_AUTO_MODE', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_MERGE_FINDING_FIX', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
   { name: 'LOOP_PR_CI_WATCH', acting: false }, { name: 'LOOP_PR_CI_WATCH_MINUTES', acting: false },
+  { name: 'SCHEDULER_STUCK_ESCALATE', acting: false },
   { name: 'WORK_ITEM_OUTCOME_SYNC', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
@@ -169,6 +171,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FLEET_SHELL_ENABLED', acting: true },
   { name: 'OPENCODE_BRAKE_CACHE_READ_WEIGHT', acting: true },
   { name: 'BENCHMARK_SCHEDULE_MODE', acting: false },
+  { name: 'LOOP_STOP_CONDITIONS_MODE', acting: false }, // M2: shadow evaluation of loop contracts' stop_conditions; records only, stops nothing
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -627,7 +630,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     genome_apply: genomeApplyEvidence(db, env),
     // WEB-001 (WEB_RESEARCH_MODE): failure-driven web research — questions asked, candidates returned/accepted/rejected by reason,
     // knowledge routed (on), dream genomes citing it and their trial result; null = no job yet
-    web_research: webResearchEvidence(db, env, now) };
+    web_research: webResearchEvidence(db, env, now),
+    // M2 (LOOP_STOP_CONDITIONS_MODE, shadow): per loop would_stop / continue / unknown counts + shares of the declared stop
+    // conditions at maker dispatch, would-stop runs the daemon dispatched anyway, per-condition tallies (report only)
+    loop_stop_conditions: loopStopConditionEvidence(db, env, since) };
 }
 
 /**

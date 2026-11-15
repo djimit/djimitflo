@@ -11,7 +11,8 @@ import { LoopDraftPrService, retryFailedDraftPrs } from '../services/loop-draft-
 // PRC-1: one PR per run, ever — a retry adopts the PR an earlier attempt opened and never commits the work twice.
 let db: Database.Database; let wt: string; let remote: string;
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
-const env = (extra: Record<string, string> = {}) => ({ LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', ...extra });
+// the test remote is a local path: safe-git allows the file transport only when GIT_ALLOW_PROTOCOL names it (production: https)
+const env = (extra: Record<string, string> = {}) => ({ LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', GIT_ALLOW_PROTOCOL: 'file', ...extra });
 type Init = { method?: string; body?: string } | undefined;
 const fullPr = (pr: Record<string, unknown>) => ({
   draft: true, state: 'open', body: 'Opened by the djimitflo loop for run `run-1`.',

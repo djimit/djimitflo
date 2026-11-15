@@ -106,6 +106,7 @@ const READERS: Record<string, Reader> = {
   'services/procedure-selector.ts': { policy: 'measurement', why: 'evidence' },
   'services/provenance-dag.ts': { policy: 'measurement', why: 'provenance report' },
   'services/resource-scheduler.ts': { policy: 'measurement', why: 'own shadow dedupe + evidence' },
+  'services/loop-stop-conditions.ts': { policy: 'measurement', why: 'M2 loop_stop_condition shadow: evidence counts of its own rows; nothing stops on it' },
   'services/settlement-execution.ts': { policy: 'measurement', why: 'own retry bookkeeping + settlement evidence' },
   'services/spec-gap-source.ts': { policy: 'measurement', why: 'own dedupe + evidence' },
   'services/stall-watch.ts': { policy: 'measurement', why: "health monitor: judgment error rates and its own 'stall' annotations" },
