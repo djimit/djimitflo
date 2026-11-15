@@ -14,6 +14,19 @@ export const autoMergeMode = (env: NodeJS.ProcessEnv = process.env): AutoMergeMo
   const v = String(env.LOOP_AUTO_MERGE_TEST_ONLY ?? '').trim().toLowerCase();
   return v === 'shadow' || v === 'act' ? v : 'off';
 };
+/**
+ * LOOP_AUTO_MERGE_FINDING_FIX = off (default) | shadow | act (operator 2026-11-13: routine decisions without the human). A second,
+ * narrow class on the test-only tick: a finding-fix lane PR (finding-fix-source.ts) that changes only the finding's own file,
+ * <= FINDING_FIX_AUTO_MERGE_DIFF_MAX lines, with its gate, checks and checker verdicts passed (loop-auto-merge.ts
+ * findingFixIneligible). Its own class key: a revert / red merge commit of a finding-fix auto-merge revokes only this class.
+ */
+export const autoMergeFindingFixMode = (env: NodeJS.ProcessEnv = process.env): AutoMergeMode => {
+  const v = String(env.LOOP_AUTO_MERGE_FINDING_FIX ?? '').trim().toLowerCase();
+  return v === 'shadow' || v === 'act' ? v : 'off';
+};
+export const FINDING_FIX_AUTO_MERGE_DIFF_MAX = 40;
+/** The judgment each finding-fix class decision writes (subject = the loop run). */
+export const FINDING_FIX_AUTO_MERGE_JUDGMENT = 'auto_merge_finding_fix';
 /** LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h; 0 = never). */
 export const autoMergeMaxPerDay = (env: NodeJS.ProcessEnv = process.env): number => {
   const raw = env.LOOP_AUTO_MERGE_MAX_PER_DAY; const n = Number(raw);
@@ -123,16 +136,77 @@ export const AUDIT_SAMPLE_PCT = 10;
 export const isAuditSample = (prNumber: number): boolean =>
   createHash('sha256').update(`loop-auto-merge:${prNumber}`).digest().readUInt32BE(0) % 100 < AUDIT_SAMPLE_PCT;
 
+/**
+ * Executed audit of the audit sample (operator 2026-11-13: the system decides routine decisions, the human only what is truly
+ * doubtful). The sample exists to catch auto-merges that pass every gate and still add no value; instead of a human reading
+ * it, an independent executed audit decides, on the PR head:
+ *   (a) the kill share of FRESH seeded mutants of the target by the PR's server unit test (settlement-execution rescoreKillShare,
+ *       seeded with the head sha, the maker-time mutants excluded) against the value gate's bar VALUE_KILL_SHARE_MIN,
+ *   (b) the maker's runtime assertion-strength verdict (test-assertion-strength),
+ *   (c) every required check green on the verified-bound head (the merge gate's rule).
+ * pass = (a) ≥ bar AND (b) pass AND (c) green; fail = kill share 0, (b) fail or a required check red; anything else
+ * (no score, a share in (0, bar), checks unreadable, still pending after AUDIT_CHECKS_PENDING_HOURS) is unknown — never a pass.
+ * AUDIT_SAMPLE_AUTO_MODE = off (default: the sample stays for the human, unchanged) | shadow (an auto_merge_audit judgment + loop
+ * event with the would-be decision; the PR's record is unchanged) | act (pass → 'audit_passed', then the normal auto-merge path;
+ * fail / unknown stay 'audit_sample' with reason 'audit_failed: …' / 'audit_unknown: …'; one in AUDIT_SPOT_CHECK_EVERY passes stays
+ * as 'audit_spot_check: …' so the automation itself stays audited — 2 % of eligible PRs instead of 10 %).
+ */
+export type AuditSampleMode = 'off' | 'shadow' | 'act';
+export const auditSampleAutoMode = (env: NodeJS.ProcessEnv = process.env): AuditSampleMode => {
+  const v = String(env.AUDIT_SAMPLE_AUTO_MODE ?? '').trim().toLowerCase();
+  return v === 'shadow' || v === 'act' ? v : 'off';
+};
+export const AUDIT_JUDGMENT = 'auto_merge_audit';
+export const AUDIT_SAMPLE_REASON = 'deterministic 10 % sample: stays for the human';
+export const AUDIT_SPOT_CHECK_EVERY = 5;
+export const AUDIT_CHECKS_PENDING_HOURS = 24;
+/** The audit decisions that keep a PR for the human (the reason code of its 'audit_sample' record in act). */
+export const AUDIT_HUMAN_REASONS = ['audit_failed', 'audit_unknown', 'audit_spot_check'] as const;
+export const isAuditSpotCheck = (prNumber: number): boolean =>
+  createHash('sha256').update(`loop-auto-merge-audit-spot:${prNumber}`).digest().readUInt32BE(0) % AUDIT_SPOT_CHECK_EVERY === 0;
+export interface AuditInputs {
+  strength: string | null;
+  checks: { state: 'green' | 'red' | 'pending' | 'unavailable'; reason?: string };
+  kill: { score: number | null; killed?: number; total?: number; reason: string | null } | null;
+}
+/** The audit's verdict from its three signals; unknown is never a pass. */
+export function executedAuditVerdict({ strength, checks, kill }: AuditInputs): { verdict: 'pass' | 'fail' | 'unknown'; why: string } {
+  if (strength === 'fail') return { verdict: 'fail', why: 'assertion strength fail' };
+  if (strength !== 'pass') return { verdict: 'unknown', why: `assertion strength ${strength ?? 'missing'}` };
+  if (checks.state === 'red') return { verdict: 'fail', why: `required checks not green${checks.reason ? ` (${checks.reason})` : ''}` };
+  if (checks.state !== 'green') return { verdict: 'unknown', why: `required checks ${checks.state}` };
+  if (!kill || kill.score === null) return { verdict: 'unknown', why: `no fresh-mutant kill share: ${kill?.reason ?? 'not executed'}` };
+  const share = `fresh-mutant kill share ${kill.score}${kill.total ? ` (${kill.killed}/${kill.total})` : ''}`;
+  if (kill.score <= 0) return { verdict: 'fail', why: `${share}: the test kills no fresh mutant` };
+  if (kill.score < VALUE_KILL_SHARE_MIN) return { verdict: 'unknown', why: `${share} below the bar ${VALUE_KILL_SHARE_MIN}` };
+  return { verdict: 'pass', why: `${share} ≥ ${VALUE_KILL_SHARE_MIN}, assertion strength pass, required checks green` };
+}
+/**
+ * The executed audit of a finding-fix audit sample (LOOP_AUTO_MERGE_FINDING_FIX): its value is the scanner re-run, not mutant
+ * kill — the maker's test:finding-fix gate (finding gone, no suppression, no new finding) on the verified head, plus the merge
+ * gate's required checks green on the PR head. No kill share is read or executed; unknown is never a pass.
+ */
+export function findingFixAuditVerdict({ gate, checks }: { gate: unknown; checks: AuditInputs['checks'] }): { verdict: 'pass' | 'fail' | 'unknown'; why: string } {
+  if (gate === 'fail') return { verdict: 'fail', why: 'finding-fix gate fail' };
+  if (gate !== 'pass') return { verdict: 'unknown', why: `finding-fix gate ${typeof gate === 'string' ? gate : 'missing'}` };
+  if (checks.state === 'red') return { verdict: 'fail', why: `required checks not green${checks.reason ? ` (${checks.reason})` : ''}` };
+  if (checks.state !== 'green') return { verdict: 'unknown', why: `required checks ${checks.state}` };
+  return { verdict: 'pass', why: 'finding-fix gate pass (scanner re-run), required checks green' };
+}
+
 export interface ClassState { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string }
-const KEY = 'loop_auto_merge_test_only';
+/** The auto-merge classes, each with its own revocation state (system_state key). */
+export type AutoMergeClass = 'test_only' | 'finding_fix';
+const KEYS: Record<AutoMergeClass, string> = { test_only: 'loop_auto_merge_test_only', finding_fix: 'loop_auto_merge_finding_fix' };
+const KEY = KEYS.test_only;
 const ensure = (db: Database): void => {
   db.exec("CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT (datetime('now')))");
 };
 
 /** Missing row = active (never revoked). An unreadable row fails closed: revoked. */
-export function readClassState(db: Database): ClassState {
+export function readClassState(db: Database, cls: AutoMergeClass = 'test_only'): ClassState {
   let row: { value: string } | undefined;
-  try { row = db.prepare('SELECT value FROM system_state WHERE key = ?').get(KEY) as { value: string } | undefined; } catch { return { state: 'active' }; }
+  try { row = db.prepare('SELECT value FROM system_state WHERE key = ?').get(KEYS[cls]) as { value: string } | undefined; } catch { return { state: 'active' }; }
   if (!row) return { state: 'active' };
   try {
     const s = JSON.parse(row.value) as ClassState;
@@ -140,10 +214,10 @@ export function readClassState(db: Database): ClassState {
   } catch { return { state: 'revoked', reason: 'class state unreadable' }; }
 }
 
-const write = (db: Database, s: ClassState, now: Date): void => {
+const write = (db: Database, s: ClassState, now: Date, cls: AutoMergeClass = 'test_only'): void => {
   ensure(db);
   db.prepare(`INSERT INTO system_state (key, value, updated_at) VALUES (?, ?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(KEY, JSON.stringify(s), now.toISOString());
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(KEYS[cls], JSON.stringify(s), now.toISOString());
 };
 
 /** B3: lanes whose class the settled value revoked (system_state, one key). Missing = none; unreadable fails closed: every lane ('*'). */
@@ -175,13 +249,13 @@ export function revokeLane(db: Database, lane: string, reason: string, basis: st
 }
 
 /** Revoke the class (system actor). Returns false when it was already revoked (the first reason is kept). */
-export function revokeClass(db: Database, reason: string, prUrl: string, now = new Date()): boolean {
-  const before = readClassState(db);
+export function revokeClass(db: Database, reason: string, prUrl: string, now = new Date(), cls: AutoMergeClass = 'test_only'): boolean {
+  const before = readClassState(db, cls);
   if (before.state === 'revoked') return false;
   const after: ClassState = { state: 'revoked', reason: reason.slice(0, 300), pr_url: prUrl, revoked_at: now.toISOString() };
-  write(db, after, now);
+  write(db, after, now, cls);
   try {
-    new AuditService(db).record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'loop_auto_merge_revoked', resource_type: 'loop_auto_merge_class', resource_id: KEY,
+    new AuditService(db).record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'loop_auto_merge_revoked', resource_type: 'loop_auto_merge_class', resource_id: KEYS[cls],
       risk_level: RiskLevel.HIGH, before: { ...before }, after: { ...after }, metadata: { reason: after.reason, pr_url: prUrl } });
   } catch { /* the revoked state is persisted either way */ }
   return true;
@@ -189,9 +263,18 @@ export function revokeClass(db: Database, reason: string, prUrl: string, now = n
 
 /**
  * Operator re-enable (manage:config at the route): the class and every revoked lane (B3). Throws AUTO_MERGE_NOT_REVOKED when
- * there is nothing to re-enable.
+ * there is nothing to re-enable. cls 'finding_fix' re-enables only that class (it has no lanes).
  */
-export function reEnableClass(db: Database, actor: string, reason: string, now = new Date()): ClassState {
+export function reEnableClass(db: Database, actor: string, reason: string, now = new Date(), cls: AutoMergeClass = 'test_only'): ClassState {
+  if (cls !== 'test_only') {
+    const prior = readClassState(db, cls);
+    if (prior.state !== 'revoked') throw new Error('AUTO_MERGE_NOT_REVOKED');
+    const next: ClassState = { state: 'active', re_enabled_by: actor, re_enabled_at: now.toISOString(), re_enable_reason: reason.slice(0, 500) };
+    new AuditService(db).record({ event_type: AuditEventType.CONFIG_CHANGED, user_id: actor, action: 'loop_auto_merge_re_enabled', resource_type: 'loop_auto_merge_class',
+      resource_id: KEYS[cls], risk_level: RiskLevel.HIGH, before: { ...prior }, after: { ...next }, metadata: { reason: next.re_enable_reason } });
+    write(db, next, now, cls);
+    return next;
+  }
   const before = readClassState(db);
   const lanes = readLaneRevocations(db);
   if (before.state !== 'revoked' && !Object.keys(lanes).length) throw new Error('AUTO_MERGE_NOT_REVOKED');
@@ -233,6 +316,9 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
   for (const r of rechecked) recheckedByDecision[r.decision] = (recheckedByDecision[r.decision] ?? 0) + 1;
   return {
     mode: autoMergeMode(env), max_per_day: autoMergeMaxPerDay(env), audit_sample_pct: AUDIT_SAMPLE_PCT, class: readClassState(db),
+    // LOOP_AUTO_MERGE_FINDING_FIX: present only while the flag is not off (off = the response is unchanged)
+    ...(autoMergeFindingFixMode(env) === 'off' ? {} : { finding_fix: { mode: autoMergeFindingFixMode(env), diff_max: FINDING_FIX_AUTO_MERGE_DIFF_MAX, class: readClassState(db, 'finding_fix'),
+      merged: rows.filter((r) => r.decision === 'merged' && reasonCode(r.reason) === 'finding_fix').length, would_merge: rows.filter((r) => r.decision === 'would_merge' && reasonCode(r.reason) === 'finding_fix').length } }),
     counts: {
       merged: count('merged'), merged_24h: rows.filter((r) => r.decision === 'merged' && (r.at ?? '') >= d1).length,
       would_merge: count('would_merge'), audit_samples: count('audit_sample'),

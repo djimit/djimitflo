@@ -6,12 +6,14 @@ import { insertJudgmentRow } from './judgment-service';
 import { AgentCommunicationService } from './agent-communication-service';
 import { loadNegativeEvidence, neGeneratorCheckMode, type NeEntry } from './negative-evidence-check';
 import { tokenize } from './expert-resolver-service';
+import { realCreditSql } from './outcome-attribution';
 
 /**
  * K5 (EVO-K, 16-10): evolution output flows back outward. Until now only the interest profile reached the agents
  * (interest-feedback.ts). Once a day this composes one evolution digest from data that already exists:
  *   lanes          verified / regressed production maker outcomes per lane (skill_outcomes, 7 d)
- *   skill_patterns most-credited memory rules, examples and genomes of verified runs (outcome_credits, 30 d)
+ *   skill_patterns most-credited genomes of verified runs (outcome_credits, 30 d; the empty baseline genome and the legacy
+ *                  delivery-only memory_rule / example rows are not credits — realCreditSql, M0 H5 D1/D4)
  *   skill_cards    K4 `skill_cards` per kind/status + the most frequent survived (lane, target pattern); null until the table exists
  *   anti_patterns  most recurring production failure signatures (§16 failureSignature: hash, lane, gate; 7 d)
  *   open_gaps      K2 `knowledge_gap` judgments whose latest decision is 'open' (hashed signature, lane, gate); null until one exists
@@ -85,7 +87,7 @@ export function buildEvolutionDigest(db: Database, now = Date.now(), env: NodeJS
     ?.flatMap((r) => { const lane = safeId(r.lane); return lane ? [{ lane, verified: r.verified, regressed: r.regressed }] : []; }) ?? null) : null;
 
   const skill_patterns = hasTable(db, 'outcome_credits') ? (query<{ kind: string; ref: string; credits: number }>(db,
-    `SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE kind IN ('memory_rule', 'example', 'genome') AND created_at >= ?
+    `SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE kind = 'genome' AND ${realCreditSql()} AND created_at >= ?
        GROUP BY 1, 2 ORDER BY credits DESC, 1, 2 LIMIT ?`, since30, TOP * 2)
     ?.flatMap((r) => { const ref = safeId(r.ref); return ref ? [{ kind: r.kind, ref, credits: r.credits }] : []; }).slice(0, TOP) ?? null) : null;
 

@@ -396,6 +396,11 @@ export interface EvolutionEvidence {
     candidates: { returned: number; accepted: number; rejected_by_reason: Record<string, number> } | null; routed: number | null;
     cited: { genomes: number; promoted: number; retired: number; inconclusive: number; pending: number;
       list: Array<{ genome: string; status: string; knowledge: string[]; trial: { state: string; b: number | null; c: number | null; p: number | null; deciding_n: number | null } | null }> } | null };
+  /** M2 (LOOP_STOP_CONDITIONS_MODE=shadow): declared loop stop_conditions at maker dispatch, per loop; null = mode off and no row (services/loop-stop-conditions.ts) */
+  loop_stop_conditions?: { mode: 'off' | 'shadow'; since: string; records: number | null;
+    loops: Array<{ loop_name: string; n: number; would_stop: number; continue: number; unknown: number; would_stop_while_dispatched: number;
+      would_stop_share: number | null; continue_share: number | null; unknown_share: number | null;
+      conditions: Record<string, { holds: number; false: number; unknown: number }> }> | null };
 }
 export type FitnessStatus = 'closed_loop' | 'measured_no_selection' | 'unmeasured' | 'circular';
 export type FitnessContractRow = {
@@ -654,6 +659,8 @@ export type OperatorCockpit = {
     total?: number | null;
     /** open loop PRs: audit-sample PRs (one weekly batch) and flagged PRs the auto-merge lane did not take */
     audit_batch?: number | null; flagged_prs?: number | null;
+    /** open loop PRs the auto-merge lane still handles (waiting, capped, transient ineligible): system, never counted */
+    system_prs?: number | null;
     /** Dependabot PRs the dependency lane leaves to a human; dependency_tracked false = lane off, not tracked */
     dependency_human?: number | null; dependency_tracked?: boolean;
     /** ground-truth labelling: optional, its own count, never a decision */

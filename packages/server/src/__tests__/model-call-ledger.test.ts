@@ -54,6 +54,22 @@ it('B29: unknown tokens stay null (UNKNOWN), never 0 — in the row and in the t
   expect(row).toMatchObject({ key: 'maker:mutation-gap-loop', calls: 1, calls_tokens_unknown: 1, tokens_in: null, tokens_out: null });
 });
 
+it('D-S1-2: a lease runtime_usage in prompt_/completion_ keys keeps its split; a total alone is never split; unknown stays null', () => {
+  fresh();
+  const maker = (runId: string, runtime_usage: Record<string, unknown>) => recordMakerCall(db, { runId, goalId: null, loopName: 'objective-loop', runtime: 'opencode',
+    ok: true, durationMs: 1, meta: { model: 'ollama/glm-5.2:cloud', runtime_usage }, ace: null, ste: null });
+  maker('r-split', { prompt_tokens: 1000, completion_tokens: 200, total_tokens: 1500, usage_source: 'runtime_stdout' }); // total incl. cache: kept apart, not invented
+  maker('r-both', { input_tokens: 10, output_tokens: 2, prompt_tokens: 999, completion_tokens: 999, total_tokens: 12 }); // explicit input_/output_ keys win
+  maker('r-total', { total_tokens: 4000 }); // total-only: tokens_in = total, tokens_out = null (split unknown), as before
+  maker('r-prompt', { prompt_tokens: 50 }); // one side reported: the other stays unknown
+  maker('r-none', { usage_source: 'unknown' });
+  expect(db.prepare('SELECT run_id, tokens_in, tokens_out FROM llm_model_calls ORDER BY id').all()).toEqual([
+    { run_id: 'r-split', tokens_in: 1000, tokens_out: 200 }, { run_id: 'r-both', tokens_in: 10, tokens_out: 2 },
+    { run_id: 'r-total', tokens_in: 4000, tokens_out: null }, { run_id: 'r-prompt', tokens_in: 50, tokens_out: null }, { run_id: 'r-none', tokens_in: null, tokens_out: null },
+  ]);
+  expect(ledgerTotals(db, new Date(Date.now() - 86_400_000).toISOString()).by_purpose[0]).toMatchObject({ calls: 5, calls_tokens_unknown: 1, tokens_in: 5060, tokens_out: 202 });
+});
+
 it('B29: flat subscription = marginal 0 with its label; unknown provider = null; metered = list price', () => {
   fresh(); vi.stubEnv('LLM_PRICE_PER_MTOK', 'jev-1.13.0=0.042/0');
   recordModelCall(db, { consumer: 'fallback', model: 'kimi-k3:cloud', provider: 'ollama:https://ollama.com', ok: true, latencyMs: 1, outChars: 1, shadow: 0, agree: null, tokensIn: 100, tokensOut: 10 });

@@ -135,7 +135,6 @@ export class SelfImprovementAutoReviewScheduler {
    * in bootstrap/autonomous-services.ts.
    */
   async tick(): Promise<AutoReviewTickResult> {
-    markRun('self_improvement_auto_review'); // Cockpit 3.0: execution evidence for the scheduler registry
     if (this.running) return { reviewed: [], approved: [], parked: [], refined: [], refinementAttempted: 0, failed: [] };
     this.running = true;
     try {
@@ -206,6 +205,7 @@ export class SelfImprovementAutoReviewScheduler {
       if (result.reviewed.length || result.approved.length || result.parked.length || result.refined.length || result.refinementAttempted || result.failed.length) {
         console.log(`🧭 self-improvement auto-review tick: reviewed=${result.reviewed.length} approved=${result.approved.length} parked=${result.parked.length} refined=${result.refined.length}/${result.refinementAttempted} failed=${result.failed.length}`);
       }
+      markRun('self_improvement_auto_review', result.failed.length ? `${result.failed.length} failed: ${result.failed[0].error}` : undefined); // D-S7-1: the run is recorded after the work, with its error (guardTick already recorded the attempt)
 
       return result;
     } finally {
