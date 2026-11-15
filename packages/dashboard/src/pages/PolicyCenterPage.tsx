@@ -46,7 +46,7 @@ export function PolicyCenterPage() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Policy Center</h1>
+        <h1 className="text-3xl font-bold text-foreground">Policies</h1>
         <p className="text-foreground-secondary mt-2">Control which actions are allowed, blocked, or require approval.</p>
       </div>
 

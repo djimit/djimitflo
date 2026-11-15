@@ -53,6 +53,15 @@ describe('K5 evolution digest', () => {
     expect(d.gym).toEqual([{ species: 'atomic', outcomes: 3, wins: 1, win_rate: null, status: 'insufficient' }]);
   });
 
+  it('D1/D4: most-credited patterns name only credited genomes — never delivered-only rules/examples or the empty baseline genome', () => {
+    db.exec('CREATE TABLE IF NOT EXISTS outcome_credits (run_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (run_id, kind, ref))');
+    const credit = db.prepare('INSERT INTO outcome_credits VALUES (?, ?, ?, ?)');
+    const at = new Date(NOW - DAY).toISOString();
+    for (const run of ['r1', 'r2']) { credit.run(run, 'memory_rule', 'rA', at); credit.run(run, 'example', 'packages/x.test.ts', at); credit.run(run, 'genome', 'strategy:baseline', at); }
+    credit.run('r1', 'genome', 'gB', at);
+    expect(buildEvolutionDigest(db, NOW, env('shadow')).skill_patterns).toEqual([{ kind: 'genome', ref: 'gB', credits: 1 }]);
+  });
+
   it('reads the real sibling sources (K4 skill_cards, K3 registry + matches, K2 gaps) and copies no untrusted text', () => {
     ensureSkillCardTable(db);
     const card = db.prepare('INSERT INTO skill_cards VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
