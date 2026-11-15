@@ -6,7 +6,7 @@
 - Worktree: `/private/tmp/djimitflo-functional-improvements-20261114`; branch `codex/functional-improvements-20261114`.
 - Frozen candidate reference: `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`; current branch head before this checkpoint update: `3bff1c0d14f224040df9d3c1daf357d80e5032dc`.
 - Frozen denominator commit: `571a0ad39f5d6ed6eb587302242949fb513152cc`; scope is C1–C8, S1–S16, H1–H10. Lists were committed before tests.
-- Existing draft PR #1272 is the candidate delivery route; no merge/deploy is authorized.
+- Existing draft PR #1272 is open at pushed head `44838961a1bb8096996ebf39664b3e2da2d3565c`; exact-head CI and `djimitflo-review` are pending. No merge/deploy is authorized.
 - Primary user checkout contains unrelated changes and was not edited.
 
 ## Preflight outcome: GREEN (E2 ceiling reached)
@@ -24,6 +24,7 @@
 - `14b1472345840160e0a733fc2b6f9fbf8e7fe060`: record preflight install evidence.
 - `35e260dd5dce1e6dd11d365f5a3a61d1d850432e`: record shared/catalog build evidence.
 - `3bff1c0d14f224040df9d3c1daf357d80e5032dc`: record focused test evidence.
+- `44838961a1bb8096996ebf39664b3e2da2d3565c`: complete evidence package; pushed to draft PR #1272. The final PR head after the subsequent report correction is recorded by GitHub.
 - Existing candidate fix commit `e7baf39fdca9c7602cbf3644e7ffb11cc448c473` changes nested spawn reservation/idempotency/reconciliation and terminal projection. Red/green test evidence is E2 only.
 - Static generated inventory commands were also run; route assurance reports inventory gaps documented in `REPORT.md`.
 
