@@ -110,6 +110,97 @@
       "uncertainty": "-",
       "resolution": "M2 value-contract table",
       "owner": "operator (decisions) / builder PRs"
+    },
+    {
+      "id": "D-S1-1",
+      "claim": "A daemon run whose verification has 0 failed or unknown gates (only security_checker_verdict 'skipped' because the run is not high-risk) is written as goal 'failed' and loop run 'blocked'; the loop_verified event says ready_for_human_merge and the maker ledger row says 'verified'. No draft PR is opened for it (openForRun only runs under allGatesPass). For the objective loop this holds for every non-high-risk run, since the security gate is always 'skipped' when !highRisk (loop-verification-service.ts:142-150).",
+      "status": "reproduced",
+      "evidence_level": "E3",
+      "current_source": "b496916b",
+      "where": "packages/server/src/services/loop-daemon.ts:945 (allGatesPass = every(gatePassesStrict)), :1055-1056 (goalStatus 'failed' / runStatus 'blocked'); the strict rule is a recorded operator decision (loop-daemon-checker-dispatch.test.ts 'P0-8 \u2026 completion unchanged').",
+      "reproduction": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s01-normal-entry.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+      "impact": "medium",
+      "smallest_fix": "Keep the strict completion rule but stop labelling the no-failure case as a failure: in loop-daemon.ts:1055-1056 use goal 'blocked' + run 'ready_for_human_merge' (or a metadata reason 'awaiting_security_review') when allGatesPassed(gates) is true and only the strict rule fails; 'failed'/'blocked' only when a gate is fail/unknown.",
+      "resolution": "proposal (status label; strict completion rule is a recorded operator decision)",
+      "scenario": "S1"
+    },
+    {
+      "id": "D-S1-2",
+      "claim": "The maker's llm_model_calls row records tokens_in = total (3) and tokens_out = NULL although the lease recorded prompt_tokens 1 / completion_tokens 2. The checker row for the identical usage records (1, 2). The daemon passes the lease's runtime_usage (prompt_/completion_ keys, as LoopService.extractRuntimeUsage returns them for every runtime) to recordMakerCall, and recordWorkerCall only reads input_tokens/output_tokens, so it falls back to 'total only'. Likely affects every maker row in production (not verified here: local-only mandate).",
+      "status": "reproduced",
+      "evidence_level": "E3",
+      "current_source": "b496916b",
+      "where": "packages/server/src/services/model-call-ledger.ts:42-44 (reads input_tokens/output_tokens only); packages/server/src/services/loop-daemon.ts:990/1016 (meta = lease runtime_usage passed unmapped); contrast loop-worker-executor-service.ts:578-580 (checker maps prompt->input, completion->output).",
+      "reproduction": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s01-normal-entry.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+      "impact": "medium",
+      "smallest_fix": "In recordWorkerCall read `usage.input_tokens ?? usage.prompt_tokens` and `usage.output_tokens ?? usage.completion_tokens` (one line each), or map in loop-daemon.ts:990 as the checker does.",
+      "resolution": "fix in progress: fix/maker-ledger-token-split (E5: 78/82 maker rows lack tokens_out, 14 d)",
+      "scenario": "S1"
+    },
+    {
+      "id": "D-S2-1",
+      "claim": "createRoot/prepareNestedLease accept a loop run in a terminal status ('completed') and attach a prepared, never-started lease to it; the run stays 'completed', so the run list and run detail show prepared work under a success status.",
+      "status": "reproduced",
+      "evidence_level": "E3",
+      "current_source": "b496916b",
+      "where": "packages/server/src/services/nested-spawn-service.ts:168 (only assertOperatorNotPaused), packages/server/src/services/loop-service.ts:1895-1896 (prepareNestedLease: no status check)",
+      "reproduction": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s02-prepared-not-started.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+      "impact": "low-medium",
+      "smallest_fix": "In prepareNestedLease (loop-service.ts:1895) throw e.g. 'SPAWN_LOOP_RUN_TERMINAL' when run.status is completed/cancelled/failed, mapped to 409 in routes/spawns.ts mapSpawnError.",
+      "resolution": "proposal",
+      "scenario": "S2"
+    },
+    {
+      "id": "D-S2-2",
+      "claim": "continueLoopRun sets loop_runs.status 'running' when it only prepares leases; the run is projected as running although no worker has started (the lease-level views and mission control's next_safe_action are correct).",
+      "status": "reproduced",
+      "evidence_level": "E3",
+      "current_source": "b496916b",
+      "where": "packages/server/src/services/loop-lifecycle-service.ts:134-135",
+      "reproduction": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s02-prepared-not-started.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+      "impact": "low",
+      "smallest_fix": "Set the run to a not-started status at preparation (e.g. keep 'planning' or add 'prepared') and move it to 'running' where the first lease is marked running (loop-worker-executor-service.ts:274 updateWorkerLeaseStatus(\u2026, 'running')); or derive it in the run projection when no lease has started_at.",
+      "resolution": "proposal",
+      "scenario": "S2"
+    },
+    {
+      "id": "D-S7-1",
+      "claim": "ComplianceReportScheduler.tick calls markRun('compliance_report') (no error) before its work and catches the work's error itself, so guardTick never sees it: a scheduler that produces nothing on every tick is 'executing' / HEALTHY. Reproduces the M0 finding (10 of 66 schedulers call markRun before work).",
+      "status": "reproduced",
+      "evidence_level": "E3",
+      "current_source": "b496916b",
+      "where": "packages/server/src/services/compliance-report-scheduler.ts:68 (markRun first) and :76-80 (try/catch swallows generateReport errors); same shape in self-healing-scheduler.ts:70, specialist-panel-backlog-scheduler.ts:69, memory-candidate-review-scheduler.ts:110, frontier-expert-scheduler.ts:105, self-improvement-auto-review-scheduler.ts:138",
+      "reproduction": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s07-scheduler-trigger.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+      "impact": "high (observability)",
+      "smallest_fix": "Move markRun(name) to after the work and call markRun(name, err) in the catch (or rethrow and let guardTick record it); guardTick's markTick already records the attempt.",
+      "resolution": "fix in progress: fix/scheduler-health-truth",
+      "scenario": "S7"
+    },
+    {
+      "id": "D-S7-2",
+      "claim": "In the default SCHEDULER_SELF_HEAL_MODE (shadow) healSchedulers only quarantines (and so only escalates to the stall watch / needs-you) when no restart function is registered; every scheduler armed in index.ts registers one, so a stuck one is 'diagnosed' (next_action 'escalate') once and never reaches the stall watch. It stays visible only on /api/health/schedulers and the cockpit health counter.",
+      "status": "reproduced",
+      "evidence_level": "E3",
+      "current_source": "b496916b",
+      "where": "packages/server/src/services/scheduler-registry.ts:128 (`if (mode !== 'act') { if (!restart) quarantine(...); continue; }`); stall-watch.ts:307-309 surfaces quarantined schedulers only",
+      "reproduction": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s07-scheduler-trigger.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+      "impact": "medium",
+      "smallest_fix": "In shadow mode quarantine (escalate) after the same verify window act mode uses (or immediately, since shadow never restarts): replace line 128 with `if (mode !== 'act') { quarantine(restart ? 'restart' : 'none', restart ? 'shadow mode: restart not attempted' : 'no restart function registered'); continue; }`.",
+      "resolution": "fix in progress: fix/scheduler-health-truth (flag SCHEDULER_STUCK_ESCALATE)",
+      "scenario": "S7"
+    },
+    {
+      "id": "D-S7-3",
+      "claim": "guardTick's markTick keeps the previous last_error and a successful fn does not clear it unless the fn itself calls markRun(name); a scheduler that failed once stays 'failing' forever (affects guardTick users without their own success markRun, e.g. inference_failover_probe, operator_digest). Reproduces the second M0 finding. Evidence E2 (primitive).",
+      "status": "reproduced",
+      "evidence_level": "E3",
+      "current_source": "b496916b",
+      "where": "packages/server/src/services/scheduler-registry.ts:39-41 (markTick preserves last_error), :47-53 (guardTick never marks success)",
+      "reproduction": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s07-scheduler-trigger.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+      "impact": "medium",
+      "smallest_fix": "In guardTick call markRun(name) after a synchronous success and in the promise's then-branch (`r.then(() => markRun(name), fail)`), so success clears the error.",
+      "resolution": "fix in progress: fix/scheduler-health-truth",
+      "scenario": "S7"
     }
   ]
 }
