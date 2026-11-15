@@ -14,7 +14,7 @@ import { visibleText } from './test-utils/visible-text';
  * boundary ("Something crashed") — a page that throws on a failed call, or on its empty state, fails CI.
  * jsdom instead of Playwright: no browser download in CI; add Playwright when a browser-only bug gets through.
  */
-// browsers have ResizeObserver, jsdom does not (the pipeline canvas needs it)
+// browsers have ResizeObserver, jsdom does not
 class NoopResizeObserver { observe() {} unobserve() {} disconnect() {} }
 class OfflineSocket { readyState = 3; onopen = null; onclose = null; onmessage = null; onerror = null; close() {} send() {} addEventListener() {} removeEventListener() {} }
 
@@ -50,7 +50,7 @@ it('W7: every menu page renders a heading with the API down, and none crashes', 
   const home = await renderAt('/');
   const paths = [...new Set([...home.container.querySelectorAll('nav a')].map((a) => a.getAttribute('href')).filter((h): h is string => !!h))];
   cleanup();
-  expect(paths.length).toBeGreaterThan(30);
+  expect(paths.length).toBe(21); // nav cut (UX-30): 37 → 21
   const failures: string[] = [];
   for (const path of paths) {
     try {
@@ -122,7 +122,7 @@ function fixtureFetch(role: UserRole, input: string, method: string): Response {
 const navLinks = (container: HTMLElement) => [...container.querySelectorAll('nav[aria-label="Main"] a')].map((a) => a.getAttribute('href') ?? '').sort();
 
 it('UXE-03: the route table, the page fixtures and the admin nav list the same pages', async () => {
-  expect(ROUTE_TABLE.length).toBeGreaterThan(30);
+  expect(ROUTE_TABLE.length).toBe(21);
   expect(Object.keys(PAGE_FIXTURES).sort()).toEqual(ROUTE_TABLE);
   expect(Object.keys(NAV_PERMISSIONS).filter((path) => !ROUTE_TABLE.includes(path))).toEqual([]);
   const admin = await renderAt('/');

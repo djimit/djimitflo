@@ -55,7 +55,7 @@ export function AuditPage() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Audit Trail</h1>
+        <h2 className="text-xl font-bold text-foreground">Audit Trail</h2>
         <p className="text-foreground-secondary mt-2">Latest 50 entries from the canonical audit trail.</p>
       </div>
 

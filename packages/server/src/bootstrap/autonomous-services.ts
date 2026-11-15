@@ -379,8 +379,8 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // Earned auto-merge for verified test-only loop PRs (shadow/act, self-revoking). LOOP_AUTO_MERGE_TEST_ONLY=shadow|act.
   try {
-    let stopAutoMerge = startLoopAutoMerge(db);
-    registerRestart('loop_auto_merge', () => { stopAutoMerge?.(); stopAutoMerge = startLoopAutoMerge(db); });
+    let stopAutoMerge = startLoopAutoMerge(db, undefined, recoverySvc);
+    registerRestart('loop_auto_merge', () => { stopAutoMerge?.(); stopAutoMerge = startLoopAutoMerge(db, undefined, recoverySvc); });
     noteScheduler('loop_auto_merge', 'LOOP_AUTO_MERGE_TEST_ONLY', !!stopAutoMerge, 15 * 60_000);
     if (stopAutoMerge) { lifecycleManager.register({ serviceName: 'LoopAutoMerge', stop: () => stopAutoMerge?.() }); console.log('🤝 Loop auto-merge (test-only) on (every 15 min).'); }
   } catch (error) {
