@@ -88,6 +88,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'AUDIT_SAMPLE_AUTO_MODE', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_MERGE_FINDING_FIX', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
   { name: 'LOOP_PR_CI_WATCH', acting: false }, { name: 'LOOP_PR_CI_WATCH_MINUTES', acting: false },
+  { name: 'SCHEDULER_STUCK_ESCALATE', acting: false },
   { name: 'WORK_ITEM_OUTCOME_SYNC', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },

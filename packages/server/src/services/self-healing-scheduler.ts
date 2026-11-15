@@ -67,10 +67,12 @@ export class SelfHealingScheduler {
   }
 
   tick(): ReturnType<SelfHealingService['heal']> | null {
-    markRun('self_healing'); // Cockpit 3.0: execution evidence for the scheduler registry
     try {
-      return this.healer.heal();
+      const r = this.healer.heal();
+      markRun('self_healing'); // Cockpit 3.0: execution evidence for the scheduler registry
+      return r;
     } catch (err) {
+      markRun('self_healing', err); // D-S7-1: the run is recorded after the work, with its error (guardTick already recorded the attempt)
       console.warn('SelfHealingScheduler: heal() failed:', err instanceof Error ? err.message : err);
       return null;
     }

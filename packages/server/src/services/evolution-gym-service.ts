@@ -7,7 +7,7 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { gymSkillContentHash } from './gym-skill-hash';
 import { recordModelCall } from './model-selector';
 import { AUTH_MISSING, LIMIT_HIT, inLimitBackoff, isSubscriptionLimit, subscriptionAttemptsToday, subscriptionAuthPresent, subscriptionGymMaxPerDay,
@@ -101,7 +101,8 @@ export class EvolutionGymService {
 
   start(intervalMs = 3_600_000): void {
     if (this.timer || !gymArmed()) return;
-    const run = () => { markRun('evolution_gym'); this.runOne().then((r) => { if (r.status !== 'skipped') console.log(`🏋️ gym: ${r.status} (${r.reason}) ${r.species ?? ''} ${r.task?.source ?? ''}`); }).catch((err) => console.warn('Gym attempt failed:', err instanceof Error ? err.message : String(err))); };
+    // D-S7-1: markTick records the attempt, markRun the outcome after the work (with its error)
+    const run = () => { markTick('evolution_gym'); this.runOne().then((r) => { markRun('evolution_gym'); if (r.status !== 'skipped') console.log(`🏋️ gym: ${r.status} (${r.reason}) ${r.species ?? ''} ${r.task?.source ?? ''}`); }).catch((err) => { markRun('evolution_gym', err); console.warn('Gym attempt failed:', err instanceof Error ? err.message : String(err)); }); };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     // auto-deploy restarts the server every hour or two: waiting a full interval after boot would starve the gym
     setTimeout(run, Number(process.env.EVOLUTION_GYM_FIRST_DELAY_MS) || 600_000).unref?.();
