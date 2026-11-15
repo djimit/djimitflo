@@ -12,7 +12,7 @@ import { AUDIT_CHECKS_PENDING_HOURS, AUDIT_JUDGMENT, AUDIT_SAMPLE_REASON, auditS
 import { defaultSettlementExecutionDeps, latestSettlements, rescoreKillShare, type KillNow } from './settlement-execution';
 import { oracleLane, WRITE_TEST_MUTANTS } from './gym-failure-tasks';
 import type { LoopService } from './loop-service';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
 import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type ProtectionChecks, type RequiredCheck } from './required-checks';
@@ -665,10 +665,11 @@ export function startLoopAutoMerge(db: Database, intervalMs = 15 * 60_000, loops
   const auditKill = loops && auditSampleAutoMode() !== 'off' ? defaultAuditKillExecutor(db, loops) : null;
   let running = false;
   const tick = () => {
-    markRun('loop_auto_merge');
+    // D-S7-1: markTick records the attempt (also while the previous tick still runs), markRun the outcome after the work
+    markTick('loop_auto_merge');
     if (running) return; running = true;
-    runAutoMergeTick(db, fetch, process.env, new Date(), auditKill).then((r) => { if (r.merged || r.revoked) console.log(`🤝 loop auto-merge: ${r.merged} merged, revoked=${r.revoked} (${r.evaluated} evaluated)`); })
-      .catch((e) => console.warn('loop auto-merge failed:', e instanceof Error ? e.message : String(e)))
+    runAutoMergeTick(db, fetch, process.env, new Date(), auditKill).then((r) => { markRun('loop_auto_merge'); if (r.merged || r.revoked) console.log(`🤝 loop auto-merge: ${r.merged} merged, revoked=${r.revoked} (${r.evaluated} evaluated)`); })
+      .catch((e) => { markRun('loop_auto_merge', e); console.warn('loop auto-merge failed:', e instanceof Error ? e.message : String(e)); })
       .finally(() => { running = false; });
   };
   const first = setTimeout(tick, 120_000); first.unref?.();

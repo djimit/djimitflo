@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { LOOP_PR_SETTLEMENT_STATES, type LoopPrSettlementState } from '@djimitflo/shared';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { extraRepoBySlug, isExtraRepoPr, parsePrUrl, repoSkillPrefix } from './repo-registry';
 import { supersedingProposal } from './merge-superseded';
 import { onLoopPrPolled } from './capability-factory';
@@ -309,8 +309,9 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
 /** Every 6 h (first run 5 min after boot). */
 export function startMergeSurvival(db: Database, intervalMs = POLL_INTERVAL_MS): (() => void) | null {
   if (!mergeSurvivalEnabled()) return null;
-  const tick = () => { markRun('merge_survival'); checkLoopPrs(db).then((r) => { if (r.settled) console.log(`🧾 merge survival: ${r.settled} loop PR(s) settled of ${r.checked} checked`); })
-    .catch((e) => console.warn('merge survival failed:', e instanceof Error ? e.message : String(e))); };
+  // D-S7-1: markTick records the attempt, markRun the outcome after the work (with its error)
+  const tick = () => { markTick('merge_survival'); checkLoopPrs(db).then((r) => { markRun('merge_survival'); if (r.settled) console.log(`🧾 merge survival: ${r.settled} loop PR(s) settled of ${r.checked} checked`); })
+    .catch((e) => { markRun('merge_survival', e); console.warn('merge survival failed:', e instanceof Error ? e.message : String(e)); }); };
   const first = setTimeout(tick, 300_000); first.unref?.();
   const timer = setInterval(tick, intervalMs); timer.unref?.();
   return () => { clearTimeout(first); clearInterval(timer); };
