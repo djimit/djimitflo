@@ -281,8 +281,9 @@ describe('cancel paths name their reason', () => {
 describe('evidence: attributionSummary.failure_capture (stage × stderr class, cancels with a reason)', () => {
   it('counts captured leases per cell and keeps pre-capture leases apart', () => {
     const db = memDb(); const repo = new WorkerLeaseRepo(db);
+    // updated_at on the clock attributionSummary() windows with (Date.now() − 30 d), not SQLite's CURRENT_TIMESTAMP default
     const ins = (id: string, role: string, status = 'running', m: Record<string, unknown> = {}) =>
-      db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES (?, 'r', ?, 'opencode', ?, ?)").run(id, role, status, JSON.stringify(m));
+      db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, updated_at) VALUES (?, 'r', ?, 'opencode', ?, ?, ?)").run(id, role, status, JSON.stringify(m), new Date().toISOString());
     ins('a', 'maker'); repo.updateStatus('a', 'failed', { failure_reason: 'maker_execution_error: spawn opencode ENOENT', execution_task_id: 't' });
     ins('b', 'maker'); repo.updateStatus('b', 'failed', { failure_reason: 'maker_execution_error: spawn opencode ENOENT', execution_task_id: 't' });
     ins('c', 'maker'); repo.updateStatus('c', 'cancelled', { cancellation_reason: 'operator_stop' });

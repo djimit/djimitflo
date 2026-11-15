@@ -24,6 +24,10 @@ afterEach(() => {
   curiosity.stop();
 });
 
+// two clocks, as in production: valid_until is compared with SQLite's datetime('now') (the OS clock), the created_at
+// windows with Date.now(). Seed each against the clock it is read with, so a faked Date cannot split them.
+const expiredNow = () => new Date(vi.getRealSystemTime() - 1000).toISOString();
+
 function claim(id: string, overrides: Record<string, unknown> = {}) {
   const values = { id, claim: id, claim_type: 'observation', subject_ref: 'proof:sample:worker-evidence', predicate: 'has_property',
     status: 'supported', confidence: 0.9, evidence_refs_json: '[]', created_from: 'test',
@@ -59,7 +63,7 @@ describe('G41: Curiosity Service', () => {
   it('does not count rejected, resolved, expired or invalidated claims as active inventory', async () => {
     claim('active');
     claim('rejected', { status: 'rejected' }); claim('resolved', { status: 'resolved' });
-    claim('expired', { valid_until: new Date(Date.now() - 1000).toISOString() });
+    claim('expired', { valid_until: expiredNow() });
     claim('invalidated', { invalidated_by: 'active' });
     const result = await curiosity.scanForGaps();
     expect(result.gaps).toHaveLength(1);
@@ -67,7 +71,7 @@ describe('G41: Curiosity Service', () => {
   });
 
   it('reports zero active statements in a domain whose last claim expired', async () => {
-    claim('expired-only', { valid_until: new Date(Date.now() - 1000).toISOString() });
+    claim('expired-only', { valid_until: expiredNow() });
     const report = await curiosity.scanForGaps();
     expect(report.gaps).toHaveLength(1);
     expect(report.gaps[0].description).toContain('0 distinct normalized active statements');
@@ -82,7 +86,7 @@ describe('G41: Curiosity Service', () => {
     claim('second'); claim('third');
     expect((await curiosity.scanForGaps()).gaps).toEqual([]);
     expect(db.prepare('SELECT status,evidence_refs_json FROM swarm_claims WHERE id = ?').get(old.id)).toEqual({ status: old.status, evidence_refs_json: old.evidence_refs_json });
-    db.prepare("UPDATE swarm_claims SET valid_until = ? WHERE id IN ('second','third')").run(new Date(Date.now() - 1000).toISOString());
+    db.prepare("UPDATE swarm_claims SET valid_until = ? WHERE id IN ('second','third')").run(expiredNow());
     expect((await curiosity.scanForGaps()).published).toBe(1);
     expect(db.prepare("SELECT status FROM swarm_claims WHERE predicate = 'gap' AND id <> ?").get(old.id)).toEqual({ status: 'proposed' });
     expect((await curiosity.scanForGaps()).published).toBe(0);
@@ -146,8 +150,8 @@ describe('G41: Curiosity Service', () => {
   it('detects contradiction gaps', async () => {
     db.prepare(`
       INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, created_at, updated_at)
-      VALUES ('c3', 'test', 'memory', 'testing', 'has_property', 'contradicted', 0.5, '[]', 'test', datetime('now'), datetime('now'))
-    `).run();
+      VALUES ('c3', 'test', 'memory', 'testing', 'has_property', 'contradicted', 0.5, '[]', 'test', ?, ?)
+    `).run(new Date().toISOString(), new Date().toISOString()); // the contradiction window is Date.now() − 7 d
     claim('contradicting-observation', { subject_ref: 'testing' });
     db.prepare("UPDATE swarm_claims SET invalidated_by = 'contradicting-observation' WHERE id = 'c3'").run();
     const report = await curiosity.scanForGaps();
