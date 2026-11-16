@@ -66,6 +66,11 @@ it('runs Telegram webhook -> authenticated local API -> owned task/audit -> inde
     expect(replies.at(-1)).toContain('FORBIDDEN');
 
     await webhook(111, '/task@fixture_bot deploy disposable mock fixture');
+    // Telegram re-sends the same update_id when our 2xx was late: it must not create a second task
+    const replay = await actualFetch(`${base}/api/telegram/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': 'disposable-webhook-secret' },
+      body: JSON.stringify({ update_id: messageId, message: { chat: { id: 111 }, from: { id: 111 }, text: '/task@fixture_bot deploy disposable mock fixture', message_id: messageId } }) });
+    expect(await replay.json()).toEqual({ ok: true, duplicate: true });
+    expect(db.prepare('SELECT count(*) n FROM tasks').get()).toEqual({ n: 1 });
     const task = db.prepare('SELECT * FROM tasks').get() as any;
     expect(task).toMatchObject({ status: 'pending', created_by: owner.id, owner_user_id: owner.id });
     expect(db.prepare("SELECT count(*) n FROM audit_events WHERE task_id=? AND event_type='task.created' AND user_id=?").get(task.id, owner.id)).toEqual({ n: 1 });
