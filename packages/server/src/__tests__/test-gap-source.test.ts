@@ -72,6 +72,12 @@ it('J3: finds exported functions of tested services that no test names, and prop
   } finally { delete process.env.TEST_GAP_EXPORTS_ENABLED; delete process.env.TEST_GAP_MAX_IN_FLIGHT; }
 });
 
+it('value filter: the mutation lane never hardens the loop\'s own machinery', () => {
+  const own = ['loop-stop-conditions', 'evolution-lineage', 'gym-irt', 'fitness-view', 'mutation-gain', 'self-improvement-service'];
+  for (const n of own) { write(`packages/server/src/services/${n}.ts`, body(50)); write(`packages/server/src/__tests__/${n}.test.ts`, '// t'); }
+  write('packages/server/src/index.ts', [...own, 'gamma'].map((n, i) => `import * as m${i} from './services/${n}';`).join('\n'));
+  expect(discoverMutationGaps(repo).map((g) => g.service)).toEqual(['gamma']);
+});
 it('M2: mutation gaps are tested, mid-sized, non-sensitive services; one grounded proposal at a time, and its check gets MUTATE_*', () => {
   write('packages/server/src/services/token-vault.ts', body(50)); write('packages/server/src/__tests__/token-vault.test.ts', '// t');
   expect(discoverMutationGaps(repo).map((g) => g.service)).toEqual(['gamma']); // alpha/beta untested, token-vault sensitive

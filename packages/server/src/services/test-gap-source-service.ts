@@ -238,6 +238,10 @@ export function discoverExportGaps(repoPath: string): TestGap[] {
 export interface MutationGap { service: string; sourcePath: string; testPath: string; loc: number }
 const MAX_MUTATION_LOC = 400;
 const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn)([-_]|$)/i;
+// Value filter (review 2026-11-16): mutation-hardening the loop's own machinery cost ~0.5M tokens per run for PRs such as
+// "raise the mutation score of loop-stop-conditions.ts" — the loop polishing itself. Those lanes stay covered by their
+// regular tests; mutation budget goes to services that serve users.
+const SELF_REFERENTIAL = /^(loop|evolution|gym|fitness|mutation|self-improvement)-/i;
 export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
@@ -245,7 +249,7 @@ export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const gaps: MutationGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (SENSITIVE.test(service) || !live.has(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
+    if (SENSITIVE.test(service) || SELF_REFERENTIAL.test(service) || !live.has(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
     const loc = fs.readFileSync(path.join(servicesDir, file), 'utf8').split('\n').length;
     if (loc < MIN_LOC || loc > MAX_MUTATION_LOC) continue;
     gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `${TESTS_DIR}/${service}.test.ts`, loc });
