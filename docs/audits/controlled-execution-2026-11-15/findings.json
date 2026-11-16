@@ -185,7 +185,7 @@
     {
       "id": "CI-002",
       "claim": "The full CI test suite has a time-dependent WEB-001 route fixture failure on the frozen baseline and candidate.",
-      "status": "BASELINE_FAILURE_REPRODUCED; NOT_CHANGED",
+      "status": "BASELINE_FAILURE_REPRODUCED; TEST_FIXTURE_CORRECTED",
       "evidence_level": "E2",
       "source": [
         "packages/server/src/__tests__/web-research.test.ts:49-59,238-251",
@@ -193,11 +193,11 @@
         "CI run 43707335553 at exact candidate head 8c3476471a1223df42e494bdbe84064ab6d18b72"
       ],
       "reproduction": "Run `npm run test -w @djimitflo/server -- web-research.test.ts` at candidate 8c3476471a1223df42e494bdbe84064ab6d18b72 and detached baseline 7758d153e415177de8e977721011c9675482934c. Both report 1 failed and 10 passed at line 250: the route receives null instead of a claimed job. The fixture inserts failures around 2026-11-08T06:00Z; the route uses current time and researchQuestions selects a seven-day window, so at 2026-11-15 12:20Z its evidence has aged out.",
-      "impact": "Full repository CI is red independently of this nested-spawn change; unrelated WEB-001 route behavior cannot be claimed green.",
+      "impact": "Before the fixture correction, full repository CI was red on this unrelated WEB-001 route test, blocking full-suite validation of the PR head.",
       "owner": "web research test owner",
-      "resolution": "Not changed in the scoped M1 iteration. A separate bounded correction should inject a fixed clock or seed relative to the route's clock and retain an exact baseline reproduction.",
-      "verification": "Exact-head GitHub CI failed the Node 22 test step on this assertion; Node 24 typecheck/lint/build passed but its test step was cancelled. Local candidate and baseline focused runs reproduce the same failure.",
-      "test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5"
+      "resolution": "Test-only correction committed as d099810991945a64b3ec6bbad76ef2070082609e: route test freezes Date at the existing fixture NOW and restores real timers after each test. No WEB-001 product code changed.",
+      "verification": "Original fixture reproduced red on baseline and pre-fix candidate (1 failed, 10 passed); corrected fixture passes 11/11 on the candidate and on the baseline with only the corrected test file overlaid. Full local repository test command, type-check, build, poller tests and audit:ci pass; lint has one pre-existing warning. Exact-head GitHub CI on the final pushed head remains to be confirmed.",
+      "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06"
     }
   ]
 }

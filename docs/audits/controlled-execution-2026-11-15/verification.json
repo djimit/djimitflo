@@ -104,7 +104,7 @@
     },
     {
       "id": "ci-web-research-baseline-failure-2026-11-15",
-      "status": "BASELINE_FAILURE_REPRODUCED; UNRELATED_TO_CANDIDATE",
+      "status": "BASELINE_FAILURE_REPRODUCED; TEST_FIXTURE_CORRECTED",
       "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
       "candidate_sha": "8c3476471a1223df42e494bdbe84064ab6d18b72",
       "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43707335553",
@@ -119,7 +119,52 @@
       "test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5",
       "cause": "The fixture seeds failures relative to 2026-11-08T06:00:00Z, while the route claim uses the real current time. After the seven-day research window has advanced, failureUnits excludes those rows and no claim is produced. This is a time-dependent baseline test fixture failure.",
       "evidence_level": "E2",
-      "scope_decision": "Not changed: unrelated WEB-001 test fixture and research surface are outside the frozen M1 nested-spawn vertical slice."
+      "scope_decision": "After operator authorization to fix autonomously, corrected only the route test clock. No WEB-001 product behavior or research data policy changed."
+    },
+    {
+      "id": "web-research-clock-fixture-fix-2026-11-16",
+      "status": "PASS_BASELINE_RED_CANDIDATE_GREEN",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "pre_fix_candidate_sha": "c1794f84ff2fc75e91249a2247926130b0a5eb2a",
+      "candidate_sha": "d099810991945a64b3ec6bbad76ef2070082609e",
+      "baseline_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "baseline_exit_code": 1,
+      "baseline_summary": "1 failed, 10 passed; the route test expected a claimed job but received null because fixture timestamps were older than the rolling seven-day window.",
+      "candidate_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "candidate_exit_code": 0,
+      "candidate_summary": "1 test file passed; 11 tests passed at commit d099810991945a64b3ec6bbad76ef2070082609e.",
+      "baseline_with_candidate_test_overlay": {
+        "command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+        "exit_code": 0,
+        "summary": "Detached baseline with only the fixed test file overlaid: 1 file and 11 tests passed. Product code remained at baseline.",
+        "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06"
+      },
+      "old_test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5",
+      "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06",
+      "change": "Freeze Date only in the route-level test to the fixture's NOW; restore real timers in afterEach. No runtime or application code changed.",
+      "evidence_level": "E2",
+      "limitations": [
+        "This corrects test determinism, not WEB-001 production behavior.",
+        "The prior full CI run was on source-equivalent commit 8c3476471a1223df42e494bdbe84064ab6d18b72; a new exact-head CI run is needed for d099810991945a64b3ec6bbad76ef2070082609e and the final evidence commit."
+      ]
+    },
+    {
+      "id": "local-repository-gates-after-web-research-test-fix-2026-11-16",
+      "candidate_sha": "d099810991945a64b3ec6bbad76ef2070082609e",
+      "status": "PASS",
+      "commands": [
+        "npm run test -- --reporter=verbose",
+        "npm run type-check",
+        "npm run lint",
+        "npm run build",
+        "python3 -m unittest discover -s scripts -p 'test_*poller.py'",
+        "npm run audit:ci"
+      ],
+      "summary": "Full repository test command exit 0. Server: 874 files passed, 2 skipped; 8202 tests passed, 1 expected failure, 23 skipped. Dashboard 80 files/561 tests passed; MCP 14/91; ransomware 6/40; shared 4/23; Telegram 4/30; skill packages 6/6. Workspace type-check, build, 25 Python poller tests and audit:ci passed. Lint passed with one existing unused eslint-disable warning in github-pr-review-llm.test.ts:120.",
+      "limitations": [
+        "Local deterministic validation only; no real runtime, browser, production or live integration was used.",
+        "A final exact-head GitHub CI check is still required."
+      ]
     }
   ],
   "note": "Append each verification with exact baseline and candidate SHAs, command, selected output, test-file SHA-256, and result. Never upgrade prior evidence without rerunning it at the recorded SHA."

@@ -70,6 +70,21 @@
       "test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5",
       "summary": "The route fixture seeds records at a fixed 2026-11-08 time while the claim route uses current time; the seven-day query window excludes them. Not fixed because unrelated to the frozen M1 nested-spawn slice.",
       "sensitive_output_redacted": true
+    },
+    {
+      "id": "web-research-test-clock-fix-and-regression-suites-2026-11-16",
+      "kind": "red_green_test_and_repository_gate_summary",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "pre_fix_candidate_sha": "c1794f84ff2fc75e91249a2247926130b0a5eb2a",
+      "candidate_sha": "d099810991945a64b3ec6bbad76ef2070082609e",
+      "red_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "red_result": "Baseline and pre-fix candidate: 1 failed, 10 passed at the route claim assertion.",
+      "green_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "green_result": "Candidate and detached baseline with only the fixed test overlaid: 11 passed.",
+      "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06",
+      "repository_gates": "Full npm test, type-check, lint, build, 25 poller unit tests and audit:ci passed locally; lint emitted one existing warning.",
+      "result": "PASS_LOCAL_E2; exact-head hosted CI pending",
+      "sensitive_output_redacted": true
     }
   ],
   "redaction": "Do not include secrets, private data, full prompts or sensitive runtime payloads. Store reproducible commands and sanitized excerpts only."

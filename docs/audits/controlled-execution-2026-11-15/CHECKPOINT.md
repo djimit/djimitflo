@@ -4,9 +4,9 @@
 
 - Repository: `djimit/djimitflo`; baseline `origin/main` `7758d153e415177de8e977721011c9675482934c`.
 - Worktree: `/private/tmp/djimitflo-functional-improvements-20261114`; branch `codex/functional-improvements-20261114`.
-- Frozen candidate reference: `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`; exact current branch head before this evidence update: `8c3476471a1223df42e494bdbe84064ab6d18b72`.
+- Frozen candidate reference: `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`; current product/test code head: `d099810991945a64b3ec6bbad76ef2070082609e`.
 - Frozen denominator commit: `571a0ad39f5d6ed6eb587302242949fb513152cc`; scope is C1–C8, S1–S16, H1–H10. Lists were committed before tests.
-- Existing draft PR #1272 is open at exact head `8c3476471a1223df42e494bdbe84064ab6d18b72`. CodeQL checks passed; `djimitflo-review` remains pending. No merge/deploy is authorized.
+- Existing draft PR #1272 was at `c1794f84ff2fc75e91249a2247926130b0a5eb2a` before pushing the fix; final head/checks must be read after push. No merge/deploy is authorized.
 - Primary user checkout contains unrelated changes and was not edited.
 
 ## Preflight outcome: GREEN (E2 ceiling reached)
@@ -30,6 +30,7 @@
 - `e3e5e4bb12e533e9743c2429ffa59d2814054b00`: record baseline reproduction and test-only ACE-001 fix.
 - `8c3476471a1223df42e494bdbe84064ab6d18b72`: previous pushed evidence/checkpoint update.
 - `e7baf39fdca9c7602cbf3644e7ffb11cc448c473`: nested-spawn reservation/idempotency/reconciliation and terminal projection candidate; red/green E2 only.
+- `d099810991945a64b3ec6bbad76ef2070082609e`: deterministic WEB-001 route test clock; test-only.
 - Static generated inventory commands were also run; route assurance reports inventory gaps documented in `REPORT.md`.
 
 ## Frozen scenarios and current outcomes
@@ -39,6 +40,15 @@
 - S3/S4/S5/S6/S7/S9/S10/S11/S12/S13/S14/S15/S16: NOT_TESTED in this bounded iteration.
 - S8: PASS at E2 for reservation versus measured/unknown use on covered nested-spawn tests; runtime provider metering remains unknown.
 - See `scenarios.json` and `verification.json` for exact scope and limitations.
+
+## WEB-001 fixture correction
+
+- Original route test failed at baseline and pre-fix candidate: 1 failed, 10 passed. Fixture rows were dated 2026-11-08, but the HTTP route used current time and the service selects a rolling seven-day window.
+- Commit `d099810991945a64b3ec6bbad76ef2070082609e` freezes Date in that route test to fixture `NOW` and restores real timers in `afterEach`; no application code changed.
+- Corrected route test passed 11/11 on the candidate and on the detached baseline with only the fixed test file overlaid.
+- Full local `npm run test -- --reporter=verbose`: PASS. Server 874 files passed / 2 skipped, 8202 tests passed / 1 expected failure / 23 skipped. Dashboard 561, MCP 91, ransomware 40, shared 23, Telegram 30, skill packages 6 tests passed.
+- `npm run type-check`, `npm run build`, 25 Python poller tests and `npm run audit:ci`: PASS. `npm run lint`: PASS with one pre-existing warning in `github-pr-review-llm.test.ts:120`.
+- Hosted exact-head CI remains to be checked after pushing; no runtime, browser or production execution was performed.
 
 ## Hypotheses
 
@@ -55,8 +65,7 @@
 
 ## CI follow-up
 
-- Exact-head workflow `43707335553` at `8c3476471a1223df42e494bdbe84064ab6d18b72`: Node 22 typecheck, lint, build and `fleet-auth-infra` passed; full tests reported 873 files passed, 1 failed, 2 skipped; 8200 tests passed, 1 failed, 1 expected failure, 24 skipped. The single failure is `web-research.test.ts:250` (expected a claimed job, received null). Node 24 typecheck/lint/build passed, but its full test job was cancelled after Node 22 failed.
-- The WEB-001 failure was rerun on the candidate and detached baseline `7758d153e415177de8e977721011c9675482934c`; both produced 1 failed and 10 passed at the same assertion. The fixture seeds failures around `2026-11-08T06:00:00Z`, while the route uses the real current time and the research query covers only seven days. On 2026-11-15 the seeded rows have aged out, so the route correctly returns no claim. This unrelated baseline fixture failure is not changed in the bounded nested-spawn M1 iteration; see `verification.json` and CI-002 in `findings.json`.
+- Exact-head workflow `43707335553` at `8c3476471a1223df42e494bdbe84064ab6d18b72` failed on the WEB-001 route fixture; details and original baseline reproduction are recorded under CI-002. That test-only issue is fixed in `d099810991945a64b3ec6bbad76ef2070082609e`; full local suites pass. A fresh hosted workflow on the final pushed head remains the final check.
 - The prior ACE-001 failure at head `b11b716c6b014d502d5edd6c7280d17667e2c837` was fixed by pinning only the two pre-readout test calls to `STOP_BY - 1ms`; the corrected focused ACE-001 plus nested-spawn set passed 53/53. Product/evaluation code and experiment protocol were unchanged.
 
 ## Budget, blockers and next action
@@ -64,5 +73,5 @@
 - Session budget supplied: no numeric wall-clock/token budget; contractual cap is M0 plus one M1 vertical improvement. Cost telemetry unavailable, so cost is not measured (not zero).
 - The allowed M1 work is complete: nested spawn reservation/idempotency/reconciliation candidate is tested red/green at E2. H1 dispatch remains a separate normal-route gap; do not add an unapproved dispatch authority/flag.
 - No operator decision is needed for local evidence packaging. Real runtime, production, UI, protected-path, experiment/holdout, merge and deploy are explicitly not authorized.
-- Remaining action: separately make WEB-001 route tests use a fixed/injected clock or seed relative to the route clock, then reproduce the red assertion on baseline and verify the fix on a new candidate. This is outside the frozen M1 scope.
+- Remaining action: push the test/evidence commits and verify hosted CI plus independent-review status on the exact final PR head. Runtime, production and UI proof remain outside the mandate.
 - Resume: `cd /private/tmp/djimitflo-functional-improvements-20261114 && git status --short --branch && python3 -m json.tool docs/audits/controlled-execution-2026-11-15/verification.json >/dev/null`
