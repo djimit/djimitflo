@@ -6,8 +6,10 @@
 // Suspects are re-run once at 0 and at N (only their files) and kept only when the result repeats, so a flaky test is
 // reported apart. Exit: 0 no date bombs, 1 date bombs found, 2 the harness could not measure (no report, or nothing passed
 // at 0).
+// --strict (an acceptance check, e.g. the date-bomb lane's maker gate): a test that fails at 0 also exits 1, nothing is
+// re-run (any failure at N counts), and the report lists every test outcome at 0 (baseline.tests).
 //
-//   node scripts/time-travel-tests.mjs [--days 7,30] [--workspace server] [--out file.json] [--no-confirm] [--verbose] [files...]
+//   node scripts/time-travel-tests.mjs [--days 7,30] [--workspace server] [--out file.json] [--no-confirm] [--strict] [--verbose] [files...]
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,19 +20,24 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VITEST = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 
 export function parseArgs(argv) {
-  const opts = { days: [7, 30], workspace: 'server', out: path.join('reports', 'time-travel', 'report.json'), confirm: true, verbose: false, files: [] };
+  const opts = { days: [7, 30], workspace: 'server', out: path.join('reports', 'time-travel', 'report.json'), confirm: true, strict: false, verbose: false, files: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--days') opts.days = String(argv[++i] ?? '').split(',').map((s) => s.trim()).filter(Boolean).map(Number);
     else if (a === '--workspace') opts.workspace = argv[++i];
     else if (a === '--out') opts.out = argv[++i];
     else if (a === '--no-confirm') opts.confirm = false;
+    else if (a === '--strict') opts.strict = true;
     else if (a === '--verbose') opts.verbose = true;
     else if (a.startsWith('--')) throw new Error(`unknown option ${a}`);
     else opts.files.push(a);
   }
   if (!opts.days.length || opts.days.some((d) => !Number.isInteger(d) || d === 0)) throw new Error('--days needs non-zero integers, e.g. 7,30');
   if (!/^[\w-]+$/.test(opts.workspace ?? '')) throw new Error('--workspace needs a package directory name, e.g. server');
+  if (opts.strict) opts.confirm = false;
+  // vitest runs in packages/<workspace> and filters relative to it: a repository path is taken as the same file
+  const prefix = `packages/${opts.workspace}/`;
+  opts.files = opts.files.map((f) => (f.startsWith(prefix) ? f.slice(prefix.length) : f));
   return opts;
 }
 
@@ -103,6 +110,7 @@ function main() {
     horizons: [],
   };
   if (!result.baseline.passed) throw new Error('nothing passed at +0d; the suite could not be measured');
+  if (opts.strict) result.baseline.tests = [...base.values()].map(({ file, test, status }) => ({ file, test, status }));
   for (const days of opts.days) {
     let bombs = dateBombs(base, runVitest(opts, days, opts.files));
     let flaky = [];
@@ -119,10 +127,13 @@ function main() {
   fs.writeFileSync(opts.out, `${JSON.stringify(result, null, 2)}\n`);
   console.log(summarize(result));
   console.log(`report: ${opts.out}`);
-  return result.horizons.some((h) => h.dateBombs.length) ? 1 : 0;
+  return result.horizons.some((h) => h.dateBombs.length) || (opts.strict && result.baseline.failed) ? 1 : 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+// realpath: node runs a main module from its resolved path, so through a symlinked directory (macOS /var → /private/var)
+// the plain comparison never matched and the script exited 0 without measuring anything
+const isMain = () => { try { return import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href; } catch { return false; } };
+if (process.argv[1] && isMain()) {
   try {
     process.exitCode = main();
   } catch (err) {

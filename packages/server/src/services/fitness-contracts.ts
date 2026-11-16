@@ -340,6 +340,13 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     outcome: { metric: 'the finding is gone per finding-fix-gate.mjs — the same script that produced it', source: 'loop run checks (finding-fix-gate.mjs)', independence: 'circular' },
     cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'circular',
     note: "Pooled into lane 'other' in survival and settlement; production-code PRs mostly settle as no_test_files." },
+  // date-bomb-source.ts (scripts/time-travel-tests.mjs is the finding source and, with --strict, the maker gate test:date-bomb; refs map to
+  // lane 'other'; merge-survival.ts settles its PRs like every loop PR)
+  { component: 'lane_date_bomb', class: 'lane', name: 'Lane: date-bomb', unit: 'one loop PR of the lane (one test file)', flags: ['DATE_BOMB_LANE'],
+    outcome: { metric: 'every test of the file passes at +0 d and at +N d (test:date-bomb, the detector that found the bomb) and the PR survives 14 d (merge survival)',
+      source: 'loop run checks (test:date-bomb) + loop_runs.metadata.pr_outcome.survived', independence: 'circular' },
+    cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'circular',
+    note: "The acceptance is the same script that produced the finding; survival is pooled into lane 'other' and cannot fail on test-only PRs, so nothing independent scores the lane yet. Static cap (2/day)." },
   // dead-code-source-service.ts (test:dead-code:grounded is a verification gate, not a value metric; lane 'other')
   { component: 'lane_dead_code', class: 'lane', name: 'Lane: dead-code', unit: 'one loop PR of the lane', flags: ['DEAD_CODE_LANE_ENABLED', 'DEAD_CODE_MAX_PER_DAY'],
     outcome: { metric: 'none', source: "none (pooled into lane 'other')", independence: 'none' }, cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null },

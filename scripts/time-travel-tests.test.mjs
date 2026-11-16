@@ -37,6 +37,17 @@ test('parseArgs: defaults, horizons, workspace and file list; bad input is refus
   assert.throws(() => parseArgs(['--bogus']), /unknown option/);
 });
 
+test('parseArgs --strict: an acceptance run never re-runs (any failure at N counts)', () => {
+  assert.equal(parseArgs([]).strict, false);
+  const s = parseArgs(['--strict', '--days', '30', 'src/x.test.ts']);
+  assert.deepEqual([s.strict, s.confirm, s.days, s.files], [true, false, [30], ['src/x.test.ts']]);
+});
+
+test('parseArgs takes a repository path as the workspace file vitest filters on', () => {
+  assert.deepEqual(parseArgs(['packages/server/src/__tests__/a.test.ts', 'src/b.test.ts']).files, ['src/__tests__/a.test.ts', 'src/b.test.ts']);
+  assert.deepEqual(parseArgs(['--workspace', 'dashboard', 'packages/dashboard/src/c.test.tsx', 'packages/server/x.test.ts']).files, ['src/c.test.tsx', 'packages/server/x.test.ts']);
+});
+
 test('summarize lists each horizon with its bombs', () => {
   const s = summarize({ workspace: 'server', baseline: { passed: 9, failed: 1 }, horizons: [
     { days: 7, dateBombs: [], flaky: [] },
