@@ -222,7 +222,8 @@ describe('P0-3 Python emitter ↔ TS verifier', () => {
     fs.rmSync(dir, { recursive: true, force: true });
     const event = JSON.parse(out) as Record<string, unknown>;
     expect(JSON.stringify(event)).not.toContain(key.secret);
-    expect(verifyFleetEvent(db, event, { master: MASTER }).verdict).toBe('verified');
+    // the Python emitter stamps occurred_at from the OS clock: verify against that clock, not a faked Date
+    expect(verifyFleetEvent(db, event, { master: MASTER, now: vi.getRealSystemTime() }).verdict).toBe('verified');
   });
 });
 

@@ -63,7 +63,8 @@ it('Z5: the mutant holdout is frozen once (tier 2 and 3, task stored); trials ar
   expect(mutantHoldout(db, make).map((t) => t.commit)).toEqual(first.map((t) => t.commit)); // never re-picked
   ensureBaseline(db); mutant('g1', ['A']);
   const run = (genome: string, commit: string, ok: boolean) => db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`).run(`${genome}-${commit}`, JSON.stringify({ gym: { commit, species: 'atomic@llama-router', genome, prod_gates: 1 }, gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(ok ? { prod_gates: { lint: 'pass' } } : {}) } }));
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(`${genome}-${commit}`, JSON.stringify({ gym: { commit, species: 'atomic@llama-router', genome, prod_gates: 1 }, gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(ok ? { prod_gates: { lint: 'pass' } } : {}) } }),
+    new Date().toISOString(), new Date().toISOString()); // judged at Date.now() below: seed on the same clock
   const mined = ['c00', 'c02', 'c04'];
   const mutants = first.slice(0, 6).map((t) => t.commit);
   // mined: g1 loses c00 (net -1, allowed); mutants: g1 wins all 6, baseline none -> McNemar p = 1/64

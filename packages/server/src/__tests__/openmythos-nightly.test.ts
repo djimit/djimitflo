@@ -62,8 +62,8 @@ describe('OpenMythosNightlyService', () => {
     process.env.OPENMYTHOS_NIGHTLY_HOUR = '0';
     db.prepare(`
       INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, started_at)
-      VALUES ('r1', 'nightly:llama3.1:8b', 'completed', 78, 78, 3.0, ?)
-    `).run(new Date().toISOString());
+      VALUES ('r1', 'nightly:llama3.1:8b', 'completed', 78, 78, 3.0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    `).run(); // the dedupe compares started_at with SQLite's date('now'): seed on SQLite's clock
 
     expect(service.shouldRun('llama3.1:8b', at(12))).toBe(false);
     expect(service.shouldRun('other-model', at(12))).toBe(true);
