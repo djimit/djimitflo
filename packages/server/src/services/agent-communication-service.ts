@@ -734,7 +734,13 @@ export class AgentCommunicationService {
   receiveSocial(agentId: string, limit = 4): AgentMessage[] {
     this.cleanup();
     const now = Date.now();
+    // Dead-letter: a message whose lease lapsed SOCIAL_MAX_DELIVERY_ATTEMPTS times (default 5) is expired instead of being
+    // handed out every 5 minutes until its TTL (prod 2026-11-15: one message failed 183x in a row on a provider 401).
+    const maxAttempts = Math.max(1, Number(process.env.SOCIAL_MAX_DELIVERY_ATTEMPTS) || 5);
     return this.db.transaction((max: number) => {
+      this.db.prepare(`UPDATE agent_messages SET status = 'expired', delivery_lease_until = NULL, delivery_lease_token = NULL
+        WHERE to_agent = ? AND status = 'delivered' AND delivery_lease_until <= ? AND delivery_attempts >= ?
+          AND json_extract(payload_json, '$.action') IN ('social.question', 'social.response')`).run(agentId, now, maxAttempts);
       const candidates = this.db.prepare(`SELECT * FROM agent_messages message
         WHERE message.to_agent = ? AND json_extract(message.payload_json, '$.action') IN ('social.question', 'social.response')
           AND json_type(message.payload_json, '$.thread_id') = 'text'
@@ -743,7 +749,7 @@ export class AgentCommunicationService {
         ORDER BY message.priority ASC, message.timestamp ASC LIMIT ?`).all(agentId, now, agentId, max) as Array<Record<string, unknown>>;
       const claimed: AgentMessage[] = [];
       const leaseUntil = now + 5 * 60_000;
-      const deliver = this.db.prepare(`UPDATE agent_messages SET status = 'delivered', delivery_lease_until = ?, delivery_lease_token = ? WHERE id = ? AND to_agent = ? AND (status = 'pending' OR (status = 'delivered' AND (delivery_lease_until <= ? OR delivery_lease_until IS NULL)))`);
+      const deliver = this.db.prepare(`UPDATE agent_messages SET status = 'delivered', delivery_lease_until = ?, delivery_lease_token = ?, delivery_attempts = delivery_attempts + 1 WHERE id = ? AND to_agent = ? AND (status = 'pending' OR (status = 'delivered' AND (delivery_lease_until <= ? OR delivery_lease_until IS NULL)))`);
       for (const row of candidates) {
         const token = randomUUID();
         if (deliver.run(leaseUntil, token, row.id, agentId, now).changes === 1) claimed.push(this.runtimeSafeMessage({ ...this.messageFromRow(row), status: 'delivered', deliveryLeaseToken: token }));
@@ -1301,6 +1307,11 @@ export class AgentCommunicationService {
       this.db.exec('ALTER TABLE agent_messages ADD COLUMN delivery_lease_token TEXT');
     } catch {
       // Existing databases already have the fencing token migration column.
+    }
+    try {
+      this.db.exec('ALTER TABLE agent_messages ADD COLUMN delivery_attempts INTEGER NOT NULL DEFAULT 0');
+    } catch {
+      // Existing databases already have the delivery-attempts (dead-letter) column.
     }
     try {
       this.db.exec('ALTER TABLE agent_message_deliveries ADD COLUMN delivery_lease_token TEXT');
