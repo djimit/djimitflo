@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
+import { laneFeedbackClause, laneOfTitle, lanePaused } from './lane-feedback';
 import { markRun, markTick } from './scheduler-registry';
 import { extraRepos, extraReposMode, registeredExtraRepos, type ExtraRepo } from './repo-registry';
 import { recordSpecGapShadow, specGapMode, specRepo } from './spec-gap-source';
@@ -311,6 +312,9 @@ export class TestGapSourceService {
       const ref = gap.kind === 'exports' ? `test-gap:${gap.service}#exports` : `test-gap:${gap.service}`;
       // a file that ever had a test-gap proposal of this kind (any outcome) is never proposed again automatically
       if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%${ref}"%`)) continue;
+      const title = gap.kind === 'exports' ? `Test untested exports of services/${gap.service}.ts` : `Add unit tests for ${gap.pkg ? gap.sourcePath.replace(/^packages\//, '') : `services/${gap.service}.ts`}`;
+      const lane = laneOfTitle(title);
+      if (lane && lanePaused(this.db, lane, now)) continue; // G3: the operator voted this lane down
       const testFile = path.basename(gap.testPath);
       const pkgDir = `packages/${gap.pkg ?? 'server'}`;
       const command = gap.pkg ? `npx vitest run ${path.relative(pkgDir, gap.testPath)}` : `npx vitest run src/__tests__/${testFile}`;
@@ -318,9 +322,10 @@ export class TestGapSourceService {
       const covering = gap.kind === 'exports' ? `the untested exported functions ${gap.exports.join(', ')} of ${gap.sourcePath} (no existing test names them)` : `the public behaviour of ${gap.sourcePath} (exports: ${gap.exports.join(', ')})`;
       const description = `Add ${gap.testPath} covering ${covering}. Test-only; no production code edits. `
         + `RUNTIME COMMAND: from ${pkgDir} run \`${command}\` (exit 0 = pass, Node 22, no network, no env flags needed). `
-        + `ARTIFACT: the vitest stdout captured by the worker, plus the git diff of the single new test file (expected < 150 lines added). BUDGET: ${budget}.`;
+        + `ARTIFACT: the vitest stdout captured by the worker, plus the git diff of the single new test file (expected < 150 lines added). BUDGET: ${budget}.`
+        + (lane ? laneFeedbackClause(this.db, lane) : '');
       const proposal = improvements.generateFromGroundedGap({
-        title: gap.kind === 'exports' ? `Test untested exports of services/${gap.service}.ts` : `Add unit tests for ${gap.pkg ? gap.sourcePath.replace(/^packages\//, '') : `services/${gap.service}.ts`}`, description,
+        title, description,
         rationale: gap.kind === 'exports'
           ? `${gap.exports.join(', ')} in ${gap.sourcePath} are exported but no test names them; a test-only change is verifiable by one command`
           : `${gap.sourcePath} (${gap.loc} lines) is not imported by any test; a test-only change is verifiable by one command`,
@@ -371,6 +376,7 @@ export class TestGapSourceService {
     const inFlight = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%mutation-gap:%' AND status IN ('proposed', 'scheduled', 'executing')").get() as { n: number }).n;
     if (createdToday >= (Number(process.env.MUTATION_GAP_MAX_PER_DAY) || 2)) return { created: 0, skipped: 'daily cap reached' };
     if (inFlight >= 1) return { created: 0, skipped: 'one in flight' };
+    if (lanePaused(this.db, 'mutation', now)) return { created: 0, skipped: 'lane paused by operator feedback' };
     for (const gap of discoverMutationGaps(repo)) {
       const ref = `mutation-gap:${gap.service}`;
       if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%"${ref}"%`)) continue;
@@ -378,7 +384,8 @@ export class TestGapSourceService {
       const description = `Strengthen ${gap.testPath} so it kills more Stryker mutants of ${gap.sourcePath}. Edit only that test file; no production code edits. `
         + `RUNTIME COMMAND: from the repository root run \`${command}\` — it runs Stryker on the committed and on your version of the test and exits 0 `
         + `when the mutation score gains >= 10 points (or reaches 90). Its JSON line shows before/after; aim at the surviving mutants. `
-        + 'ARTIFACT: the command output plus the diff of the one test file. BUDGET: one maker lease, <= 15 minutes, one checker lease.';
+        + 'ARTIFACT: the command output plus the diff of the one test file. BUDGET: one maker lease, <= 15 minutes, one checker lease.'
+        + laneFeedbackClause(this.db, 'mutation');
       const proposal = new SelfImprovementService(this.db).generateFromGroundedGap({
         title: `Raise the mutation score of services/${gap.service}.ts`, description,
         rationale: `${gap.testPath} exists, but a test that lets mutants survive does not guard behaviour; the gain is measured by one command`,

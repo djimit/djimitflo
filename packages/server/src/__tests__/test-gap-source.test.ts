@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
+import { laneOfTitle, lanePaused, recordLaneFeedback } from '../services/lane-feedback';
 import { TestGapSourceService, discoverDashboardGaps, discoverExportGaps, discoverMutationGaps, discoverPackageGaps, discoverTestGaps, mutationCheckEnv } from '../services/test-gap-source-service';
 
 let db: Database.Database; let repo: string;
@@ -177,4 +178,52 @@ it('TEST_GAP_DASHBOARD: the deterministic gate (test:changed) runs the dashboard
   expect(pkg.scripts['test:changed']).toMatch(/-w @djimitflo\/dashboard\b/);
   const dash = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../dashboard/package.json'), 'utf8')) as { scripts: Record<string, string> };
   expect(dash.scripts.test).toMatch(/^vitest run\b/); // `-- --changed` reaches vitest
+});
+
+describe('G2/G3 lane feedback (goal engineering)', () => {
+  /** A merged loop PR #pr for the newest proposal titled like `title` — what the operator votes on. */
+  const mergedPr = (pr: number) => {
+    const imp = db.prepare('SELECT id FROM self_improvements ORDER BY created_at DESC, rowid DESC LIMIT 1').get() as { id: string };
+    db.prepare("INSERT INTO goals (id, objective, risk_class, status, improvement_id) VALUES (?, 'o', 'low', 'created', ?)").run(`g${pr}`, imp.id);
+    db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, metadata) VALUES (?, ?, 'doc-drift-and-small-fix-loop', 'closed', 'completed', ?)").run(`r${pr}`, `g${pr}`, JSON.stringify({ pr_number: pr }));
+  };
+  afterEach(() => { delete process.env.TEST_GAP_MAX_IN_FLIGHT; });
+
+  it('derives the lane from the proposal title', () => {
+    expect(['Raise the mutation score of services/x.ts', 'Test untested exports of services/x.ts', 'Add unit tests for dashboard/src/pages/A.tsx', 'Add unit tests for services/x.ts', 'Add unit tests for shared/src/y.ts', 'Fix only finding z'].map(laneOfTitle))
+      .toEqual(['mutation', 'exports', 'dashboard', 'untested', 'packages', null]);
+  });
+
+  it("an operator reason travels into the lane's next goal; three down-votes pause the lane", () => {
+    process.env.TEST_GAP_MAX_PER_DAY = '1'; process.env.TEST_GAP_MAX_IN_FLIGHT = '10';
+    const svc = new TestGapSourceService(db);
+    expect(svc.run().created).toBe(1); // alpha
+    process.env.TEST_GAP_MAX_PER_DAY = '10';
+    mergedPr(901);
+    expect(recordLaneFeedback(db, { prNumber: 901, verdict: 'down', reason: 'tests only restate the implementation', actor: 'u1' })).toEqual({ lane: 'untested' });
+    expect(svc.run().created).toBe(1); // beta carries the reason
+    const beta = db.prepare("SELECT description FROM self_improvements WHERE title LIKE '%beta%'").get() as { description: string };
+    expect(beta.description).toContain('OPERATOR FEEDBACK ON THIS LANE (latest first): not useful: tests only restate the implementation');
+    mergedPr(902);
+    recordLaneFeedback(db, { prNumber: 902, verdict: 'down', actor: 'u1' });
+    expect(lanePaused(db, 'untested')).toBe(false);
+    recordLaneFeedback(db, { prNumber: 902, verdict: 'down', actor: 'u1' });
+    expect(lanePaused(db, 'untested')).toBe(true);
+    recordLaneFeedback(db, { prNumber: 901, verdict: 'up', actor: 'u1' });
+    expect(lanePaused(db, 'untested')).toBe(true); // 3 down > 1 up
+    expect(() => recordLaneFeedback(db, { prNumber: 999, verdict: 'down', actor: 'u1' })).toThrow('LANE_PR_UNKNOWN');
+  });
+
+  it('a paused lane proposes nothing, other lanes go on', () => {
+    process.env.TEST_GAP_MAX_PER_DAY = '1'; process.env.TEST_GAP_MAX_IN_FLIGHT = '10';
+    const svc = new TestGapSourceService(db);
+    expect(svc.run().created).toBe(1); mergedPr(903); // alpha
+    process.env.TEST_GAP_MAX_PER_DAY = '10';
+    for (let i = 0; i < 3; i++) recordLaneFeedback(db, { prNumber: 903, verdict: 'down', actor: 'u1' });
+    expect(svc.run()).toEqual({ created: 0, skipped: 'no untested candidate' }); // beta (untested lane) skipped
+    process.env.MUTATION_GAP_ENABLED = 'true';
+    db.prepare("UPDATE self_improvements SET title = 'Raise the mutation score of services/alpha.ts'").run();
+    for (let i = 0; i < 3; i++) recordLaneFeedback(db, { prNumber: 903, verdict: 'down', actor: 'u1' });
+    expect(svc.runMutationGaps().skipped).toBe('lane paused by operator feedback');
+  });
 });
