@@ -134,7 +134,7 @@ describe('quota failures (429/402)', () => {
   });
   it.each([['Ollama request failed: 404'], ['HTTP 4290'], ['rate limited'], ['']])('ignores %s', (msg) => { expect(isQuotaFailure(msg)).toBe(false); });
   it('keeps a host that answered 429 out of first place for 15 minutes, not one', async () => {
-    let t = 1_000_000;
+    const t = 1_000_000;
     const fetchFn = vi.fn(async (url: string) => (url.startsWith('http://a') ? json({ error: 'weekly usage limit' }, 429) : json({ response: 'from-b' })));
     const endpoints = [ollama('http://a'), ollama('http://b')];
     expect(await generateText(opts, { endpoints, fetchFn: fetchFn as never, now: () => t })).toBe('from-b');
