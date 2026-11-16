@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { generateText, isConnectivityFailure, isLlmEndpointDown, llmEndpoints, resetLlmBreaker, transportPurpose, type LlmEndpoint } from '../services/llm-fallback';
+import { generateText, isConnectivityFailure, isLlmEndpointDown, isQuotaFailure, llmEndpoints, resetLlmBreaker, transportPurpose, type LlmEndpoint } from '../services/llm-fallback';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SelfImprovementAgentReviewService } from '../services/self-improvement-agent-review-service';
 import { autopilotFallbackSpec } from '../services/agent-social-autopilot-service';
@@ -113,6 +113,7 @@ describe('isConnectivityFailure', () => {
     ['HTTP 502'],
     ['HTTP 503'],
     ['HTTP 599'],
+    ['Ollama request failed: 503'],
   ])('recognises %s as connectivity failure', (msg) => {
     expect(isConnectivityFailure(msg)).toBe(true);
   });
@@ -125,6 +126,20 @@ describe('isConnectivityFailure', () => {
     [''],
   ])('does NOT treat %s as connectivity failure', (msg) => {
     expect(isConnectivityFailure(msg)).toBe(false);
+  });
+});
+describe('quota failures (429/402)', () => {
+  it.each([['Ollama request failed: 429'], ['Ollama request failed: 429 [ollama-limit:weekly]'], ['OpenAI-compatible request failed: HTTP 429'], ['OpenAI-compatible request failed: HTTP 402']])('recognises %s', (msg) => {
+    expect(isQuotaFailure(msg)).toBe(true);
+  });
+  it.each([['Ollama request failed: 404'], ['HTTP 4290'], ['rate limited'], ['']])('ignores %s', (msg) => { expect(isQuotaFailure(msg)).toBe(false); });
+  it('keeps a host that answered 429 out of first place for 15 minutes, not one', async () => {
+    const t = 1_000_000;
+    const fetchFn = vi.fn(async (url: string) => (url.startsWith('http://a') ? json({ error: 'weekly usage limit' }, 429) : json({ response: 'from-b' })));
+    const endpoints = [ollama('http://a'), ollama('http://b')];
+    expect(await generateText(opts, { endpoints, fetchFn: fetchFn as never, now: () => t })).toBe('from-b');
+    expect(isLlmEndpointDown('ollama:http://a', t + 14 * 60_000)).toBe(true);
+    expect(isLlmEndpointDown('ollama:http://a', t + 16 * 60_000)).toBe(false);
   });
 });
 describe('transportPurpose', () => {
