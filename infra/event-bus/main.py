@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from bus import EventBus
@@ -30,9 +31,14 @@ def publish(stream: str, payload: dict):
     msg_id = bus.publish(stream, payload)
     return {"stream": stream, "id": msg_id}
 
+# Reads are open: clamp instead of rejecting, so a reader asking for more (the ingest cursor grows in 5000 steps) still
+# gets the newest MAX_READ_COUNT entries rather than a 422, and ?count=100000000 cannot exhaust the container.
+MAX_READ_COUNT = int(os.getenv("MAX_READ_COUNT", "50000"))
+
+
 @app.get("/events/{stream}")
 def read(stream: str, count: int = 10):
-    events = bus.read(stream, count)
+    events = bus.read(stream, max(1, min(count, MAX_READ_COUNT)))
     return {"stream": stream, "events": events}
 
 @app.get("/streams")

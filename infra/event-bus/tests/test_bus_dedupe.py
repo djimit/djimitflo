@@ -23,6 +23,10 @@ class FakeRedis:
     def __init__(self):
         self.streams, self.keys, self.ttls, self.seq = {}, {}, {}, 0
 
+    def xtrim(self, stream, maxlen, approximate=True):
+        self.trims = getattr(self, 'trims', []) + [(stream, maxlen, approximate)]
+        del self.streams.setdefault(stream, [])[:-maxlen]
+
     def xadd(self, stream, fields):
         self.seq += 1
         entry_id = f'{self.seq}-0'
@@ -104,6 +108,11 @@ class BusDedupeTest(unittest.TestCase):
         _, fields = self.redis.streams['djimit.events'][0]
         self.assertEqual(json.loads(fields['payload']), {'title': 't', 'labels': ['a']})
         self.assertEqual(fields['dedupe_key'], 'djimitflo:e1')
+
+    def test_every_publish_trims_the_stream_approximately(self):
+        self.bus.publish('djimit.events', {k: v for k, v in EVENT.items() if k != 'dedupe_key'})
+        self.bus.publish('djimit.events', EVENT)
+        self.assertEqual(self.redis.trims, [('djimit.events', bus.STREAM_MAXLEN, True)] * 2)
 
     def test_events_without_dedupe_key_append_every_time(self):
         event = {k: v for k, v in EVENT.items() if k != 'dedupe_key'}
