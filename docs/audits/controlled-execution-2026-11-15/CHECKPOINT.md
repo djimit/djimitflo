@@ -6,7 +6,7 @@
 - Worktree: `/private/tmp/djimitflo-functional-improvements-20261114`; branch `codex/functional-improvements-20261114`.
 - Frozen candidate reference: `ecfc85d22e1a68307d63eaed9ce4bbcb87927e89`; current product/test code head: `d099810991945a64b3ec6bbad76ef2070082609e`.
 - Frozen denominator commit: `571a0ad39f5d6ed6eb587302242949fb513152cc`; scope is C1–C8, S1–S16, H1–H10. Lists were committed before tests.
-- Existing draft PR #1272 was at `c1794f84ff2fc75e91249a2247926130b0a5eb2a` before pushing the fix; final head/checks must be read after push. No merge/deploy is authorized.
+- Draft PR #1272 hosted workflow `43779085303` passed all jobs at head `ff16c2a5c403c6216c771a49158a2a78add423c3`; independent `djimitflo-review` remained pending. PR remains open/draft. No merge/deploy is authorized.
 - Primary user checkout contains unrelated changes and was not edited.
 
 ## Preflight outcome: GREEN (E2 ceiling reached)
@@ -48,7 +48,7 @@
 - Corrected route test passed 11/11 on the candidate and on the detached baseline with only the fixed test file overlaid.
 - Full local `npm run test -- --reporter=verbose`: PASS. Server 874 files passed / 2 skipped, 8202 tests passed / 1 expected failure / 23 skipped. Dashboard 561, MCP 91, ransomware 40, shared 23, Telegram 30, skill packages 6 tests passed.
 - `npm run type-check`, `npm run build`, 25 Python poller tests and `npm run audit:ci`: PASS. `npm run lint`: PASS with one pre-existing warning in `github-pr-review-llm.test.ts:120`.
-- Hosted exact-head CI remains to be checked after pushing; no runtime, browser or production execution was performed.
+- Hosted exact-head CI run `43779085303` passed at `ff16c2a5c403c6216c771a49158a2a78add423c3`: Node 22/24 tests and gates, security scan, SBOM, mutation-test and fleet-auth-infra. `djimitflo-review` is still pending. No runtime, browser or production execution was performed.
 
 ## Hypotheses
 
@@ -65,7 +65,7 @@
 
 ## CI follow-up
 
-- Exact-head workflow `43707335553` at `8c3476471a1223df42e494bdbe84064ab6d18b72` failed on the WEB-001 route fixture; details and original baseline reproduction are recorded under CI-002. That test-only issue is fixed in `d099810991945a64b3ec6bbad76ef2070082609e`; full local suites pass. A fresh hosted workflow on the final pushed head remains the final check.
+- Exact-head workflow `43707335553` at `8c3476471a1223df42e494bdbe84064ab6d18b72` failed on the WEB-001 route fixture; details and original baseline reproduction are recorded under CI-002. The test-only issue is fixed in `d099810991945a64b3ec6bbad76ef2070082609e`. Fresh hosted workflow `43779085303` passed all jobs at `ff16c2a5c403c6216c771a49158a2a78add423c3`.
 - The prior ACE-001 failure at head `b11b716c6b014d502d5edd6c7280d17667e2c837` was fixed by pinning only the two pre-readout test calls to `STOP_BY - 1ms`; the corrected focused ACE-001 plus nested-spawn set passed 53/53. Product/evaluation code and experiment protocol were unchanged.
 
 ## Budget, blockers and next action
@@ -73,5 +73,5 @@
 - Session budget supplied: no numeric wall-clock/token budget; contractual cap is M0 plus one M1 vertical improvement. Cost telemetry unavailable, so cost is not measured (not zero).
 - The allowed M1 work is complete: nested spawn reservation/idempotency/reconciliation candidate is tested red/green at E2. H1 dispatch remains a separate normal-route gap; do not add an unapproved dispatch authority/flag.
 - No operator decision is needed for local evidence packaging. Real runtime, production, UI, protected-path, experiment/holdout, merge and deploy are explicitly not authorized.
-- Remaining action: push the test/evidence commits and verify hosted CI plus independent-review status on the exact final PR head. Runtime, production and UI proof remain outside the mandate.
+- Remaining action: obtain the independent `djimitflo-review` result for PR #1272. Runtime, production and UI proof remain outside the mandate.
 - Resume: `cd /private/tmp/djimitflo-functional-improvements-20261114 && git status --short --branch && python3 -m json.tool docs/audits/controlled-execution-2026-11-15/verification.json >/dev/null`

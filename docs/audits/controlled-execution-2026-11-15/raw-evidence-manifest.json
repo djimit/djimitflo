@@ -83,7 +83,16 @@
       "green_result": "Candidate and detached baseline with only the fixed test overlaid: 11 passed.",
       "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06",
       "repository_gates": "Full npm test, type-check, lint, build, 25 poller unit tests and audit:ci passed locally; lint emitted one existing warning.",
-      "result": "PASS_LOCAL_E2; exact-head hosted CI pending",
+      "result": "PASS_LOCAL_E2",
+      "sensitive_output_redacted": true
+    },
+    {
+      "id": "hosted-ci-after-web-research-test-fix-2026-11-16",
+      "kind": "exact_head_hosted_ci_summary",
+      "candidate_sha": "ff16c2a5c403c6216c771a49158a2a78add423c3",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43779085303",
+      "result": "PASS",
+      "summary": "Node 22/24, fleet-auth-infra, security-scan, SBOM, mutation-test and CodeQL passed. Server: 874 files passed, 2 skipped; 8201 tests passed, 1 expected failure, 24 skipped. Independent djimitflo-review remained pending.",
       "sensitive_output_redacted": true
     }
   ],

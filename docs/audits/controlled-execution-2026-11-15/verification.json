@@ -144,8 +144,7 @@
       "change": "Freeze Date only in the route-level test to the fixture's NOW; restore real timers in afterEach. No runtime or application code changed.",
       "evidence_level": "E2",
       "limitations": [
-        "This corrects test determinism, not WEB-001 production behavior.",
-        "The prior full CI run was on source-equivalent commit 8c3476471a1223df42e494bdbe84064ab6d18b72; a new exact-head CI run is needed for d099810991945a64b3ec6bbad76ef2070082609e and the final evidence commit."
+        "This corrects test determinism, not WEB-001 production behavior."
       ]
     },
     {
@@ -162,9 +161,28 @@
       ],
       "summary": "Full repository test command exit 0. Server: 874 files passed, 2 skipped; 8202 tests passed, 1 expected failure, 23 skipped. Dashboard 80 files/561 tests passed; MCP 14/91; ransomware 6/40; shared 4/23; Telegram 4/30; skill packages 6/6. Workspace type-check, build, 25 Python poller tests and audit:ci passed. Lint passed with one existing unused eslint-disable warning in github-pr-review-llm.test.ts:120.",
       "limitations": [
-        "Local deterministic validation only; no real runtime, browser, production or live integration was used.",
-        "A final exact-head GitHub CI check is still required."
+        "No real runtime, browser, production or live integration was used."
       ]
+    },
+    {
+      "id": "hosted-ci-after-web-research-test-fix-2026-11-16",
+      "candidate_sha": "ff16c2a5c403c6216c771a49158a2a78add423c3",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43779085303",
+      "status": "PASS",
+      "verified_head_sha": "ff16c2a5c403c6216c771a49158a2a78add423c3",
+      "jobs": {
+        "fleet-auth-infra": "PASS",
+        "build-and-test (22)": "PASS",
+        "build-and-test (24)": "PASS",
+        "security-scan": "PASS",
+        "sbom": "PASS",
+        "mutation-test": "PASS",
+        "CodeQL": "PASS"
+      },
+      "test_summary_node_22": "Server: 874 files passed, 2 skipped; 8201 tests passed, 1 expected failure, 24 skipped. Dashboard 561, MCP 91, ransomware 40, shared 23, Telegram 30, and skill packages 6 tests passed.",
+      "test_summary_node_24": "Same workspace totals as Node 22; tests, poller checks, host-agent checks, security audit, and workflow jobs passed.",
+      "evidence_level": "E2 exact-head hosted CI",
+      "limitation": "djimitflo-review was still PENDING when checked; the PR remains draft and unmerged."
     }
   ],
   "note": "Append each verification with exact baseline and candidate SHAs, command, selected output, test-file SHA-256, and result. Never upgrade prior evidence without rerunning it at the recorded SHA."

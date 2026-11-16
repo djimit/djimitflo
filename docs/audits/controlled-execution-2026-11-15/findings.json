@@ -196,7 +196,7 @@
       "impact": "Before the fixture correction, full repository CI was red on this unrelated WEB-001 route test, blocking full-suite validation of the PR head.",
       "owner": "web research test owner",
       "resolution": "Test-only correction committed as d099810991945a64b3ec6bbad76ef2070082609e: route test freezes Date at the existing fixture NOW and restores real timers after each test. No WEB-001 product code changed.",
-      "verification": "Original fixture reproduced red on baseline and pre-fix candidate (1 failed, 10 passed); corrected fixture passes 11/11 on the candidate and on the baseline with only the corrected test file overlaid. Full local repository test command, type-check, build, poller tests and audit:ci pass; lint has one pre-existing warning. Exact-head GitHub CI on the final pushed head remains to be confirmed.",
+      "verification": "Original fixture reproduced red on baseline and pre-fix candidate (1 failed, 10 passed); corrected fixture passes 11/11 on the candidate and on the baseline with only the corrected test file overlaid. Full local repository test command, type-check, build, poller tests and audit:ci pass; lint has one pre-existing warning. Hosted CI run 43779085303 passed every job, including Node 22/24 tests and the security scan, at exact head ff16c2a5c403c6216c771a49158a2a78add423c3.",
       "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06"
     }
   ]
