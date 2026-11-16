@@ -178,6 +178,9 @@ describe('ReconciliationService', () => {
 
     beforeEach(() => {
       for (const key of NIGHTLY_KEYS) delete process.env[key];
+      // the same-day dedupe compares created_at, which reconcile() writes with Date, to SQLite's date('now') (the OS clock);
+      // only the real clock keeps both on one date, so these tests opt out of a faked Date (time travel included)
+      vi.useRealTimers();
     });
 
     afterEach(() => {

@@ -44,7 +44,7 @@ beforeEach(async () => {
   vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'true'); vi.stubEnv('LOOP_DAEMON_REPOSITORY_PATH', '/repo-that-does-not-exist');
   vi.stubEnv('GYM_PROD_GATES', 'true'); vi.stubEnv('CV_001_MODE', 'on'); vi.stubEnv('EVOLUTION_GYM_REMOTE_MAX_PER_DAY', '1000');
 });
-afterEach(() => { vi.unstubAllEnvs(); db.close(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); db.close(); });
 
 const service = (d: Database.Database, candidates: GymTask[], mined: GymTask[] = []) => { const svc = new RemoteGymService(d, () => mined); svc.cvCandidates = () => candidates; return svc; };
 const pool = (n = 80) => Array.from({ length: n }, (_, i) => mut(i + 1));
@@ -299,6 +299,9 @@ it('decision rule: exact one-sided McNemar on clean success plus the three over-
 });
 
 it('verdict: when every unit is complete the verdict is recorded once (REJECT also drafts negative evidence); day 28 before that is INCONCLUSIVE; a stopped experiment serves nothing', () => {
+  // record() reads the clock (no now parameter) and the first attempt is NIGHT (2026-11-08): from day 28 (2026-12-06) on the
+  // real clock would record INCONCLUSIVE mid-run instead of REJECT. Pin the clock to the simulated night.
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NIGHT);
   const svc = service(db, pool());
   const m = start(svc);
   // every slot answered as a plain failure with a valid delivery proof → no clean success in either arm → REJECT

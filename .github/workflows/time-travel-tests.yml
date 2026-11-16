@@ -1,0 +1,59 @@
+name: Time-travel tests
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Horizons in days, comma separated'
+        required: false
+        default: '7,30'
+
+# Date-bomb detector (scripts/time-travel-tests.mjs): runs the server suite at +0 days and at each horizon with only Date
+# shifted, and reports the tests that pass today and fail on a later date. Advisory and deliberately NOT a required check:
+# it runs only on schedule and workflow_dispatch, never on pull_request, so it reports no context on a PR head
+# (scripts/ci-workflows.test.mjs pins that). A red run means a test will break on its own; the JSON report is the artifact.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: time-travel-tests
+  cancel-in-progress: true
+
+jobs:
+  time-travel:
+    if: github.repository == 'djimit/djimitflo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspace dependencies of the server
+        run: |
+          npm run build --workspace=@djimitflo/shared
+          npm run build --workspace=@djimitflo/telegram
+          npm run build --workspace=@djimitflo/agent-catalog
+
+      - name: Run the suite at +0 days and at each horizon
+        env:
+          DAYS: ${{ inputs.days || '7,30' }}
+        run: node scripts/time-travel-tests.mjs --days "$DAYS" --out reports/time-travel/report.json
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: time-travel-report
+          path: reports/time-travel/report.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -3,6 +3,7 @@ import { assertionStrengthCheck } from './test-assertion-strength';
 import { withoutHiddenChecks } from './fail-before-pass-after';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { findingFixCheck, findingFixCheckEnv } from './finding-fix-source';
+import { DATE_BOMB_CHECK, dateBombCheck, dateBombInputs } from './date-bomb-source';
 import { ADVISORY_EXPOSURE_CHECK, advisoryExposureCheck, advisoryGoalRefs } from './advisory-exposure';
 import fs from 'fs';
 import os from 'os';
@@ -1211,6 +1212,13 @@ export class LoopService {
       if (findingFix) checks.push(findingFix);
     } catch (err) {
       if (Object.keys(findingFixCheckEnv(this.db, run.goal_id)).length) checks.push({ name: 'test:finding-fix', status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
+    }
+    // date-bomb lane: only the test file changed, then the worktree's detector on it at +0 and +N; a gate, so an exception fails
+    try {
+      const dateBomb = dateBombCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir, makerLease.metadata?.changed_files);
+      if (dateBomb) checks.push(dateBomb);
+    } catch (err) {
+      if (dateBombInputs(this.db, run.goal_id)) checks.push({ name: DATE_BOMB_CHECK, status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
     }
     // Track A advisory exposure: the exposure check re-run on the worktree lockfile (must be not_affected) + package files only
     try {

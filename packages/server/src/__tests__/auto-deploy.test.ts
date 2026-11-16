@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync, spawnSync } from 'child_process';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 // scripts/auto-deploy.sh (plan J2) with every probe simulated: which conditions let main deploy on its own.
 // The trust checks refuse any symlink on a path, and TMPDIR can contain one (macOS /var → /private/var): use its
@@ -11,7 +11,9 @@ const TMPDIR = fs.realpathSync(os.tmpdir());
 const script = path.resolve(__dirname, '../../../../scripts/auto-deploy.sh');
 const NEW = 'b'.repeat(40); const OLD = 'a'.repeat(40);
 const green = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)', status: 'completed', conclusion: 'success' }, { id: 2, name: 'optional', status: 'completed', conclusion: 'skipped' }] });
-const minutesAgo = (m: number) => JSON.stringify({ commit: { committer: { date: new Date(Date.now() - m * 60_000).toISOString() } } });
+// the script runs in a child process and reads the OS clock (`date`, a child node): seed against that clock, not a faked Date
+const osNow = () => vi.getRealSystemTime();
+const minutesAgo = (m: number) => JSON.stringify({ commit: { committer: { date: new Date(osNow() - m * 60_000).toISOString() } } });
 // the test user stands in for root as the trusted owner of $DEPLOY_ROOT, the install dir and the staging dir
 // and the resolved tmp base (and what is above it, e.g. a sticky /tmp) is exempt from the trust walk — a test-only seam
 const trust = (root: string) => ({ AUTO_DEPLOY_TRUSTED_UID: String(process.getuid!()), AUTO_DEPLOY_TRUSTED_PREFIX: TMPDIR, AUTO_DEPLOY_INSTALL_DIR: path.join(root, 'lib') });
@@ -132,7 +134,7 @@ it('the kill switch file stops everything', () => {
 
 // P2: the post-deploy baseline check (15 min after a deploy, once per commit)
 const deployedAgo = (root: string, min: number, baseline: string) => {
-  fs.writeFileSync(path.join(root, '.last-deploy'), `${OLD} ${Math.floor(Date.now() / 1000) - min * 60}\n`);
+  fs.writeFileSync(path.join(root, '.last-deploy'), `${OLD} ${Math.floor(osNow() / 1000) - min * 60}\n`);
   fs.writeFileSync(path.join(root, '.deploy-baseline'), baseline);
 };
 const upToDate = { AD_CURRENT_SHA: `echo ${NEW}` };
