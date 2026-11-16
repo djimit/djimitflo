@@ -120,7 +120,6 @@ djimitflo/
 │   ├── mcp-server/         # MCP server (stdio + HTTP transports)
 │   ├── telegram/           # Telegram bot gateway (grammy)
 │   ├── agent-catalog/      # Agent import from catalog files
-│   ├── ransomware-module/  # Anti-ransomware detection (private)
 │   └── knowledge/          # Knowledge storage (runtime-generated)
 ├── docs/                   # ADRs, design notes, runbooks
 ├── openspec/               # Specs and change proposals (finished ones in changes/archive)
@@ -288,7 +287,6 @@ Claims are falsifiable via the test suite. Green tests are necessary but not suf
 
 MIT (root repository). Sub-packages: MIT unless noted otherwise.
 
-The `ransomware-module` package is marked `private: true` and is licensed MIT.
 
 ---
 
