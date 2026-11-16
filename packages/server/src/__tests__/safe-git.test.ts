@@ -3,7 +3,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { safeGit, safeGitEnv, safeGitSpawn } from '../services/safe-git';
+import {
+  SAFE_GIT_CONFIG,
+  UNSAFE_REPO_CONFIG_KEY,
+  safeGit,
+  safeGitBuffer,
+  safeGitEnv,
+  safeGitSpawn,
+  unsafeRepoConfig,
+} from '../services/safe-git';
 
 /** D3 (H4 2026-11-14): the safe-git helper's env and transport rules (the marker cases are in server-git-hardening.test.ts). */
 let dir: string; let repo: string; let marker: string;
@@ -49,5 +57,177 @@ describe('environment and transports', () => {
     expect(git(remote, 'rev-parse', 'x')).toBe(git(repo, 'rev-parse', 'HEAD'));
     // a local remote's own hooks may run (git-version dependent: file is a test-only transport), but never with a server secret
     expect(fired()).not.toContain('ghp_secret');
+  });
+});
+
+describe('SAFE_GIT_CONFIG', () => {
+  it('lists every neutralising config entry', () => {
+    for (const entry of [
+      'core.hooksPath=/dev/null', 'core.fsmonitor=false', 'core.untrackedCache=false',
+      'credential.helper=', 'core.askPass=', 'core.editor=false', 'sequence.editor=false',
+      'commit.gpgSign=false', 'tag.gpgSign=false', 'push.gpgSign=false', 'log.showSignature=false',
+      'gc.auto=0', 'maintenance.auto=false',
+    ]) expect(SAFE_GIT_CONFIG).toContain(entry);
+    expect(SAFE_GIT_CONFIG.length).toBeGreaterThanOrEqual(13);
+  });
+
+  it('applies the neutralising -c entries on every call (baseArgs is not emptied)', () => {
+    expect(safeGit(repo, ['config', '--get', 'core.hooksPath']).trim()).toBe('/dev/null');
+    expect(safeGit(repo, ['config', '--get', 'core.fsmonitor']).trim()).toBe('false');
+    expect(safeGit(repo, ['config', '--get', 'core.untrackedCache']).trim()).toBe('false');
+    expect(safeGit(repo, ['config', '--get', 'credential.helper']).trim()).toBe('');
+    expect(safeGit(repo, ['config', '--get', 'gc.auto']).trim()).toBe('0');
+    expect(safeGit(repo, ['config', '--get', 'maintenance.auto']).trim()).toBe('false');
+    expect(safeGit(repo, ['config', '--get', 'commit.gpgSign']).trim()).toBe('false');
+  });
+
+  it('forwards extra trusted config entries (and drops none)', () => {
+    expect(safeGit(repo, ['config', '--get', 'user.name'], { config: ['user.name=loop', 'user.email=loop@djimitflo'] }).trim()).toBe('loop');
+    expect(safeGit(repo, ['config', '--get', 'user.email'], { config: ['user.name=loop', 'user.email=loop@djimitflo'] }).trim()).toBe('loop@djimitflo');
+    // a config entry that is not forwarded would make git exit 1 instead of returning the value
+    expect(() => safeGit(repo, ['config', '--get', 'user.name'], { config: [] })).toThrow();
+  });
+});
+
+describe('UNSAFE_REPO_CONFIG_KEY', () => {
+  it('matches every command-defining key, case-insensitively', () => {
+    for (const k of [
+      'filter.foo.clean', 'filter.foo.smudge', 'filter.foo.process',
+      'diff.foo.command', 'diff.foo.textconv', 'diff.external',
+      'merge.foo.driver', 'remote.foo.uploadpack', 'remote.foo.receivepack',
+      'core.alternateRefsCommand',
+    ]) expect(UNSAFE_REPO_CONFIG_KEY.test(k)).toBe(true);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('core.ALTERNATEREFSCOMMAND')).toBe(true);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('FILTER.x.PROCESS')).toBe(true);
+  });
+
+  it('does not match safe keys', () => {
+    for (const k of [
+      'core.hooksPath', 'user.name', 'user.email', 'remote.foo.url',
+      'core.fsmonitor', 'protocol.file.allow', 'gc.auto',
+    ]) expect(UNSAFE_REPO_CONFIG_KEY.test(k)).toBe(false);
+  });
+
+  it('is anchored at both ends (^ and $)', () => {
+    expect(UNSAFE_REPO_CONFIG_KEY.test('xcore.alternaterefscommand')).toBe(false);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('core.alternaterefscommandx')).toBe(false);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('xdiff.external')).toBe(false);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('diff.externalx')).toBe(false);
+  });
+
+  it('requires a non-empty segment between the outer dots (+, not a single char)', () => {
+    expect(UNSAFE_REPO_CONFIG_KEY.test('filter.aa.clean')).toBe(true);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('diff.aa.command')).toBe(true);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('merge.aa.driver')).toBe(true);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('remote.aa.uploadpack')).toBe(true);
+    expect(UNSAFE_REPO_CONFIG_KEY.test('remote.aa.receivepack')).toBe(true);
+  });
+});
+
+describe('unsafeRepoConfig', () => {
+  it('returns null (not undefined) for a clean repo', () => {
+    expect(unsafeRepoConfig(repo)).toBe(null);
+  });
+
+  it('returns null outside a repository', () => {
+    expect(unsafeRepoConfig(path.join(dir, 'no-such-repo'))).toBe(null);
+  });
+
+  it('detects a command-defining key in local scope as scope:key', () => {
+    git(repo, 'config', 'filter.bad.clean', 'echo pwned');
+    expect(unsafeRepoConfig(repo)).toBe('local:filter.bad.clean');
+  });
+
+  it('detects a command-defining key in worktree scope', () => {
+    git(repo, 'config', 'extensions.worktreeConfig', 'true');
+    const wt = path.join(dir, 'wt');
+    git(repo, 'worktree', 'add', '-q', wt);
+    git(wt, 'config', '--worktree', 'merge.bad.driver', 'echo pwned');
+    expect(unsafeRepoConfig(wt)).toBe('worktree:merge.bad.driver');
+  });
+
+  it('ignores command-defining keys in global scope', () => {
+    const home = path.join(dir, 'home'); fs.mkdirSync(home);
+    process.env.HOME = home;
+    git(repo, 'config', '--global', 'diff.bad.command', 'echo pwned');
+    expect(unsafeRepoConfig(repo)).toBe(null);
+  });
+
+  it('ignores safe keys in local scope', () => {
+    git(repo, 'config', 'user.name', 'safe');
+    git(repo, 'config', 'remote.origin.url', 'https://example/o/r.git');
+    git(repo, 'config', 'core.fsmonitor', 'false');
+    expect(unsafeRepoConfig(repo)).toBe(null);
+  });
+
+  it('returns the first unsafe key when several are present', () => {
+    git(repo, 'config', 'filter.first.clean', 'echo one');
+    git(repo, 'config', 'merge.second.driver', 'echo two');
+    const r = unsafeRepoConfig(repo);
+    expect(r).not.toBeNull();
+    expect(r).toMatch(/^local:(filter\.first\.clean|merge\.second\.driver)$/);
+  });
+});
+
+describe('refusal on unsafe repo config', () => {
+  it('safeGit throws SAFE_GIT_UNSAFE_CONFIG and runs no git', () => {
+    git(repo, 'config', 'filter.bad.clean', 'echo pwned');
+    expect(() => safeGit(repo, ['rev-parse', 'HEAD'])).toThrow(/SAFE_GIT_UNSAFE_CONFIG/);
+  });
+
+  it('safeGitSpawn returns status null with the reason in stderr and error', () => {
+    git(repo, 'config', 'filter.bad.clean', 'echo pwned');
+    const r = safeGitSpawn(repo, ['rev-parse', 'HEAD']);
+    expect(r.status).toBe(null);
+    expect(r.signal).toBe(null);
+    expect(r.stderr).toMatch(/SAFE_GIT_UNSAFE_CONFIG/);
+    expect(r.error).toBeInstanceOf(Error);
+    expect(r.stdout).toBe('');
+  });
+});
+
+describe('safeGitEnv pass-through env', () => {
+  it('omits PASS_ENV keys that are absent from process.env', () => {
+    delete process.env.LC_ALL;
+    delete process.env.LC_CTYPE;
+    delete process.env.TMPDIR;
+    const env = safeGitEnv();
+    expect('LC_ALL' in env).toBe(false);
+    expect('LC_CTYPE' in env).toBe(false);
+    expect('TMPDIR' in env).toBe(false);
+  });
+
+  it('merges extra env and protocols over the base', () => {
+    const env = safeGitEnv({ GIT_AUTHOR_NAME: 'loop' }, 'https');
+    expect(env.GIT_AUTHOR_NAME).toBe('loop');
+    expect(env.GIT_ALLOW_PROTOCOL).toBe('https');
+    expect(env.GIT_CONFIG_NOSYSTEM).toBe('1');
+  });
+});
+
+describe('maxBuffer', () => {
+  beforeEach(() => {
+    fs.writeFileSync(path.join(repo, 'big.txt'), 'x'.repeat(200_000));
+    git(repo, 'add', 'big.txt'); git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'big');
+  });
+
+  it('safeGit honours a small maxBuffer', () => {
+    expect(() => safeGit(repo, ['cat-file', 'blob', 'HEAD:big.txt'], { maxBuffer: 1024 })).toThrow(/maxBuffer|ENOBUFS/i);
+  });
+
+  it('safeGit default maxBuffer fits a 200KB blob', () => {
+    expect(safeGit(repo, ['cat-file', 'blob', 'HEAD:big.txt']).length).toBe(200_000);
+  });
+
+  it('safeGitBuffer honours a small maxBuffer and its default fits a 200KB blob', () => {
+    expect(() => safeGitBuffer(repo, ['cat-file', 'blob', 'HEAD:big.txt'], { maxBuffer: 1024 })).toThrow(/maxBuffer|ENOBUFS/i);
+    expect(safeGitBuffer(repo, ['cat-file', 'blob', 'HEAD:big.txt']).length).toBe(200_000);
+  });
+
+  it('safeGitSpawn honours a small maxBuffer and its default fits a 200KB blob', () => {
+    const small = safeGitSpawn(repo, ['cat-file', 'blob', 'HEAD:big.txt'], { maxBuffer: 1024 });
+    expect(small.status).not.toBe(0);
+    expect(small.error).toBeInstanceOf(Error);
+    expect(safeGitSpawn(repo, ['cat-file', 'blob', 'HEAD:big.txt']).status).toBe(0);
   });
 });
