@@ -57,8 +57,9 @@ it('RX-12: holdout tasks of every epoch never reach dream inputs', () => {
   const e1 = holdout(db, tasks(60));
   const all = (db.prepare('SELECT commit_sha FROM gym_holdout').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
   const fail = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, datetime('now'), datetime('now'))`);
-  [...all, 'not-a-holdout'].forEach((c, i) => fail.run(`f${i}`, JSON.stringify({ gym: { commit: c, source: c, species: 'atomic@llama-router' }, gym_result: { status: 'failure', reason: 'tests still red' } })));
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
+  const now = new Date().toISOString(); // dreamInputs() windows on Date.now(): seed on the same clock
+  [...all, 'not-a-holdout'].forEach((c, i) => fail.run(`f${i}`, JSON.stringify({ gym: { commit: c, source: c, species: 'atomic@llama-router' }, gym_result: { status: 'failure', reason: 'tests still red' } }), now, now));
   const text = JSON.stringify(dreamInputs(db));
   expect(text).toContain('not-a-holdout');
   for (const c of [...all, ...e1]) expect(text).not.toContain(c);
