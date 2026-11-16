@@ -6,6 +6,9 @@ from typing import Callable
 
 REDIS_PASSWORD = os.environ["REDIS_PASSWORD"]
 DEDUPE_TTL_SECONDS = 7 * 24 * 3600
+# Streams were unbounded (djimit.events: 21k entries since 2026-08, never trimmed). ~200k keeps months of history for the
+# cursor-based readers while capping Redis memory; MAXLEN ~ trims whole radix nodes, so it is cheap.
+STREAM_MAXLEN = int(os.getenv("STREAM_MAXLEN", "200000"))
 
 # STATE-NEW-02: one atomic step per event that carries a dedupe_key. KEYS = (stream, dedupe_redis_key(stream, key)),
 # ARGV = (ttl, field, value, ...). A known key returns the entry id it was first appended under; otherwise XADD and
@@ -38,9 +41,12 @@ class EventBus:
         }
         dedupe_key = event.get("dedupe_key")
         if dedupe_key is None or dedupe_key == "":
-            return self.r.xadd(stream, flat_event)
-        fields = [x for pair in flat_event.items() for x in pair]
-        return self.r.eval(DEDUPE_PUBLISH_LUA, 2, stream, dedupe_redis_key(stream, dedupe_key), DEDUPE_TTL_SECONDS, *fields)
+            entry_id = self.r.xadd(stream, flat_event)
+        else:
+            fields = [x for pair in flat_event.items() for x in pair]
+            entry_id = self.r.eval(DEDUPE_PUBLISH_LUA, 2, stream, dedupe_redis_key(stream, dedupe_key), DEDUPE_TTL_SECONDS, *fields)
+        self.r.xtrim(stream, maxlen=STREAM_MAXLEN, approximate=True)
+        return entry_id
 
     def read(self, stream: str, count: int = 10) -> list:
         entries = self.r.xrevrange(stream, count=count)
@@ -71,9 +77,8 @@ class EventBus:
             return False
 
     def list_streams(self) -> list:
-        keys = self.r.keys("*")
         streams = []
-        for k in keys:
+        for k in self.r.scan_iter(_type="stream"):  # KEYS * blocks Redis and also walks every dedupe key
             try:
                 info = self.r.xinfo_stream(k)
                 if info.get("length", 0) >= 0:
