@@ -47,6 +47,8 @@ beforeEach(() => {
 });
 afterEach(() => { db.close(); fs.rmSync(checkout, { recursive: true, force: true }); });
 
+const BEFORE_READOUT = Date.parse(ACE_001_STOP_BY) - 86_400_000;
+
 it('arm assignment is deterministic per goal and balanced over goals', () => {
   expect(aceArm('g-x')).toEqual(aceArm('g-x'));
   const counts: Record<string, number> = { '00': 0, '01': 0, '10': 0, '11': 0 };
@@ -100,7 +102,8 @@ it('evidence counts production outcomes per arm (gym outcomes and other refs exc
     .run(randomUUID(), skill, success ? 1 : 0, randomUUID(), JSON.stringify([...(arm ? [`ace-001-arm:${arm}`] : []), ...(graded !== undefined ? [`graded:${graded}`] : [])]), now);
   outcome('00', true); outcome('00', false); outcome('11', true, undefined, 0.75); outcome('11', true, undefined, 0.25);
   outcome('01', true, 'loop-maker:gym:atomic'); outcome(null, true);
-  const ev = ace001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }, Date.parse(ACE_001_STOP_BY) - 1);
+  // before the readout (stop_by 2026-11-15): the estimate is withheld; pinned so the test does not flip on that date
+  const ev = ace001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }, BEFORE_READOUT);
   expect(ev.arms['00']).toMatchObject({ n: 2, verified: 1, verified_rate: 0.5, tokens_mean: 1000 });
   expect(ev.arms['11']).toMatchObject({ n: 2, verified: 2, graded_n: 2, graded_mean: 0.5 });
   expect(ev.arms['01'].n).toBe(0); expect(ev.status).toBe('collecting');
@@ -285,7 +288,7 @@ it('ace001Evidence main-effect diff is null (withheld) when an arm has zero outc
       (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, 'loop-maker:doc-drift-and-small-fix-loop:opencode', 1, 1000, 1, 'x', ?, 'a', ?, ?)`)
     .run(randomUUID(), randomUUID(), JSON.stringify([`ace-001-arm:${arm}`]), now);
   outcome('00'); outcome('01'); outcome('10'); // arm 11 empty
-  const ev = ace001Evidence(db, '2020-01-01T00:00:00Z', { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }, Date.parse(ACE_001_STOP_BY) - 1);
+  const ev = ace001Evidence(db, '2020-01-01T00:00:00Z', { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }, BEFORE_READOUT);
   expect(ev.main_effects.retrieval.diff).toBeNull();
   expect(ev.main_effects.retrieval.withheld).toMatch(/no interim efficacy looks/);
 });

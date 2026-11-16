@@ -37,21 +37,21 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); db.close(); });
 
 /** n failed production maker outcomes of one lane with a gate ref and a lease failure_reason (the failureSignature inputs). */
-function failures(n: number, lane: string, gate: string, reason: string, prefix: string) {
+function failures(n: number, lane: string, gate: string, reason: string, prefix: string, at: Date = NOW) {
   for (let i = 0; i < n; i++) {
     const run = `run-${prefix}-${i}`;
     db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, domain, task_id, evidence_refs_json, created_at) VALUES (?, ?, 0, 'loop', ?, ?, ?)")
-      .run(`o-${prefix}-${i}`, `loop-maker:${lane}`, run, JSON.stringify([`gate:${gate}:fail`]), new Date(NOW.getTime() - (i + 1) * 3_600_000).toISOString());
+      .run(`o-${prefix}-${i}`, `loop-maker:${lane}`, run, JSON.stringify([`gate:${gate}:fail`]), new Date(at.getTime() - (i + 1) * 3_600_000).toISOString());
     db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES (?, ?, 'maker', 'opencode', 'failed', ?)")
       .run(`l-${prefix}-${i}`, run, JSON.stringify({ failure_reason: reason }));
   }
 }
-function seedProdLike() {
+function seedProdLike(at: Date = NOW) {
   // the three most frequent production classes of 2026-11-01..08 (prod read-only query), plus private text in the reasons
-  failures(8, 'doc-drift-and-small-fix-loop:opencode', 'maker_completion', 'maker_gate_failed:maker_runtime_exit_zero', 'exit');
-  failures(6, 'doc-drift-and-small-fix-loop:opencode', 'maker_completion', `deterministic_checks_failed:test:mutation:grounded(exit=1) in /home/djimit/ACME-Corp/invoice-7731.ts token ${FAKE_PAT}`, 'mut');
-  failures(2, 'doc-drift-and-small-fix-loop:remote', 'maker_completion', 'deterministic_checks_failed:test:changed(timed_out) after the target test passed', 'tmo');
-  failures(5, 'test-gap:opencode', 'unknown_gate', 'something nobody can classify happened for customer Jane Doe', 'other');
+  failures(8, 'doc-drift-and-small-fix-loop:opencode', 'maker_completion', 'maker_gate_failed:maker_runtime_exit_zero', 'exit', at);
+  failures(6, 'doc-drift-and-small-fix-loop:opencode', 'maker_completion', `deterministic_checks_failed:test:mutation:grounded(exit=1) in /home/djimit/ACME-Corp/invoice-7731.ts token ${FAKE_PAT}`, 'mut', at);
+  failures(2, 'doc-drift-and-small-fix-loop:remote', 'maker_completion', 'deterministic_checks_failed:test:changed(timed_out) after the target test passed', 'tmo', at);
+  failures(5, 'test-gap:opencode', 'unknown_gate', 'something nobody can classify happened for customer Jane Doe', 'other', at);
 }
 const jobRows = () => db.prepare("SELECT * FROM judgments WHERE judgment = 'web_research' ORDER BY created_at, id").all() as Array<{ id: string; mode: string; decision: string; subject_id: string; answers_json: string }>;
 const knowledgeRows = () => db.prepare("SELECT * FROM judgments WHERE judgment = 'web_research_knowledge'").all() as Array<{ id: string; subject_id: string; answers_json: string }>;
@@ -236,7 +236,7 @@ const app = () => express().use(express.json()).use('/gym-worker', createRemoteG
 it('WEB-001 routes: off answers 204 without DB work; on needs the research_jobs capability; the result goes back to the same host', async () => {
   vi.useFakeTimers({ toFake: ['Date'], now: NOW });
   vi.stubEnv('JWT_SECRET', 'test-secret-web-research');
-  seedProdLike();
+  seedProdLike(new Date()); // the routes read the real clock (7-day window): seed relative to it, not to the fixed NOW
   const token = mintSpawnToken(resolveSpawnTokenSecret(), 'workstation', REMOTE_GYM_SCOPE, 60_000);
   const a = app(); // built before the spy: the router's services prepare their tables at construction
   const post = (path: string, body: unknown, t = token) => request(a).post(path).set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', t).send(body as object);
