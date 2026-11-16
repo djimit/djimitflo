@@ -37,8 +37,22 @@ export function missionDetail(db: Database, id: string, now = Date.now()) {
     if (!attribution.has(j.subject_id)) attribution.set(j.subject_id, { outcome: j.decision, reason: j.reason, created_at: j.created_at, judgment_id: j.id });
   }
   const leases = safe(() => db.prepare(`SELECT id, loop_run_id, role, runtime, status, created_at, json_extract(metadata, '$.verdict') AS verdict,
-      json_extract(metadata, '$.maker_lease_id') AS maker_lease_id FROM worker_leases WHERE loop_run_id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id`).all(ids) as Array<{
-      id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null }>, []);
+      json_extract(metadata, '$.maker_lease_id') AS maker_lease_id,
+      json_extract(metadata, '$.skill_route.capability_id') AS capability_id,
+      json_extract(metadata, '$.skill_route.version') AS skill_version,
+      json_extract(metadata, '$.skill_route.artifact_digest') AS skill_digest
+      FROM worker_leases WHERE loop_run_id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id`).all(ids) as Array<{
+      id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null;
+      capability_id: string | null; skill_version: string | null; skill_digest: string | null }>, []);
+  const leaseIds = JSON.stringify(leases.map((lease) => lease.id));
+  const spawns = leases.length ? safe(() => db.prepare(`SELECT s.id, s.spawn_tree_id, s.parent_lease_id, s.child_lease_id, s.requested_by_lease_id,
+      s.requested_role, s.runtime, s.status, s.token_budget_grant, s.wall_budget_ms, s.measured_tokens, s.measured_wall_ms,
+      s.usage_source, s.settled_at, s.reject_reason
+      FROM sub_agent_spawns s WHERE s.child_lease_id IN (SELECT value FROM json_each(?)) OR s.parent_lease_id IN (SELECT value FROM json_each(?))
+        OR s.requested_by_lease_id IN (SELECT value FROM json_each(?)) ORDER BY s.created_at, s.id`).all(leaseIds, leaseIds, leaseIds) as Array<{
+      id: string; spawn_tree_id: string; parent_lease_id: string | null; child_lease_id: string | null; requested_by_lease_id: string;
+      requested_role: string; runtime: string; status: string; token_budget_grant: number | null; wall_budget_ms: number | null;
+      measured_tokens: number | null; measured_wall_ms: number | null; usage_source: string | null; settled_at: string | null; reject_reason: string | null }>, null) : [];
 
   const runs = runRows.map((r) => ({
     id: r.id, loop_name: r.loop_name, status: r.status, created_at: r.created_at, updated_at: r.updated_at, completed_at: r.completed_at,
@@ -77,7 +91,7 @@ export function missionDetail(db: Database, id: string, now = Date.now()) {
   return {
     mission: { id: mission.id, title: mission.title, description: mission.description, risk_class: mission.risk_class, planning_status: mission.status,
       goal_id: mission.goal_id, panel_id: mission.panel_id, evidence_refs: mission.evidence_refs, created_at: mission.created_at, updated_at: mission.updated_at },
-    execution, goal, runs, leases, tasks, decisions, blocker, next_action: nextAction, tokens, provenance,
+    execution, goal, runs, leases, spawns, tasks, decisions, blocker, next_action: nextAction, tokens, provenance,
     note: 'read-only; planning_status is advisory and never transitioned here; blocker and next_action are null unless a record states them; tokens are null without linked runs',
   };
 }

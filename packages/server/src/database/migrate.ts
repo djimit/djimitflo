@@ -703,6 +703,9 @@ function createNestedSpawnTables(db: BetterSqlite3Database) {
       runtime TEXT NOT NULL,
       requested_role TEXT NOT NULL,
       prompt_digest TEXT NOT NULL,          -- sha256(role|prompt|capability_ids) — dedup + cycle guard
+      planned_lease_id TEXT,                -- durable preparation intent before filesystem/lease side effects
+      idempotency_key TEXT,                 -- caller-supplied stable key for retry-safe submissions
+      request_fingerprint TEXT,             -- binds an idempotency key to the exact request payload
       status TEXT NOT NULL CHECK(status IN ('requested', 'gated_out', 'prepared', 'running', 'completed', 'failed', 'cancelled')),
       reject_reason TEXT,                   -- 'depth_budget_exceeded' | 'cycle_detected' | 'capability_not_live' | 'token_budget_exceeded' | 'wall_budget_exceeded' | 'concurrency_exceeded'
       token_budget_grant INTEGER,
@@ -735,6 +738,25 @@ function createNestedSpawnTables(db: BetterSqlite3Database) {
 
     CREATE INDEX IF NOT EXISTS idx_spawn_trees_status ON spawn_trees(status);
   `);
+
+  // Historical consumed_* counters contain grants, not measured usage. Keep them
+  // intact for conservative legacy admission and track new reservations/measurements separately.
+  addMissingColumns(db, 'spawn_trees', [
+    { name: 'reserved_tokens', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'reserved_wall_ms', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'measured_tokens', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'measured_wall_ms', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  ]);
+  addMissingColumns(db, 'sub_agent_spawns', [
+    { name: 'planned_lease_id', definition: 'TEXT' },
+    { name: 'idempotency_key', definition: 'TEXT' },
+    { name: 'request_fingerprint', definition: 'TEXT' },
+    { name: 'settled_at', definition: 'TEXT' },
+    { name: 'measured_tokens', definition: 'INTEGER' },
+    { name: 'measured_wall_ms', definition: 'INTEGER' },
+    { name: 'usage_source', definition: 'TEXT' },
+  ]);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_sub_agent_spawns_planned_lease ON sub_agent_spawns(planned_lease_id); CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_agent_spawns_idempotency ON sub_agent_spawns(spawn_tree_id, parent_lease_id, idempotency_key) WHERE idempotency_key IS NOT NULL;');
 }
 
 // Added in telegram-swarm: extend agents with machine/telegram/okf fields

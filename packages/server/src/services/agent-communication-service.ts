@@ -15,7 +15,7 @@
 import { commonsChildOutcomes, commonsChildren, commonsGroundingStops, type CommonsChildOutcomes, type GroundingStop } from './honest-numbers';
 import { NOT_PROOF_FIXTURE_SQL } from './proof-fixture';
 import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
 import { REFLECTION_PROPOSAL_DISPOSITION, reflectionProposalPolicy, SelfImprovementService, type ReflectionProposalDecision, type ReflectionProposalPolicy, type ReflectionProposalReason } from './self-improvement-service';
@@ -170,6 +170,9 @@ export const COMMONS_MAX_OFFSET = 100_000;
 const HEARTBEAT_FRESH_MS = 20 * 60_000;
 /** AC-01: ready needs a successful runtime reply this recent; older is degraded even with a fresh heartbeat. */
 export const READY_REPLY_WINDOW_MS = 24 * 3_600_000;
+const RUNTIME_FAILURE_CLASSES = ['runtime_timeout', 'runtime_unavailable', 'invalid_runtime_response', 'runtime_error'] as const;
+type RuntimeFailureClass = typeof RUNTIME_FAILURE_CLASSES[number];
+const runtimeFailureMode = (): 'off' | 'shadow' => process.env.SOCIAL_RUNTIME_FAILURE_MODE === 'shadow' ? 'shadow' : 'off';
 
 /**
  * AC-01 readiness, derived only from what the server already stores: the heartbeat (agents.metadata.social_runtime), the
@@ -182,19 +185,18 @@ export interface CommonsRuntimeReadiness {
   last_heartbeat_at: string | null;
   last_successful_reply_at: string | null;
   /** newest claimed social message whose lease lapsed (or that expired) without a reply from this agent */
-  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
-  /** always false today: the poller logs child failures locally and never sends them to the server */
-  runtime_failures_reported: false;
+  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' | 'runtime_reported'; failure_class?: RuntimeFailureClass } | null;
+  runtime_failures_reported: boolean;
 }
 
-export function deriveRuntimeReadiness(input: { lastHeartbeatAt: string | null; lastSuccessAt: string | null; lastFailureAt: string | null; now?: number }): Pick<CommonsRuntimeReadiness, 'state' | 'reason'> {
+export function deriveRuntimeReadiness(input: { lastHeartbeatAt: string | null; lastSuccessAt: string | null; lastFailureAt: string | null; lastFailureReason?: string; now?: number }): Pick<CommonsRuntimeReadiness, 'state' | 'reason'> {
   const now = input.now ?? Date.now();
   const heartbeat = input.lastHeartbeatAt ? Date.parse(input.lastHeartbeatAt) : NaN;
   if (!Number.isFinite(heartbeat)) return { state: 'unknown', reason: 'no heartbeat recorded' };
   if (now - heartbeat > HEARTBEAT_FRESH_MS) return { state: 'offline', reason: 'heartbeat older than 20 min' };
   const success = input.lastSuccessAt ? Date.parse(input.lastSuccessAt) : NaN;
   if (!Number.isFinite(success) || now - success > READY_REPLY_WINDOW_MS) return { state: 'degraded', reason: 'heartbeat fresh, no successful reply in 24 h' };
-  if (input.lastFailureAt && Date.parse(input.lastFailureAt) > success) return { state: 'degraded', reason: 'a claimed message lapsed without a reply after the last successful reply' };
+  if (input.lastFailureAt && Date.parse(input.lastFailureAt) > success) return { state: 'degraded', reason: input.lastFailureReason || 'a claimed message lapsed without a reply after the last successful reply' };
   return { state: 'ready', reason: 'heartbeat fresh and a successful reply in 24 h' };
 }
 
@@ -410,20 +412,25 @@ export class AgentCommunicationService {
       WHERE json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
       ORDER BY id ASC
     `).all() as Array<Record<string, unknown>>;
-    const { successes, failures } = this.readinessEvidence(agentRows.map((row) => String(row.id)), now);
+    const { successes, failures, reported } = this.readinessEvidence(agentRows.map((row) => String(row.id)), now);
     const agents = agentRows.map((row) => {
       const social = this.object(this.object(row.metadata).social_runtime);
       const lastHeartbeat = this.string(social.last_heartbeat_at) || null;
       const lastSuccess = successes.get(String(row.id)) ?? null;
       const lastFailure = failures.get(String(row.id)) ?? null;
+      const runtimeFailure = reported.get(String(row.id)) ?? null;
+      const lastFailedAttempt = runtimeFailure && (!lastFailure || Date.parse(runtimeFailure.at) > Date.parse(lastFailure.at)) ? runtimeFailure : lastFailure;
       return {
         id: String(row.id), name: String(row.name || row.id), status: String(row.status),
         capabilities: this.capabilities(row), model: this.string(social.model_id) || this.string(row.model),
         runtime: this.string(social.runtime) || null, last_heartbeat_at: lastHeartbeat,
         present: !!lastHeartbeat && Date.parse(lastHeartbeat) >= heartbeatCutoff,
         readiness: {
-          ...deriveRuntimeReadiness({ lastHeartbeatAt: lastHeartbeat, lastSuccessAt: lastSuccess, lastFailureAt: lastFailure?.at ?? null, now }),
-          last_heartbeat_at: lastHeartbeat, last_successful_reply_at: lastSuccess, last_failed_attempt: lastFailure, runtime_failures_reported: false as const,
+          ...deriveRuntimeReadiness({ lastHeartbeatAt: lastHeartbeat, lastSuccessAt: lastSuccess, lastFailureAt: lastFailedAttempt?.at ?? null,
+            lastFailureReason: lastFailedAttempt?.failure_class ? `runtime reported ${lastFailedAttempt.failure_class}` : undefined, now }),
+          last_heartbeat_at: lastHeartbeat, last_successful_reply_at: lastSuccess,
+          last_failed_attempt: lastFailedAttempt,
+          runtime_failures_reported: runtimeFailure !== null,
         },
         activity: activityByAgent.get(String(row.id)) || [],
       };
@@ -554,10 +561,11 @@ export class AgentCommunicationService {
    * a reply acknowledges it (status 'read', token cleared). So 'delivered' with a lapsed lease, or 'expired' with a token
    * still set, means the agent took the message and never answered. Its time is the lease end, else the TTL expiry.
    */
-  private readinessEvidence(agentIds: string[], now: number): { successes: Map<string, string>; failures: Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>> } {
+  private readinessEvidence(agentIds: string[], now: number): { successes: Map<string, string>; failures: Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>>; reported: Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>> } {
     const successes = new Map<string, string>();
     const failures = new Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>>();
-    if (!agentIds.length) return { successes, failures };
+    const reported = new Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>>();
+    if (!agentIds.length) return { successes, failures, reported };
     const ids = JSON.stringify(agentIds);
     for (const row of this.db.prepare(`
       SELECT from_agent AS agent, MAX(timestamp) AS last FROM agent_messages
@@ -576,10 +584,41 @@ export class AgentCommunicationService {
     `).all(ids, now) as Array<{ id: string; agent: string; timestamp: string; ttl: number; lease: number | null }>) {
       const atMs = row.lease ?? Date.parse(row.timestamp) + Number(row.ttl) * 1000;
       if (!Number.isFinite(atMs)) continue;
+      const leaseRow = this.db.prepare('SELECT delivery_lease_token FROM agent_messages WHERE id = ?').get(row.id) as { delivery_lease_token: string | null } | undefined;
+      const leaseHash = leaseRow?.delivery_lease_token ? createHash('sha256').update(leaseRow.delivery_lease_token).digest('hex') : null;
+      const reportedLease = leaseHash ? this.db.prepare('SELECT failure_class FROM agent_runtime_failures WHERE agent_id = ? AND message_id = ? AND lease_token_hash = ?')
+        .get(row.agent, row.id, leaseHash) as { failure_class: RuntimeFailureClass } | undefined : undefined;
       const previous = failures.get(row.agent);
-      if (!previous || Date.parse(previous.at) < atMs) failures.set(row.agent, { at: new Date(atMs).toISOString(), message_id: String(row.id), observed: 'claim_lapsed_without_reply' });
+      if (!previous || Date.parse(previous.at) <= atMs) failures.set(row.agent, { at: new Date(atMs).toISOString(), message_id: String(row.id),
+        observed: reportedLease ? 'runtime_reported' : 'claim_lapsed_without_reply', ...(reportedLease ? { failure_class: reportedLease.failure_class } : {}) });
     }
-    return { successes, failures };
+    for (const row of this.db.prepare(`SELECT agent_id AS agent, message_id, failure_class, created_at AS at FROM agent_runtime_failures
+      WHERE agent_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC`).all(ids) as Array<{ agent: string; message_id: string; failure_class: RuntimeFailureClass; at: string }>) {
+      if (!reported.has(row.agent)) reported.set(row.agent, { at: row.at, message_id: row.message_id, observed: 'runtime_reported', failure_class: row.failure_class });
+    }
+    return { successes, failures, reported };
+  }
+
+  reportRuntimeFailure(agentId: string, messageId: string, input: { delivery_lease_token?: unknown; failure_class?: unknown }): { duplicate: boolean; recorded: boolean } {
+    if (runtimeFailureMode() !== 'shadow') throw new Error('SOCIAL_RUNTIME_FAILURES_DISABLED');
+    const token = typeof input.delivery_lease_token === 'string' ? input.delivery_lease_token.trim() : '';
+    if (!token || token.length > 200) throw new Error('SOCIAL_LEASE_REQUIRED');
+    if (!RUNTIME_FAILURE_CLASSES.includes(input.failure_class as RuntimeFailureClass)) throw new Error('SOCIAL_FAILURE_CLASS_INVALID');
+    const leaseHash = createHash('sha256').update(token).digest('hex');
+    const existing = this.db.prepare('SELECT id FROM agent_runtime_failures WHERE agent_id = ? AND message_id = ? AND lease_token_hash = ?').get(agentId, messageId, leaseHash);
+    if (existing) return { duplicate: true, recorded: true };
+    const now = Date.now();
+    this.db.transaction(() => {
+      const message = this.db.prepare('SELECT status, to_agent, delivery_lease_token, delivery_lease_until FROM agent_messages WHERE id = ?').get(messageId) as
+        { status: string; to_agent: string; delivery_lease_token: string | null; delivery_lease_until: number | null } | undefined;
+      if (!message || message.to_agent !== agentId) throw new Error('SOCIAL_MESSAGE_NOT_FOUND');
+      if (message.status !== 'delivered' || message.delivery_lease_token !== token) throw new Error('SOCIAL_LEASE_INVALID');
+      if (message.delivery_lease_until === null || message.delivery_lease_until <= now) throw new Error('SOCIAL_LEASE_EXPIRED');
+      const id = createHash('sha256').update(`${agentId}\0${messageId}\0${leaseHash}`).digest('hex');
+      this.db.prepare(`INSERT OR IGNORE INTO agent_runtime_failures (id, agent_id, message_id, lease_token_hash, failure_class, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(id, agentId, messageId, leaseHash, input.failure_class, new Date(now).toISOString());
+    })();
+    return { duplicate: false, recorded: true };
   }
 
   /**
@@ -1291,6 +1330,13 @@ export class AgentCommunicationService {
         message_id TEXT NOT NULL,
         PRIMARY KEY (sender, recipient, message_type, idempotency_key)
       );
+
+      CREATE TABLE IF NOT EXISTS agent_runtime_failures (
+        id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, message_id TEXT NOT NULL, lease_token_hash TEXT NOT NULL,
+        failure_class TEXT NOT NULL CHECK(failure_class IN ('runtime_timeout','runtime_unavailable','invalid_runtime_response','runtime_error')),
+        created_at TEXT NOT NULL, UNIQUE(agent_id, message_id, lease_token_hash)
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_runtime_failures_agent_time ON agent_runtime_failures(agent_id, created_at DESC);
     `);
     try {
       this.db.exec('ALTER TABLE agent_messages ADD COLUMN delivery_lease_until INTEGER');

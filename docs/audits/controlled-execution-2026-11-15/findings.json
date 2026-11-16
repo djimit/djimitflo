@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "repository": "djimit/djimitflo",
+  "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+  "candidate_sha": "e7baf39fdca9c7602cbf3644e7ffb11cc448c473",
+  "findings": [
+    {
+      "id": "H1",
+      "status": "BEVESTIGD",
+      "claim": "Nested spawn intake can persist a prepared child without a normal dispatcher starting it.",
+      "evidence_level": "E1; adjacent tests E2",
+      "source": [
+        "packages/server/src/routes/spawns.ts:92-105",
+        "packages/server/src/services/nested-spawn-service.ts:269-275",
+        "packages/server/src/routes/loops.ts:307-309"
+      ],
+      "reproduction": "POST /api/swarms/spawns returns a prepared/requested receipt; code path does not invoke executeWorker. Existing test reaches child execution through direct service invocation.",
+      "impact": "Accepted/prepared work may not progress via ordinary intake; success must not be inferred from a prepared receipt.",
+      "owner": "server orchestration",
+      "resolution": "Open; dispatcher/admission policy needs a separately authorized and bounded design.",
+      "verification": "S1 INCONCLUSIVE; normal end-to-end dispatch not exercised."
+    },
+    {
+      "id": "H2",
+      "status": "GEWIJZIGD",
+      "claim": "Candidate nested-spawn accounting now separates reservation from measured or unknown use for covered flows.",
+      "evidence_level": "E2",
+      "source": [
+        "packages/server/src/services/nested-spawn-service.ts:350-405,468-501",
+        "packages/server/src/services/loop-service.ts:2783-2831",
+        "packages/server/src/database/migrate.ts (additive reservation columns)"
+      ],
+      "reproduction": "Baseline suite failed 10/27 after overlaying only regression tests/helper/migration; candidate suites passed 27/27.",
+      "impact": "Avoids treating grants as measured consumption and makes admission/replay safer in tested local SQLite cases.",
+      "owner": "server orchestration/accounting",
+      "resolution": "Candidate commit e7baf39fdca9c7602cbf3644e7ffb11cc448c473; provider usage and hard in-call budget enforcement remain unproven.",
+      "verification": "E2 baseline-red/candidate-green; S8 partial PASS."
+    },
+    {
+      "id": "H3",
+      "status": "GEWIJZIGD",
+      "claim": "Candidate LoopService projects terminal nested-spawn status during normal settlement for covered local paths.",
+      "evidence_level": "E2",
+      "source": [
+        "packages/server/src/services/loop-service.ts:2783-2831",
+        "packages/server/src/services/proof-run-service.ts (proof-run projection path; inspect current symbol via file)"
+      ],
+      "reproduction": "Focused candidate suite passed; no real runtime or crash/restart integration was run.",
+      "impact": "Reduces reliance on proof-run-only projection in tested service lifecycle.",
+      "owner": "server orchestration",
+      "resolution": "Candidate commit e7baf39fdca9c7602cbf3644e7ffb11cc448c473; reconciliation under real process ambiguity remains unverified.",
+      "verification": "E2 only; S3-S5 not fully tested."
+    },
+    {
+      "id": "H4",
+      "status": "BEVESTIGD",
+      "claim": "ToolBroker does not mediate tool calls executed internally by external CLI runtimes, and enforcement differs by executor.",
+      "evidence_level": "E1",
+      "source": [
+        "packages/server/src/services/tool-broker.ts:1-9",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/execution/executors/ (executor-specific boundaries)"
+      ],
+      "reproduction": "Static inspection of broker contract and runtime executor paths.",
+      "impact": "Prompt restrictions alone do not establish shell/filesystem/network isolation for CLI internals.",
+      "owner": "runtime security",
+      "resolution": "Protected runtime-admission paths were not changed; propose executor-by-executor boundary verification before broader autonomy.",
+      "verification": "S11 NOT_TESTED; no sandbox boundary test executed."
+    },
+    {
+      "id": "H5",
+      "status": "NIET VERIFIEERBAAR",
+      "claim": "Skill/memory selection, delivery, runtime loading and causal effect were not linked for one exact artifact hash.",
+      "evidence_level": "E1 for code paths; no effect evidence",
+      "source": [
+        "packages/server/src/services/skill-loader-service.ts",
+        "packages/server/src/services/memory-delivery-receipts.ts:6-40",
+        "packages/server/src/services/genome-apply.ts:29-31,140-180"
+      ],
+      "reproduction": "No runtime was authorized; no controlled task comparison performed.",
+      "impact": "Reuse or uplift claims cannot be made.",
+      "owner": "learning/runtime integration",
+      "resolution": "Separate delivery/load/effect receipts under existing policy; run a controlled, authorized task later.",
+      "verification": "S14 NOT_TESTED."
+    },
+    {
+      "id": "H6",
+      "status": "NIET VERIFIEERBAAR",
+      "claim": "No independent holdout-based reward/retention selection was performed in this session.",
+      "evidence_level": "E1 contract inspection only",
+      "source": [
+        "packages/server/src/services/fitness-contracts.ts:90-120,450-475",
+        "packages/server/src/services/learning-ledger.ts",
+        "docs/research/intelligence-metrics/METRIC_CONTRACTS.yaml"
+      ],
+      "reproduction": "Holdout opening and experiment registration were prohibited by mandate.",
+      "impact": "Evolutionary improvement remains unproven; baseline must remain active.",
+      "owner": "learning evaluation",
+      "resolution": "Operator-authorized preregistered evaluation using existing selection chain.",
+      "verification": "S13/S14 NOT_TESTED for selection claims."
+    },
+    {
+      "id": "H7",
+      "status": "GEWIJZIGD",
+      "claim": "Agent Commons failure reporting has an open candidate PR, but current poller/runtime health was not probed.",
+      "evidence_level": "E1 GitHub/source status; no E5",
+      "source": [
+        "packages/server/src/services/scheduler-registry.ts:26-80",
+        "scripts/agent-social-poller.py",
+        "PR #1231 (current runtime not probed)"
+      ],
+      "reproduction": "PR status inspected; no host or production probe authorized.",
+      "impact": "Configured/poller-reachable/work-progress signals must remain distinct; live readiness is unknown.",
+      "owner": "Agent Commons",
+      "resolution": "Use deployed matching poller and a bounded authorized shadow observation.",
+      "verification": "S7 NOT_TESTED in production; PR #1231 not part of baseline."
+    },
+    {
+      "id": "H8",
+      "status": "NIET VERIFIEERBAAR",
+      "claim": "The graph builder labels generated graph data as synthetic, but propagation of that provenance through every explainer and evidence export was not verified.",
+      "evidence_level": "E1",
+      "source": [
+        "packages/server/src/services/repo-graph-builder.ts:178-179",
+        "packages/server/src/services/synthetic-runs.ts:5-25",
+        "packages/server/src/services/commons-evidence-pack.ts",
+        "packages/server/src/services/evolution-evidence.ts"
+      ],
+      "reproduction": "Static mapping only; no synthetic-row-to-export test was run.",
+      "impact": "Synthetic evidence may be misread if provenance fields are dropped downstream.",
+      "owner": "evidence/data systems",
+      "resolution": "Trace provenance through output/export with a focused fixture before relying on the claim.",
+      "verification": "S10 NOT_TESTED; builder metadata confirmed at E1, downstream continuity unknown."
+    },
+    {
+      "id": "H9",
+      "status": "NIET VERIFIEERBAAR",
+      "claim": "A live DjimitFlo-to-DjimitSec finding/remediation/retest lifecycle was not executed.",
+      "evidence_level": "E1 local source only",
+      "source": [
+        "packages/server/src/services/djimitsec-trigger-service.ts",
+        "packages/server/src/execution/executors/djimitsec-executor.ts",
+        "packages/server/src/services/finding-fix-source.ts",
+        "packages/server/src/services/roborev-findings-service.ts"
+      ],
+      "reproduction": "DjimitSec checkout exists but is dirty and was not modified; runtime credentials and production probes were not authorized.",
+      "impact": "No claim that a finding closes only on matching current retest evidence.",
+      "owner": "security integration",
+      "resolution": "Run the full lifecycle against an isolated local fixture with approved credentials; preserve production as read-only.",
+      "verification": "S15/S16 NOT_TESTED live."
+    },
+    {
+      "id": "H10",
+      "status": "BEVESTIGD",
+      "claim": "This session has no measured value/cost cohort that can establish net value from discovery or recurring loops.",
+      "evidence_level": "E1 metric contract inspection",
+      "source": [
+        "packages/server/src/services/value-allocator.ts:38-42,427-475",
+        "packages/server/src/services/resource-ledger.ts",
+        "packages/server/src/services/execution-value.ts",
+        "packages/server/src/services/subtraction-kpi.ts:37-80"
+      ],
+      "reproduction": "No production data read or controlled value measurement was authorized.",
+      "impact": "Activity counts cannot be described as user value or savings.",
+      "owner": "value/operations",
+      "resolution": "Use existing metric contracts with a fixed eligible-task denominator and observable outcomes; do not invent revenue.",
+      "verification": "No value delta measured; cost remains unknown."
+    }
+  ],
+  "supplemental_findings": [
+    {
+      "id": "CI-001",
+      "claim": "Two ACE-001 tests assumed the wall clock was before the registered readout deadline; after 2026-11-15T00:00:00Z they failed although the implementation correctly evaluated the deadline condition.",
+      "status": "FIXED_TEST_FIXTURE_ONLY",
+      "evidence_level": "E2",
+      "source": [
+        "packages/server/src/services/ace-001.ts:26-28,134-144",
+        "packages/server/src/__tests__/ace-001.test.ts:96-114,282-291"
+      ],
+      "reproduction": "Full PR CI at head b11b716c failed two assertions in ace-001.test.ts. The same two assertions failed locally on both candidate and origin/main 7758d153. The test passed a default now=Date.now() after ACE_001_STOP_BY.",
+      "change": "Pin the two pre-readout assertions to Date.parse(ACE_001_STOP_BY)-1. Production/evaluation code and experiment protocol are unchanged.",
+      "verification": "After test-only correction, focused ace-001 plus nested-spawn suites passed 53/53; server tsc passed; workspace lint passed with one pre-existing unused eslint-disable warning.",
+      "limitation": "The full CI suite has not yet rerun on the corrected PR head; no holdout or experiment was opened."
+    },
+    {
+      "id": "CI-002",
+      "claim": "The full CI test suite has a time-dependent WEB-001 route fixture failure on the frozen baseline and candidate.",
+      "status": "BASELINE_FAILURE_REPRODUCED; TEST_FIXTURE_CORRECTED",
+      "evidence_level": "E2",
+      "source": [
+        "packages/server/src/__tests__/web-research.test.ts:49-59,238-251",
+        "packages/server/src/services/web-research.ts:105-110,127-137",
+        "CI run 43707335553 at exact candidate head 8c3476471a1223df42e494bdbe84064ab6d18b72"
+      ],
+      "reproduction": "Run `npm run test -w @djimitflo/server -- web-research.test.ts` at candidate 8c3476471a1223df42e494bdbe84064ab6d18b72 and detached baseline 7758d153e415177de8e977721011c9675482934c. Both report 1 failed and 10 passed at line 250: the route receives null instead of a claimed job. The fixture inserts failures around 2026-11-08T06:00Z; the route uses current time and researchQuestions selects a seven-day window, so at 2026-11-15 12:20Z its evidence has aged out.",
+      "impact": "Before the fixture correction, full repository CI was red on this unrelated WEB-001 route test, blocking full-suite validation of the PR head.",
+      "owner": "web research test owner",
+      "resolution": "Test-only correction committed as d099810991945a64b3ec6bbad76ef2070082609e: route test freezes Date at the existing fixture NOW and restores real timers after each test. No WEB-001 product code changed.",
+      "verification": "Original fixture reproduced red on baseline and pre-fix candidate (1 failed, 10 passed); corrected fixture passes 11/11 on the candidate and on the baseline with only the corrected test file overlaid. Full local repository test command, type-check, build, poller tests and audit:ci pass; lint has one pre-existing warning. Hosted CI run 43779085303 passed every job, including Node 22/24 tests and the security scan, at exact head ff16c2a5c403c6216c771a49158a2a78add423c3.",
+      "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06"
+    }
+  ]
+}

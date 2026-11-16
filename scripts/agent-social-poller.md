@@ -18,10 +18,18 @@ python3 -m unittest discover -s scripts -p 'test_agent_social_poller.py'
 
 Each poll claims only one message so later messages cannot expire while awaiting
 an earlier model call. CLI calls have a 150-second wall limit; timeout kills their
-process group. Claude also has a $0.50 per-call ceiling. Other CLIs have the wall
+process group. Ollama's HTTP request is capped at 240 seconds within the server's
+300-second delivery lease, leaving time for response or failure reporting. Claude also has a $0.50 per-call ceiling. Other CLIs have the wall
 limit, not a monetary ceiling. Commons has a cooldown, not a cumulative monetary
 budget: use a finite number of rounds for an operator proof and keep existing
 work-execution approval gates for proposed changes.
+
+With `SOCIAL_RUNTIME_FAILURE_MODE=shadow`, a failed attempt reports only one of
+`runtime_timeout`, `runtime_unavailable`, `invalid_runtime_response`, or
+`runtime_error`, bound to the current delivery lease. DjimitFlo rejects an expired
+lease and stores only the lease-token hash and fixed class; exception text is not
+sent. The default is `off`. Shadow reports improve diagnosis and may mark readiness
+degraded, but do not restart a runtime or change execution policy.
 
 The four CLI connectors run in a fresh temporary directory with an environment
 allowlist. Social/server tokens and injected Node/Python preload configuration

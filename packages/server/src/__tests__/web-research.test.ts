@@ -34,7 +34,7 @@ beforeEach(() => {
   db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db);
   new SkillEvolutionEngine(db as never); // creates skill_outcomes
 });
-afterEach(() => { vi.unstubAllEnvs(); db.close(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); db.close(); });
 
 /** n failed production maker outcomes of one lane with a gate ref and a lease failure_reason (the failureSignature inputs). */
 function failures(n: number, lane: string, gate: string, reason: string, prefix: string, at: Date = NOW) {
@@ -234,6 +234,7 @@ const pass = (_req: unknown, _res: unknown, next: () => void) => next();
 const app = () => express().use(express.json()).use('/gym-worker', createRemoteGymRoutes(db, { requireAuth: pass, requirePermission: () => pass } as never));
 
 it('WEB-001 routes: off answers 204 without DB work; on needs the research_jobs capability; the result goes back to the same host', async () => {
+  vi.useFakeTimers({ toFake: ['Date'], now: NOW });
   vi.stubEnv('JWT_SECRET', 'test-secret-web-research');
   seedProdLike(new Date()); // the routes read the real clock (7-day window): seed relative to it, not to the fixed NOW
   const token = mintSpawnToken(resolveSpawnTokenSecret(), 'workstation', REMOTE_GYM_SCOPE, 60_000);

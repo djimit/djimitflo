@@ -314,6 +314,46 @@ describe('agent commons runtime readiness (AC-01)', () => {
     expect(readiness('agent-b').state).toBe('ready');
   });
 
+  it('retains a reported runtime error class after its claimed message lease lapses', () => {
+    const previous = process.env.SOCIAL_RUNTIME_FAILURE_MODE;
+    process.env.SOCIAL_RUNTIME_FAILURE_MODE = 'shadow';
+    try {
+      comms.socialize(0);
+      const [question] = comms.receiveSocial('agent-b');
+      const token = question.deliveryLeaseToken!;
+      expect(comms.reportRuntimeFailure('agent-b', question.id, { delivery_lease_token: token, failure_class: 'runtime_timeout' })).toEqual({ duplicate: false, recorded: true });
+      expect(comms.reportRuntimeFailure('agent-b', question.id, { delivery_lease_token: token, failure_class: 'runtime_timeout' })).toEqual({ duplicate: true, recorded: true });
+      db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 1, question.id);
+      expect(readiness('agent-b').last_failed_attempt).toMatchObject({ message_id: question.id, observed: 'runtime_reported', failure_class: 'runtime_timeout' });
+      expect(readiness('agent-b').runtime_failures_reported).toBe(true);
+      const stored = db.prepare('SELECT lease_token_hash FROM agent_runtime_failures WHERE message_id = ?').get(question.id) as { lease_token_hash: string };
+      expect(stored.lease_token_hash).not.toBe(token);
+      expect(stored.lease_token_hash).toMatch(/^[0-9a-f]{64}$/);
+      const [reclaimed] = comms.receiveSocial('agent-b');
+      expect(reclaimed.id).toBe(question.id);
+      db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 1, question.id);
+      expect(readiness('agent-b').last_failed_attempt).toMatchObject({ message_id: question.id, observed: 'claim_lapsed_without_reply' });
+      expect(readiness('agent-b').last_failed_attempt?.failure_class).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.SOCIAL_RUNTIME_FAILURE_MODE;
+      else process.env.SOCIAL_RUNTIME_FAILURE_MODE = previous;
+    }
+  });
+
+  it('rejects a first runtime failure report after its delivery lease expires', () => {
+    const previous = process.env.SOCIAL_RUNTIME_FAILURE_MODE;
+    process.env.SOCIAL_RUNTIME_FAILURE_MODE = 'shadow';
+    try {
+      comms.socialize(0);
+      const [question] = comms.receiveSocial('agent-b');
+      db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 1, question.id);
+      expect(() => comms.reportRuntimeFailure('agent-b', question.id, { delivery_lease_token: question.deliveryLeaseToken, failure_class: 'runtime_error' })).toThrow('SOCIAL_LEASE_EXPIRED');
+    } finally {
+      if (previous === undefined) delete process.env.SOCIAL_RUNTIME_FAILURE_MODE;
+      else process.env.SOCIAL_RUNTIME_FAILURE_MODE = previous;
+    }
+  });
+
   it('a stale heartbeat is offline and an agent that never sent one is unknown', () => {
     const stale = new Date(Date.now() - 3_600_000).toISOString();
     const metadata = JSON.parse((db.prepare("SELECT metadata FROM agents WHERE id = 'agent-a'").get() as { metadata: string }).metadata);

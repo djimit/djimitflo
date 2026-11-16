@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+  "candidate_sha_at_freeze": "ecfc85d22e1a68307d63eaed9ce4bbcb87927e89",
+  "frozen_denominators_commit": "571a0ad39f5d6ed6eb587302242949fb513152cc",
+  "preflight": {
+    "node_npm": {
+      "status": "PASS",
+      "command": "node -v && npm -v",
+      "observed": "Node v22.23.2; npm 10.9.8"
+    },
+    "npm_ci": {
+      "status": "PASS",
+      "command": "npm ci",
+      "candidate_sha": "14b1472345840160e0a733fc2b6f9fbf8e7fe060",
+      "summary": "Installed 779 packages; npm reported 0 vulnerabilities."
+    },
+    "shared_and_catalog_build": {
+      "status": "PASS",
+      "command": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog",
+      "candidate_sha": "35e260dd5dce1e6dd11d365f5a3a61d1d850432e",
+      "summary": "Both TypeScript project builds completed successfully."
+    },
+    "nested_spawn_tests": {
+      "status": "PASS",
+      "command": "npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts",
+      "candidate_sha": "3bff1c0d14f224040df9d3c1daf357d80e5032dc",
+      "summary": "2 test files passed; 27 tests passed.",
+      "test_sha256": {
+        "packages/server/src/__tests__/nested-spawn.test.ts": "a0990f6f6dec5e825a9fad4a97e66d3887b477721d2a59d697c4b28dafb79859",
+        "packages/server/src/__tests__/nested-spawn-loop.test.ts": "87b942492a77886828867029423c81588999e924cf4b1cd494cc42a5dc9467dc"
+      }
+    }
+  },
+  "claims": [
+    {
+      "id": "baseline-red-nested-spawn-reservation-and-idempotency",
+      "status": "PASS_BASELINE_FAILURE_REPRODUCED",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "candidate_sha": "3bff1c0d14f224040df9d3c1daf357d80e5032dc",
+      "baseline_command": "npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts",
+      "baseline_exit_code": 1,
+      "baseline_output_summary": "10 failed, 17 passed. Failures include grant booked as consumed before execution, absent root reservation, repeated idempotency key creating another spawn, uncertain preparation escaping rather than retaining a durable intent, and budget over-admission.",
+      "baseline_method": "Detached worktree at baseline SHA; overlaid only the candidate regression tests, test database schema helper and additive migration. Candidate service and route implementation were not overlaid.",
+      "overlay_sha256": {
+        "packages/server/src/__tests__/nested-spawn.test.ts": "a0990f6f6dec5e825a9fad4a97e66d3887b477721d2a59d697c4b28dafb79859",
+        "packages/server/src/__tests__/nested-spawn-loop.test.ts": "87b942492a77886828867029423c81588999e924cf4b1cd494cc42a5dc9467dc",
+        "packages/server/src/__tests__/helpers/test-db.ts": "570c1e1b910366a2930d878acab4b6a79abf156fb63b42182b75dd0b278e934a",
+        "packages/server/src/database/migrate.ts": "ed478481d8146392003dbcc791cd828110dfe74bd130c3ee0f2b8500fff72198"
+      },
+      "candidate_command": "npm run test -w @djimitflo/server -- nested-spawn.test.ts nested-spawn-loop.test.ts",
+      "candidate_exit_code": 0,
+      "candidate_output_summary": "2 test files passed; 27 tests passed.",
+      "evidence_level": "E2",
+      "limitations": [
+        "Temporary SQLite/fake runtime only",
+        "No proof of multi-process production behavior",
+        "No real provider meter or live runtime"
+      ]
+    },
+    {
+      "id": "nested-spawn-normal-dispatch-gap",
+      "status": "FAIL_AT_TESTED_BOUNDARY",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "candidate_sha": "e7baf39fdca9c7602cbf3644e7ffb11cc448c473",
+      "evidence_level": "E2_FOR_SERVICE_TESTS; E1_FOR_CALLER_MAP",
+      "observation": "The HTTP POST /api/swarms/spawns path returns prepared/requested and does not call LoopService.executeWorker. The execute-worker HTTP route exists, but this review found no normal dispatcher that consumes prepared nested spawn rows; current service tests explicitly call executeMaker/executeWorker directly for children.",
+      "evidence": [
+        "packages/server/src/routes/spawns.ts:createSpawnRoutes",
+        "packages/server/src/services/nested-spawn-service.ts:requestSpawn",
+        "packages/server/src/routes/loops.ts:POST /runs/:id/execute-worker",
+        "packages/server/src/__tests__/nested-spawn-loop.test.ts: L1 e2e and direct child execution"
+      ],
+      "limitations": [
+        "No server feature was changed to auto-dispatch; a new execution trigger requires explicit bounded policy/flag design",
+        "No real runtime authorization in this session"
+      ]
+    },
+    {
+      "id": "ci-ace-001-fixed-deadline-test",
+      "status": "BASELINE_FAILURE_REPRODUCED_TEST_FIX_GREEN_LOCALLY",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "candidate_sha_before_test_fix": "b11b716c6b014d502d5edd6c7280d17667e2c837",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43656628071",
+      "baseline_command": "npm run test -w @djimitflo/server -- ace-001.test.ts",
+      "baseline_exit_code": 1,
+      "baseline_summary": "26 tests: 24 passed, 2 failed because default now was after ACE_001_STOP_BY; exact same two failures occurred on candidate before the fixture correction.",
+      "candidate_command": "npm run test -w @djimitflo/server -- ace-001.test.ts nested-spawn.test.ts nested-spawn-loop.test.ts",
+      "candidate_exit_code": 0,
+      "candidate_summary": "3 files, 53 tests passed after pinning pre-readout calls to the instant before ACE_001_STOP_BY.",
+      "typecheck_command": "npx tsc --noEmit -p packages/server",
+      "typecheck_exit_code": 0,
+      "lint_command": "npm run lint",
+      "lint_exit_code": 0,
+      "lint_summary": "Workspace lint completed with one existing warning in github-pr-review-llm.test.ts:120 (unused eslint-disable), zero errors.",
+      "evidence_level": "E2",
+      "limitations": [
+        "Test fixture only; no production code/evaluation rule changed",
+        "Full CI has not yet rerun at the corrected PR head",
+        "No runtime, holdout or production validation"
+      ],
+      "candidate_sha": "df07cd90b1021e1550544087f5d38b8300367b7b",
+      "test_sha256": "390e3e87f9d233aa640a4220ff682cf08ec3215e52aa1f385006394174d509c0"
+    },
+    {
+      "id": "ci-web-research-baseline-failure-2026-11-15",
+      "status": "BASELINE_FAILURE_REPRODUCED; TEST_FIXTURE_CORRECTED",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "candidate_sha": "8c3476471a1223df42e494bdbe84064ab6d18b72",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43707335553",
+      "ci_head_sha": "8c3476471a1223df42e494bdbe84064ab6d18b72",
+      "ci_node_22_summary": "Typecheck, lint, build, fleet-auth-infra passed. Full test job: 873 files passed, 1 failed, 2 skipped; 8200 tests passed, 1 failed, 1 expected failure, 24 skipped. Failure: web-research.test.ts:250 expected a job but received null. Node 24 test job was cancelled after Node 22 failed; its typecheck, lint and build passed.",
+      "candidate_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "candidate_exit_code": 1,
+      "candidate_summary": "1 failed, 10 passed. WEB-001 route test receives null at line 250.",
+      "baseline_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "baseline_exit_code": 1,
+      "baseline_summary": "Same 1 failed, 10 passed and same null job at line 250 on detached origin/main worktree 7758d153e415177de8e977721011c9675482934c.",
+      "test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5",
+      "cause": "The fixture seeds failures relative to 2026-11-08T06:00:00Z, while the route claim uses the real current time. After the seven-day research window has advanced, failureUnits excludes those rows and no claim is produced. This is a time-dependent baseline test fixture failure.",
+      "evidence_level": "E2",
+      "scope_decision": "After operator authorization to fix autonomously, corrected only the route test clock. No WEB-001 product behavior or research data policy changed."
+    },
+    {
+      "id": "web-research-clock-fixture-fix-2026-11-16",
+      "status": "PASS_BASELINE_RED_CANDIDATE_GREEN",
+      "baseline_sha": "7758d153e415177de8e977721011c9675482934c",
+      "pre_fix_candidate_sha": "c1794f84ff2fc75e91249a2247926130b0a5eb2a",
+      "candidate_sha": "d099810991945a64b3ec6bbad76ef2070082609e",
+      "baseline_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "baseline_exit_code": 1,
+      "baseline_summary": "1 failed, 10 passed; the route test expected a claimed job but received null because fixture timestamps were older than the rolling seven-day window.",
+      "candidate_command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+      "candidate_exit_code": 0,
+      "candidate_summary": "1 test file passed; 11 tests passed at commit d099810991945a64b3ec6bbad76ef2070082609e.",
+      "baseline_with_candidate_test_overlay": {
+        "command": "npm run test -w @djimitflo/server -- web-research.test.ts",
+        "exit_code": 0,
+        "summary": "Detached baseline with only the fixed test file overlaid: 1 file and 11 tests passed. Product code remained at baseline.",
+        "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06"
+      },
+      "old_test_sha256": "ba85a07f88015566cfb98af4063cd5a19831b2435116aa4aa0a10f235569dec5",
+      "test_sha256": "17bda3091d74bc3ebbd005d19740eb10435121f0a551d134bc7d25d90d06ec06",
+      "change": "Freeze Date only in the route-level test to the fixture's NOW; restore real timers in afterEach. No runtime or application code changed.",
+      "evidence_level": "E2",
+      "limitations": [
+        "This corrects test determinism, not WEB-001 production behavior."
+      ]
+    },
+    {
+      "id": "local-repository-gates-after-web-research-test-fix-2026-11-16",
+      "candidate_sha": "d099810991945a64b3ec6bbad76ef2070082609e",
+      "status": "PASS",
+      "commands": [
+        "npm run test -- --reporter=verbose",
+        "npm run type-check",
+        "npm run lint",
+        "npm run build",
+        "python3 -m unittest discover -s scripts -p 'test_*poller.py'",
+        "npm run audit:ci"
+      ],
+      "summary": "Full repository test command exit 0. Server: 874 files passed, 2 skipped; 8202 tests passed, 1 expected failure, 23 skipped. Dashboard 80 files/561 tests passed; MCP 14/91; ransomware 6/40; shared 4/23; Telegram 4/30; skill packages 6/6. Workspace type-check, build, 25 Python poller tests and audit:ci passed. Lint passed with one existing unused eslint-disable warning in github-pr-review-llm.test.ts:120.",
+      "limitations": [
+        "No real runtime, browser, production or live integration was used."
+      ]
+    },
+    {
+      "id": "hosted-ci-after-web-research-test-fix-2026-11-16",
+      "candidate_sha": "ff16c2a5c403c6216c771a49158a2a78add423c3",
+      "ci_run": "https://github.com/djimit/djimitflo/actions/runs/43779085303",
+      "status": "PASS",
+      "verified_head_sha": "ff16c2a5c403c6216c771a49158a2a78add423c3",
+      "jobs": {
+        "fleet-auth-infra": "PASS",
+        "build-and-test (22)": "PASS",
+        "build-and-test (24)": "PASS",
+        "security-scan": "PASS",
+        "sbom": "PASS",
+        "mutation-test": "PASS",
+        "CodeQL": "PASS"
+      },
+      "test_summary_node_22": "Server: 874 files passed, 2 skipped; 8201 tests passed, 1 expected failure, 24 skipped. Dashboard 561, MCP 91, ransomware 40, shared 23, Telegram 30, and skill packages 6 tests passed.",
+      "test_summary_node_24": "Same workspace totals as Node 22; tests, poller checks, host-agent checks, security audit, and workflow jobs passed.",
+      "evidence_level": "E2 exact-head hosted CI",
+      "limitation": "djimitflo-review was still PENDING when checked; the PR remains draft and unmerged."
+    }
+  ],
+  "note": "Append each verification with exact baseline and candidate SHAs, command, selected output, test-file SHA-256, and result. Never upgrade prior evidence without rerunning it at the recorded SHA."
+}

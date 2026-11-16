@@ -1154,6 +1154,7 @@ export class ProofRunService {
       role: 'memory_curator',
       runtime,
       prompt: 'Bounded nested proof (memory curator): add the comment `// G7 memory: provenance + decay + contradiction` as the first line inside the measureCompetence method in packages/server/src/services/swarm-intelligence-service.ts. Make no other changes. Then stop.',
+      idempotency_key: `${proofRunId}:memory-curator`,
     }, { internal: true });
     if (!child.child_lease_id) {
       throw new Error('PROOF_RUN_SUB_AGENT_NOT_PREPARED');

@@ -21,7 +21,7 @@ const auth = { requirePermission: (permission: string) => (req: any, res: any, n
 } };
 const app = () => express().use('/swarms', createSwarmRoutes(db, auth as any)).use(errorHandler);
 const get = (path: string, perms = 'read:evidence') => request(app()).get(path).set('x-perms', perms);
-const TABLES = ['swarm_missions', 'swarm_tasks', 'swarm_decisions', 'goals', 'loop_runs', 'worker_leases', 'loop_learning_closures', 'judgments', 'self_improvements'];
+const TABLES = ['swarm_missions', 'swarm_tasks', 'swarm_decisions', 'goals', 'loop_runs', 'worker_leases', 'loop_learning_closures', 'judgments', 'self_improvements', 'spawn_trees', 'sub_agent_spawns'];
 const snapshot = () => JSON.stringify(TABLES.map((t) => db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all()));
 
 function seed() {
@@ -34,7 +34,12 @@ function seed() {
   const lease = db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, ?, 'codex', 'completed', ?, ?, ?)");
   lease.run('mk-1', 'run-1', 'maker', JSON.stringify({ runtime_usage: { total_tokens: 1200 } }), '2026-10-20T01:01:00Z', '2026-10-20T01:01:00Z');
   lease.run('ck-1', 'run-1', 'checker', JSON.stringify({ verdict: 'accepted', maker_lease_id: 'mk-1' }), '2026-10-20T01:02:00Z', '2026-10-20T01:02:00Z');
+  lease.run('child-1', 'run-1', 'maker', JSON.stringify({ skill_route: { capability_id: 'skill-test', version: '2', artifact_digest: 'sha256:abc' } }), '2026-10-20T01:03:00Z', '2026-10-20T01:03:00Z');
   lease.run('mk-2', 'run-2', 'maker', JSON.stringify({}), '2026-10-20T02:01:00Z', '2026-10-20T02:01:00Z');
+  db.prepare("INSERT INTO spawn_trees (id, depth_budget, total_token_budget, total_wall_budget_ms, max_concurrent_children, risk_class) VALUES ('tree-1', 1, 1000, 10000, 1, 'low')").run();
+  db.prepare(`INSERT INTO sub_agent_spawns (id, spawn_tree_id, parent_lease_id, child_lease_id, requested_by_lease_id, depth, runtime, requested_role,
+    prompt_digest, status, token_budget_grant, wall_budget_ms, settled_at, measured_wall_ms, usage_source)
+    VALUES ('spawn-1', 'tree-1', 'mk-1', 'child-1', 'mk-1', 1, 'codex', 'maker', 'digest', 'completed', 500, 10000, '2026-10-20T01:04:00Z', 5000, 'unknown')`).run();
   db.prepare("INSERT INTO loop_learning_closures (loop_run_id, eval_run_id, reflection_id, memory_candidate_id, score_delta) VALUES ('run-1', 'eval-1', 'r', 'mem', 0.1)").run();
   db.prepare("INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES ('j1', 'outcome_attribution', 'loop_run', 'run-1', 'h', 'annotation', 'verified', 'all gates passed', '2026-10-20T01:40:00Z')").run();
 }
@@ -77,8 +82,10 @@ describe('GET /swarms/intelligence/missions/:id/execution', () => {
     // no next action recorded on the latest run: null, not invented
     expect(res.body.next_action).toBeNull();
     expect(res.body.leases.find((l: { id: string }) => l.id === 'ck-1')).toMatchObject({ role: 'checker', verdict: 'accepted', maker_lease_id: 'mk-1' });
-    // three lease usage events, one reported: partial coverage, not a total over unknowns
-    expect(res.body.tokens).toMatchObject({ value: 1200, events: 3, known: 1, coverage: 0.333, status: 'partial' });
+    expect(res.body.leases.find((l: { id: string }) => l.id === 'child-1')).toMatchObject({ capability_id: 'skill-test', skill_version: '2', skill_digest: 'sha256:abc' });
+    expect(res.body.spawns).toMatchObject([{ id: 'spawn-1', child_lease_id: 'child-1', token_budget_grant: 500, measured_tokens: null, usage_source: 'unknown' }]);
+    // Four lease usage events, one reported: partial coverage, not a total over unknowns.
+    expect(res.body.tokens).toMatchObject({ value: 1200, events: 4, known: 1, coverage: 0.25, status: 'partial' });
     expect(snapshot()).toBe(before);
   });
 
@@ -87,7 +94,7 @@ describe('GET /swarms/intelligence/missions/:id/execution', () => {
     const res = await get('/swarms/intelligence/missions/m-bare/execution');
     expect(res.status).toBe(200);
     expect(res.body.execution).toMatchObject({ lineage: 'no_goal', execution: null });
-    expect(res.body).toMatchObject({ goal: null, runs: [], leases: [], tokens: null, blocker: null, next_action: null, provenance: [] });
+    expect(res.body).toMatchObject({ goal: null, runs: [], leases: [], spawns: [], tokens: null, blocker: null, next_action: null, provenance: [] });
   });
 
   it('prefers the newest decision blocked reasons and reports the recorded next action', async () => {
@@ -109,7 +116,7 @@ describe('GET /swarms/intelligence/missions/:id/execution', () => {
     db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, created_at, updated_at) VALUES ('run-x', 'g-other', 'l', 'closed', 'completed', '2026-10-20T00:00:00Z', '2026-10-20T00:00:00Z')").run();
     const res = await get('/swarms/intelligence/missions/m1/execution');
     const edges = res.body.provenance.map((e: { edge_type: string; source: { id: string }; target: { id: string } }) => `${e.edge_type}:${e.source.id}->${e.target.id}`).sort();
-    expect(edges).toEqual(['cites_knowledge:u1->p1', 'experimented_as:p1->run-1', 'experimented_as:p1->run-2', 'made_by_lease:run-1->mk-1', 'made_by_lease:run-2->mk-2']);
+    expect(edges).toEqual(['cites_knowledge:u1->p1', 'experimented_as:p1->run-1', 'experimented_as:p1->run-2', 'made_by_lease:run-1->child-1', 'made_by_lease:run-1->mk-1', 'made_by_lease:run-2->mk-2']);
   });
 
   it('answers 404 for an unknown mission', async () => {

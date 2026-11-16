@@ -1620,8 +1620,13 @@ export class LoopService {
       : configured;
   }
 
-  public evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {
-    return this.budget.evaluateTokenBudget(run, runtimeUsage, currentLeaseId, diffLines, this.getTokenBudget(run));
+  public evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number, workerTokenLimit?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {
+    const budget = this.getTokenBudget(run);
+    if (Number.isFinite(workerTokenLimit) && workerTokenLimit! > 0) {
+      budget.maxTokensPerWorker = Math.min(budget.maxTokensPerWorker ?? workerTokenLimit!, workerTokenLimit!);
+      (budget as typeof budget & { nested_grant_tokens: number }).nested_grant_tokens = workerTokenLimit!;
+    }
+    return this.budget.evaluateTokenBudget(run, runtimeUsage, currentLeaseId, diffLines, budget);
   }
 
   private sumRuntimeTokens(leases: WorkerLeaseRecord[]): number {
@@ -1897,6 +1902,8 @@ export class LoopService {
     controlUrl?: string;
     spawnToken?: string;
     depthBudget: number;
+    tokenBudgetGrant?: number;
+    wallBudgetGrantMs?: number;
     leaseId?: string;
   }): { leaseId: string; worktreePath: string; assignmentPath: string; assignmentPacketPath: string } {
     const run = this.getLoopRun(input.loopRunId);
@@ -1955,6 +1962,7 @@ export class LoopService {
         parent_lease_id: input.parentLeaseId,
         depth: input.depth,
         capability_ids: input.capabilityIds ?? [],
+        nested_budget_grant: { tokens: input.tokenBudgetGrant ?? null, wall_ms: input.wallBudgetGrantMs ?? null },
         nested_spawn: true,
       },
       now,
@@ -1991,12 +1999,13 @@ export class LoopService {
       '',
       'To spawn a child, POST to the control endpoint (token forwarded as $DJIMITFLO_SPAWN_TOKEN):',
       '```sh',
+      'SPAWN_IDEMPOTENCY_KEY=$(uuidgen) # Generate once per logical child request; reuse this value on every retry.',
       `curl -sS -X POST "${url}" \\`,
-      `  -H "X-Spawn-Token: ${token}" -H "Content-Type: application/json" \\`,
+      `  -H "X-Spawn-Token: ${token}" -H "Idempotency-Key: $SPAWN_IDEMPOTENCY_KEY" -H "Content-Type: application/json" \\`,
       `  -d '{"requested_by_lease_id":"${input.leaseId}","parent_lease_id":"${input.leaseId}","spawn_tree_id":"${input.spawnTreeId}","role":"maker","runtime":"mock","prompt":"<sub-task>"}'`,
       '```',
-      'Poll a child status: GET $DJIMITFLO_CONTROL_URL/<child_lease_id>/status',
-      'Each child gets a tighter token/wall budget. Do not spawn cycles: the same prompt + role on your ancestry is rejected.',
+      'If the request returns requested, poll its spawn_id with the same parent token. If it becomes prepared, repeat the POST with the same key to recover the child token, then poll with that child token.',
+      'Each child gets a reserved token/wall grant. Reported maker usage can fail the post-run token gate; missing usage skips that gate. This does not stop an in-flight provider call or establish a provider-side hard cap. Do not spawn cycles: the same prompt + role on your ancestry is rejected.',
       '',
     ].join('\n');
   }
@@ -2799,7 +2808,54 @@ export class LoopService {
   }
 
   public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
-    this.workerLeases.updateStatus(id, status, metadataPatch);
+    this.db.transaction(() => {
+      this.workerLeases.updateStatus(id, status, metadataPatch);
+      this.projectNestedSpawnStatus(id, status);
+    })();
+  }
+
+  public reconcileNestedSpawnStatus(id: string): void {
+    const lease = this.workerLeases.getById(id);
+    if (lease) this.projectNestedSpawnStatus(id, lease.status);
+  }
+
+  private projectNestedSpawnStatus(leaseId: string, status: WorkerLeaseRecord['status']): void {
+    if (!this.workerLeases.getById(leaseId)?.spawn_tree_id) return;
+    const spawn = this.db.prepare(`SELECT id, spawn_tree_id, status, token_budget_grant, wall_budget_ms, settled_at
+      FROM sub_agent_spawns WHERE child_lease_id = ? ORDER BY created_at DESC LIMIT 1`).get(leaseId) as {
+      id: string; spawn_tree_id: string; status: string; token_budget_grant: number | null;
+      wall_budget_ms: number | null; settled_at: string | null;
+    } | undefined;
+    if (!spawn || spawn.settled_at) return;
+
+    if (status === 'running') {
+      this.db.prepare("UPDATE sub_agent_spawns SET status = 'running' WHERE id = ? AND status = 'prepared'").run(spawn.id);
+      return;
+    }
+    if (!['completed', 'failed', 'cancelled'].includes(status) || !['prepared', 'running'].includes(spawn.status)) return;
+
+    const lease = this.workerLeases.getById(leaseId);
+    const usage = lease.metadata.runtime_usage as Record<string, unknown> | undefined;
+    const measuredTokens = typeof usage?.total_tokens === 'number' && Number.isFinite(usage.total_tokens)
+      ? Math.max(0, Math.floor(usage.total_tokens)) : null;
+    const startedAt = Date.parse(String(lease.metadata.started_at ?? ''));
+    const measuredWall = Number.isFinite(startedAt) && startedAt <= Date.now() ? Date.now() - startedAt : null;
+    const source = measuredTokens !== null ? String(usage?.usage_source ?? 'runtime_reported') : 'unknown';
+    const settledAt = new Date().toISOString();
+    const changed = this.db.prepare(`UPDATE sub_agent_spawns SET status = ?, settled_at = ?, measured_tokens = ?,
+      measured_wall_ms = ?, usage_source = ? WHERE id = ? AND settled_at IS NULL AND status IN ('prepared', 'running')`)
+      .run(status, settledAt, measuredTokens, measuredWall, source, spawn.id);
+    if (changed.changes !== 1) return;
+
+    // Unknown dimensions stay reserved. A grant is released only for a dimension
+    // with a measured value; a known overrun is booked in full, never clipped.
+    this.db.prepare(`UPDATE spawn_trees SET
+      reserved_tokens = MAX(0, reserved_tokens - CASE WHEN ? IS NULL THEN 0 ELSE ? END),
+      measured_tokens = measured_tokens + COALESCE(?, 0),
+      reserved_wall_ms = MAX(0, reserved_wall_ms - CASE WHEN ? IS NULL THEN 0 ELSE ? END),
+      measured_wall_ms = measured_wall_ms + COALESCE(?, 0), updated_at = ? WHERE id = ?`)
+      .run(measuredTokens, spawn.token_budget_grant ?? 0, measuredTokens,
+        measuredWall, spawn.wall_budget_ms ?? 0, measuredWall, settledAt, spawn.spawn_tree_id);
   }
 
   public updateWorkerLeaseWorktree(id: string, worktreePath: string, branchName: string): void {
