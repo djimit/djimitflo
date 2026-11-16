@@ -392,8 +392,8 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   function fail(res: any, error: unknown): void {
     const code = error instanceof Error ? error.message : 'SOCIAL_RUNTIME_ERROR';
     const status = code === 'SOCIAL_AGENT_NOT_FOUND' || code === 'SOCIAL_MESSAGE_NOT_FOUND' ? 404
-      : code.startsWith('SOCIAL_AGENT_NOT_ELIGIBLE') || code === 'SOCIAL_MESSAGE_EXPIRED' || code === 'SOCIAL_MESSAGE_NOT_ACTIONABLE' || code.startsWith('BOARD_') ? 409
-        : code.startsWith('SOCIAL_') && code.endsWith('_REQUIRED') ? 400 : 500;
+      : code.startsWith('SOCIAL_AGENT_NOT_ELIGIBLE') || ['SOCIAL_MESSAGE_EXPIRED', 'SOCIAL_MESSAGE_NOT_ACTIONABLE', 'SOCIAL_MESSAGE_ALREADY_REPLIED', 'SOCIAL_LEASE_INVALID', 'SOCIAL_ATTEMPT_CONFLICT'].includes(code) || code.startsWith('BOARD_') ? 409
+        : code.startsWith('SOCIAL_') && (code.endsWith('_REQUIRED') || code.endsWith('_INVALID')) ? 400 : 500;
     const safeCode = status === 500 ? 'SOCIAL_RUNTIME_ERROR' : code;
     res.status(status).json({ error: { code: safeCode, message: safeCode } });
   }
@@ -426,6 +426,24 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
       // K1 (shadow): a reply from an external agent is untrusted text that later feeds prompts
       if (!result.duplicate && contentSafetyApplies('social_reply')) void checkContentSafety(db, { type: 'social_reply', id: String(req.params.messageId) }, JSON.stringify(req.body || {})).catch(() => undefined);
       res.status(result.duplicate ? 200 : 201).json(result);
+    } catch (error) { fail(res, error); }
+  });
+
+  router.post('/:agentId/messages/:messageId/failure', (req, res) => {
+    if (!authorized(req, res)) return;
+    if (process.env.COMMONS_RUNTIME_FAILURE_REPORTING_MODE !== 'shadow') {
+      res.status(409).json({ error: { code: 'SOCIAL_FAILURE_REPORTING_OFF', message: 'Runtime failure reporting is disabled' } });
+      return;
+    }
+    try {
+      const result = comms.reportRuntimeFailure({
+        agentId: req.params.agentId,
+        messageId: req.params.messageId,
+        attemptId: req.body?.attempt_id,
+        deliveryLeaseToken: req.body?.delivery_lease_token,
+        failureClass: req.body?.failure_class,
+      });
+      res.status(result.duplicate ? 200 : 201).json({ ...result, reported: true });
     } catch (error) { fail(res, error); }
   });
 

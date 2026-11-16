@@ -9,9 +9,14 @@ const READINESS_TONE: Record<CommonsRuntimeReadiness['state'], string> = {
   offline: 'border-status-error/40 text-status-error',
   unknown: 'border-border text-foreground-tertiary',
 };
+const FAILURE_LABEL: Record<NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>['failure_class'] & string, string> = {
+  runtime_unavailable: 'runtime unavailable', runtime_timeout: 'runtime timed out', runtime_process_failed: 'runtime process failed',
+  invalid_runtime_output: 'invalid runtime output', reply_delivery_failed: 'reply delivery failed', poller_error: 'poller error',
+};
 
 /** AC-01: heartbeat, last successful reply and last failed attempt per agent, never collapsed into "present". */
 export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
+  const failureReportingEnabled = agents.some((agent) => agent.readiness?.runtime_failure_reporting_enabled);
   return (
     <>
       <table className="mt-3 w-full text-xs" aria-label="Runtime readiness per agent">
@@ -25,11 +30,11 @@ export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
             <td className="py-1 pr-2"><span className={`rounded-full border px-2 py-0.5 ${READINESS_TONE[state]}`}>{state}</span><div className="mt-1 text-foreground-tertiary">{readiness?.reason ?? 'server sent no readiness'}</div></td>
             <td className="py-1 pr-2 text-foreground-secondary">{agent.last_heartbeat_at ? time(agent.last_heartbeat_at) : 'never'}</td>
             <td className="py-1 pr-2 text-foreground-secondary">{readiness?.last_successful_reply_at ? time(readiness.last_successful_reply_at) : 'none recorded'}</td>
-            <td className="py-1 text-foreground-secondary">{failed ? <>{time(failed.at)} · claim lapsed without reply <code className="break-all text-foreground-tertiary">{failed.message_id}</code></> : 'none recorded'}</td>
+            <td className="py-1 text-foreground-secondary">{failed ? <>{time(failed.at)} · {failed.observed === 'runtime_reported' ? `poller: ${FAILURE_LABEL[failed.failure_class || 'poller_error']}` : 'claim lapsed without reply'} · <code className="break-all text-foreground-tertiary">{failed.message_id}</code></> : 'none recorded'}</td>
           </tr>;
         })}</tbody>
       </table>
-      <p className="mt-2 text-xs text-foreground-tertiary">Runtime error class: failures not reported. Pollers keep child errors in their own logs; the server only sees a claimed message whose lease lapsed without a reply. Ready = heartbeat under 20 min and a successful reply within 24 h with no lapse after it.</p>
+      <p className="mt-2 text-xs text-foreground-tertiary">{failureReportingEnabled ? 'Updated pollers report bounded failure classes; older pollers can only be identified by a claimed message whose lease lapsed without a reply. Failure classes are self-reported.' : 'New runtime failure reports are disabled. Previously stored reports remain visible; otherwise the server can infer a failure when a claimed message lease lapses without a reply.'} Ready = heartbeat under 20 min and a successful reply within 24 h with no later failure.</p>
     </>
   );
 }
