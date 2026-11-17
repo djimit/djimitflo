@@ -62,7 +62,7 @@ export function discoverTestGaps(repoPath: string): TestGap[] {
   const gaps: TestGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (tested.has(service) || service === 'index' || !live.has(service)) continue;
+    if (tested.has(service) || service === 'index' || !live.has(service) || FROZEN.test(service)) continue;
     const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
     const loc = text.split('\n').length;
     const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
@@ -216,7 +216,7 @@ export function discoverExportGaps(repoPath: string): TestGap[] {
   const gaps: TestGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (!tested.has(service) || !live.has(service)) continue; // untested services are discoverTestGaps' job
+    if (!tested.has(service) || !live.has(service) || FROZEN.test(service)) continue; // untested services are discoverTestGaps' job
     const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
     const loc = text.split('\n').length;
     if (loc > MAX_EXPORT_GAP_LOC) continue;
@@ -243,6 +243,9 @@ const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn)([-_]|$)
 // "raise the mutation score of loop-stop-conditions.ts" — the loop polishing itself. Those lanes stay covered by their
 // regular tests; mutation budget goes to services that serve users.
 const SELF_REFERENTIAL = /^(loop|evolution|gym|fitness|mutation|self-improvement)-/i;
+// Frozen features (operator decision 2026-11-17): no nginx traffic in 9 days and no scheduler armed in prod, so no lane
+// spends tokens testing them. ponytail: name list, not a flag; unfreeze = drop the prefix here.
+export const FROZEN = /^(explain|explainer|expert|frontier-expert|council|discussion|multi-agent-consensus|fleet-mesh|segml)-/i;
 export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
@@ -250,7 +253,7 @@ export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const gaps: MutationGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (SENSITIVE.test(service) || SELF_REFERENTIAL.test(service) || !live.has(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
+    if (SENSITIVE.test(service) || SELF_REFERENTIAL.test(service) || FROZEN.test(service) || !live.has(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
     const loc = fs.readFileSync(path.join(servicesDir, file), 'utf8').split('\n').length;
     if (loc < MIN_LOC || loc > MAX_MUTATION_LOC) continue;
     gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `${TESTS_DIR}/${service}.test.ts`, loc });
