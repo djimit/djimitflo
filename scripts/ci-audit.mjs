@@ -7,6 +7,9 @@ const allowedAdvisories = new Set([
   'https://github.com/advisories/GHSA-7p8r-x3mc-p8w7', // fast-uri
   'https://github.com/advisories/GHSA-mwp4-54f8-5fhr', // ip-address
   'https://github.com/advisories/GHSA-2v37-7h3g-55p8', // nanoid
+  // picomatch <=4.0.7 extglob ReDoS (2026-11-17, operator-approved): no patched release yet (latest 4.0.7);
+  // reached only via build/test tooling (vite, vitest) globbing repo paths, never user input. Drop once 4.0.8+ lands.
+  'https://github.com/advisories/GHSA-fc5q-39xc-vjpf',
 ]);
 const audit = spawnSync('npm', ['audit', '--omit=dev', '--json'], { encoding: 'utf8' });
 const report = JSON.parse(audit.stdout);
