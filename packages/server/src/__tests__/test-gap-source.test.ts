@@ -79,6 +79,15 @@ it('value filter: the mutation lane never hardens the loop\'s own machinery', ()
   write('packages/server/src/index.ts', [...own, 'gamma'].map((n, i) => `import * as m${i} from './services/${n}';`).join('\n'));
   expect(discoverMutationGaps(repo).map((g) => g.service)).toEqual(['gamma']);
 });
+it('frozen features: no lane proposes tests for explainer/expert/council/... services', () => {
+  const frozen = ['explainer-ask-service', 'expert-unit-dedupe', 'council-registry', 'fleet-mesh-service'];
+  for (const n of frozen) { write(`packages/server/src/services/${n}.ts`, body(50)); write(`packages/server/src/__tests__/${n}.test.ts`, '// t'); }
+  write('packages/server/src/services/explainer-author-service.ts', body(50)); // untested and frozen
+  write('packages/server/src/index.ts', [...frozen, 'explainer-author-service', 'gamma', 'fleet-event-signatures'].map((n, i) => `import * as m${i} from './services/${n}';`).join('\n'));
+  write('packages/server/src/services/fleet-event-signatures.ts', body(50)); write('packages/server/src/__tests__/fleet-event-signatures.test.ts', '// t');
+  expect(discoverMutationGaps(repo).map((g) => g.service).sort()).toEqual(['fleet-event-signatures', 'gamma']);
+  expect(discoverTestGaps(repo).map((g) => g.service)).not.toContain('explainer-author-service');
+});
 it('M2: mutation gaps are tested, mid-sized, non-sensitive services; one grounded proposal at a time, and its check gets MUTATE_*', () => {
   write('packages/server/src/services/token-vault.ts', body(50)); write('packages/server/src/__tests__/token-vault.test.ts', '// t');
   expect(discoverMutationGaps(repo).map((g) => g.service)).toEqual(['gamma']); // alpha/beta untested, token-vault sensitive
