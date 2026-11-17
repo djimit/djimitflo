@@ -102,7 +102,7 @@ export class SelfImprovementRefinementService {
 
   private parseResponse(raw: string): RefinedProposalDraft | null {
     const jsonText = this.extractJson(raw);
-    let candidate: (Partial<RefinedProposalDraft> & { acceptance_test?: unknown; baseline_metric?: unknown; target?: unknown; runtime_command?: unknown; artifact_path?: unknown; budget?: unknown }) | null = null;
+    let candidate: (Partial<RefinedProposalDraft> & { acceptance_test?: unknown; baseline_metric?: unknown; target?: unknown; runtime_command?: unknown; artifact_path?: unknown; budget?: unknown }) | null;
     try {
       candidate = jsonText ? JSON.parse(jsonText) : null;
     } catch {
