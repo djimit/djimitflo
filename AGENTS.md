@@ -23,7 +23,7 @@ Node `>=22 <25`, npm `>=9`. CI (`.github/workflows/ci.yml`, Node 22 and 24) runs
 
 ```bash
 npm ci                    # install (locally `npm install --legacy-peer-deps` if peer resolution fails)
-npm run type-check        # builds shared/agent-catalog/mcp-server/ransomware-module, then tsc --noEmit per workspace
+npm run type-check        # builds shared/agent-catalog/mcp-server, then tsc --noEmit per workspace
 npm run lint              # eslint per workspace
 npm run build             # all workspaces
 npm run test -- --reporter=verbose   # shell selftests, script tests, workspace docs check, vitest per workspace
@@ -50,7 +50,6 @@ packages/shared/            # @djimitflo/shared — types, roles, auth helpers
 packages/mcp-server/        # MCP server (stdio + HTTP); pinned to zod v3 for the MCP SDK
 packages/telegram/          # Telegram gateway
 packages/agent-catalog/     # agent profile import/evaluate/activate
-packages/ransomware-module/ # defensive anti-ransomware detection
 scripts/                    # deploy, merge train, gym worker, evidence and doc generators
 openspec/                   # specs (capabilities) and changes
 ```

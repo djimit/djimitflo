@@ -36,8 +36,6 @@ COPY packages/agent-catalog/package.json packages/agent-catalog/
 COPY packages/agent-catalog/tsconfig.json packages/agent-catalog/
 COPY packages/mcp-server/package.json packages/mcp-server/
 COPY packages/mcp-server/tsconfig.json packages/mcp-server/
-COPY packages/ransomware-module/package.json packages/ransomware-module/
-COPY packages/ransomware-module/tsconfig.json packages/ransomware-module/
 
 # Install ALL dependencies (including dev) for building — strictly from package-lock.json, so the lockfile hash in the
 # build receipt (scripts/deploy-vps.sh) describes what was built; a lock out of sync with package.json fails the build
@@ -52,7 +50,6 @@ COPY packages/dashboard/vite.config.ts packages/dashboard/vite.config.ts
 COPY packages/telegram/src packages/telegram/src
 COPY packages/agent-catalog/src packages/agent-catalog/src
 COPY packages/mcp-server/src packages/mcp-server/src
-COPY packages/ransomware-module/src packages/ransomware-module/src
 
 # Build all workspaces
 RUN npm run build
