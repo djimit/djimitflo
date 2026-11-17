@@ -95,6 +95,18 @@ describe('GitHub pull_request review webhook', () => {
     return db;
   }
 
+  it('ignores pull_request actions it does not handle (closed, edited, ...) with 202 instead of a 400', async () => {
+    const db = await setup();
+    for (const action of ['closed', 'edited', 'ready_for_review']) {
+      const response = await post(prBody({ action }), `delivery-pr-ignored-${action}`);
+      expect(response.status).toBe(202);
+      expect(await response.json()).toEqual({ status: 'ignored', reason: 'unsupported_action' });
+    }
+    expect((await post(prBody({ action: 'opened', pull_request: { number: 7 } }), 'delivery-pr-bad')).status).toBe(400);
+    expect(db.prepare('SELECT COUNT(*) n FROM github_webhook_deliveries').get()).toEqual({ n: 0 });
+    db.close();
+  });
+
   it('reviews a small PR as accepted end-to-end through the real checker state machine', async () => {
     const db = await setup();
     mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
