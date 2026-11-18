@@ -93,6 +93,34 @@ class ControllerTests(unittest.TestCase):
         p.run_cli.assert_not_called()
         self.assertEqual(result['model_calls'], 0)
 
+    def test_auto_peer_is_a_present_other_agent_and_no_round_opens_without_one(self):
+        import datetime
+        now = datetime.datetime(2026, 11, 18, 12, 0, tzinfo=datetime.timezone.utc)
+        agent = lambda id, beat, **extra: {'id': id, 'status': 'active', 'metadata': {'social_runtime': {'enabled': True, 'last_heartbeat_at': beat}}, **extra}
+        listed = {'agents': [agent(c.AGENT, '2026-11-18T11:59:00.000Z'), agent('stale', '2026-11-18T11:39:59.000Z'),
+                             agent('retired', '2026-11-18T11:59:00.000Z', retired_at='2026-11-01'), {'id': 'no-social', 'status': 'active', 'metadata': {}},
+                             agent('present', '2026-11-18T11:41:00.000Z')]}
+        with patch.object(c, 'request', return_value=listed):
+            self.assertEqual(c.present_peer('operator-secret', now), 'present')
+        p = Mock()
+        p.api.return_value = (200, {'messages': []})
+        with patch.object(c, 'PEER', 'auto'), patch.object(c, 'present_peer', return_value='present'), patch.object(c, 'request') as request:
+            c.poll_once(p, 'operator-secret')
+        self.assertEqual(request.call_args.args[3]['participant_ids'], [c.AGENT, 'present'])
+        with patch.object(c, 'PEER', 'auto'), patch.object(c, 'present_peer', return_value=None), patch.object(c, 'request') as request:
+            self.assertEqual(c.poll_once(p, 'operator-secret')['reason'], 'no_peer_present')
+        request.assert_not_called()
+
+    def test_outside_the_scheduled_utc_hours_nothing_is_contacted(self):
+        import datetime
+        off = (datetime.datetime.now(datetime.timezone.utc).hour + 1) % 24
+        with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_HOURS_UTC': str(off)}, clear=True), \
+             patch.object(c, 'request') as request, patch.object(c, 'admit_run') as admit, patch('builtins.print') as printed:
+            self.assertEqual(c.main(), 0)
+        request.assert_not_called(); admit.assert_not_called()
+        self.assertEqual(json.loads(printed.call_args.args[0])['reason'], 'outside_schedule')
+        with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN}, clear=True): c.isolate_environment()
+
     def test_daily_cap_admits_n_runs_then_stops_and_resets_next_day(self):
         with tempfile.TemporaryDirectory() as state, patch.dict(c.CONFIG, {'COMMONS_MAX_RUNS_PER_DAY': '2'}):
             self.assertEqual([c.admit_run(state, today='2026-09-21') for _ in range(3)], [True, True, False])
