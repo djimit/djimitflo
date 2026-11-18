@@ -65,9 +65,9 @@ export function discoverTestGaps(repoPath: string): TestGap[] {
     if (tested.has(service) || service === 'index' || !live.has(service) || FROZEN.test(service)) continue;
     const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
     const loc = text.split('\n').length;
-    const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
-    if (loc < MIN_LOC || loc > MAX_LOC || !exports.length) continue;
-    gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `packages/server/src/__tests__/${service}.test.ts`, exports, loc });
+    const names = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+    if (loc < MIN_LOC || loc > MAX_LOC || !names.length) continue;
+    gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `packages/server/src/__tests__/${service}.test.ts`, exports: names, loc });
   }
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service)); // smallest, most self-contained first
 }
@@ -100,9 +100,9 @@ export function discoverPackageGaps(repoPath: string): TestGap[] {
       const name = path.basename(f, '.ts'); const rel = path.relative(src, f);
       if (name === 'index' || tested.has(name)) continue;
       const text = fs.readFileSync(f, 'utf8'); const loc = text.split('\n').length;
-      const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
-      if (loc < MIN_LOC || loc > MAX_LOC || !exports.length) continue;
-      gaps.push({ service: `${lane.pkg}/${name}`, pkg: lane.pkg, sourcePath: `packages/${lane.pkg}/src/${rel}`, testPath: `${lane.testDir(rel)}${name}.test.ts`, exports, loc });
+      const names = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+      if (loc < MIN_LOC || loc > MAX_LOC || !names.length) continue;
+      gaps.push({ service: `${lane.pkg}/${name}`, pkg: lane.pkg, sourcePath: `packages/${lane.pkg}/src/${rel}`, testPath: `${lane.testDir(rel)}${name}.test.ts`, exports: names, loc });
     }
   }
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
@@ -150,11 +150,11 @@ export function discoverDashboardGaps(repoPath: string): TestGap[] {
     if (tested.has(noExt(f)) || (rel.startsWith('pages/') && /Page$/.test(name))) continue;
     const text = fs.readFileSync(f, 'utf8'); const loc = text.split('\n').length;
     if (/^\s*\/[/*].*(?:@generated|\bgenerated\b.*do not edit)/i.test(text.split('\n', 1)[0]) || DASHBOARD_SHELL.test(text)) continue;
-    const exports = [...text.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
-    if (loc < MIN_LOC || loc > DASHBOARD_MAX_LOC || !exports.length) continue; // no runtime export = type-only
+    const names = [...text.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+    if (loc < MIN_LOC || loc > DASHBOARD_MAX_LOC || !names.length) continue; // no runtime export = type-only
     const ext = f.endsWith('.tsx') || name.startsWith('use') ? '.test.tsx' : '.test.ts';
     gaps.push({ service: `dashboard/${noExt(rel)}`, pkg: 'dashboard', sourcePath: `packages/dashboard/src/${rel}`,
-      testPath: `packages/dashboard/src/${path.posix.dirname(rel) === '.' ? '' : `${path.posix.dirname(rel)}/`}${name}${ext}`, exports, loc });
+      testPath: `packages/dashboard/src/${path.posix.dirname(rel) === '.' ? '' : `${path.posix.dirname(rel)}/`}${name}${ext}`, exports: names, loc });
   }
   return gaps.sort((a, b) => tier(a) - tier(b) || a.loc - b.loc || a.service.localeCompare(b.service));
 }
@@ -185,15 +185,15 @@ export function discoverNodeTestGaps(repoPath: string): TestGap[] {
     const fileExt = path.extname(file); const name = path.basename(file, fileExt); const rel = path.relative(repoPath, file).split(path.sep).join('/');
     if (name === 'index' || !/^[A-Za-z0-9_-]+$/.test(name)) continue;
     const text = fs.readFileSync(file, 'utf8'); const loc = text.split('\n').length;
-    const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]);
-    if (!exports.length || loc > MAX_EXPORT_GAP_LOC) continue;
+    const names = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]);
+    if (!names.length || loc > MAX_EXPORT_GAP_LOC) continue;
     if (!tested.has(name)) {
       if (loc < MIN_LOC || loc > MAX_LOC) continue;
       const testPath = `${dir}/${name}.test${fileExt}`;
-      gaps.push({ service: name, sourcePath: rel, testPath, exports: exports.slice(0, 6), loc, command: `node --test ${testPath}` });
+      gaps.push({ service: name, sourcePath: rel, testPath, exports: names.slice(0, 6), loc, command: `node --test ${testPath}` });
       continue;
     }
-    const untested = exports.filter((fn) => !new RegExp(`\\b${fn}\\b`).test(allTests)).slice(0, 3);
+    const untested = names.filter((fn) => !new RegExp(`\\b${fn}\\b`).test(allTests)).slice(0, 3);
     if (!untested.length || fs.existsSync(path.join(testDir, `${name}.exports.test${fileExt}`))) continue;
     const testPath = `${dir}/${name}.exports.test${fileExt}`;
     gaps.push({ service: name, sourcePath: rel, testPath, exports: untested, loc, kind: 'exports', command: `node --test ${testPath}` });
@@ -245,7 +245,7 @@ const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn)([-_]|$)
 const SELF_REFERENTIAL = /^(loop|evolution|gym|fitness|mutation|self-improvement)-/i;
 // Frozen features (operator decision 2026-11-17): no nginx traffic in 9 days and no scheduler armed in prod, so no lane
 // spends tokens testing them. ponytail: name list, not a flag; unfreeze = drop the prefix here.
-export const FROZEN = /^(explain|explainer|expert|frontier-expert|council|discussion|multi-agent-consensus|fleet-mesh|segml)-/i;
+const FROZEN = /^(explain|explainer|expert|frontier-expert|council|discussion|multi-agent-consensus|fleet-mesh|segml)-/i;
 export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
