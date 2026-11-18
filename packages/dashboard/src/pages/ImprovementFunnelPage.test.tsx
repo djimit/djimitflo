@@ -28,6 +28,24 @@ describe('ImprovementFunnelPage', () => {
     expect(screen.getByText(/No proposal with an outcome yet/)).toBeTruthy();
   });
 
+  it('names the leaks first and shows the Commons inflow and investigation arms; an older server reports the inflow as unknown', async () => {
+    vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [] });
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue(funnel);
+    const { unmount } = render(<ImprovementFunnelPage />);
+    await waitFor(() => expect(screen.getByText('Commons inflow')).toBeTruthy());
+    expect(screen.getByText('not reported by this server')).toBeTruthy();
+    expect(screen.getByText('80%')).toBeTruthy(); // 8 of 10 linked panel decisions asked for more evidence
+    expect(screen.getByText('33%')).toBeTruthy();
+    unmount();
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue({ ...funnel, commons: { inflow: { cap: 0, state: 'disabled' }, proposals: 737, verified: 0, effectMinN: 30,
+      evidenceEffect: [{ arm: 'investigated', stuck: 24, refined: 18, decided: 5, verified: 0, regressed: 0, decidedRate: null }, { arm: 'not_investigated', stuck: 1100, refined: 289, decided: 110, verified: 0, regressed: 1, decidedRate: 0.1 }] } });
+    render(<ImprovementFunnelPage />);
+    await waitFor(() => expect(screen.getByText('disabled')).toBeTruthy());
+    expect(screen.getByText('0 verified of 737 proposals from Commons learnings, all time · reflection cap 0 per 24 h')).toBeTruthy();
+    expect(screen.getByText('5 (insufficient, n < 30)')).toBeTruthy(); // 24 investigated: no rate
+    expect(screen.getByText('110 (10%)')).toBeTruthy();
+  });
+
   it('DF-01/02/03: refinement conversion comes from linked goals, goal rate from linked panels, panels and reviews are labelled apart', async () => {
     // prod 2026-10-23: 307 refined children, statuses 292 archived / 14 no_change / 1 regressed, 18 with a goal (14 completed, 4 failed);
     // 505 panels no proposal points at
