@@ -50,12 +50,14 @@ export interface ImprovementFunnel {
    * What the Agent Commons contributes. inflow: the reflection-proposal cap its learnings share (state disabled = cap 0, nothing
    * can enter). proposals/verified: proposals a Commons learning created. evidenceEffect: descriptive, not causal (threads are
    * not assigned at random) — proposals that never reached a goal themselves, split by whether a Commons thread investigated
-   * them (a question with topic_ref proposal:<id>), and what their refinement children became. Rates are null below
+   * them, and what their refinement children became. Arms: commons_review = a completed Commons proposal review was fed into the
+   * refinement (COMMONS_PROPOSAL_REVIEW_ENABLED, run 2026-09-20..30); investigated = a Commons thread on the proposal (a
+   * question with topic_ref proposal:<id>) and no review; not_investigated = neither. Rates are null below
    * effectMinN per arm. null = unreadable.
    */
   commons: {
     inflow: { cap: number | null; state: string } | null; proposals: number | null; verified: number | null; effectMinN: number;
-    evidenceEffect: Array<{ arm: 'investigated' | 'not_investigated'; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null;
+    evidenceEffect: Array<{ arm: CommonsArm; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null;
   };
   /** UX-004: metric → why it could not be read (`missing_schema: …` for an absent table/column, `query_failed: …` otherwise). */
   unavailable: Record<string, string>;
@@ -88,6 +90,7 @@ const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'appli
 const OPEN_WORK = "status IN ('candidate','triaged','planned','leased','blocked')";
 const WORK_GROUP_LIMIT = 12;
 const MEDIAN_WINDOW_DAYS = 30;
+export type CommonsArm = 'commons_review' | 'investigated' | 'not_investigated';
 const EFFECT_MIN_N = 30; // same floor as the skill-route contrast: below it a rate is noise
 const AGED_WORK_DAYS = 14; // the queue-hygiene work-item TTL (WORK_ITEM_TTL_DAYS) for the shortest-lived loops
 
@@ -187,24 +190,25 @@ export class ImprovementFunnelService {
     const own = this.tryRows<{ n: number; verified: number | null }>('commonsProposals', `SELECT COUNT(*) AS n, SUM(status IN ('verified', 'evaluating', 'applied')) AS verified FROM self_improvements WHERE id IN (
       SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')`);
     // one scan of agent_messages and one of the children, then a join on ids (no json_extract per proposal row)
-    const arms = this.tryRows<{ inv: number; stuck: number; refined: number; decided: number; verified: number; regressed: number }>('commonsEvidenceEffect', `
+    const arms = this.tryRows<{ arm: CommonsArm; stuck: number; refined: number; decided: number; verified: number; regressed: number }>('commonsEvidenceEffect', `
       WITH inv AS MATERIALIZED (SELECT DISTINCT substr(json_extract(payload_json, '$.params.topic_ref'), 10) AS id FROM agent_messages
           WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_extract(payload_json, '$.params.topic_ref') LIKE 'proposal:%'),
         kids AS MATERIALIZED (SELECT c.refined_from_id AS id,
             MAX(COALESCE(json_extract(p.consensus_json, '$.decision'), '') IN ('goal', 'blocked', 'backlog')) AS decided,
             MAX(c.status IN ('verified', 'evaluating', 'applied')) AS verified, MAX(c.status = 'regressed') AS regressed
           FROM self_improvements c LEFT JOIN specialist_panels p ON p.id = c.panel_id WHERE c.refined_from_id IS NOT NULL GROUP BY c.refined_from_id)
-      SELECT inv.id IS NOT NULL AS inv, COUNT(*) AS stuck, COUNT(kids.id) AS refined, COALESCE(SUM(kids.decided), 0) AS decided,
+      SELECT CASE WHEN r.improvement_id IS NOT NULL THEN 'commons_review' WHEN inv.id IS NOT NULL THEN 'investigated' ELSE 'not_investigated' END AS arm, COUNT(*) AS stuck, COUNT(kids.id) AS refined, COALESCE(SUM(kids.decided), 0) AS decided,
         COALESCE(SUM(kids.verified), 0) AS verified, COALESCE(SUM(kids.regressed), 0) AS regressed
       FROM self_improvements s LEFT JOIN inv ON inv.id = s.id LEFT JOIN kids ON kids.id = s.id
+        LEFT JOIN commons_proposal_reviews r ON r.improvement_id = s.id AND r.status = 'completed'
       WHERE s.refined_from_id IS NULL AND s.status NOT IN (${REACHED_GOAL.map((x) => `'${x}'`).join(', ')}) GROUP BY 1`);
-    const arm = (name: 'investigated' | 'not_investigated', r?: { stuck: number; refined: number; decided: number; verified: number; regressed: number }) => {
+    const arm = (name: CommonsArm, r?: { stuck: number; refined: number; decided: number; verified: number; regressed: number }) => {
       const { stuck = 0, refined = 0, decided = 0, verified = 0, regressed = 0 } = r ?? {};
       return { arm: name, stuck, refined, decided, verified, regressed, decidedRate: stuck >= EFFECT_MIN_N ? decided / stuck : null };
     };
     return {
       inflow, proposals: own === null ? null : own[0]?.n ?? 0, verified: own === null ? null : own[0]?.verified ?? 0, effectMinN: EFFECT_MIN_N,
-      evidenceEffect: arms === null ? null : [arm('investigated', arms.find((a) => a.inv === 1)), arm('not_investigated', arms.find((a) => a.inv === 0))],
+      evidenceEffect: arms === null ? null : (['commons_review', 'investigated', 'not_investigated'] as const).map((name) => arm(name, arms.find((a) => a.arm === name))),
     };
   }
 

@@ -781,11 +781,11 @@ export type ImprovementFunnel = {
   queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
   /**
    * Agent Commons contribution (absent on older servers). inflow.state disabled = cap 0. evidenceEffect is descriptive, not
-   * causal: proposals that never reached a goal themselves, by whether a Commons thread investigated them; decidedRate is null
+   * causal: proposals that never reached a goal themselves, by arm (commons_review = a completed Commons review fed the refinement, investigated = a Commons thread only); decidedRate is null
    * below effectMinN per arm.
    */
   commons?: { inflow: { cap: number | null; state: string } | null; proposals: number | null; verified: number | null; effectMinN: number;
-    evidenceEffect: Array<{ arm: 'investigated' | 'not_investigated'; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null };
+    evidenceEffect: Array<{ arm: 'commons_review' | 'investigated' | 'not_investigated'; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null };
   /** metric → `missing_schema: …` | `query_failed: …` */
   unavailable?: Record<string, string>;
 };
