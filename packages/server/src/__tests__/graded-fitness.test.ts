@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { GRADED_MUTANTS_V2, gradedContestMode, gradedFitnessMode, gradedMutants, gradedRefs, leaseGradedRefs, parseGraded, recordMakerGraded, type KillRunner } from '../services/graded-fitness';
+import { GRADED_MUTANTS_V2, gradedContestMode, gradedEvidence, gradedFitnessMode, gradedMutants, gradedRefs, gradedTarget, leaseGraded, leaseGradedRefs, mutationScoreOf, parseGraded, recordMakerGraded, type KillRunner } from '../services/graded-fitness';
 import { autoMergeValueSignal } from '../services/loop-auto-merge-state';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 import { WRITE_TEST_MUTANTS } from '../services/gym-failure-tasks';
@@ -73,6 +73,7 @@ it('SI-A prod (shadow): a test-gap maker that wrote the test gets the kill share
   expect(g).toMatchObject({ kind: 'mutant_kill', lane: 'test-gap', total: 3 });
   expect(g.killed).toBe(2);
   expect(g.score).toBe(0.667);
+  expect(g.ms).toBeLessThan(60_000);
   expect(calls.length).toBe(4); // baseline + 3 mutants, only the maker's test file
   expect(new Set(calls)).toEqual(new Set(['src/__tests__/widget.test.ts']));
   expect(fs.readFileSync(path.join(wt, TARGET), 'utf8')).toBe(SOURCE);
@@ -162,4 +163,109 @@ it('B7: on, a test that kills 1 seeded mutant scores 1/6 (low for the value gate
   const off = meta('m-1').graded;
   expect(off).toMatchObject({ killed: 1, total: 3, score: 0.333 });
   expect(autoMergeValueSignal([], off)).toBe('pass');
+});
+
+it('parseGraded: strict graded:<0|1>.ddd anchored regex and score <= 1 bound; kind required', () => {
+  expect(parseGraded(['graded:1.000', 'graded_kind:binary'])).toEqual({ score: 1, kind: 'binary' });
+  // a leading junk char is rejected by the ^ anchor; a 4th decimal by the $ anchor
+  expect(parseGraded(['graded:X0.333', 'graded_kind:mutant_kill'])).toBeNull();
+  expect(parseGraded(['graded:0.3334', 'graded_kind:mutant_kill'])).toBeNull();
+  // regex matches but score > 1 is rejected (1.500, not 2.000 which fails the [01] class)
+  expect(parseGraded(['graded:1.500', 'graded_kind:mutant_kill'])).toBeNull();
+  expect(parseGraded(['graded:0.333'])).toBeNull(); // no kind
+});
+
+it('gradedRefs: an invalid kind yields no refs even with a finite score', () => {
+  expect(gradedRefs(0.5, 'vibes' as never)).toEqual([]);
+});
+
+it('leaseGraded: finite number + valid kind required; missing kind or non-number score is null', () => {
+  expect(leaseGraded({})).toBeNull();
+  expect(leaseGraded({ graded: { score: 0.5 } })).toBeNull();
+  expect(leaseGraded({ graded: { score: 'x', kind: 'mutant_kill' } })).toBeNull();
+  expect(leaseGraded({ graded: { score: Number.NaN, kind: 'mutant_kill' } })).toBeNull();
+  expect(leaseGraded({ graded: { score: 0.5, kind: 'mutant_kill' } })).toEqual({ score: 0.5, kind: 'mutant_kill' });
+  expect(leaseGraded({ graded: { score: 2, kind: 'mutant_kill', lane: 'test-gap' } })).toEqual({ score: 1, kind: 'mutant_kill', lane: 'test-gap' });
+});
+
+it('gradedTarget: the grounding target when it is a service file, else the test namesake; strict anchored service regex', () => {
+  expect(gradedTarget('packages/server/src/__tests__/widget.test.ts', 'packages/server/src/services/other.ts')).toBe('packages/server/src/services/other.ts');
+  expect(gradedTarget('packages/server/src/__tests__/widget.test.ts', null)).toBe('packages/server/src/services/widget.ts');
+  expect(gradedTarget('packages/server/src/__tests__/widget.test.ts', 'not/a/service.ts')).toBe('packages/server/src/services/widget.ts');
+  // a prefixed path fails the ^ anchor of the test regex -> throws (a relaxed mutant would return the namesake)
+  expect(() => gradedTarget('foo/packages/server/src/__tests__/widget.test.ts', null)).toThrow();
+});
+
+it('mutationScoreOf: parses the after score from the mutation-gain JSON line; measured 0 is 0, missing/unreadable is null', () => {
+  const log = (s: string) => { const p = path.join(wt, `m-${Math.random()}.log`); fs.writeFileSync(p, s); return p; };
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: log('{"after":98.25}') }])).toBe(98.25);
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: log('{"after":0}') }])).toBe(0);
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: log('no after here') }])).toBeNull();
+  expect(mutationScoreOf([{ name: 'lint' }])).toBeNull();
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: '/no/such/file.log' }])).toBeNull();
+});
+
+it('SI-A prod (shadow): a runner crash records the error message (no "Error: " prefix) and restores the target', () => {
+  seed(['test-gap:widget'], [TEST]);
+  expect(() => recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' }, run: () => { throw new Error('spawn ENOENT'); } })).not.toThrow();
+  expect(meta('m-1').graded.skipped).toBe('error: spawn ENOENT');
+  expect(fs.readFileSync(path.join(wt, TARGET), 'utf8')).toBe(SOURCE);
+});
+
+it('SI-A prod (shadow): a target with no valid single-operator mutant records skipped "no mutant" (not a NaN score)', () => {
+  const NO_OP = 'export const x = 1;\n';
+  fs.writeFileSync(path.join(wt, TARGET), NO_OP);
+  seed(['test-gap:widget'], [TEST]);
+  recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' }, run: runner([/./]) });
+  expect(meta('m-1').graded).toMatchObject({ skipped: 'no mutant' });
+});
+
+it('SI-A prod (shadow): a non-test-gap / non-exports / non-mutation lane is not graded', () => {
+  seed(['doc-drift:widget'], [TEST]);
+  const calls: string[] = [];
+  recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' }, run: runner([/./], calls) });
+  expect(calls).toEqual([]);
+  expect(meta('m-1').graded).toBeUndefined();
+});
+
+it('SI-A prod (shadow): an unreadable proposal (unknown run id) never throws and records nothing', () => {
+  seed(['test-gap:widget'], [TEST]);
+  expect(() => recordMakerGraded(db, 'no-such-run', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' }, run: runner([/./]) })).not.toThrow();
+  expect(meta('m-1').graded).toBeUndefined();
+});
+
+it('SI-A/SI-B evidence: gradedEvidence aggregates per-pool n/mean/share_full and contest agreement; empty db is null, never zero', () => {
+  db.exec(`CREATE TABLE IF NOT EXISTS skill_outcomes (id TEXT PRIMARY KEY, skill_id TEXT NOT NULL DEFAULT '', success INTEGER NOT NULL DEFAULT 0,
+    tokens_used INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT '', task_id TEXT, agent_id TEXT, model TEXT,
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL)`);
+  const at = new Date(Date.now() - 1000).toISOString();
+  const out = db.prepare('INSERT INTO skill_outcomes (id, skill_id, success, domain, evidence_refs_json, created_at) VALUES (?, ?, 1, ?, ?, ?)');
+  const g = (score: string, kind: string, ...extra: string[]) => JSON.stringify([`graded:${score}`, `graded_kind:${kind}`, ...extra]);
+  out.run('w1', 's', 'gym', g('1.000', 'mutant_kill', 'gym:fail'), at);
+  out.run('w2', 's', 'gym', g('0.500', 'mutant_kill', 'gym:fail'), at);
+  out.run('r1', 's', 'gym', g('0.500', 'tests_green'), at);
+  out.run('t1', 's', 'test-gap', g('0.667', 'mutant_kill', 'graded_lane:test-gap'), at);
+  out.run('x1', 's', 'test-gap', g('1.000', 'mutant_kill', 'graded_lane:exports'), at);
+  out.run('m1', 's', 'doc-drift', g('0.982', 'mutation_score', 'graded_lane:mutation'), at);
+  out.run('bad', 's', 'gym', '["graded:0.5"]', at); // no kind -> not parsed
+  out.run('plain', 's', 'gym', '[]', at);
+  db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES ('c', 'test-gap', 'closed', 'completed', '[]', ?, ?)").run(at, at);
+  const ev = db.prepare("INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'c', 'contest_graded', 'info', 'm', ?, ?)");
+  ev.run('e1', JSON.stringify({ agree: 1 }), at); ev.run('e2', JSON.stringify({ agree: 0 }), at); ev.run('e3', JSON.stringify({ agree: 1 }), at);
+  const e = gradedEvidence(db, at, { GRADED_FITNESS_MODE: 'shadow', GRADED_CONTEST_MODE: 'shadow' });
+  expect(e.mode).toEqual({ fitness: 'shadow', contest: 'shadow' });
+  expect(e.pools).toEqual([
+    { pool: 'gym_write_test', n: 2, mean: 0.75, share_full: 0.5 },
+    { pool: 'gym_repair', n: 1, mean: 0.5, share_full: 0 },
+    { pool: 'prod_test_gap', n: 1, mean: 0.667, share_full: 0 },
+    { pool: 'prod_exports', n: 1, mean: 1, share_full: 1 },
+    { pool: 'prod_mutation', n: 1, mean: 0.982, share_full: 0 },
+  ]);
+  expect(e.contest).toEqual({ contests: 3, agree: 2, agreement_rate: 0.667 });
+  // a bare database (no tables) reports null means / null agreement rate, never zeros
+  const bare = new Database(':memory:');
+  const b = gradedEvidence(bare, at);
+  expect(b.pools.every((p) => p.n === 0 && p.mean === null && p.share_full === null)).toBe(true);
+  expect(b.contest).toEqual({ contests: 0, agree: 0, agreement_rate: null });
+  bare.close();
 });
