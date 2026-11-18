@@ -750,7 +750,7 @@ export class LoopDaemon {
       // 7. Run deterministic checks (test, lint, type-check).
       let activeMakerLease = makerLease;
       try {
-        const checks = this.loops.runDeterministicChecks(run.id, {
+        const checks = await this.loops.runDeterministicChecks(run.id, {
           lease_id: makerLease.id,
           ...daemonCheckOptions(process.env, goalRepo),
         });
@@ -777,7 +777,7 @@ export class LoopDaemon {
               await this.loops.awaitWorkerExecution(retryMaker.id);
               await this.loops.executeWorker(run.id, retryInput);
             }
-            this.loops.runDeterministicChecks(run.id, {
+            await this.loops.runDeterministicChecks(run.id, {
               lease_id: retryMaker.id,
               ...daemonCheckOptions(process.env, goalRepo),
             });
@@ -833,7 +833,7 @@ export class LoopDaemon {
                 }
               }
             }
-            this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions(process.env, goalRepo) });
+            await this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions(process.env, goalRepo) });
           } catch (error) {
             // Y0b (prod 2026-09-30 16:17/18:29): a sibling that still needs a human approval is not a failed sibling — the
             // run used to conclude 'no winner' at once and the approval arrived after the proposal was labelled regressed.
