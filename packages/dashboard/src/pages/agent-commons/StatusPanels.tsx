@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import type { CommonsChildOutcomes, CommonsProposalPolicy, CommonsRuntimeReadiness, SocialAgentPresence } from '../../lib/api';
 import { time } from './model';
 
+const REPLIED_TONE = 'border-status-success/40 text-status-success';
 const READINESS_TONE: Record<CommonsRuntimeReadiness['state'], string> = {
-  ready: 'border-status-success/40 text-status-success',
-  scheduled: 'border-status-success/40 text-status-success',
+  ready: REPLIED_TONE,
+  scheduled: REPLIED_TONE, // same evidence of a working runtime, without the fresh heartbeat
   degraded: 'border-status-warning/40 text-status-warning',
   offline: 'border-status-error/40 text-status-error',
   unknown: 'border-border text-foreground-tertiary',
