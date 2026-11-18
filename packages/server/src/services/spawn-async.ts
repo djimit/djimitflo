@@ -6,6 +6,8 @@ import { spawn, type SpawnOptions } from 'child_process';
  * result shape the callers already read from spawnSync: `status` (null when killed/not started), `stdout`, `stderr`, and
  * `error` whose message contains ETIMEDOUT on a timeout. Output beyond `maxBuffer` is dropped (spawnSync would kill instead).
  */
+const MAX_TIMEOUT_MS = 60 * 60_000;
+
 export interface SpawnAsyncResult { status: number | null; stdout: string; stderr: string; error?: Error }
 
 export function spawnAsync(command: string, args: readonly string[], opts: SpawnOptions & { timeout?: number; maxBuffer?: number } = {}): Promise<SpawnAsyncResult> {
@@ -19,7 +21,9 @@ export function spawnAsync(command: string, args: readonly string[], opts: Spawn
     }
     child.stdout?.on('data', (c: Buffer) => { stdout = append(stdout, c); });
     child.stderr?.on('data', (c: Buffer) => { stderr = append(stderr, c); });
-    if (timeout && timeout > 0) timer = setTimeout(() => { error = new Error(`spawnAsync ${command} ETIMEDOUT`); child.kill('SIGTERM'); }, timeout);
+    // hard ceiling at the sink: timeouts can originate in a request body (POST /loops/runs/:id/run-checks)
+    const ms = Math.min(Math.max(Number(timeout) || 0, 0), MAX_TIMEOUT_MS);
+    if (ms > 0) timer = setTimeout(() => { error = new Error(`spawnAsync ${command} ETIMEDOUT`); child.kill('SIGTERM'); }, ms);
     let done = false;
     const finish = (code: number | null) => { if (done) return; done = true; if (timer) clearTimeout(timer); resolve({ status: error ? null : code, stdout, stderr, error }); };
     child.once('error', (e) => { error ??= e; if (child.pid === undefined) finish(null); }); // not started (ENOENT): no 'close' guaranteed
