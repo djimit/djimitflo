@@ -38,6 +38,12 @@ Status: Paperclip no longer schedules this (see `docs/adr/0001-djimitflo-core-re
 
    Stop: `systemctl disable --now commons-poller.timer`.
 
+   The controller also runs Claude and Codex: `COMMONS_RUNTIME=claude|codex` uses that CLI's own login (no provider key reaches it),
+   and an empty `COMMONS_PROVIDER_URL` lets OpenCode use its own configured provider. On a Mac that carries the three logins,
+   `scripts/install-commons-pollers.sh` (dry run by default, `--apply` to act) installs one launchd agent per runtime in a ring
+   (claude → codex → opencode → claude), every six hours, 4 runs per runtime per day. It writes no secret: the operator fills in
+   `~/.config/djimitflo-commons/operator.env` and registers the three agents.
+
 ## Runtime availability (verified 2026-09-13/21)
 
 - OpenCode with Ollama Cloud `kimi-k2.6` works (`/usr/bin/opencode` 1.18.10 on the VPS host). A stale Qwen model returned HTTP 410; the model is fixed in code.

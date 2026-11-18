@@ -27,14 +27,16 @@ class SocialRuntimeTests(unittest.TestCase):
             poller.parse_cli_output('opencode', json.dumps(event))
 
     def test_token_and_runtime_configuration_cannot_escape_to_children(self):
-        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'private', 'NODE_OPTIONS': '--require evil', 'OPENCODE_CONFIG_CONTENT': 'evil', 'ANTHROPIC_API_KEY': 'provider'}, clear=True):
-            for runtime in ('claude', 'gemini', 'opencode', 'pi', 'hermes'):
+        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'private', 'NODE_OPTIONS': '--require evil', 'OPENCODE_CONFIG_CONTENT': 'evil', 'ANTHROPIC_API_KEY': 'provider', 'OPENAI_API_KEY': 'openai', 'USER': 'me'}, clear=True):
+            for runtime in ('claude', 'gemini', 'opencode', 'pi', 'hermes', 'codex'):
                 env = poller.runtime_env(runtime)
                 self.assertNotIn('DJIMITFLO_SOCIAL_TOKEN', env)
                 self.assertNotIn('NODE_OPTIONS', env)
                 self.assertNotIn('OPENCODE_CONFIG_CONTENT', env)
             self.assertEqual(poller.runtime_env('claude')['ANTHROPIC_API_KEY'], 'provider')
             self.assertNotIn('ANTHROPIC_API_KEY', poller.runtime_env('gemini'))
+            self.assertEqual(poller.runtime_env('codex'), {'OPENAI_API_KEY': 'openai', 'USER': 'me'})
+            self.assertEqual(poller.runtime_env('claude')['USER'], 'me')
 
     def test_no_tools_configuration_and_ephemeral_working_directory(self):
         def execute(command, prompt, cwd, env):
@@ -52,13 +54,24 @@ class SocialRuntimeTests(unittest.TestCase):
                 self.assertEqual(json.loads(env['OPENCODE_CONFIG_CONTENT'])['permission'], {'*': 'deny'})
                 self.assertIn('--pure', command)
                 return json.dumps({'type': 'text', 'sessionID': 'o', 'part': {'text': json.dumps(REPLY)}})
+            if command[0].endswith('codex'):
+                self.assertEqual(command[command.index('-s') + 1], 'read-only')
+                self.assertEqual(command[command.index('-C') + 1], cwd)
+                for flag in ('--ephemeral', '--ignore-user-config', '--ignore-rules'): self.assertIn(flag, command)
+                self.assertEqual([command[i + 1] for i, part in enumerate(command) if part == '--disable'], ['apps', 'plugins', 'hooks', 'memories', 'browser_use', 'computer_use'])
+                return '\n'.join(json.dumps(event) for event in ({'type': 'thread.started', 'thread_id': 'x'}, {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(REPLY)}}, {'type': 'turn.completed', 'usage': {'output_tokens': 9}}))
             self.assertIn('--no-tools', command)
             self.assertIn('--no-extensions', command)
             return json.dumps({'type': 'message_end', 'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': json.dumps(REPLY)}]}})
         with patch.object(poller.shutil, 'which', side_effect=lambda name: '/bin/' + name), patch.object(poller, 'bounded_process', side_effect=execute):
-            for runtime in ('claude', 'gemini', 'opencode', 'pi'):
+            for runtime in ('claude', 'gemini', 'opencode', 'pi', 'codex'):
                 output, _, _ = poller.run_cli(runtime, 'quoted peer data')
                 self.assertEqual(poller.extract_object(output), REPLY)
+            self.assertEqual(poller.run_cli('codex', 'quoted peer data')[1:], ('x', {'output_tokens': 9}))
+
+    def test_codex_failed_turn_fails_closed_without_the_provider_message(self):
+        with self.assertRaisesRegex(RuntimeError, '^codex returned a failed turn$'):
+            poller.parse_cli_output('codex', json.dumps({'type': 'turn.failed', 'error': {'message': 'secret provider body'}}))
 
     def test_hermes_uses_a_session_source_hermes_accepts(self):
         # Hermes >= 2026.10 rejects unknown --source tags with invalid_params before sending; 'tool' is its tag for integrations

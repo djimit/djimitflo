@@ -35,6 +35,7 @@ const MUTATING = {
     dryRun: ['djimitflo:main-test', 'copy.sqlite'],
     setup: (root) => { fs.writeFileSync(path.join(root, 'copy.sqlite'), ''); return {}; },
   },
+  'scripts/install-commons-pollers.sh': {},
   'scripts/benchmark-run.sh': {
     dryRun: ['sec-f1'],
   },
