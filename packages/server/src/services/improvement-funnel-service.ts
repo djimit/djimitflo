@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { DreamStateService } from './dream-state-service';
 import { supersededMergeOutcomeSql } from './merge-superseded';
+import { reflectionProposalPolicy } from './self-improvement-service';
 import { realRunSql, syntheticRunSql } from './synthetic-runs';
 
 /** Read-only SQL aggregation of the whole improvement chain, so "where does it leak" is one call. */
@@ -45,6 +46,17 @@ export interface ImprovementFunnel {
    * (loop, status) groups of workItemGroups.
    */
   queues: { openWorkItems: number | null; workItemGroups: number | null; workItemsByLoopLimit: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /**
+   * What the Agent Commons contributes. inflow: the reflection-proposal cap its learnings share (state disabled = cap 0, nothing
+   * can enter). proposals/verified: proposals a Commons learning created. evidenceEffect: descriptive, not causal (threads are
+   * not assigned at random) — proposals that never reached a goal themselves, split by whether a Commons thread investigated
+   * them (a question with topic_ref proposal:<id>), and what their refinement children became. Rates are null below
+   * effectMinN per arm. null = unreadable.
+   */
+  commons: {
+    inflow: { cap: number | null; state: string } | null; proposals: number | null; verified: number | null; effectMinN: number;
+    evidenceEffect: Array<{ arm: 'investigated' | 'not_investigated'; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null;
+  };
   /** UX-004: metric → why it could not be read (`missing_schema: …` for an absent table/column, `query_failed: …` otherwise). */
   unavailable: Record<string, string>;
   /** TypeSafe judgments (ADR 0002): volume, latency and agreement with the final outcome where one exists (plan E7/E10). */
@@ -76,6 +88,7 @@ const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'appli
 const OPEN_WORK = "status IN ('candidate','triaged','planned','leased','blocked')";
 const WORK_GROUP_LIMIT = 12;
 const MEDIAN_WINDOW_DAYS = 30;
+const EFFECT_MIN_N = 30; // same floor as the skill-route contrast: below it a rate is noise
 const AGED_WORK_DAYS = 14; // the queue-hygiene work-item TTL (WORK_ITEM_TTL_DAYS) for the shortest-lived loops
 
 const median = (sorted: number[]) => {
@@ -168,6 +181,33 @@ export class ImprovementFunnelService {
     return { reachedGoal, completed, failed, other: reachedGoal - completed - failed };
   }
 
+  private commons(): ImprovementFunnel['commons'] {
+    let inflow: ImprovementFunnel['commons']['inflow'] = null;
+    try { const p = reflectionProposalPolicy(this.db); inflow = { cap: p.cap, state: p.state }; } catch (err) { this.unavailable.commonsInflow = `query_failed: ${err instanceof Error ? err.message : String(err)}`; }
+    const own = this.tryRows<{ n: number; verified: number | null }>('commonsProposals', `SELECT COUNT(*) AS n, SUM(status IN ('verified', 'evaluating', 'applied')) AS verified FROM self_improvements WHERE id IN (
+      SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')`);
+    // one scan of agent_messages and one of the children, then a join on ids (no json_extract per proposal row)
+    const arms = this.tryRows<{ inv: number; stuck: number; refined: number; decided: number; verified: number; regressed: number }>('commonsEvidenceEffect', `
+      WITH inv AS MATERIALIZED (SELECT DISTINCT substr(json_extract(payload_json, '$.params.topic_ref'), 10) AS id FROM agent_messages
+          WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_extract(payload_json, '$.params.topic_ref') LIKE 'proposal:%'),
+        kids AS MATERIALIZED (SELECT c.refined_from_id AS id,
+            MAX(COALESCE(json_extract(p.consensus_json, '$.decision'), '') IN ('goal', 'blocked', 'backlog')) AS decided,
+            MAX(c.status IN ('verified', 'evaluating', 'applied')) AS verified, MAX(c.status = 'regressed') AS regressed
+          FROM self_improvements c LEFT JOIN specialist_panels p ON p.id = c.panel_id WHERE c.refined_from_id IS NOT NULL GROUP BY c.refined_from_id)
+      SELECT inv.id IS NOT NULL AS inv, COUNT(*) AS stuck, COUNT(kids.id) AS refined, COALESCE(SUM(kids.decided), 0) AS decided,
+        COALESCE(SUM(kids.verified), 0) AS verified, COALESCE(SUM(kids.regressed), 0) AS regressed
+      FROM self_improvements s LEFT JOIN inv ON inv.id = s.id LEFT JOIN kids ON kids.id = s.id
+      WHERE s.refined_from_id IS NULL AND s.status NOT IN (${REACHED_GOAL.map((x) => `'${x}'`).join(', ')}) GROUP BY 1`);
+    const arm = (name: 'investigated' | 'not_investigated', r?: { stuck: number; refined: number; decided: number; verified: number; regressed: number }) => {
+      const { stuck = 0, refined = 0, decided = 0, verified = 0, regressed = 0 } = r ?? {};
+      return { arm: name, stuck, refined, decided, verified, regressed, decidedRate: stuck >= EFFECT_MIN_N ? decided / stuck : null };
+    };
+    return {
+      inflow, proposals: own === null ? null : own[0]?.n ?? 0, verified: own === null ? null : own[0]?.verified ?? 0, effectMinN: EFFECT_MIN_N,
+      evidenceEffect: arms === null ? null : [arm('investigated', arms.find((a) => a.inv === 1)), arm('not_investigated', arms.find((a) => a.inv === 0))],
+    };
+  }
+
   compute(): ImprovementFunnel {
     this.unavailable = {};
     const byStatus = this.counts('SELECT status AS k, COUNT(*) AS n FROM self_improvements GROUP BY status', 'proposals');
@@ -252,7 +292,7 @@ export class ImprovementFunnelService {
         learningClosures: one('learningClosures', 'SELECT COUNT(*) AS n FROM loop_learning_closures'),
         memoryCandidates: this.counts('SELECT status AS k, COUNT(*) AS n FROM memory_candidates GROUP BY status'),
       },
-      kpi, hygiene,
+      kpi, hygiene, commons: this.commons(),
       queues: {
         openWorkItems, workItemGroups, workItemsByLoopLimit: WORK_GROUP_LIMIT, workItemsByLoop,
         commonsReviews: this.counts('SELECT status AS k, COUNT(*) AS n FROM commons_proposal_reviews GROUP BY status', 'commonsReviews'),
