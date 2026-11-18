@@ -21,9 +21,11 @@ export function spawnAsync(command: string, args: readonly string[], opts: Spawn
     }
     child.stdout?.on('data', (c: Buffer) => { stdout = append(stdout, c); });
     child.stderr?.on('data', (c: Buffer) => { stderr = append(stderr, c); });
-    // hard ceiling at the sink: timeouts can originate in a request body (POST /loops/runs/:id/run-checks)
-    const ms = Math.min(Math.max(Number(timeout) || 0, 0), MAX_TIMEOUT_MS);
-    if (ms > 0) timer = setTimeout(() => { error = new Error(`spawnAsync ${command} ETIMEDOUT`); child.kill('SIGTERM'); }, ms);
+    // hard ceiling at the sink: timeouts can originate in a request body (POST /loops/runs/:id/run-checks); clamped to MAX_TIMEOUT_MS
+    // (callers clamp to <= 600 s, so only a bug reaches this; ponytail: an upper-bound guard is what CodeQL recognises, Math.min is not)
+    let ms = Number(timeout) || 0;
+    if (ms > MAX_TIMEOUT_MS) ms = MAX_TIMEOUT_MS;
+    if (ms > 0 && ms <= MAX_TIMEOUT_MS) timer = setTimeout(() => { error = new Error(`spawnAsync ${command} ETIMEDOUT`); child.kill('SIGTERM'); }, ms);
     let done = false;
     const finish = (code: number | null) => { if (done) return; done = true; if (timer) clearTimeout(timer); resolve({ status: error ? null : code, stdout, stderr, error }); };
     child.once('error', (e) => { error ??= e; if (child.pid === undefined) finish(null); }); // not started (ENOENT): no 'close' guaranteed
