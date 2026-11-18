@@ -79,6 +79,12 @@ it('value filter: the mutation lane never hardens the loop\'s own machinery', ()
   write('packages/server/src/index.ts', [...own, 'gamma'].map((n, i) => `import * as m${i} from './services/${n}';`).join('\n'));
   expect(discoverMutationGaps(repo).map((g) => g.service)).toEqual(['gamma']);
 });
+it('the compiled (CJS) module never shadows `exports`: a local `const exports` broke every test-gap run in prod (TDZ, 17-11)', () => {
+  // tsc CJS rewrites an exported const `X` used in a function into `exports.X`; a block-local `const exports` then throws
+  // "Cannot access 'exports' before initialization". vitest's transform does not, so only the source can guard it.
+  const src = fs.readFileSync(path.join(__dirname, '../services/test-gap-source-service.ts'), 'utf8');
+  expect(src).not.toMatch(/\b(const|let|var)\s+exports\b/);
+});
 it('frozen features: no lane proposes tests for explainer/expert/council/... services', () => {
   const frozen = ['explainer-ask-service', 'expert-unit-dedupe', 'council-registry', 'fleet-mesh-service'];
   for (const n of frozen) { write(`packages/server/src/services/${n}.ts`, body(50)); write(`packages/server/src/__tests__/${n}.test.ts`, '// t'); }
