@@ -1,6 +1,7 @@
 import { Gauge, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { useResource } from '../hooks/useResource';
+import { fmt, fmtDate } from '../lib/format';
 
 const fetchFunnel = async () => {
   const [funnel, calibration] = await Promise.all([api.getImprovementFunnel(), api.getPanelCalibration()]);
@@ -63,6 +64,7 @@ export function ImprovementFunnelPage() {
       <p className="text-sm text-foreground-secondary">
         Where proposals leak: generated, reviewed by the specialist panel, turned into goals, verified. Reasons and rates come straight from the database.
       </p>
+      {funnel && <p className="text-xs text-foreground-muted">Data generated {fmtDate(funnel.generatedAt)} · refresh to re-read the database</p>}
       {error && <p role="alert" className="text-status-error">{error}</p>}
 
       {funnel && (
@@ -98,6 +100,12 @@ export function ImprovementFunnelPage() {
               <Stat label="Median hours created → last update" value={funnel.kpi.medianHoursToVerified ?? '—'}
                 hint={why('medianHoursToVerified', `currently verified/evaluating/applied · updated in last ${medianWindow ?? '?'} d · n=${known(funnel.kpi.medianHoursN)} · not first-verification latency (no verification timestamp is stored)`)} />
               <Stat label="Approvals per run" value={funnel.kpi.approvalsPerRun ?? '—'} hint={`approved rows / distinct linked loop runs, last ${funnel.kpi.windowDays} d`} />
+            </div>
+            <h2 className="text-lg font-semibold mt-4 mb-2">Run cost</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <Stat label="Maker runs" value={funnel.kpi.runs == null ? 'unknown' : fmt(funnel.kpi.runs)} hint={`loop-maker outcomes, last ${funnel.kpi.windowDays} d`} />
+              <Stat label="Run success rate" value={funnel.kpi.runSuccessRate == null ? '—' : `${Math.round(funnel.kpi.runSuccessRate * 100)}%`} hint="successful maker outcomes / maker runs" />
+              <Stat label="Tokens per verified" value={funnel.kpi.tokensPerVerified == null ? 'unknown' : fmt(funnel.kpi.tokensPerVerified)} hint="maker tokens / verified changes; null when cost is unknown" />
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
               <Stat label="Zombie goals" value={known(funnel.hygiene.zombieGoals)} hint={why('zombieGoals', 'running >24 h / blocked >7 d without a wait reason')} />
