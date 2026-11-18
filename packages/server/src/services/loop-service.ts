@@ -10,6 +10,7 @@ import os from 'os';
 import path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
+import { spawnAsync } from './spawn-async';
 import { LOOP_CATALOG } from '@djimitflo/shared';
 import { createError } from '../middleware/error-handler';
 
@@ -1126,7 +1127,7 @@ export class LoopService {
     };
   }
 
-  runDeterministicChecks(id: string, input: RunChecksInput = {}): { run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> } {
+  async runDeterministicChecks(id: string, input: RunChecksInput = {}): Promise<{ run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> }> {
     const run = this.getLoopRun(id);
     const leases = this.listWorkerLeases(run.id);
     const makerLease = input.lease_id
@@ -1159,9 +1160,11 @@ export class LoopService {
     // Each deploy mounts a fresh clone without node_modules, so the worktree manager has nothing to link: checks ran without
     // vitest/eslint (exit 127) unless the maker happened to run `npm ci` itself (prod 2026-09-28: 3 test-gap runs regressed).
     // Install like the gym does when the worktree has a lockfile but no dependencies.
-    const installFailure = this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
+    const installFailure = await this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
 
-    const checks: Array<Record<string, unknown>> = scripts.map((scriptName) => {
+    // Sequential and awaited (event-loop-freeze plan 2026-11-18): the server keeps serving while a check runs.
+    const checks: Array<Record<string, unknown>> = [];
+    for (const scriptName of scripts) checks.push(await (async () => {
       const stdoutPath = path.join(outputDir, `${scriptName}.stdout.log`);
       const stderrPath = path.join(outputDir, `${scriptName}.stderr.log`);
       if (!packageScripts.has(scriptName)) {
@@ -1179,9 +1182,8 @@ export class LoopService {
         };
       }
 
-      const result = spawnSync('npm', ['run', scriptName], {
+      const result = await spawnAsync('npm', ['run', scriptName], {
         cwd: makerLease.worktree_path!,
-        encoding: 'utf8',
         timeout: timeoutMs,
         env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id), ...findingFixCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
@@ -1198,7 +1200,7 @@ export class LoopService {
         stdout_path: stdoutPath,
         stderr_path: stderrPath,
       };
-    });
+    })());
 
     if (installFailure) checks.unshift(installFailure);
     // F1 (09-10): deterministic assertion strength of a test-writing maker's changed test files (WEAK_ASSERTION_CHECK_MODE)
@@ -2115,10 +2117,10 @@ export class LoopService {
   }
 
   /** `npm ci` in a worktree that has a lockfile but no node_modules; returns a failed 'install' check, or null. */
-  private installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Record<string, unknown> | null {
+  private async installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
     if (!fs.existsSync(path.join(worktree, 'package-lock.json')) || fs.existsSync(path.join(worktree, 'node_modules'))) return null;
-    const result = spawnSync('npm', [...LoopService.WORKTREE_INSTALL_ARGS], {
-      cwd: worktree, encoding: 'utf8', timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
+    const result = await spawnAsync('npm', [...LoopService.WORKTREE_INSTALL_ARGS], {
+      cwd: worktree, timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
     });
     if (result.status === 0) return null;
     const stdoutPath = path.join(outputDir, 'install.stdout.log');

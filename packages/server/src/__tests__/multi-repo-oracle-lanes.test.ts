@@ -57,9 +57,9 @@ describe('B1: a configured check script the repo does not have is a failure, nev
     return new LoopService(db, path.join(tmp, 'evidence'));
   }
 
-  it('a missing script fails the checks (reason missing_script) and blocks the run', () => {
+  it('a missing script fails the checks (reason missing_script) and blocks the run', async () => {
     const loops = makerRun({ test: 'node -e "process.exit(0)"' });
-    const result = loops.runDeterministicChecks('run', { lease_id: 'm', scripts: ['test', 'lint'] });
+    const result = await loops.runDeterministicChecks('run', { lease_id: 'm', scripts: ['test', 'lint'] });
     expect(result.checks).toEqual([expect.objectContaining({ name: 'test', status: 'pass' }), expect.objectContaining({ name: 'lint', status: 'fail', reason: 'missing_script', exit_status: null })]);
     expect(result.run.status).toBe('blocked');
     expect(result.lease.metadata.failure_reason).toBe('deterministic_checks_failed:lint(missing_script)');

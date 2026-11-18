@@ -63,7 +63,7 @@ describe('the checker runs with the base commit agent config, not the maker tree
     const prepared = loops.continueLoopRun(run.id, { runtime: 'mock', max_assignments: 1, max_maker_workers: 1 });
     const maker = prepared.leases.find((l) => l.role === 'maker' && l.status === 'prepared')!;
     await loops.executeWorker(run.id, { lease_id: maker.id, timeout_ms: 10_000 });
-    loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
+    await loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
 
     // the maker "reviews itself": rewrites the instructions, adds a project config and an agent, drops the base reviewer
     const mwt = loops.getWorkerLease(maker.id).worktree_path!;
