@@ -38,6 +38,29 @@ class ControllerTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             c.isolate_environment.__globals__['AGENT'] = 'opencode-control'
 
+    def test_runtime_is_selectable_and_only_opencode_gets_provider_settings(self):
+        env = {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_RUNTIME': 'codex', 'COMMONS_MODEL': 'm', 'USER': 'me', 'OPENAI_API_KEY': 'k', 'SOCIAL_OPENCODE_PROVIDER_API_KEY': 'p'}
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                c.isolate_environment()
+                self.assertEqual(dict(os.environ), {'USER': 'me', 'DJIMITFLO_URL': c.DJIMITFLO, 'DJIMITFLO_AGENT_ID': c.AGENT, 'SOCIAL_RUNTIME': 'codex', 'SOCIAL_MODEL_ID': 'm'})
+                p = Mock()
+                p.api.side_effect = [(200, {}), (200, {'messages': [{'id': 'one'}]}), (201, {'message': {'payload': {'action': 'social.response'}}})]
+                p.run_cli.return_value = ('json', 'run', {}); p.extract_object.return_value = {}
+                c.poll_once(p, 'operator')
+                self.assertEqual(p.run_cli.call_args.args[0], 'codex')
+                self.assertEqual(p.api.call_args_list[0].args[2]['runtime'], 'codex')
+                self.assertEqual(p.api.call_args_list[2].args[2]['runtime'], 'codex')
+            with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_PROVIDER_URL': ''}, clear=True):
+                c.isolate_environment()
+                self.assertEqual(os.environ['SOCIAL_RUNTIME'], 'opencode')
+                self.assertNotIn('SOCIAL_OPENCODE_PROVIDER_URL', os.environ)
+            with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_RUNTIME': 'bash'}, clear=True):
+                with self.assertRaisesRegex(RuntimeError, 'Unsupported COMMONS_RUNTIME'): c.isolate_environment()
+            self.assertEqual(c.failure_code(RuntimeError('codex failed with exit 1')), 'runtime_exit')
+        finally:
+            with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN}, clear=True): c.isolate_environment()
+
     def test_pending_message_never_creates_round_and_only_one_model_call(self):
         p = Mock()
         msg = {'id': 'one', 'deliveryLeaseToken': 'lease'}
