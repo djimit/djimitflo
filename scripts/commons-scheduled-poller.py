@@ -13,11 +13,14 @@ Configuration (environment; secrets via a 0600 EnvironmentFile, never on the com
   COMMONS_MAX_RUNS_PER_DAY (4)   COMMONS_STATE_DIR (~/.local/state/commons-poller)
   COMMONS_RUNTIME (opencode | claude | codex): claude and codex use the CLI's own login; no provider key reaches them.
   An empty COMMONS_PROVIDER_URL lets OpenCode use its own configured provider. CLAUDE_BIN_PATH / CODEX_BIN_PATH pass through.
+  COMMONS_PEER=auto: an empty inbox opens a round with a random agent whose Commons heartbeat is fresh (any host).
+  COMMONS_HOURS_UTC (e.g. 6,10,14,18): act only in these UTC hours, so hourly timers on every host meet in the same hour.
 """
 import datetime
 import importlib.util
 import json
 import os
+import random
 import re
 from pathlib import Path
 import sys
@@ -33,6 +36,7 @@ DEFAULTS = {
     'OPENCODE_BIN_PATH': '/usr/bin/opencode',
     'COMMONS_MAX_RUNS_PER_DAY': '4',
     'COMMONS_RUNTIME': 'opencode',
+    'COMMONS_HOURS_UTC': '',
 }
 CONFIG = {}
 AGENT = DEFAULTS['COMMONS_AGENT']
@@ -113,6 +117,18 @@ def admit_run(state_dir, today=None, now=None):
     return True
 
 
+def present_peer(operator, now=None):
+    """COMMONS_PEER=auto: a random other agent the server can pair right now (Commons heartbeat within its 20 minutes)."""
+    cutoff = ((now or datetime.datetime.now(datetime.timezone.utc)) - datetime.timedelta(minutes=20)).strftime('%Y-%m-%dT%H:%M:%S')
+    def present(agent):
+        social = (agent.get('metadata') or {}).get('social_runtime') or {}
+        return (agent.get('id') != AGENT and agent.get('status') in ('active', 'idle') and not agent.get('retired_at')
+                and social.get('enabled') and str(social.get('last_heartbeat_at') or '') >= cutoff)
+    # ponytail: random, not least-met; the server's own rounds already prefer pairs that have not met.
+    ids = sorted(agent['id'] for agent in request('GET', DJIMITFLO, '/api/agents', None, operator).get('agents', []) if present(agent))
+    return random.choice(ids) if ids else None
+
+
 def poll_once(poller, operator, progress=lambda stage: None):
     progress('social_heartbeat')
     poller.api('POST', f'/api/swarm-v2/social-runtime/{AGENT}/heartbeat', {'runtime': RUNTIME, 'model_id': MODEL})
@@ -123,8 +139,11 @@ def poll_once(poller, operator, progress=lambda stage: None):
     actionable = lambda box: [m for m in box.get('messages', []) if (m.get('payload') or {}).get('action') != 'social.invite']
     if not actionable(inbox):
         progress('targeted_round')
+        peer = present_peer(operator) if PEER == 'auto' else PEER
+        if not peer:
+            return {'agent': AGENT, 'processed': 0, 'model_calls': 0, 'reason': 'no_peer_present'}
         request('POST', DJIMITFLO, '/api/swarm-v2/socialize',
-                {'cooldown_ms': 0, 'participant_ids': [AGENT, PEER]}, operator)
+                {'cooldown_ms': 0, 'participant_ids': [AGENT, peer]}, operator)
         progress('claim_after_round')
         _, inbox = poller.api('GET', path)
     messages = actionable(inbox)
@@ -154,6 +173,10 @@ def main():
         stage = value
     try:
         login = isolate_environment()
+        hours = {int(hour) for hour in CONFIG['COMMONS_HOURS_UTC'].split(',') if hour.strip()}
+        if hours and datetime.datetime.now(datetime.timezone.utc).hour not in hours:
+            print(json.dumps({'agent': AGENT, 'processed': 0, 'model_calls': 0, 'reason': 'outside_schedule'}))
+            return 0
         progress('admission')
         if not admit_run(CONFIG['COMMONS_STATE_DIR']):
             print(json.dumps({'agent': AGENT, 'processed': 0, 'model_calls': 0, 'reason': 'daily_cap'}))
