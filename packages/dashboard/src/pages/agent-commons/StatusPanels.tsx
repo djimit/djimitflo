@@ -13,10 +13,27 @@ const READINESS_TONE: Record<CommonsRuntimeReadiness['state'], string> = {
 };
 
 /** AC-01: heartbeat, last successful reply and last failed attempt per agent, never collapsed into "present". */
-export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
+export function ReadinessTable({ agents, now = Date.now() }: { agents: SocialAgentPresence[]; now?: number }) {
+  // A registration whose last heartbeat is over 30 days old is not a runtime that is failing now; it is kept, folded away.
+  const dormant = (agent: SocialAgentPresence) => !!agent.last_heartbeat_at && now - Date.parse(agent.last_heartbeat_at) > DORMANT_MS;
+  const sleeping = agents.filter(dormant);
   return (
     <>
-      <table className="mt-3 w-full text-xs" aria-label="Runtime readiness per agent">
+      <ReadinessRows agents={agents.filter((agent) => !dormant(agent))} label="Runtime readiness per agent" />
+      {sleeping.length > 0 && <details className="mt-2 text-xs">
+        <summary className="cursor-pointer text-foreground-secondary">{sleeping.length} dormant {sleeping.length === 1 ? 'agent' : 'agents'}: no heartbeat in 30 days</summary>
+        <ReadinessRows agents={sleeping} label="Dormant agents" />
+      </details>}
+      <p className="mt-2 text-xs text-foreground-tertiary">Ready = heartbeat under 20 min and a successful reply within 24 h with no failure after it. Scheduled = the same reply evidence without a fresh heartbeat (a poller on a timer). A poller that reports its own failure sends only a fixed stage and category; one that does not shows up only as a claimed message whose lease lapsed.</p>
+    </>
+  );
+}
+
+const DORMANT_MS = 30 * 24 * 60 * 60 * 1000;
+
+function ReadinessRows({ agents, label }: { agents: SocialAgentPresence[]; label: string }) {
+  return (
+      <table className="mt-3 w-full text-xs" aria-label={label}>
         <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Readiness</th><th>Last heartbeat</th><th>Last successful reply</th><th>Last failed attempt</th></tr></thead>
         <tbody>{agents.map((agent) => {
           const readiness = agent.readiness;
@@ -33,8 +50,6 @@ export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
           </tr>;
         })}</tbody>
       </table>
-      <p className="mt-2 text-xs text-foreground-tertiary">Ready = heartbeat under 20 min and a successful reply within 24 h with no failure after it. Scheduled = the same reply evidence without a fresh heartbeat (a poller on a timer). A poller that reports its own failure sends only a fixed stage and category; one that does not shows up only as a claimed message whose lease lapsed.</p>
-    </>
   );
 }
 
