@@ -48,6 +48,7 @@ export function ImprovementFunnelPage() {
   const medianWindow = funnel?.kpi.medianHoursWindowDays;
   const commons = funnel?.commons;
   const parkedForEvidence = funnel?.panel.linkedDecisions.needs_more_evidence ?? 0;
+  const armLabel = { commons_review: 'Commons review fed the refinement', investigated: 'Commons thread only', not_investigated: 'No Commons input' };
   const inflowLabel: Record<string, string> = { disabled: 'disabled', exhausted: 'cap reached', open: 'open', uncapped: 'open (no cap)' };
 
   return (
@@ -126,14 +127,14 @@ export function ImprovementFunnelPage() {
             <section>
               <h2 className="text-lg font-semibold mb-2">Stuck proposals, with and without a Commons investigation</h2>
               <p className="text-xs text-foreground-muted mb-1">
-                Proposals that never reached a goal themselves; investigated = a Commons thread on that proposal. Descriptive, not causal: threads are not assigned at random. Rate shown from n ≥ {commons.effectMinN} per arm.
+                Proposals that never reached a goal themselves. Review = a completed Commons review was fed into the refinement (run 20–30 Sept 2026); thread = a Commons thread on that proposal only. Descriptive, not causal: threads are not assigned at random. Rate shown from n ≥ {commons.effectMinN} per arm.
               </p>
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-foreground-tertiary"><th>Arm</th><th>Stuck</th><th>Refined</th><th>Refinement got a panel decision</th><th>Verified</th><th>Regressed</th></tr></thead>
                 <tbody>
                   {commons.evidenceEffect.map((a) => (
                     <tr key={a.arm} className="border-t border-border">
-                      <td>{a.arm === 'investigated' ? 'Commons investigated' : 'Not investigated'}</td><td>{a.stuck}</td><td>{a.refined}</td>
+                      <td>{armLabel[a.arm]}</td><td>{a.stuck}</td><td>{a.refined}</td>
                       <td>{a.decided} ({a.decidedRate === null ? `insufficient, n < ${commons.effectMinN}` : `${Math.round(a.decidedRate * 100)}%`})</td><td>{a.verified}</td><td>{a.regressed}</td>
                     </tr>
                   ))}
