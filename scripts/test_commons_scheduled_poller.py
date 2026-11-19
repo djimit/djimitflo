@@ -1,3 +1,4 @@
+import urllib.error
 import importlib.util
 import json
 import os
@@ -160,6 +161,14 @@ class ControllerTests(unittest.TestCase):
             method, _, path, body, token = request.call_args.args
             self.assertEqual((method, path, token), ('POST', f'/api/swarm-v2/social-runtime/{c.AGENT}/heartbeat', 'scoped'))
             self.assertEqual(body['failure'], {'stage': 'runtime_inference', 'code': 'runtime_timeout'})
+        sent = []
+        def urlopen(req, timeout=0):
+            sent.append(dict(req.header_items())); raise urllib.error.HTTPError(req.full_url, 401, 'no', {}, None)
+        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'scoped'}, clear=True), patch.object(c.urllib.request, 'urlopen', side_effect=urlopen):
+            c.report_failure('runtime_inference', 'runtime_exit')
+        # the route authenticates on this header; a bearer token got 401 and the report was silently lost (prod 2026-11-19)
+        self.assertEqual(sent[0].get('X-agent-social-token'), 'scoped')
+        self.assertNotIn('Authorization', sent[0])
 
     def test_renewal_uses_only_fixed_target_and_short_ttl(self):
         calls = []
