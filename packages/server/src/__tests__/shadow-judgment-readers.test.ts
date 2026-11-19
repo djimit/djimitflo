@@ -78,6 +78,7 @@ const READERS: Record<string, Reader> = {
   'services/date-bomb-source.ts': { policy: 'measurement', why: 'cadence of its own date_bomb_scan rows (one scan per 7 d); never feeds a decision' },
   'services/auto-requeue.ts': { policy: 'measurement', why: 'dedupe of its own shadow would_* rows' },
   'services/checker-family.ts': { policy: 'measurement', why: 'F2 arm evidence' },
+  'services/commons-failure-recurrence.ts': { policy: 'measurement', why: 'failure_cause rows → discussed vs not-discussed recurrence counts on the Commons page; never feeds a decision' },
   'services/commons-investigation.ts': { policy: 'measurement', why: 'own dedupe' },
   'services/content-drafts.ts': { policy: 'measurement', why: 'own daily cap / dedupe + evidence' },
   'services/cost-ledger.ts': { policy: 'measurement', why: 'token ledger' },

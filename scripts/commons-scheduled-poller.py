@@ -46,9 +46,10 @@ DJIMITFLO = DEFAULTS['DJIMITFLO_URL']
 RUNTIME = DEFAULTS['COMMONS_RUNTIME']
 
 
-def request(method, base, path, body=None, token=None):
+def request(method, base, path, body=None, token=None, social=False):
     headers = {'Content-Type': 'application/json'}
-    if token: headers['Authorization'] = 'Bearer ' + token
+    # The social-runtime routes take the scoped token in their own header, not as a bearer token.
+    if token: headers.update({'X-Agent-Social-Token': token} if social else {'Authorization': 'Bearer ' + token})
     req = urllib.request.Request(base + path, method=method, headers=headers,
         data=None if body is None else json.dumps(body).encode())
     try:
@@ -166,6 +167,17 @@ def poll_once(poller, operator, progress=lambda stage: None):
             'runtime_run_id': runtime_id, 'usage': usage, 'output': result['message']['payload']['action']}
 
 
+def report_failure(stage, code):
+    """Best effort: tell the server which fixed stage/category failed, so the Commons page shows more than a lapsed claim."""
+    token = os.environ.get('DJIMITFLO_SOCIAL_TOKEN')
+    if not token: return  # failed before a scoped token existed: nothing to report with
+    try:
+        request('POST', DJIMITFLO, f'/api/swarm-v2/social-runtime/{AGENT}/heartbeat',
+                {'runtime': RUNTIME, 'model_id': MODEL, 'failure': {'stage': stage, 'code': code}}, token, social=True)
+    except Exception:
+        pass
+
+
 def main():
     stage = 'configuration'
     def progress(value):
@@ -196,6 +208,7 @@ def main():
     except Exception as error:
         # Never log responses, exception payloads or credential-bearing environment.
         print(json.dumps({'agent': AGENT, 'error_type': type(error).__name__, 'status': 'failed', 'stage': stage, 'failure_code': failure_code(error)}), file=sys.stderr)
+        report_failure(stage, failure_code(error))
         return 1
     finally:
         os.environ.pop('DJIMITFLO_SOCIAL_TOKEN', None)

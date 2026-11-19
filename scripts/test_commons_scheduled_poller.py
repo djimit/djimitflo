@@ -1,3 +1,4 @@
+import urllib.error
 import importlib.util
 import json
 import os
@@ -150,6 +151,24 @@ class ControllerTests(unittest.TestCase):
             written = ''.join(call.args[0] for call in err.write.call_args_list)
             self.assertIn('unclassified', written)
             self.assertNotIn('secret-value', written)
+
+    def test_failure_is_reported_to_the_server_as_two_fixed_tokens_and_only_with_a_scoped_token(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(c, 'request') as request:
+            c.report_failure('operator_login', 'http_401')
+            request.assert_not_called()  # no scoped token yet: nothing to report with
+        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'scoped'}, clear=True), patch.object(c, 'request', side_effect=RuntimeError('POST HTTP 500')) as request:
+            c.report_failure('runtime_inference', 'runtime_timeout')  # a failing report never raises
+            method, _, path, body, token = request.call_args.args
+            self.assertEqual((method, path, token), ('POST', f'/api/swarm-v2/social-runtime/{c.AGENT}/heartbeat', 'scoped'))
+            self.assertEqual(body['failure'], {'stage': 'runtime_inference', 'code': 'runtime_timeout'})
+        sent = []
+        def urlopen(req, timeout=0):
+            sent.append(dict(req.header_items())); raise urllib.error.HTTPError(req.full_url, 401, 'no', {}, None)
+        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'scoped'}, clear=True), patch.object(c.urllib.request, 'urlopen', side_effect=urlopen):
+            c.report_failure('runtime_inference', 'runtime_exit')
+        # the route authenticates on this header; a bearer token got 401 and the report was silently lost (prod 2026-11-19)
+        self.assertEqual(sent[0].get('X-agent-social-token'), 'scoped')
+        self.assertNotIn('Authorization', sent[0])
 
     def test_renewal_uses_only_fixed_target_and_short_ttl(self):
         calls = []
