@@ -1653,10 +1653,12 @@ export type CommonsThreadKind = 'discussion' | 'record';
 
 /** Derived server-side from heartbeats, own runtime replies and lapsed delivery leases; the runtime itself reports no errors. */
 export type CommonsRuntimeReadiness = {
-  state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
+  state: 'ready' | 'scheduled' | 'degraded' | 'offline' | 'unknown'; reason: string;
   last_heartbeat_at: string | null; last_successful_reply_at: string | null;
   last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
-  runtime_failures_reported: false;
+  /** the poller's own report: fixed stage and category only (absent on older servers) */
+  last_reported_failure?: { at: string; stage: string; code: string } | null;
+  runtime_failures_reported: boolean;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
@@ -1672,7 +1674,11 @@ export type CommonsChildOutcomes = {
   grounded_proposals: number; no_refinement: number; children: number; legacy_fallback_reviews: number; note: string;
   outcomes: Record<'technical_failure' | 'needs_evidence' | 'blocked' | 'backlog' | 'goal' | 'pending', number>;
 };
-export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+/** Failure kinds by whether the Commons discussed them, and whether they came back within windowDays; rate null below minN. */
+export type FailureRecurrence = { windowDays: number; lookbackDays: number; minN: number;
+  arms: Array<{ arm: 'discussed' | 'not_discussed'; kinds: number; recurred: number; unsettled: number; rate: number | null }> };
+
+export type CommonsStats = { proposals_latest_at?: string | null; failure_recurrence?: FailureRecurrence | null; threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
   proposals_by_status?: Record<string, number>;
   /** where validly grounded proposals stopped (furthest stage of their refinement); null = could not be read */
   grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null;

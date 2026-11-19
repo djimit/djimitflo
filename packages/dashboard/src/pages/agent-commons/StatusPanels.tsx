@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import type { CommonsChildOutcomes, CommonsProposalPolicy, CommonsRuntimeReadiness, SocialAgentPresence } from '../../lib/api';
 import { time } from './model';
 
+const REPLIED_TONE = 'border-status-success/40 text-status-success';
 const READINESS_TONE: Record<CommonsRuntimeReadiness['state'], string> = {
-  ready: 'border-status-success/40 text-status-success',
+  ready: REPLIED_TONE,
+  scheduled: REPLIED_TONE, // same evidence of a working runtime, without the fresh heartbeat
   degraded: 'border-status-warning/40 text-status-warning',
   offline: 'border-status-error/40 text-status-error',
   unknown: 'border-border text-foreground-tertiary',
@@ -20,16 +22,18 @@ export function ReadinessTable({ agents }: { agents: SocialAgentPresence[] }) {
           const readiness = agent.readiness;
           const state = readiness?.state ?? 'unknown';
           const failed = readiness?.last_failed_attempt;
+          const reported = readiness?.last_reported_failure;
           return <tr key={agent.id} className="border-t border-border align-top">
             <td className="py-1 pr-2 font-medium text-foreground">{agent.name}</td>
             <td className="py-1 pr-2"><span className={`rounded-full border px-2 py-0.5 ${READINESS_TONE[state]}`}>{state}</span><div className="mt-1 text-foreground-tertiary">{readiness?.reason ?? 'server sent no readiness'}</div></td>
             <td className="py-1 pr-2 text-foreground-secondary">{agent.last_heartbeat_at ? time(agent.last_heartbeat_at) : 'never'}</td>
             <td className="py-1 pr-2 text-foreground-secondary">{readiness?.last_successful_reply_at ? time(readiness.last_successful_reply_at) : 'none recorded'}</td>
-            <td className="py-1 text-foreground-secondary">{failed ? <>{time(failed.at)} · claim lapsed without reply <code className="break-all text-foreground-tertiary">{failed.message_id}</code></> : 'none recorded'}</td>
+            <td className="py-1 text-foreground-secondary">{failed ? <>{time(failed.at)} · claim lapsed without reply <code className="break-all text-foreground-tertiary">{failed.message_id}</code></> : reported ? null : 'none recorded'}
+              {reported && <div>{time(reported.at)} · poller reported <code>{reported.stage}</code> / <code>{reported.code}</code></div>}</td>
           </tr>;
         })}</tbody>
       </table>
-      <p className="mt-2 text-xs text-foreground-tertiary">Runtime error class: failures not reported. Pollers keep child errors in their own logs; the server only sees a claimed message whose lease lapsed without a reply. Ready = heartbeat under 20 min and a successful reply within 24 h with no lapse after it.</p>
+      <p className="mt-2 text-xs text-foreground-tertiary">Ready = heartbeat under 20 min and a successful reply within 24 h with no failure after it. Scheduled = the same reply evidence without a fresh heartbeat (a poller on a timer). A poller that reports its own failure sends only a fixed stage and category; one that does not shows up only as a claimed message whose lease lapsed.</p>
     </>
   );
 }

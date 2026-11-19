@@ -151,6 +151,16 @@ class ControllerTests(unittest.TestCase):
             self.assertIn('unclassified', written)
             self.assertNotIn('secret-value', written)
 
+    def test_failure_is_reported_to_the_server_as_two_fixed_tokens_and_only_with_a_scoped_token(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(c, 'request') as request:
+            c.report_failure('operator_login', 'http_401')
+            request.assert_not_called()  # no scoped token yet: nothing to report with
+        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'scoped'}, clear=True), patch.object(c, 'request', side_effect=RuntimeError('POST HTTP 500')) as request:
+            c.report_failure('runtime_inference', 'runtime_timeout')  # a failing report never raises
+            method, _, path, body, token = request.call_args.args
+            self.assertEqual((method, path, token), ('POST', f'/api/swarm-v2/social-runtime/{c.AGENT}/heartbeat', 'scoped'))
+            self.assertEqual(body['failure'], {'stage': 'runtime_inference', 'code': 'runtime_timeout'})
+
     def test_renewal_uses_only_fixed_target_and_short_ttl(self):
         calls = []
         def request(method, base, path, body=None, token=None):
