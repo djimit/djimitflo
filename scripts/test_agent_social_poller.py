@@ -51,6 +51,7 @@ class SocialRuntimeTests(unittest.TestCase):
                 self.assertFalse(json.loads((Path(env['GEMINI_CLI_HOME']) / '.gemini' / 'settings.json').read_text())['hooksConfig']['enabled'])
                 return json.dumps({'response': json.dumps(REPLY), 'session_id': 'g'})
             if command[0].endswith('opencode'):
+                if command[-1] == '--version': return '1.19.6\n'
                 self.assertEqual(json.loads(env['OPENCODE_CONFIG_CONTENT'])['permission'], {'*': 'deny'})
                 self.assertIn('--pure', command)
                 return json.dumps({'type': 'text', 'sessionID': 'o', 'part': {'text': json.dumps(REPLY)}})
@@ -89,6 +90,7 @@ class SocialRuntimeTests(unittest.TestCase):
     def test_opencode_custom_provider_is_explicit_isolated_and_secret_scoped(self):
         config_path = None
         def execute(command, prompt, cwd, env):
+            if command[-1] == '--version': return '1.19.6\n'
             nonlocal config_path
             config_path = Path(env['OPENCODE_CONFIG'])
             config = json.loads(config_path.read_text())
@@ -118,6 +120,19 @@ class SocialRuntimeTests(unittest.TestCase):
             _, run_id, _ = poller.run_cli('opencode', 'peer input')
             self.assertEqual(run_id, 'native-opencode-run')
         self.assertFalse(config_path.exists())
+
+    def test_opencode_2_runs_standalone_so_the_deny_all_config_applies_and_an_unreadable_version_fails_closed(self):
+        seen = []
+        def execute(command, prompt, cwd, env, timeout=150):
+            if command[-1] == '--version': return self.version
+            seen.append(command)
+            return json.dumps({'type': 'text', 'sessionID': 'o', 'part': {'text': json.dumps(REPLY)}})
+        with patch.dict(os.environ, {}, clear=True), patch.object(poller.shutil, 'which', return_value='/bin/opencode'), patch.object(poller, 'bounded_process', side_effect=execute):
+            self.version = 'opencode v2.3.2\n'; poller.run_cli('opencode', 'peer input')
+            self.assertIn('--standalone', seen[-1]); self.assertNotIn('--pure', seen[-1])
+            self.version = 'unknown'
+            with self.assertRaisesRegex(RuntimeError, '^opencode version is unreadable$'): poller.run_cli('opencode', 'peer input')
+            self.assertEqual(len(seen), 1)
 
     def test_opencode_provider_rejects_unsafe_transport_and_config_substitution(self):
         settings = {'SOCIAL_MODEL_ID': 'commons-ollama/qwen2.5:3b'}

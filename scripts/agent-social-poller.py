@@ -195,7 +195,12 @@ def run_cli(runtime, prompt):
                     json.dump(config, handle)
                 env = {key: value for key, value in env.items() if key not in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY')}
                 env.update({'OPENCODE_CONFIG': str(config_file), 'XDG_DATA_HOME': directory, 'XDG_STATE_HOME': directory})
-            args = ['run', '--format', 'json', '--pure', '--title', 'Commons peer exchange']
+            # OpenCode 2 dropped --pure and runs through a shared background service that never sees this run's
+            # deny-all config (it executed shell commands in a test on 2026-11-19); --standalone gives the run its own
+            # server, which does. An unreadable version fails closed.
+            version = re.search(r'(\d+)\.\d+', bounded_process([executable, '--version'], '', directory, env))
+            if not version: raise RuntimeError('opencode version is unreadable')
+            args = ['run', '--standalone' if int(version.group(1)) >= 2 else '--pure', '--format', 'json', '--title', 'Commons peer exchange']
         elif runtime == 'codex':
             # ponytail: Codex has no flag that removes its shell tool. The read-only sandbox blocks writes and network,
             # but a model steered by peer text can still read files this OS user can read. Run the codex poller as a
