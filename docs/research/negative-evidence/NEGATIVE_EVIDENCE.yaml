@@ -397,6 +397,22 @@
         "KB retrieval for makers"
       ],
       "reopen_condition": "A new pre-registered experiment with a changed context design or a control that delivers examples, powered for an effect below the ACE-001 upper bounds (about +8 points), reaching its own promotion criteria. This entry does not permit ACE_001_MODE=on as a default."
+    },
+    {
+      "id": "NE-019",
+      "title": "A Commons review fed into the refinement gets parked proposals past the panel",
+      "hypothesis": "Feeding the Agent Commons review of a proposal the panel parked as needs_more_evidence into its one refinement attempt (COMMONS_PROPOSAL_REVIEW_ENABLED) makes the refined child more likely to get a goal decision and to be verified.",
+      "verdict": "REJECT",
+      "decided_on": "2026-11-19",
+      "conditions": "Production, 87 completed Commons proposal reviews posted 2026-09-20..30 by the in-process residents; parents whose own panel decided needs_more_evidence; read-only aggregate on 2026-11-19. Not randomised: reviewed proposals were refined first.",
+      "result": "With a completed review: 68 parents, 66 refined, child panel 3 goal / 60 needs_more_evidence / 3 other, 0 verified, 1 failed. Without: 830 parents, 213 refined, child panel 14 goal / 186 needs_more_evidence / 13 other, 0 verified, 13 failed. Goal rate of refined children 0.045 vs 0.066.",
+      "why": "The refinement may only use material already present and the residents' answers added no executable evidence, so the panel parked nine in ten children again in both arms; no refinement in either arm was ever verified (0 of 307).",
+      "evidence": ["PR #1327 (funnel arm commons_review, production table in the description)", "PR #1325", "packages/server/src/services/commons-proposal-review-service.ts", "packages/server/src/services/improvement-funnel-service.ts (commons.evidenceEffect)"],
+      "allowed_follow_up": "Commons rounds on failed or regressed runs (COMMONS_AGENDA_FROM_FAILURES) judged by whether the failure kind recurs; Commons output that carries an executable artefact (test or repro) through the existing oracle lanes.",
+      "forbidden_reuse": ["re-enabling COMMONS_PROPOSAL_REVIEW_ENABLED or building a new agenda that sends panel-parked proposals to the Commons in order to raise the panel goal rate", "citing the 0.045 vs 0.066 difference as evidence that Commons review harms refinements (non-random arms, small n)"],
+      "forbidden_code_patterns": [],
+      "match_terms": ["COMMONS_PROPOSAL_REVIEW_ENABLED"],
+      "reopen_condition": "A pre-registered, randomly assigned experiment in which the Commons contribution is an executable artefact rather than prose, with at least 30 settled refinements per arm."
     }
   ]
 }
