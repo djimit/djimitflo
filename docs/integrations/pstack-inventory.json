@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "integration": {
+    "capability": "pstack-interrogate-checker-policy",
+    "destination": "packages/server/src/services/loop-service.ts#buildCheckerPrompt",
+    "owner": "existing LoopService checker path",
+    "verification": [
+      "packages/server/src/__tests__/f1-harness.test.ts",
+      "packages/server/src/__tests__/pstack-interrogate.test.ts"
+    ],
+    "operational_mode": "always-on for dispatched checker and security-checker prompts",
+    "fallback": "existing CHECKER_INSTRUCTIONS and checker_verdict gate remain authoritative"
+  },
+  "sources": [
+    {
+      "repository": "cursor/plugins",
+      "url": "https://github.com/cursor/plugins",
+      "commit": "50b3a3234bf2e0293849a48784d72030948e44ee",
+      "component": "pstack/skills/interrogate/SKILL.md",
+      "content_sha256": "3f3c2e9b8cf6b180dba9f32a4aff85e5691b09805232468e37a0ba45437a9984",
+      "license": "MIT",
+      "destination": "integrate",
+      "reason": "The reproducible-finding rule fits the existing independent checker and deterministic-gate path.",
+      "local_change": "Paraphrased policy only; no upstream files copied or executed."
+    },
+    {
+      "repository": "michael-denyer/pstack-claude",
+      "url": "https://github.com/michael-denyer/pstack-claude",
+      "commit": "412990b837ddb5e41ee589d770ba1bff24144654",
+      "component": "plugins/pstack/skills/interrogate/SKILL.md",
+      "content_sha256": "612f24a3b040802e56d573e586ca2850df9cd3f2bff6836ca30b2b89fd129f91",
+      "license": "MIT plus repository notices",
+      "destination": "reuse_existing",
+      "reason": "The same workflow is a harness port; DjimitFlo already owns runtime translation, leases and evidence.",
+      "local_change": "None."
+    },
+    {
+      "repository": "iap/pstack-hermes",
+      "url": "https://github.com/iap/pstack-hermes",
+      "commit": "1f07ec874279b2b266cabaa29553618bb40e835c",
+      "component": "skills/interrogate/SKILL.md",
+      "content_sha256": "4684d3d96352d459cc851c3eb7422e87e0a69097edd6935eb37f6c0656aba43d",
+      "license": "MIT plus repository notices",
+      "destination": "conditional",
+      "reason": "Hermes packaging and doctor commands are useful only when the Hermes runtime is the selected executor; they are not needed for this checker-policy path.",
+      "local_change": "None."
+    },
+    {
+      "repository": "finografic/pstack",
+      "url": "https://github.com/finografic/pstack",
+      "commit": "629dc5ea1c816031125231ca1c647afbc57d2e63",
+      "component": "skills/verify/show-me-your-work/SKILL.md; skills/understand/how/SKILL.md",
+      "content_sha256": [
+        "3f95b88504ee57555e661555417f5da12ffa60375631dbd5721f2487987820ad",
+        "b40e73a2c1a14aa9fba08c96c07d4bf1ac74477838785e9dd8bd46ba6a24bc55"
+      ],
+      "license": "MIT",
+      "destination": "exclude",
+      "reason": "Decision logging and repository walkthroughs overlap with DjimitFlo trace/evidence and OpenWiki; adding a second log or route would fragment ownership.",
+      "local_change": "None."
+    }
+  ]
+}
