@@ -772,7 +772,9 @@ export type ImprovementFunnel = {
    * verified/regressed: current status with updated_at in windowDays (not first verifications). The median has its own window
    * (medianHoursWindowDays, n = medianHoursN): created_at → current updated_at, not first-verification latency.
    */
-  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
+  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null;
+    /** J6: maker-run cost in the same seven-day window; absent on older servers. */
+    runs?: number; runSuccessRate?: number | null; tokensPerVerified?: number | null };
   /** null = unavailable (reason in `unavailable`), never a healthy 0 */
   hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null;
     /** in-flight work items not updated for more than agedWorkItemsDays (absent on older servers) */
