@@ -48,9 +48,11 @@ describe('ImprovementFunnelService', () => {
       seed(id, 'refinement', status);
       db.prepare('UPDATE self_improvements SET refined_from_id = ?, panel_id = ? WHERE id = ?').run(parent, `panel-${id}`, id);
     };
-    seed('inv-1', 'reflection', 'archived'); seed('inv-2', 'reflection', 'archived'); seed('plain-1', 'reflection', 'archived'); seed('direct', 'gap_analysis', 'verified');
+    seed('inv-1', 'reflection', 'archived'); seed('inv-2', 'reflection', 'archived'); seed('plain-1', 'reflection', 'archived'); seed('direct', 'gap_analysis', 'verified'); seed('rev-1', 'reflection', 'archived'); seed('rev-open', 'reflection', 'archived');
+    const review = (id: string, status: string) => db.prepare("INSERT INTO commons_proposal_reviews (improvement_id, thread_id, status, posted_at) VALUES (?, 't', ?, datetime('now'))").run(id, status);
+    review('rev-1', 'completed'); review('inv-1', 'completed'); review('rev-open', 'timeout'); // a review beats a thread; a timed-out review is no review
     question('q1', 'inv-1'); question('q2', 'inv-1'); question('q3', 'inv-2'); question('q4', 'direct');
-    child('c1', 'inv-1', 'verified', 'goal'); child('c2', 'inv-2', 'archived', 'needs_more_evidence'); child('c3', 'plain-1', 'regressed', 'goal');
+    child('c1', 'inv-1', 'verified', 'goal'); child('c2', 'inv-2', 'archived', 'needs_more_evidence'); child('c3', 'plain-1', 'regressed', 'goal'); child('c4', 'rev-1', 'archived', 'needs_more_evidence');
     const env = process.env.REFLECTION_PROPOSALS_MAX_PER_DAY;
     process.env.REFLECTION_PROPOSALS_MAX_PER_DAY = '0';
     try {
@@ -60,8 +62,9 @@ describe('ImprovementFunnelService', () => {
       expect(commons).toMatchObject({ proposals: 0, verified: 0 });
       // 'direct' reached a goal itself, so it is in neither arm; one proposal with two threads counts once
       expect(commons.evidenceEffect).toEqual([
-        { arm: 'investigated', stuck: 2, refined: 2, decided: 1, verified: 1, regressed: 0, decidedRate: null },
-        { arm: 'not_investigated', stuck: 1, refined: 1, decided: 1, verified: 0, regressed: 1, decidedRate: null },
+        { arm: 'commons_review', stuck: 2, refined: 2, decided: 1, verified: 1, regressed: 0, decidedRate: null },
+        { arm: 'investigated', stuck: 1, refined: 1, decided: 0, verified: 0, regressed: 0, decidedRate: null },
+        { arm: 'not_investigated', stuck: 2, refined: 1, decided: 1, verified: 0, regressed: 1, decidedRate: null },
       ]);
     } finally { if (env === undefined) delete process.env.REFLECTION_PROPOSALS_MAX_PER_DAY; else process.env.REFLECTION_PROPOSALS_MAX_PER_DAY = env; }
   });
