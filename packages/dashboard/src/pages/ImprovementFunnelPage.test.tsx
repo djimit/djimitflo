@@ -38,12 +38,14 @@ describe('ImprovementFunnelPage', () => {
     expect(screen.getByText('33%')).toBeTruthy();
     unmount();
     vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue({ ...funnel, commons: { inflow: { cap: 0, state: 'disabled' }, proposals: 737, verified: 0, effectMinN: 30,
-      evidenceEffect: [{ arm: 'investigated', stuck: 24, refined: 18, decided: 5, verified: 0, regressed: 0, decidedRate: null }, { arm: 'not_investigated', stuck: 1100, refined: 289, decided: 110, verified: 0, regressed: 1, decidedRate: 0.1 }] } });
+      evidenceEffect: [{ arm: 'commons_review', stuck: 68, refined: 66, decided: 6, verified: 0, regressed: 0, decidedRate: 6 / 68 }, { arm: 'investigated', stuck: 24, refined: 18, decided: 5, verified: 0, regressed: 0, decidedRate: null }, { arm: 'not_investigated', stuck: 1100, refined: 289, decided: 110, verified: 0, regressed: 1, decidedRate: 0.1 }] } });
     render(<ImprovementFunnelPage />);
     await waitFor(() => expect(screen.getByText('disabled')).toBeTruthy());
     expect(screen.getByText('0 verified of 737 proposals from Commons learnings, all time · reflection cap 0 per 24 h')).toBeTruthy();
     expect(screen.getByText('5 (insufficient, n < 30)')).toBeTruthy(); // 24 investigated: no rate
     expect(screen.getByText('110 (10%)')).toBeTruthy();
+    expect(screen.getByText('Commons review fed the refinement')).toBeTruthy();
+    expect(screen.getByText('6 (9%)')).toBeTruthy();
   });
 
   it('DF-01/02/03: refinement conversion comes from linked goals, goal rate from linked panels, panels and reviews are labelled apart', async () => {
