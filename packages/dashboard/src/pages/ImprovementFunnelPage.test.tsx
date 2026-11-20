@@ -32,6 +32,13 @@ describe('ImprovementFunnelPage', () => {
     expect(screen.getByText(/Data generated/)).toBeTruthy();
   });
 
+  it('splits the regressed count into checker rejections and makers that never delivered', async () => {
+    vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [] });
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue({ ...funnel, kpi: { ...funnel.kpi, regressed: 11, regressedBreakdown: { rejected: 1, makerDidNotDeliver: { token_budget: 6, timeout: 3, cancelled: 0, check_failed: 0, other: 0 }, unknown: 1 } } });
+    render(<ImprovementFunnelPage />);
+    await waitFor(() => expect(screen.getByText(/1 rejected by a checker, 9 maker did not deliver \(6 token budget, 3 timeout\), 1 cause unknown/)).toBeTruthy());
+  });
+
   it('names the leaks first and shows the Commons inflow and investigation arms; an older server reports the inflow as unknown', async () => {
     vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [] });
     vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue(funnel);

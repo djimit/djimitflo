@@ -25,6 +25,12 @@ export interface ImprovementFunnel {
   kpi: {
     /** verified/regressed: proposals whose CURRENT status is positive/regressed and whose updated_at falls in the window — not first verifications. */
     windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null;
+    /**
+     * Why the window's regressed proposals ended there, from the newest loop run of each: `rejected` = a checker or security
+     * checker refused a delivered change; `makerDidNotDeliver` = the maker never completed, by first matching reason;
+     * `unknown` = no run or no failed gate found. null when it could not be read. The three add up to `regressed`.
+     */
+    regressedBreakdown: { rejected: number; makerDidNotDeliver: Record<MakerMissReason, number>; unknown: number } | null;
     /** panels24h/7d count panels created; reviews24h/7d count submitted specialist reviews (DF-03) */
     panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null;
     /**
@@ -99,6 +105,24 @@ const median = (sorted: number[]) => {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
+
+export type MakerMissReason = 'token_budget' | 'timeout' | 'cancelled' | 'check_failed' | 'other';
+interface RegressedRunRow { id: string; gates: string | null; lease_status: string | null; meta: string | null }
+const parse = (text: string | null): unknown => { try { return JSON.parse(text || 'null'); } catch { return null; } };
+
+/** Pure: one regressed proposal's newest run (its gates and maker leases) → why it is regressed. */
+export function regressedCause(gatesJson: string | null, makers: Array<{ status: string | null; meta: string | null }>): 'rejected' | MakerMissReason | 'unknown' {
+  const gates = parse(gatesJson);
+  const failed = new Set((Array.isArray(gates) ? gates : []).filter((g) => g?.status === 'fail').map((g) => String(g.name)));
+  if (failed.has('checker_verdict') || failed.has('security_checker_verdict')) return 'rejected';
+  if (!failed.size) return 'unknown';
+  const metas = makers.map((m) => (parse(m.meta) ?? {}) as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean; failure?: { timed_out?: boolean; token_budget_hit?: boolean } });
+  if (metas.some((m) => m.failure?.token_budget_hit === true || /token budget exceeded/i.test(m.failure_reason ?? ''))) return 'token_budget';
+  if (metas.some((m) => m.failure?.timed_out === true || m.timed_out === true || m.runtime_timed_out === true || /timed_out/.test(m.failure_reason ?? ''))) return 'timeout';
+  if (makers.some((m) => m.status === 'cancelled')) return 'cancelled';
+  if (metas.some((m) => /^deterministic_checks_failed/.test(m.failure_reason ?? ''))) return 'check_failed';
+  return 'other';
+}
 
 export class ImprovementFunnelService {
   private unavailable: Record<string, string> = {};
@@ -243,6 +267,21 @@ export class ImprovementFunnelService {
     const DAY = 86_400_000;
     const verified7 = one('verified', `SELECT COUNT(*) AS n FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(7 * DAY)}'`);
     const regressed7 = one('regressed', `SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'regressed' AND updated_at >= '${iso(7 * DAY)}'`);
+    const regressedRuns = this.tryRows<RegressedRunRow>('regressedBreakdown', `
+      SELECT s.id, r.gates_json AS gates, l.status AS lease_status, l.metadata AS meta FROM self_improvements s
+      LEFT JOIN loop_runs r ON r.id = (SELECT r2.id FROM goals g JOIN loop_runs r2 ON r2.goal_id = g.id WHERE g.improvement_id = s.id ORDER BY r2.created_at DESC LIMIT 1)
+      LEFT JOIN worker_leases l ON l.loop_run_id = r.id AND l.role = 'maker'
+      WHERE s.status = 'regressed' AND s.updated_at >= '${iso(7 * DAY)}'`);
+    let regressedBreakdown: ImprovementFunnel['kpi']['regressedBreakdown'] = null;
+    if (regressedRuns !== null) {
+      regressedBreakdown = { rejected: 0, makerDidNotDeliver: { token_budget: 0, timeout: 0, cancelled: 0, check_failed: 0, other: 0 }, unknown: 0 };
+      const byProposal = new Map<string, RegressedRunRow[]>();
+      for (const row of regressedRuns) byProposal.set(row.id, [...(byProposal.get(row.id) ?? []), row]);
+      for (const rows of byProposal.values()) {
+        const cause = regressedCause(rows[0].gates, rows.filter((r) => r.lease_status !== null).map((r) => ({ status: r.lease_status, meta: r.meta })));
+        if (cause === 'rejected' || cause === 'unknown') regressedBreakdown[cause]++; else regressedBreakdown.makerDidNotDeliver[cause]++;
+      }
+    }
     const reviews = (metric: string, ms: number) => one(metric, `SELECT COUNT(*) AS n FROM specialist_reviews WHERE status = 'submitted' AND julianday(created_at) >= julianday('${iso(ms)}')`);
     const panels7 = one('panels7d', `SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(7 * DAY)}'`);
     const hours = this.tryRows<{ h: number }>('medianHoursToVerified', `SELECT (julianday(updated_at) - julianday(created_at)) * 24 AS h FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(MEDIAN_WINDOW_DAYS * DAY)}' AND updated_at > created_at ORDER BY h`)?.map((r) => r.h) ?? null;
@@ -251,7 +290,7 @@ export class ImprovementFunnelService {
       SELECT COUNT(*) AS approvals, COUNT(DISTINCT json_extract(t.metadata, '$.loop_run_id')) AS runs FROM approvals a JOIN tasks t ON t.id = a.task_id
       WHERE a.status = 'approved' AND a.created_at >= '${iso(7 * DAY)}' AND json_valid(COALESCE(t.metadata, '{}')) = 1 AND json_extract(t.metadata, '$.loop_run_id') IS NOT NULL`)[0];
     const kpi: ImprovementFunnel['kpi'] = {
-      windowDays: 7, verified: verified7, regressed: regressed7,
+      windowDays: 7, verified: verified7, regressed: regressed7, regressedBreakdown,
       regressionRate: verified7 !== null && regressed7 !== null && verified7 + regressed7 ? regressed7 / (verified7 + regressed7) : null,
       panels24h: one('panels24h', `SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(DAY)}'`), panels7d: panels7,
       reviews24h: reviews('reviews24h', DAY), reviews7d: reviews('reviews7d', 7 * DAY),

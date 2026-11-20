@@ -11,6 +11,14 @@ const fetchFunnel = async () => {
 const pct = (n: number | null, d: number | null) => (n !== null && d !== null && d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
 /** UX-004: a failed or absent read is unknown, never 0 */
 const known = (value: number | null | undefined) => (value === null || value === undefined ? 'unknown' : value);
+const MISS_LABEL: Record<string, string> = { token_budget: 'token budget', timeout: 'timeout', cancelled: 'cancelled', check_failed: 'check failed', other: 'other' };
+/** Most "regressions" are makers that never delivered, not changes a checker refused: say which is which. */
+const regressedSplit = (b: Awaited<ReturnType<typeof api.getImprovementFunnel>>['kpi']['regressedBreakdown']) => {
+  if (!b) return '';
+  const reasons = Object.entries(b.makerDidNotDeliver).filter(([, n]) => n > 0);
+  const missed = reasons.reduce((sum, [, n]) => sum + n, 0);
+  return ` · ${b.rejected} rejected by a checker, ${missed} maker did not deliver${missed ? ` (${reasons.map(([k, n]) => `${n} ${MISS_LABEL[k] ?? k}`).join(', ')})` : ''}${b.unknown ? `, ${b.unknown} cause unknown` : ''}`;
+};
 const day = (value: string) => value.slice(0, 10); // ISO calendar day of a server timestamp
 /** Brier 0.25 is what always predicting 50 % scores; above it the panel's confidence is worse than a coin flip */
 const CHANCE_BRIER = 0.25;
@@ -84,7 +92,7 @@ export function ImprovementFunnelPage() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Stat label="Panel asks for more evidence" value={pct(parkedForEvidence, funnel.panel.linkedDecided)} hint={`${parkedForEvidence} of ${funnel.panel.linkedDecided} proposal-linked panel decisions, all time`} />
               <Stat label="Regression rate" value={funnel.kpi.regressionRate === null ? '—' : `${Math.round(funnel.kpi.regressionRate * 100)}%`}
-                hint={why('regressed', `${known(funnel.kpi.regressed)} regressed of ${known(funnel.kpi.verified)} verified + regressed, updated in last ${funnel.kpi.windowDays} d`)} />
+                hint={why('regressed', `${known(funnel.kpi.regressed)} regressed of ${known(funnel.kpi.verified)} verified + regressed, updated in last ${funnel.kpi.windowDays} d${regressedSplit(funnel.kpi.regressedBreakdown)}`)} />
               <Stat label="Commons inflow" value={commons?.inflow ? inflowLabel[commons.inflow.state] ?? commons.inflow.state : 'unknown'}
                 hint={why('commonsProposals', commons ? `${known(commons.verified)} verified of ${known(commons.proposals)} proposals from Commons learnings, all time${commons.inflow ? ` · reflection cap ${commons.inflow.cap ?? 'unset'} per 24 h` : ''}` : 'not reported by this server')} />
             </div>
