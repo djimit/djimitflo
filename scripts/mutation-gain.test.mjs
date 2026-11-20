@@ -20,7 +20,7 @@ fs.appendFileSync(process.env.FAKE_NPX_LOG, which + '\\n');
 const spec = process.env[which === 'baseline' ? 'FAKE_BASELINE' : 'FAKE_CANDIDATE'];
 if (spec === 'fail') { console.error('stryker: compile error'); process.exit(1); }
 const mutants = spec === 'none' ? [{ status: 'CompileError' }]
-  : Array.from({ length: 100 }, (_, i) => ({ status: i < Number(spec) ? 'Killed' : 'Survived' }));
+  : Array.from({ length: 100 }, (_, i) => ({ status: i < Number(spec) ? 'Killed' : 'Survived', mutatorName: 'ConditionalExpression', replacement: 'true', location: { start: { line: i + 1, column: 3 } } }));
 fs.writeFileSync(process.env.MUTATE_REPORT, JSON.stringify({ files: { 'pkg/widget.ts': { mutants } } }));
 `;
 
@@ -115,4 +115,12 @@ test('a failed candidate run reports after null, never 0', () => {
   assert.notEqual(code, 0);
   assert.deepEqual({ status: out.status, before: out.before, after: out.after, gain: out.gain, pass: out.pass },
     { status: 'candidate_unavailable', before: 40, after: null, gain: null, pass: false });
+});
+
+test('a candidate that falls short lists the surviving mutants to aim at (capped at 20); a pass lists none', () => {
+  const short = gain(repo(), { baseline: 40, candidate: 45 });
+  assert.notEqual(short.code, 0);
+  assert.equal(short.out.surviving.length, 20);
+  assert.equal(short.out.surviving[0], '46:3 ConditionalExpression -> true');
+  assert.equal(gain(repo(), { baseline: 40, candidate: 50 }).out.surviving, undefined);
 });

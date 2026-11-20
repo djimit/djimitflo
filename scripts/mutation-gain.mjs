@@ -22,21 +22,31 @@ export function score(report) {
   return valid ? Math.round((1000 * detected) / valid) / 10 : null; // no valid mutant = not measured, not 0
 }
 
+/** Up to 20 undetected mutants as `line:column mutator -> replacement`, so the maker aims instead of guessing. */
+export function survivors(report) {
+  return Object.values(report.files).flatMap((f) => f.mutants)
+    .filter((m) => m.status === 'Survived' || m.status === 'NoCoverage').slice(0, 20)
+    .map((m) => `${m.location?.start?.line ?? '?'}:${m.location?.start?.column ?? '?'} ${m.mutatorName ?? 'mutant'}${m.replacement ? ` -> ${String(m.replacement).slice(0, 60)}` : ''}${m.status === 'NoCoverage' ? ' (no test reaches it)' : ''}`);
+}
+let candidateSurvivors = [];
+
 function run(testPath) {
   const out = path.join(os.tmpdir(), `djimitflo-mutation-${process.pid}-${Date.now()}.json`);
   const r = spawnSync('npx', ['stryker', 'run', 'stryker.service.config.mjs'], {
     env: { ...process.env, MUTATE_TEST: testPath, MUTATE_REPORT: out }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (r.status !== 0 || !fs.existsSync(out)) { console.error(r.stdout?.slice(-2000), r.stderr?.slice(-2000)); return null; }
-  const s = score(JSON.parse(fs.readFileSync(out, 'utf8'))); fs.rmSync(out, { force: true });
-  return s;
+  const parsed = JSON.parse(fs.readFileSync(out, 'utf8')); fs.rmSync(out, { force: true });
+  candidateSurvivors = survivors(parsed); // the candidate runs last, so this ends as the candidate's list
+  return score(parsed);
 }
 
 const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const report = (status, before, after, rule = null) => {
   const pass = status === 'ok' && rule !== null;
   console.log(JSON.stringify({ mutation_gain: { status, file, test, before, after,
-    gain: before !== null && after !== null ? Math.round((after - before) * 10) / 10 : null, min_gain: minGain, rule, pass } }));
+    gain: before !== null && after !== null ? Math.round((after - before) * 10) / 10 : null, min_gain: minGain, rule, pass,
+    ...(status === 'ok' && !pass ? { surviving: candidateSurvivors } : {}) } }));
   process.exit(pass ? 0 : 1);
 };
 
