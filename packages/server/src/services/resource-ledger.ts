@@ -82,11 +82,15 @@ export interface Job { consumer: string; host: string; start: number; end: numbe
 export function exclusiveWh(samples: Sample[], jobs: Array<{ start: number; end: number }>): Array<{ wh: number; covered_s: number }> {
   const out = jobs.map(() => ({ wh: 0, covered_s: 0 }));
   const cuts = [...new Set(jobs.flatMap((j) => [j.start, j.end]))].sort((a, b) => a - b);
+  // first sample index with t >= x (samples ascend)
+  const lowerBound = (x: number) => { let lo = 0; let hi = samples.length; while (lo < hi) { const m = (lo + hi) >> 1; if (samples[m].t < x) lo = m + 1; else hi = m; } return lo; };
   for (let i = 1; i < cuts.length; i++) {
     const a = cuts[i - 1]; const b = cuts[i];
     const active = jobs.map((j, k) => (j.start <= a && j.end >= b ? k : -1)).filter((k) => k >= 0);
     if (!active.length) continue;
-    const e = integrateWh(samples, a, b);
+    // prod 11-19: integrating all 7 d of samples per piece cost ~2 s per GET /cockpit (event loop blocked); only the
+    // segments that can overlap [a, b] matter: from the one straddling a to the one ending at the first sample >= b
+    const e = integrateWh(samples.slice(Math.max(0, lowerBound(a) - 1), lowerBound(b) + 1), a, b);
     for (const k of active) { out[k].wh += e.wh / active.length; out[k].covered_s += e.covered_s; }
   }
   return out.map((o) => ({ wh: +o.wh.toFixed(3), covered_s: o.covered_s }));
