@@ -176,26 +176,10 @@ describe('production real runtime integration certification', () => {
       });
       expect(closeResponse.status).toBe(201);
       const closure = await closeResponse.json() as any;
-      if (closure.status !== 'closed') {
-        const leases = db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ? ORDER BY role ASC').all(loopRunId) as any[];
-        const run = db.prepare('SELECT status, gates_json, next_actions_json FROM loop_runs WHERE id = ?').get(loopRunId) as any;
-        throw new Error(JSON.stringify({
-          closure,
-          run: {
-            status: run?.status,
-            gates: run ? JSON.parse(run.gates_json || '[]') : [],
-            next_actions: run ? JSON.parse(run.next_actions_json || '[]') : [],
-          },
-          leases: leases.map((lease) => ({
-            role: lease.role,
-            runtime: lease.runtime,
-            status: lease.status,
-            metadata: JSON.parse(lease.metadata || '{}'),
-          })),
-        }, null, 2));
-      }
-      expect(closure.status).toBe('closed');
-      expect(closure.memory_candidate.promotion_status).toBe('proposed');
+      // New learning closures are intentionally retired (M1); this route must
+      // report that state without falsifying a completed execution.
+      expect(closure).toMatchObject({ status: 'blocked', blocked_reasons: ['loop_learning_closure_retired'] });
+      expect(db.prepare('SELECT status FROM loop_runs WHERE id = ?').get(loopRunId)).toEqual({ status: 'ready_for_human_merge' });
 
       const proofResponse = await fetch(`${baseUrl}/swarms/proof-runs`, {
         method: 'POST',
