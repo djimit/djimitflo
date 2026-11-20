@@ -10,7 +10,7 @@ import { UserRole } from '@djimitflo/shared';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
-import { attributeOutcome, attributionSummary, creditedContributors, leaseRanOn, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
+import { makerFailureClass, attributeOutcome, attributionSummary, creditedContributors, leaseRanOn, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
 import { chooseSpecies } from '../services/runtime-bandit';
 import { fitnessPosterior } from '../services/fitness-view';
 import { assignmentContext } from '../services/assignment-context';
@@ -23,6 +23,15 @@ import { createTestDb } from './helpers/test-db';
 
 const maker = (status: string, metadata: AttributionLease['metadata'] = { exit_status: 0, completed_at: 'x', changed_files: ['a.ts'] }): AttributionLease => ({ id: 'm', role: 'maker', status, metadata });
 const reviewer = (role: string, status: string, verdict?: string): AttributionLease => ({ role, status, metadata: { maker_lease_id: 'm', ...(verdict ? { verdict } : {}) } });
+
+describe('makerFailureClass: a check that timed out', () => {
+  const meta = (checks: Array<{ status: string; exit_status: number | null; timed_out: boolean }>) => ({ exit_status: 0, completed_at: 'x', changed_files: ['a.ts'], deterministic_checks: checks });
+  it('is infra_failed when every failed check timed out, regressed as soon as one check really failed', () => {
+    expect(makerFailureClass(meta([{ status: 'pass', exit_status: 0, timed_out: false }, { status: 'fail', exit_status: null, timed_out: true }]))).toBe('infra_failed');
+    expect(makerFailureClass(meta([{ status: 'fail', exit_status: 1, timed_out: false }, { status: 'fail', exit_status: null, timed_out: true }]))).toBe('regressed');
+    expect(makerFailureClass(meta([{ status: 'fail', exit_status: 1, timed_out: false }]))).toBe('regressed');
+  });
+});
 
 describe('attributeOutcome', () => {
   it('verified when every gate passed, with merge survival once known', () => {
