@@ -64,6 +64,16 @@ describe('roborev findings become Djimitflo work items via the event bus', () =>
     expect(JSON.parse(rows[0].metadata)).toMatchObject({ repo: 'djimit/x', sha: 'abc', affected_files: ['a.ts'] });
   });
 
+  it('turns an Eve-V tender event into one candidate work item', async () => {
+    const tender = { _id: '1-0', event_id: 'tender:pentest-rijk', event_type: 'eve-v.tender', source: 'hermes-eve-v', dedupe_key: 'tender:pentest-rijk', task_title: 'Tender 5/5: Pentest Rijk', context: 'Match 5/5.', deadline: '18 jan 2027', match_score: '5' };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [tender, { ...tender, _id: '2-0' }] }), { status: 200 })));
+    await new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events').pollOnce();
+    const rows = db.prepare("SELECT title, status, recommended_loop, source_ref, metadata FROM work_items WHERE source = 'eve-v-tender'").all() as Array<{ metadata: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ title: 'Tender 5/5: Pentest Rijk', status: 'candidate', recommended_loop: 'research-loop', source_ref: 'tender:pentest-rijk' });
+    expect(JSON.parse(rows[0].metadata)).toMatchObject({ deadline: '18 jan 2027', match_score: 5 });
+  });
+
   it('decodes list fields the Redis bus delivers as JSON strings; malformed lists become [] without throwing', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
       finding({ affected_files: '["src/a.ts","src/b.ts"]', labels: '["roborev","security"]', blocked_by: '[]' }),
