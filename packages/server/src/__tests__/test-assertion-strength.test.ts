@@ -108,6 +108,13 @@ describe('runDeterministicChecks: test:assertion-strength', () => {
   const run = async (text: string) => { fs.writeFileSync(path.join(worktree, TEST), text); return loops.runDeterministicChecks('r', { lease_id: 'l', scripts: ['test:changed'] }); };
   const checkOf = (r: ReturnType<typeof run>) => r.checks.find((c) => c.name === ASSERTION_STRENGTH_CHECK) as Record<string, unknown> | undefined;
 
+  it('a scripted check records how long it ran', async () => {
+    fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\nsleep 0.2\nexit 0\n', { mode: 0o755 });
+    const check = (await run(GOOD)).checks.find((c) => c.name === 'test:changed')!;
+    expect(check.duration_ms).toBeGreaterThanOrEqual(150);
+    expect(check.duration_ms).toBeLessThan(60_000);
+  });
+
   it('off (default) adds no check', async () => {
     const r = (await run(KIND_B));
     expect(checkOf(r)).toBeUndefined();
