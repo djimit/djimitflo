@@ -14,7 +14,13 @@ import { createSwarmRoutes } from '../routes/swarms';
 import { errorHandler } from '../middleware/error-handler';
 
 const auth = {
-  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  // The smoke app intentionally omits JWT verification, but it must still
+  // model the authenticated approver that the production route requires.
+  // A body-supplied approval string alone must remain insufficient.
+  requirePermission: () => (req: any, _res: any, next: any) => {
+    req.user = { sub: 'operator:real-runtime-smoke', email: 'real-runtime-smoke@example.invalid', role: 'approver' };
+    next();
+  },
 } as any;
 
 const realSmokeEnabled = process.env.RUN_REAL_RUNTIME_SMOKE === '1';
