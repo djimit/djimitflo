@@ -49,7 +49,7 @@ it('dry run (default): evaluates the value gate on every past auto-merge and wri
   seedAll();
   const before = db.prepare('SELECT id, metadata FROM loop_runs ORDER BY id').all();
   const r = replayAutoMergeValueGate(db, { now: NOW });
-  expect(r).toMatchObject({ applied: false, decisions: 5, totals: { pass: 2, low: 2, missing: 1 }, would_block: 3, written: 0, already_recorded: 0 });
+  expect(r).toMatchObject({ applied: false, decisions: 5, totals: { pass: 2, low: 2, missing: 1 }, would_block: 3, would_block_share: 0.6, written: 0, already_recorded: 0 });
   expect(r.by_lane).toEqual({ exports: { pass: 1, low: 2, missing: 0 }, mutation: { pass: 1, low: 0, missing: 0 }, 'test-gap': { pass: 0, low: 0, missing: 1 } });
   expect(r.rows.map((x) => [x.run_id, x.signal, x.would_block_value])).toEqual([
     ['run-1', 'pass', null], ['run-2', 'low', 'value_signal_low'], ['run-3', 'pass', null], ['run-4', 'missing', 'value_signal_missing'], ['run-5', 'low', 'value_signal_low']]);
