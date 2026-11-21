@@ -241,6 +241,7 @@ export class ExternalEventIngestService {
     const sourceUnits = sourceUnitsEnabled() ? new ExpertSourceUnitsService(this.db) : null;
     // P0-3 (FLEET_EVENT_SIGNATURES shadow|enforce): verify each NEW agent.outcome against the server-side host key registry
     const signatureMode = fleetSignatureMode();
+    const tenderMode = String(process.env.EVE_V_TENDER_INTAKE || 'off').trim().toLowerCase();
     if (signatureMode !== 'off') ensureFleetSignatureTables(this.db);
     const known = this.db.prepare('SELECT 1 FROM external_events WHERE id = ?');
     const transaction = this.db.transaction(() => {
@@ -263,7 +264,9 @@ export class ExternalEventIngestService {
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
         if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
-        if (eventType === 'eve-v.tender') this.materializeTender(normalizedEvent);
+        // EVE_V_TENDER_INTAKE=off (default) | shadow | on: shadow logs what would be created and writes nothing
+        if (eventType === 'eve-v.tender' && tenderMode === 'on') this.materializeTender(normalizedEvent);
+        else if (eventType === 'eve-v.tender' && tenderMode === 'shadow' && !known.get(id)) console.log(`[ExternalEventIngest] shadow: tender work item ${String(normalizedEvent.dedupe_key ?? '')}`);
         // a redelivered event is ignored by the insert below, so it keeps its first verdict (and does not burn a nonce)
         let verification: FleetVerification | null = null;
         if (eventType === 'agent.outcome' && signatureMode !== 'off' && !known.get(id)) {
