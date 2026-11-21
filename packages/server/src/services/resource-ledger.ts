@@ -199,6 +199,18 @@ function hostEnergy(db: Database, start: number, end: number): Array<{ host: str
     .map((h) => ({ ...h, ...integrateWh(hostSamples(db, h.host, start, end), start, end) }));
 }
 
+/** host energy over the window (hosts[] + coverage.window_pct of efficiencyView) without the ledger, jobs and 8-week north star —
+ *  evolutionLineage needs only these two (R5 2026-11-21: efficiencyView was ~45 % of its time on every GET /cockpit) */
+export function windowEnergy(db: Database, now = Date.now(), windowDays = 7) {
+  const start = now - windowDays * DAY;
+  const hosts = hostEnergy(db, start, now).map((h) => ({ host: h.host, samples: h.samples, last_sample: h.last_sample, avg_watts: h.avg_watts,
+    gpu_kwh: h.covered_s > 0 ? +(h.wh / 1000).toFixed(3) : null, covered_h: +(h.covered_s / 3600).toFixed(2),
+    coverage_pct: +((100 * h.covered_s * 1000) / (now - start)).toFixed(1) }));
+  const metered = hosts.filter((h) => h.covered_h > 0);
+  const window_pct = metered.length ? +(metered.reduce((s, h) => s + h.coverage_pct, 0) / metered.length).toFixed(1) : null;
+  return { hosts, window_pct };
+}
+
 export function efficiencyView(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env, windowDays = 7): EfficiencyView {
   const start = now - windowDays * DAY; const since = new Date(start).toISOString(); const until = new Date(now).toISOString();
   const days = new Map<string, LedgerDay>();
@@ -246,9 +258,7 @@ export function efficiencyView(db: Database, now = Date.now(), env: NodeJS.Proce
     };
   }).sort((a, b) => b.cloud_tokens - a.cloud_tokens || b.gpu_seconds - a.gpu_seconds || a.consumer.localeCompare(b.consumer));
 
-  const hosts = hostEnergy(db, start, now).map((h) => ({ host: h.host, samples: h.samples, last_sample: h.last_sample, avg_watts: h.avg_watts,
-    gpu_kwh: h.covered_s > 0 ? +(h.wh / 1000).toFixed(3) : null, covered_h: +(h.covered_s / 3600).toFixed(2),
-    coverage_pct: +((100 * h.covered_s * 1000) / (now - start)).toFixed(1) }));
+  const { hosts, window_pct } = windowEnergy(db, now, windowDays);
 
   const weeks: NorthStarWeek[] = [];
   for (let i = 0; i < 8; i++) {
@@ -277,12 +287,11 @@ export function efficiencyView(db: Database, now = Date.now(), env: NodeJS.Proce
   }
   const gpuS = consumers.reduce((s, c) => s + c.gpu_seconds, 0);
   const sampledS = consumers.reduce((s, c) => s + (c.energy_coverage ?? 0) * c.gpu_seconds, 0);
-  const meteredHosts = hosts.filter((h) => h.covered_h > 0);
 
   return {
     at: until, window_days: windowDays, ledger_enabled: resourceLedgerEnabled(env), consumers, ledger, hosts, north_star: { weeks },
     coverage: { jobs_pct: gpuS > 0 ? +((100 * sampledS) / gpuS).toFixed(1) : null,
-      window_pct: meteredHosts.length ? +(meteredHosts.reduce((s, h) => s + h.coverage_pct, 0) / meteredHosts.length).toFixed(1) : null },
+      window_pct },
     notes: [
       'Energy is GPU package power from the host agent (rocm-smi / nvidia-smi), integrated per job window; windows without samples are not measured.',
       'Overlapping jobs on one host share the measured Wh equally while they overlap; idle host power is attributed to nobody (hosts[].gpu_kwh is the wall-meter figure).',
