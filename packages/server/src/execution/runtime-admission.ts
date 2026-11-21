@@ -151,8 +151,12 @@ const OPENHUMAN_REPORTS = 'reports/openhuman-20261001/OPENHUMAN_VERIFICATION_REP
 export const RUNTIME_ADMISSIONS: readonly RuntimeAdmissionAssessment[] = [
   {
     runtime_id: 'djimitsec', runtime_version: '1.0.0', artifact_sha256: 'cc7fce21bb8d263b1019facf7ba794ed72342efa6816438a46e8803f6a34c9d9',
-    source_revision: '1109228f205c63cfac2a5131bbfc4e803e7b5219', assessment_timestamp: '2026-10-28T13:13:20Z',
-    assessed_by: 'djimitsec-native-integration-review',
+    source_revision: '1109228f205c63cfac2a5131bbfc4e803e7b5219', assessment_timestamp: '2026-11-21T10:00:00Z',
+    // reassessed 2026-11-21 (operator loop, before the 2026-11-27 expiry): adapter digest above unchanged since the 2026-10-28
+    // review; prod DJIMITSEC_SCAN_MODE=execute with DJIMITSEC_SCAN_TRIGGERS=off; scanner executor.json unchanged since its
+    // 2026-11-01 activation; 1 task (2026-11-02) + 1 ok contract probe, no failure or incident. No trigger fired → same
+    // conditions, same 30-day term.
+    assessed_by: 'djimitsec-native-integration-review; reassessed djimitflo-operator-loop',
     gates: {
       licensing: P('MIT first-party fixed HTTP adapter; no new runtime dependency', 'LICENSE', 'packages/server/src/execution/executors/djimitsec-executor.ts'),
       reproducibility: P('Exact adapter source digest above; source_revision names the inspected base, final feature revision is bound by release provenance', 'packages/server/src/__tests__/djimitsec-executor.test.ts'),
@@ -166,7 +170,7 @@ export const RUNTIME_ADMISSIONS: readonly RuntimeAdmissionAssessment[] = [
     authority: DJIMITFLO_OWNS_ALL, child_agents: 'NONE',
     capability_gap: { status: 'PROVEN', description: 'Existing plugin/MCP sidecar registries only catalog external tools; this fixed executor connects native task lifecycle to the separately controlled repository scanner without a second scheduler.', evidence_refs: ['packages/server/src/services/plugin-registry-service.ts', 'packages/server/src/routes/mcp.ts', 'packages/server/src/__tests__/djimitsec-executor.test.ts'] },
     conditions: ['DJIMITSEC_SCAN_MODE defaults off; shadow probes only; execute requires operator configuration.', 'No caller URL/path/shell/profile/budget, no autonomous authorization or verification.', 'Exact fixed-worker version/digest must be observed before dispatch; scanner observations remain independently unverified.', 'Production activation requires exact release checks, independent review and operator authorization.'],
-    reassessment_triggers: [...TRIGGERS, 'worker implementation digest/configuration or repository grants changed'], expires_at: '2026-11-27T00:00:00Z',
+    reassessment_triggers: [...TRIGGERS, 'worker implementation digest/configuration or repository grants changed'], expires_at: '2026-12-27T00:00:00Z',
   },
   // Positive control: the incumbent maker. Licence, pin, authority, interface, lifecycle and gym are evidenced; containment
   // (network egress, opencode's own subagents) is not — so it runs as LEGACY_ADMITTED, bound to the pinned version.
