@@ -3,12 +3,14 @@ import { assertionStrengthCheck } from './test-assertion-strength';
 import { withoutHiddenChecks } from './fail-before-pass-after';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { findingFixCheck, findingFixCheckEnv } from './finding-fix-source';
+import { DATE_BOMB_CHECK, dateBombCheck, dateBombInputs } from './date-bomb-source';
 import { ADVISORY_EXPOSURE_CHECK, advisoryExposureCheck, advisoryGoalRefs } from './advisory-exposure';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
+import { spawnAsync } from './spawn-async';
 import { LOOP_CATALOG } from '@djimitflo/shared';
 import { createError } from '../middleware/error-handler';
 
@@ -36,10 +38,11 @@ import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { MAKER_TEMPLATE_RULES_STE, steRulesFor } from './ste-001';
 import { extraRepoByPath, extraRepoChecks } from './repo-registry';
-import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
+import { assignmentContext, assignmentContextMarkdown, assignmentReceipt, type AssignmentContext, type AssignmentReceipt } from './assignment-context';
 import { skillRouteEventMeta } from './skill-route';
 import { firstJsonObject } from './model-json';
 import { isHighRiskPath } from './diff-capture';
+import { safeGitSpawn } from './safe-git';
 import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopName,
@@ -136,7 +139,8 @@ interface RunChecksInput {
 }
 
 const LOOP_NAME = 'doc-drift-and-small-fix-loop';
-const DEFAULT_MAX_FINDINGS = 50;
+/** startLoop's discovery cap when the caller names none (the loop daemon never does): the run's scan budget. */
+export const DEFAULT_MAX_FINDINGS = 50;
 const LOOP_RUNTIME_MANIFEST_POLICY_VERSION = 'loop-runtime-bridge-v1';
 
 const MONOREPO_ROOT = process.cwd().includes('/packages/server')
@@ -269,6 +273,9 @@ const LOOP_CONTRACTS: LoopContract[] = [
     stop_conditions: ['policy_drift_findings_planned', 'human_required_for_mutating_policy_change'],
   },
 ];
+
+/** A catalog loop's declared stop_conditions (null for a name outside LOOP_CONTRACTS); LOOP_STOP_CONDITIONS_MODE evaluates them. */
+export const loopContractStopConditions = (name: string): string[] | null => LOOP_CONTRACTS.find((c) => c.name === name)?.stop_conditions ?? null;
 
 /**
  * LoopService — facade for the loop subsystem.
@@ -408,6 +415,8 @@ export class LoopService {
 
   private db: Database;
   public evidenceRoot: string;
+  /** D3: the per-block receipt of each LOOP_WORK.md this service wrote, keyed by file, until a lease on that file is inserted */
+  private readonly pendingAssignmentReceipts = new Map<string, AssignmentReceipt>();
   public assurance: AgentAssuranceService;
   private intelligence: SwarmIntelligenceService;
   private budget: LoopBudgetService;
@@ -1118,7 +1127,7 @@ export class LoopService {
     };
   }
 
-  runDeterministicChecks(id: string, input: RunChecksInput = {}): { run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> } {
+  async runDeterministicChecks(id: string, input: RunChecksInput = {}): Promise<{ run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> }> {
     const run = this.getLoopRun(id);
     const leases = this.listWorkerLeases(run.id);
     const makerLease = input.lease_id
@@ -1151,9 +1160,11 @@ export class LoopService {
     // Each deploy mounts a fresh clone without node_modules, so the worktree manager has nothing to link: checks ran without
     // vitest/eslint (exit 127) unless the maker happened to run `npm ci` itself (prod 2026-09-28: 3 test-gap runs regressed).
     // Install like the gym does when the worktree has a lockfile but no dependencies.
-    const installFailure = this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
+    const installFailure = await this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
 
-    const checks: Array<Record<string, unknown>> = scripts.map((scriptName) => {
+    // Sequential and awaited (event-loop-freeze plan 2026-11-18): the server keeps serving while a check runs.
+    const checks: Array<Record<string, unknown>> = [];
+    for (const scriptName of scripts) checks.push(await (async () => {
       const stdoutPath = path.join(outputDir, `${scriptName}.stdout.log`);
       const stderrPath = path.join(outputDir, `${scriptName}.stderr.log`);
       if (!packageScripts.has(scriptName)) {
@@ -1171,9 +1182,9 @@ export class LoopService {
         };
       }
 
-      const result = spawnSync('npm', ['run', scriptName], {
+      const startedAt = Date.now();
+      const result = await spawnAsync('npm', ['run', scriptName], {
         cwd: makerLease.worktree_path!,
-        encoding: 'utf8',
         timeout: timeoutMs,
         env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id), ...findingFixCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
@@ -1187,10 +1198,11 @@ export class LoopService {
         status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
         exit_status: exitStatus,
         timed_out: timedOut,
+        duration_ms: Date.now() - startedAt, // prod 2026-11-21: 18 of 144 makers hit the test:changed cap and nothing said how close the others came
         stdout_path: stdoutPath,
         stderr_path: stderrPath,
       };
-    });
+    })());
 
     if (installFailure) checks.unshift(installFailure);
     // F1 (09-10): deterministic assertion strength of a test-writing maker's changed test files (WEAK_ASSERTION_CHECK_MODE)
@@ -1205,6 +1217,13 @@ export class LoopService {
     } catch (err) {
       if (Object.keys(findingFixCheckEnv(this.db, run.goal_id)).length) checks.push({ name: 'test:finding-fix', status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
     }
+    // date-bomb lane: only the test file changed, then the worktree's detector on it at +0 and +N; a gate, so an exception fails
+    try {
+      const dateBomb = dateBombCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir, makerLease.metadata?.changed_files);
+      if (dateBomb) checks.push(dateBomb);
+    } catch (err) {
+      if (dateBombInputs(this.db, run.goal_id)) checks.push({ name: DATE_BOMB_CHECK, status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
+    }
     // Track A advisory exposure: the exposure check re-run on the worktree lockfile (must be not_affected) + package files only
     try {
       const advisory = advisoryExposureCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir, makerLease.metadata?.changed_files);
@@ -1218,7 +1237,7 @@ export class LoopService {
     if (freshnessMode() !== 'off') {
       try {
         const wt = makerLease.worktree_path!;
-        const g = (...a: string[]) => spawnSync('git', ['-C', wt, ...a], { encoding: 'utf8' }).stdout ?? '';
+        const g = (...a: string[]) => safeGitSpawn(wt, a).stdout ?? '';
         const changed = [...g('diff', '--name-only').split('\n'), ...g('ls-files', '--others', '--exclude-standard').split('\n')]
           .filter((f) => f && !f.split('/').includes('node_modules'));
         evidenceReadSet = captureReadSet(wt, changed);
@@ -2100,10 +2119,10 @@ export class LoopService {
   }
 
   /** `npm ci` in a worktree that has a lockfile but no node_modules; returns a failed 'install' check, or null. */
-  private installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Record<string, unknown> | null {
+  private async installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
     if (!fs.existsSync(path.join(worktree, 'package-lock.json')) || fs.existsSync(path.join(worktree, 'node_modules'))) return null;
-    const result = spawnSync('npm', [...LoopService.WORKTREE_INSTALL_ARGS], {
-      cwd: worktree, encoding: 'utf8', timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
+    const result = await spawnAsync('npm', [...LoopService.WORKTREE_INSTALL_ARGS], {
+      cwd: worktree, timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
     });
     if (result.status === 0) return null;
     const stdoutPath = path.join(outputDir, 'install.stdout.log');
@@ -2484,7 +2503,10 @@ export class LoopService {
           // L1 receipt: capability id, version, artifact digest, block sha256, arm and the sha256 of this LOOP_WORK.md
           ...(extra.skill_route ? { skill_route: skillRouteEventMeta(extra.skill_route, content) } : {}) });
     }
-    fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
+    const file = this.workAssignmentPath(worktreePath);
+    fs.writeFileSync(file, content, 'utf8');
+    if (this.pendingAssignmentReceipts.size >= 256) this.pendingAssignmentReceipts.clear(); // written but never leased: bounded
+    this.pendingAssignmentReceipts.set(file, assignmentReceipt(extra, content));
   }
 
   public writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number, capabilitiesManifest?: string): string {
@@ -2749,7 +2771,24 @@ export class LoopService {
   }
 
   public insertWorkerLease(input: Parameters<WorkerLeaseRepo['insert']>[0]): void {
-    this.workerLeases.insert(this.withAssignmentPacketProvenance(input));
+    this.workerLeases.insert(this.withAssignmentReceipt(this.withAssignmentPacketProvenance(input)));
+  }
+
+  /**
+   * D3 (M0 H5): the per-block receipt of the LOOP_WORK.md this lease will run (assignmentReceipt), attached only while the file
+   * is still byte-identical to what writeWorkAssignment wrote, and only to the first lease on it. Additive metadata only.
+   */
+  private withAssignmentReceipt(input: Parameters<WorkerLeaseRepo['insert']>[0]): Parameters<WorkerLeaseRepo['insert']>[0] {
+    const file = input.metadata.assignment_file;
+    const receipt = typeof file === 'string' ? this.pendingAssignmentReceipts.get(file) : undefined;
+    if (typeof file !== 'string' || !receipt || input.metadata.assignment_receipt !== undefined) return input;
+    this.pendingAssignmentReceipts.delete(file);
+    try {
+      if (createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex') !== receipt.assignment_sha256) return input;
+      return { ...input, metadata: { ...input.metadata, assignment_receipt: receipt } };
+    } catch {
+      return input; // unreadable file: no receipt, as before
+    }
   }
 
   /**

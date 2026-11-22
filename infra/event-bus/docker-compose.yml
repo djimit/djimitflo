@@ -16,7 +16,7 @@ services:
     env_file: /etc/djimit-agents/agents.env
     environment:
       # S3 fleet auth: off | log | enforce (runbook docs/runbooks/fleet-bus-auth.md). Override in /srv/event-bus/.env.
-      AUTH_MODE: ${AUTH_MODE:-log}
+      AUTH_MODE: ${AUTH_MODE:-enforce}  # fail closed on a fresh install; prod runs enforce since 2026-11-15
       FLEET_TOKENS_FILE: /run/fleet/tokens
     volumes:
       # "<host> <sha256 of token>" lines; a directory mount so an atomic replace of the file is seen without restart

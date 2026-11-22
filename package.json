@@ -12,10 +12,10 @@
     "dev": "npm-run-all --parallel dev:server dev:dashboard",
     "dev:server": "npm run dev --workspace=@djimitflo/server",
     "dev:dashboard": "npm run dev --workspace=@djimitflo/dashboard",
-    "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
+    "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
-    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && node scripts/gen-agent-docs.mjs --check && node scripts/gen-agent-docs.test.mjs && node scripts/gym-worker.mjs --selfcheck && node scripts/gym-worker.test.mjs && node scripts/gym-worker-research.test.mjs && node scripts/kb-sync.test.mjs && node scripts/mutation-gain.test.mjs && node scripts/skills/oracle-gate.test.mjs && node scripts/skills/oracle-gate-replay.test.mjs && node scripts/ci-workflows.test.mjs && node scripts/host-scripts-dry-run.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present && npm run test:skill-packages",
+    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && node scripts/gen-agent-docs.mjs --check && node scripts/gen-agent-docs.test.mjs && node scripts/env-inventory.mjs --check && node scripts/env-inventory.test.mjs && node scripts/gym-worker.mjs --selfcheck && node scripts/gym-worker.test.mjs && node scripts/gym-worker-research.test.mjs && node scripts/kb-sync.test.mjs && node scripts/mutation-gain.test.mjs && node scripts/skills/oracle-gate.test.mjs && node scripts/skills/oracle-gate-replay.test.mjs && node scripts/ci-workflows.test.mjs && node scripts/time-travel-tests.test.mjs && node scripts/host-scripts-dry-run.test.mjs && node scripts/benchmark-run.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present && npm run test:skill-packages",
     "test:changed": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test -w @djimitflo/server -w @djimitflo/shared -w @djimitflo/agent-catalog -w @djimitflo/mcp-server -w @djimitflo/dashboard -- --changed",
     "test:mutation": "stryker run",
     "test:mutation:grounded": "node scripts/mutation-gain.mjs",
@@ -32,7 +32,7 @@
     "audit:tables": "node scripts/table-reachability.mjs",
     "docs:agents": "node scripts/gen-agent-docs.mjs",
     "lint": "npm run lint --workspaces --if-present",
-    "type-check": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run type-check --workspaces --if-present",
+    "type-check": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run type-check --workspaces --if-present",
     "proof:test": "npm run test --workspace=@djimitflo/server -- proof-run-service.test.ts",
     "proof:lint": "npm run lint --workspace=@djimitflo/server",
     "proof:type-check": "npm run type-check --workspace=@djimitflo/server",
@@ -55,14 +55,14 @@
     "react-dom": "^19.3.1",
     "vitest": "^4.1.12",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.1"
+    "typescript-eslint": "8.72.2"
   },
   "engines": {
     "node": ">=22.0.0 <25.0.0",
     "npm": ">=9.0.0"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^13.1.1",
     "vite": "^8.2.2",
     "ws": "^8.22.1"
   },

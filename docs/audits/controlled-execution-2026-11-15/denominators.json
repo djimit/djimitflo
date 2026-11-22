@@ -1,0 +1,113 @@
+{
+  "frozen_at": "2026-11-15",
+  "base_sha": "b496916b029dd4555c648203f4244706628ce79e",
+  "critical_chains": [
+    {
+      "id": "C01",
+      "chain": "maker lane: goal \u2192 maker lease \u2192 engine task \u2192 deterministic checks \u2192 checker + security checker \u2192 verification",
+      "why_critical": "external effect (worktree/git), quota"
+    },
+    {
+      "id": "C02",
+      "chain": "draft PR publication (loop-draft-pr-service: commit, push, open PR)",
+      "why_critical": "external effect (git push, PR)"
+    },
+    {
+      "id": "C03",
+      "chain": "auto-merge: test-only class, finding-fix class, audit sample, revocation",
+      "why_critical": "external effect (merge), selection"
+    },
+    {
+      "id": "C04",
+      "chain": "approvals: decision \u2192 task execution (engine handleApprovalDecision, autonomy rules, inheritance)",
+      "why_critical": "grants/checks rights"
+    },
+    {
+      "id": "C05",
+      "chain": "auto-deploy (host scripts/auto-deploy.sh + deploy-vps.sh, post-deploy verdict)",
+      "why_critical": "external effect (deploy)"
+    },
+    {
+      "id": "C06",
+      "chain": "runtime admission + spawn/host tokens (runtime-admission, spawn-token, host-agent poll)",
+      "why_critical": "grants/checks rights"
+    },
+    {
+      "id": "C07",
+      "chain": "fleet shell commands (fleet_commands, FLEET_SHELL_ENABLED, host agent v3)",
+      "why_critical": "grants rights, external effect"
+    },
+    {
+      "id": "C08",
+      "chain": "genome trials \u2192 promoteGenome \u2192 genome-apply in production makers",
+      "why_critical": "selection/promotion"
+    },
+    {
+      "id": "C09",
+      "chain": "skill route / capability factory / executable skill validation",
+      "why_critical": "selection/promotion"
+    },
+    {
+      "id": "C10",
+      "chain": "memory: candidate \u2192 promotion \u2192 delivery (UAMS/OKF fan-out, MEMORY_DELIVERY_RECEIPTS)",
+      "why_critical": "external effect, promotion"
+    },
+    {
+      "id": "C11",
+      "chain": "Telegram push / triage callbacks",
+      "why_critical": "external effect, grants rights"
+    },
+    {
+      "id": "C12",
+      "chain": "cost and quota: token brake, inference budget, cost ledger, resource ledger",
+      "why_critical": "consumes quota"
+    },
+    {
+      "id": "C13",
+      "chain": "DjimitSec scan \u2192 finding \u2192 fix \u2192 retest \u2192 closure",
+      "why_critical": "external effect, security"
+    },
+    {
+      "id": "C14",
+      "chain": "recovery: boot recovery, lease reaper, LOOP_RESUME_INTERRUPTED, recovery holds",
+      "why_critical": "data loss/restore"
+    },
+    {
+      "id": "C15",
+      "chain": "retention and backups (retention-service, nightly-retention.sh, outbox)",
+      "why_critical": "data loss/restore"
+    }
+  ],
+  "critical_chain_count": 15,
+  "scenarios_executable_here": {
+    "S1": "E3",
+    "S2": "E3",
+    "S3": "E2/E3",
+    "S4": "E2/E3",
+    "S5": "E2",
+    "S6": "E2",
+    "S7": "E3",
+    "S8": "E2",
+    "S9": "E2/E3",
+    "S10": "E2",
+    "S11": "E2/E3",
+    "S12": "E3 (mock orchestration only; E4 BLOCKED by mandate)",
+    "S13": "E2",
+    "S14": "E2 (control fixture only)",
+    "S15": "E2",
+    "S16": "E2 (live DjimitSec part BLOCKED: no DjimitSec test resource)"
+  },
+  "hypothesis_solved_when": {
+    "H1": "a test that requests a spawn via the HTTP route and then, without calling a worker function directly and without a DB edit, observes a started child or an explicit rejection with a reason",
+    "H2": "reservation, measured use and release are separately observable; a child that never started or was aborted releases its reservation; missing metering stays null",
+    "H3": "the normal completion route updates the spawn status, or the field is provably derived and never used as an independent truth; the proof-run repairs no state the normal route should have written",
+    "H4": "per executor it is recorded which boundary is technically enforced (uid, sandbox, network, worktree) and which is only a prompt warning, with a test on the enforced boundary",
+    "H5": "selection, delivery, load in the runtime and effect are four separate observations for the same content hash",
+    "H6": "per learning component the fitness contract has an independent outcome, a fair comparison and a decision rule, or is honestly measured_no_selection / unmeasured / circular",
+    "H7": "configured, actually triggered, poller reachable and work progressed are four separate signals, each with its own unknown state",
+    "H8": "source, synthetic status, commit, freshness and analysis method survive into the explainer and the evidence export, with a test that follows a synthetic row to the output",
+    "H9": "assignment, scan, verification, fix and retest are each bound to the right artefact, commit, scope, environment and time window; the live part stays BLOCKED without DjimitSec access",
+    "H10": "per recurring loop cost and delivered value are visible side by side with a denominator, and repetition without new information is counted as such"
+  },
+  "rule": "changing any list or criterion after a result is a recorded deviation in REPORT.md, never a silent redefinition"
+}

@@ -14,7 +14,8 @@ const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, 
 const commit = (cwd: string, msg: string) => { git(cwd, 'add', '.'); git(cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', msg); };
 const write = (cwd: string, rel: string, s: string) => { fs.mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true }); fs.writeFileSync(path.join(cwd, rel), s); };
 const ok = () => vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ html_url: 'https://github.com/o/r/pull/9', draft: true, state: 'open', body: 'Opened by the djimitflo loop for run `run-1`.', head: { ref: 'agent/loop/run-1', sha: git(wt, 'rev-parse', 'HEAD'), repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } } }) });
-const env = (mode?: string) => ({ LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', ...(mode ? { LOOP_EVIDENCE_FRESHNESS_MODE: mode } : {}) });
+// the test remote is a local path: safe-git allows the file transport only when GIT_ALLOW_PROTOCOL names it (production: https)
+const env = (mode?: string) => ({ LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', GIT_ALLOW_PROTOCOL: 'file', ...(mode ? { LOOP_EVIDENCE_FRESHNESS_MODE: mode } : {}) });
 
 beforeEach(() => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fresh-'));

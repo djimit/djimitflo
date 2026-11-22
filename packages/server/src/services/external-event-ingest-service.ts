@@ -163,6 +163,27 @@ export class ExternalEventIngestService {
    * the required work_item.created outbox insert, CODE-003) is rethrown: the poll transaction rolls back without advancing
    * the cursor, so the next poll retries the finding instead of skipping it.
    */
+  /** A tender Eve-V scored 4/5 or higher (tender-refiner.py) becomes a candidate work item, once per dedupe_key. */
+  private materializeTender(event: Record<string, unknown>): void {
+    try {
+      const title = typeof event.task_title === 'string' ? event.task_title.trim() : '';
+      const dedupeKey = typeof event.dedupe_key === 'string' ? event.dedupe_key.trim() : '';
+      if (!title || !dedupeKey) return;
+      new WorkItemService(this.db).upsertBySourceRef({
+        title: title.slice(0, 200),
+        description: typeof event.context === 'string' && event.context.trim() ? event.context : title,
+        source: 'eve-v-tender', source_ref: dedupeKey,
+        risk_class: 'low',
+        status: 'candidate',
+        recommended_loop: 'research-loop',
+        metadata: { deadline: event.deadline ?? null, match_score: Number(event.match_score) || null },
+      });
+    } catch (error) {
+      if (isStorageError(error)) throw error;
+      /* a malformed tender never breaks event ingestion */
+    }
+  }
+
   private materializeRoborevFinding(event: Record<string, unknown>): void {
     try {
       const title = typeof event.task_title === 'string' ? event.task_title.trim() : '';
@@ -220,6 +241,7 @@ export class ExternalEventIngestService {
     const sourceUnits = sourceUnitsEnabled() ? new ExpertSourceUnitsService(this.db) : null;
     // P0-3 (FLEET_EVENT_SIGNATURES shadow|enforce): verify each NEW agent.outcome against the server-side host key registry
     const signatureMode = fleetSignatureMode();
+    const tenderMode = String(process.env.EVE_V_TENDER_INTAKE || 'off').trim().toLowerCase();
     if (signatureMode !== 'off') ensureFleetSignatureTables(this.db);
     const known = this.db.prepare('SELECT 1 FROM external_events WHERE id = ?');
     const transaction = this.db.transaction(() => {
@@ -242,6 +264,9 @@ export class ExternalEventIngestService {
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
         if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
+        // EVE_V_TENDER_INTAKE=off (default) | shadow | on: shadow logs what would be created and writes nothing
+        if (eventType === 'eve-v.tender' && tenderMode === 'on') this.materializeTender(normalizedEvent);
+        else if (eventType === 'eve-v.tender' && tenderMode === 'shadow' && !known.get(id)) console.log(`[ExternalEventIngest] shadow: tender work item ${String(normalizedEvent.dedupe_key ?? '')}`);
         // a redelivered event is ignored by the insert below, so it keeps its first verdict (and does not burn a nonce)
         let verification: FleetVerification | null = null;
         if (eventType === 'agent.outcome' && signatureMode !== 'off' && !known.get(id)) {

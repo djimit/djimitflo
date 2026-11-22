@@ -49,7 +49,14 @@ export function llmEndpoints(primaryOllamaUrl: string, env: NodeJS.ProcessEnv = 
 
 /** Connection-level failure (host down, timeout, 5xx): says nothing about the request, so the host is avoided for a while. */
 export function isConnectivityFailure(message: string): boolean {
-  return /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up|HTTP 5\d\d/i.test(message);
+  return /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up|HTTP 5\d\d|request failed: 5\d\d/i.test(message);
+}
+
+/** Quota/billing refusal (429, 402): the Ollama Cloud weekly limit is account-wide (prod 2026-10-18), so retrying the same
+ *  host on every call only burns attempts — it is avoided far longer than a connectivity blip. */
+const QUOTA_BREAKER_MS = 15 * 60_000;
+export function isQuotaFailure(message: string): boolean {
+  return /(HTTP |request failed: )(429|402)\b/i.test(message);
 }
 
 const count = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -115,7 +122,8 @@ export async function generateText(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(endpoint === deps.endpoints[0] ? message : `${endpoint.id}: ${message}`);
-      if (isConnectivityFailure(message)) downUntil.set(endpoint.id, now() + BREAKER_MS);
+      if (isQuotaFailure(message)) downUntil.set(endpoint.id, now() + QUOTA_BREAKER_MS);
+      else if (isConnectivityFailure(message)) downUntil.set(endpoint.id, now() + BREAKER_MS);
     }
   }
   // Report the primary's own error first so callers' error classification keeps working.

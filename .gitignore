@@ -114,3 +114,6 @@ drift*.json
 benchmarks/*.js
 benchmarks/*.d.ts
 benchmarks/*.map
+
+# time-travel date-bomb detector (scripts/time-travel-tests.mjs)
+reports/time-travel/

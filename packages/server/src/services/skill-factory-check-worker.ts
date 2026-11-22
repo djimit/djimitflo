@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 
 export type FactoryCheckRequest = { database: string; runId: string; leaseId: string; timeoutMs?: number };
-export type FactoryCheckResult = Pick<ReturnType<LoopService['runDeterministicChecks']>, 'checks'>;
+export type FactoryCheckResult = Pick<Awaited<ReturnType<LoopService['runDeterministicChecks']>>, 'checks'>;
 let active = false;
 
 /** Run the existing synchronous checker off the API thread. No queue or alternate verification semantics. */
@@ -36,7 +36,7 @@ export function runFactoryChecks(request: FactoryCheckRequest): Promise<FactoryC
   });
 }
 
-if (!isMainThread && workerData?.kind === 'skill-factory-check') {
+if (!isMainThread && workerData?.kind === 'skill-factory-check') void (async () => {
   const request = workerData as FactoryCheckRequest;
   let db: Database.Database | undefined;
   let checking = false;
@@ -45,7 +45,7 @@ if (!isMainThread && workerData?.kind === 'skill-factory-check') {
     const { LoopService: ExistingLoopService } = require('./loop-service') as typeof import('./loop-service');
     const loops = new ExistingLoopService(db);
     checking = true;
-    const result = loops.runDeterministicChecks(request.runId, {
+    const result = await loops.runDeterministicChecks(request.runId, {
       lease_id: request.leaseId, timeout_ms: request.timeoutMs,
       scripts: ['test', 'lint', 'type-check', 'test:skill-package'],
     });
@@ -56,4 +56,4 @@ if (!isMainThread && workerData?.kind === 'skill-factory-check') {
     db?.close();
     parentPort!.close();
   }
-}
+})();

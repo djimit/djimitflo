@@ -38,6 +38,14 @@ it('only test-gap goals (or goals marked evolve) are eligible', () => {
   expect([evolveEligible(db, 'g-tg'), evolveEligible(db, 'g-other'), evolveEligible(db, 'g-flag'), evolveEligible(db, 'g-mut')]).toEqual([true, false, true, true]);
 });
 
+it('the winner id and timestamp are bound, not spliced into the SQL text', () => {
+  maker("m-o'brien", 'opencode', ok(40)); maker('m-b', 'codex', ok(80));
+
+  expect(selectEvolveWinner(db, 'run-1', ["m-o'brien", 'm-b'])).toBe("m-o'brien");
+  expect(meta('m-b').superseded_by_maker_lease_id).toBe("m-o'brien");
+  expect(meta('m-b').superseded_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+});
+
 it('the fittest maker stays the only non-superseded one; losers are superseded and their reviewers cancelled', () => {
   maker('m-a', 'opencode', ok(80, { superseded_by_maker_lease_id: 'm-b' })); reviewer('c-a', 'checker', 'm-a'); reviewer('s-a', 'security_checker', 'm-a');
   maker('m-b', 'opencode', ok(40, { model: 'ollama/kimi-k2.6:cloud' })); reviewer('c-b', 'checker', 'm-b');

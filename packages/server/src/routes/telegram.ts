@@ -3,6 +3,7 @@
  */
 
 import { Router } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -86,7 +87,15 @@ export function createTelegramRoutes(db: Database, auth?: AuthMiddleware, _wsSer
   }
 
   // POST /api/telegram/webhook — receive Telegram webhook
+  // Telegram re-sends an update it did not get a timely 2xx for; without this a slow /task ran twice. In-process memory
+  // is enough for retries (minutes apart); a handler error forgets the id so Telegram's retry is processed.
+  const seenUpdates = new Set<number>();
+  const secretMatches = (given: string | undefined, secret: string): boolean => {
+    const a = Buffer.from(given ?? ''); const b = Buffer.from(secret);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
   router.post('/webhook', async (req, res) => {
+    let updateId: number | null = null;
     try {
       if (!bot.isConfigured()) {
         res.status(503).json({ error: 'Telegram webhook is not configured' });
@@ -97,13 +106,20 @@ export function createTelegramRoutes(db: Database, auth?: AuthMiddleware, _wsSer
         res.status(503).json({ error: 'Telegram webhook secret is not configured' });
         return;
       }
-      if (req.get('X-Telegram-Bot-Api-Secret-Token') !== secret) {
+      if (!secretMatches(req.get('X-Telegram-Bot-Api-Secret-Token'), secret)) {
         res.status(401).json({ error: 'Invalid webhook secret' });
         return;
+      }
+      updateId = Number.isSafeInteger(req.body?.update_id) ? req.body.update_id : null;
+      if (updateId !== null) {
+        if (seenUpdates.has(updateId)) { res.json({ ok: true, duplicate: true }); return; }
+        seenUpdates.add(updateId);
+        if (seenUpdates.size > 1000) seenUpdates.delete(seenUpdates.values().next().value as number);
       }
       await bot.handleWebhook(req.body);
       res.json({ ok: true });
     } catch (error) {
+      if (updateId !== null) seenUpdates.delete(updateId);
       console.error('Telegram webhook error:', error);
       res.status(500).json({ error: 'Webhook processing failed' });
     }
