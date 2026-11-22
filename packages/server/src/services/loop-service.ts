@@ -399,6 +399,11 @@ function recordedAttestation(input: CheckerVerdictInput, actor?: VerdictActor): 
   return { reviewer, reason, ...(reviewer_type === 'heuristic' ? { reviewer_type } : {}) };
 }
 
+const DIRECT_TESTS_SCRIPT = 'test:changed:direct';
+/** LOOP_CHECK_DIRECT_TESTS_MODE = off | shadow | on (default off) */
+export const directTestsMode = (env: NodeJS.ProcessEnv = process.env): 'off' | 'shadow' | 'on' =>
+  env.LOOP_CHECK_DIRECT_TESTS_MODE === 'on' ? 'on' : env.LOOP_CHECK_DIRECT_TESTS_MODE === 'shadow' ? 'shadow' : 'off';
+
 export class LoopService {
 
   /**
@@ -1182,8 +1187,13 @@ export class LoopService {
         };
       }
 
+      // LOOP_CHECK_DIRECT_TESTS_MODE (off | shadow | on, default off): on runs test:changed:direct in place of test:changed —
+      // the changed tests plus the tests importing a changed source file directly, the full suite staying CI's on the PR head.
+      // prod 2026-11-22: 13 of 18 failed lint-fix makers timed out in test:changed (~575 of 897 files on 2 cores).
+      const direct = scriptName === 'test:changed' && packageScripts.has(DIRECT_TESTS_SCRIPT) ? directTestsMode() : 'off';
+      const ranScript = direct === 'on' ? DIRECT_TESTS_SCRIPT : scriptName;
       const startedAt = Date.now();
-      const result = await spawnAsync('npm', ['run', scriptName], {
+      const result = await spawnAsync('npm', ['run', ranScript], {
         cwd: makerLease.worktree_path!,
         timeout: timeoutMs,
         env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id), ...findingFixCheckEnv(this.db, run.goal_id) },
@@ -1201,6 +1211,14 @@ export class LoopService {
         duration_ms: Date.now() - startedAt, // prod 2026-11-21: 18 of 144 makers hit the test:changed cap and nothing said how close the others came
         stdout_path: stdoutPath,
         stderr_path: stderrPath,
+        ...(direct === 'on' ? { ran_script: ranScript } : {}),
+        // shadow: what the direct selection would have said, next to the unchanged verdict of test:changed
+        ...(direct === 'shadow' ? { direct_shadow: await (async () => {
+          const t = Date.now();
+          const r = await spawnAsync('npm', ['run', DIRECT_TESTS_SCRIPT], { cwd: makerLease.worktree_path!, timeout: timeoutMs, env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024 });
+          const to = Boolean(r.error && r.error.message.includes('ETIMEDOUT'));
+          return { status: r.status === 0 && !to ? 'pass' : 'fail', exit_status: typeof r.status === 'number' ? r.status : null, timed_out: to, duration_ms: Date.now() - t };
+        })() } : {}),
       };
     })());
 
