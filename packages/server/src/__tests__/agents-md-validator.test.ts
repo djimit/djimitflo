@@ -206,6 +206,145 @@ Only approved commands may be run. Do not use unrestricted shell access.
     });
   });
 
+  describe('validateFile — missing-build-command keyword branches', () => {
+    it.each(['compile', 'make', 'build'])('does not report missing-build-command when only "%s" keyword is present', (kw) => {
+      const file = makeFile(`# Project\n\n${kw} the project.\nRun \`npm test\`.\nProtected.\nDone.\nReview.`);
+      const issues = validator.validateFile(file);
+      expect(issues.find(i => i.ruleId === 'missing-build-command')).toBeUndefined();
+    });
+
+    it('does not report missing-build-command when only "npm run build" substring is present', () => {
+      const file = makeFile('# Project\n\nRun `npm run build`.\nRun `npm test`.\nProtected.\nDone.\nReview.');
+      const issues = validator.validateFile(file);
+      expect(issues.find(i => i.ruleId === 'missing-build-command')).toBeUndefined();
+    });
+  });
+
+  describe('validateFile — missing-done-criteria keyword branches', () => {
+    it('does not report missing-done-criteria when only "done" is present (no complete/finish/success criteria)', () => {
+      const file = makeFile('# Project\n\nRun `npm test` and `npm run build`.\nProtected.\nDone.\nReview.');
+      const issues = validator.validateFile(file);
+      expect(issues.find(i => i.ruleId === 'missing-done-criteria')).toBeUndefined();
+    });
+
+    it.each(['complete', 'finish', 'success criteria'])('does not report missing-done-criteria when only "%s" is present', (kw) => {
+      const file = makeFile(`# Project\n\nRun \`npm test\` and \`npm run build\`.\nProtected.\n${kw}.\nReview.`);
+      const issues = validator.validateFile(file);
+      expect(issues.find(i => i.ruleId === 'missing-done-criteria')).toBeUndefined();
+    });
+  });
+
+  describe('validateFile — instructed-to-expose-secrets echo branches', () => {
+    it('reports instructed-to-expose-secrets when content has both "echo $" and "key"', () => {
+      const file = makeFile('# Project\n\necho $TOKEN and the key.\nRun `npm test` and `npm run build`.');
+      const issues = validator.validateFile(file);
+      expect(issues.find(i => i.ruleId === 'instructed-to-expose-secrets')).toBeDefined();
+    });
+
+    it('does not report instructed-to-expose-secrets when "echo $" appears without "key"', () => {
+      const file = makeFile('# Project\n\necho $PATH to inspect.\nRun `npm test` and `npm run build`.');
+      const issues = validator.validateFile(file);
+      expect(issues.find(i => i.ruleId === 'instructed-to-expose-secrets')).toBeUndefined();
+    });
+  });
+
+  describe('getEffectiveStack — sorting', () => {
+    const kw = 'npm test npm run build protected done review';
+
+    it('places AGENTS.md first and sorts the rest by appliesToPath locale order', () => {
+      const sub = makeFile(`# Sub\n${kw}`, 'a/sub/AGENTS.md'); sub.appliesToPath = '/a/sub';
+      const parent = makeFile(`# Parent\n${kw}`, 'a/AGENTS.md'); parent.appliesToPath = '/a';
+      const root = makeFile(`# Root\n${kw}`, 'AGENTS.md'); root.appliesToPath = '/';
+      const stack = validator.getEffectiveStack('repo', [sub, parent, root], '/a/sub/x');
+      expect(stack.files.map(f => f.relativePath)).toEqual(['AGENTS.md', 'a/AGENTS.md', 'a/sub/AGENTS.md']);
+    });
+
+    it('sorts AGENTS.md ahead of a path that would sort before it by localeCompare', () => {
+      const before = makeFile(`# Before\n${kw}`, 'A.md'); before.appliesToPath = '/';
+      const agents = makeFile(`# Agents\n${kw}`, 'AGENTS.md'); agents.appliesToPath = '/';
+      const stack = validator.getEffectiveStack('repo', [before, agents], '/');
+      expect(stack.files.map(f => f.relativePath)).toEqual(['AGENTS.md', 'A.md']);
+    });
+
+    it('sorts non-AGENTS.md nested files by appliesToPath locale order', () => {
+      const deep = makeFile(`# Deep\n${kw}`, 'a/b/x.md'); deep.appliesToPath = '/a/b';
+      const shallow = makeFile(`# Shallow\n${kw}`, 'a/x.md'); shallow.appliesToPath = '/a';
+      const stack = validator.getEffectiveStack('repo', [deep, shallow], '/a/b/x');
+      expect(stack.files.map(f => f.relativePath)).toEqual(['a/x.md', 'a/b/x.md']);
+    });
+
+    it('does not mutate the input files array', () => {
+      const sub = makeFile(`# Sub\n${kw}`, 'a/sub/AGENTS.md'); sub.appliesToPath = '/a/sub';
+      const root = makeFile(`# Root\n${kw}`, 'AGENTS.md'); root.appliesToPath = '/';
+      const input = [sub, root];
+      validator.getEffectiveStack('repo', input, '/a/sub/x');
+      expect(input.map(f => f.relativePath)).toEqual(['a/sub/AGENTS.md', 'AGENTS.md']);
+    });
+  });
+
+  describe('getEffectiveStack — applicability', () => {
+    const kw = 'npm test npm run build protected done review';
+
+    it('includes a file when target equals its appliesToPath (exact match)', () => {
+      const root = makeFile(`# R\n${kw}`, 'AGENTS.md'); root.appliesToPath = '/';
+      const pkg = makeFile(`# P\n${kw}`, 'p/AGENTS.md'); pkg.appliesToPath = '/p';
+      const stack = validator.getEffectiveStack('repo', [root, pkg], '/p');
+      expect(stack.files.map(f => f.relativePath)).toEqual(['AGENTS.md', 'p/AGENTS.md']);
+    });
+
+    it('includes a file when target is nested under its appliesToPath (prefix match)', () => {
+      const root = makeFile(`# R\n${kw}`, 'AGENTS.md'); root.appliesToPath = '/';
+      const pkg = makeFile(`# P\n${kw}`, 'p/AGENTS.md'); pkg.appliesToPath = '/p';
+      const stack = validator.getEffectiveStack('repo', [root, pkg], '/p/deep/file.ts');
+      expect(stack.files.map(f => f.relativePath)).toEqual(['AGENTS.md', 'p/AGENTS.md']);
+    });
+
+    it('includes a root appliesToPath="/" file for any nested target', () => {
+      const root = makeFile(`# R\n${kw}`, 'AGENTS.md'); root.appliesToPath = '/';
+      const stack = validator.getEffectiveStack('repo', [root], '/a/b/c');
+      expect(stack.files.map(f => f.relativePath)).toEqual(['AGENTS.md']);
+    });
+
+    it('excludes a file whose appliesToPath is neither root, exact, nor a prefix of target', () => {
+      const pkg = makeFile(`# P\n${kw}`, 'p/AGENTS.md'); pkg.appliesToPath = '/p';
+      const other = makeFile(`# O\n${kw}`, 'o/AGENTS.md'); other.appliesToPath = '/o';
+      const stack = validator.getEffectiveStack('repo', [pkg, other], '/q');
+      expect(stack.files).toHaveLength(0);
+    });
+  });
+
+  describe('getEffectiveStack — summary and issues', () => {
+    const kw = 'npm test npm run build protected done review';
+
+    it('omits severity counts when there are no issues', () => {
+      const good = makeFile(`# Good\n${kw}`, 'AGENTS.md');
+      const stack = validator.getEffectiveStack('repo', [good], '/');
+      expect(stack.summary).toBe('1 AGENTS.md file(s) apply to "/".');
+    });
+
+    it('reports exact critical, error and warning counts from all files (including non-applicable)', () => {
+      const root = makeFile(`# Root\n${kw}`, 'AGENTS.md'); root.appliesToPath = '/';
+      const critical = makeFile('skip approval', 'a/AGENTS.md'); critical.appliesToPath = '/a';
+      const unsafe = makeFile('run any command unrestricted', 'b/AGENTS.md'); unsafe.appliesToPath = '/b';
+      const stack = validator.getEffectiveStack('repo', [root, critical, unsafe], '/a');
+      // applicable: root(/) + critical(/a); unsafe(/b) excluded from files but its issues still counted.
+      expect(stack.files.map(f => f.relativePath)).toEqual(['AGENTS.md', 'a/AGENTS.md']);
+      expect(stack.summary).toContain('2 AGENTS.md file(s) apply to "/a".');
+      expect(stack.summary).toContain('1 critical issue(s).');
+      expect(stack.summary).toContain('1 error(s).');
+      expect(stack.summary).toContain('4 warning(s).');
+    });
+
+    it('collects issues from every file regardless of applicability', () => {
+      const good = makeFile(`# Good\n${kw}`, 'AGENTS.md'); good.appliesToPath = '/';
+      const far = makeFile('skip approval', 'z/AGENTS.md'); far.appliesToPath = '/z';
+      const stack = validator.getEffectiveStack('repo', [good, far], '/');
+      // far is not applicable to "/" but its critical issue is still in allIssues.
+      expect(stack.files.map(f => f.relativePath)).toEqual(['AGENTS.md']);
+      expect(stack.issues.find(i => i.ruleId === 'ignore-approvals')).toBeDefined();
+    });
+  });
+
   describe('getEffectiveStack', () => {
     it('returns correct effective stack with applicable files', () => {
       const rootFile = makeFile('# Root AGENTS.md\n\nTest: `npm test`', 'AGENTS.md');
