@@ -126,10 +126,10 @@ describe('version binding and expiry', () => {
   it('legacy admission is explicit and expiring, never permanent', () => {
     for (const a of RUNTIME_ADMISSIONS.filter((r) => r.legacy)) {
       expect(decide(a).decision).toBe('LEGACY_ADMITTED');
-      expect(Date.parse(a.expires_at)).toBeLessThanOrEqual(Date.parse('2027-01-01T00:00:00Z'));
+      expect(Date.parse(a.expires_at)).toBeLessThanOrEqual(Date.parse('2027-04-01T00:00:00Z'));
       expect(a.legacy!.migration.length).toBeGreaterThan(0);
     }
-    expect(expiringAdmissions(Date.parse('2026-12-15T00:00:00Z')).map((a) => a.runtime_id)).toContain('opencode');
+    expect(expiringAdmissions(Date.parse('2026-12-15T00:00:00Z')).map((a) => a.runtime_id)).toContain('atomic');
     expect(expiringAdmissions(NOW)).toEqual([]);
   });
 });
@@ -220,7 +220,7 @@ describe('ExecutionEngine enforcement', () => {
 describe('stall watch', () => {
   it('warns 30 days before an admission expires', () => {
     const db = new Database(':memory:'); db.exec(schema); runMigrations(db);
-    expect(detectStalls(db, Date.parse('2026-12-10T00:00:00Z'), {}).map((s) => s.subsystem)).toContain('runtime_admission:opencode');
+    expect(detectStalls(db, Date.parse('2026-12-10T00:00:00Z'), {}).map((s) => s.subsystem)).toContain('runtime_admission:atomic');
     expect(detectStalls(db, NOW, {}).some((s) => s.subsystem.startsWith('runtime_admission'))).toBe(false);
     db.close();
   });

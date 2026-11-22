@@ -6,9 +6,9 @@ Every environment variable read in `packages/server/src` (tests excluded), from 
 Registry = listed in `EVOLUTION_FLAGS` (`packages/server/src/services/evolution-evidence.ts`). Runbook = has a row in a flag table of `docs/runbooks/self-improvement-loop-operations.md`.
 A variable in neither is not wrong, but nothing else in the repository tells an operator that it exists.
 
-- Read by the server: 664
-- In the registry: 182
-- In the runbook: 230
+- Read by the server: 665
+- In the registry: 183
+- In the runbook: 231
 - In neither: 432
 
 | Variable | Registry | Runbook | Read in |
@@ -257,6 +257,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `EMBEDDING_PROVIDER` | no | no | `services/embedding-provider.ts` |
 | `EMBEDDING_TIMEOUT_MS` | no | no | `services/embedding-provider.ts`, `services/memory-sync-service.ts` +2 |
 | `EVENT_PUBLISH_ENABLED` | no | no | `services/event-outbox-service.ts` |
+| `EVE_V_TENDER_INTAKE` | yes | yes | `services/external-event-ingest-service.ts` |
 | `EVOLUTION_ESTIMATORS_ENABLED` | yes | yes | `services/evolution-estimators.ts`, `services/stall-watch.ts` |
 | `EVOLUTION_FEEDBACK_MODE` | yes | yes | `services/evolution-feedback.ts` |
 | `EVOLUTION_GYM_BREAKER_RETRY_MS` | no | no | `services/evolution-gym-service.ts` |
