@@ -219,6 +219,7 @@ export class SwarmIntelligenceService {
     const interactions = interactionLedger.list({ limit: 200 });
     const outcomeLearning = new OutcomeLearningService(this.db).list(50);
     const reviewerIndependence = new ReviewerIndependenceService(this.db).latest(25);
+    const latestProofRun = new ProofRunService(this.db).latest();
 
     return {
       execution_node: {
@@ -267,7 +268,13 @@ export class SwarmIntelligenceService {
       reviewer_independence: reviewerIndependence.slice(0, 10),
       production_pilot: this.productionPilotSummary(),
       latest_runner_manifests: manifests,
-      latest_proof_run: new ProofRunService(this.db).latest(),
+      latest_proof_run: latestProofRun,
+      production_certification: latestProofRun ? {
+        status: latestProofRun.status === 'completed' && latestProofRun.production_passed ? 'certified' : 'blocked',
+        runtime: latestProofRun.runtime,
+        production_passed: latestProofRun.production_passed,
+        production_missing: latestProofRun.production_missing,
+      } : null,
       next_safe_actions: this.nextSafeActions(capabilities, claims, capacity),
     };
   }

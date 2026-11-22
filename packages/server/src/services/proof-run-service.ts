@@ -589,6 +589,9 @@ export class ProofRunService {
       const backlog = this.panels.projectPanelToBacklog(panel.id);
       this.tagWorkItem(backlog.work_item.id, proofRunId);
 
+      // A real proof run continues this goal through the normal loop controller.
+      // Keep it continuable until the worker/checker evidence has been collected;
+      // the mock proof path is a precomputed artifact and remains completed.
       this.insertGoal(goalId, proofRunId, now, { ...base, mode: runtime, loop_run_id: loopRunId, runtime_mode: runtime }, {
         // Real-runtime budgets (codex/opencode). The mock-calibrated defaults
         // (60k tokens/worker, 3k tokens/diff-line, 60s wall) reject any real runtime —
@@ -602,7 +605,7 @@ export class ProofRunService {
         max_tokens: 2_000_000,
         max_tokens_per_worker: 1_000_000,
         max_tokens_per_diff_line: 500_000,
-      });
+      }, 'decomposed');
       this.insertLoopRun(
         loopRunId,
         goalId,
@@ -1016,7 +1019,14 @@ export class ProofRunService {
     });
   }
 
-  private insertGoal(id: string, proofRunId: string, now: string, base: Record<string, unknown>, budget?: Record<string, unknown>) {
+  private insertGoal(
+    id: string,
+    proofRunId: string,
+    now: string,
+    base: Record<string, unknown>,
+    budget?: Record<string, unknown>,
+    status: 'created' | 'decomposed' | 'running' | 'completed' = 'completed'
+  ) {
     this.db.prepare(`
       INSERT INTO goals (
         id, objective, constraints_json, acceptance_criteria_json, risk_class,
@@ -1029,7 +1039,7 @@ export class ProofRunService {
       JSON.stringify(Object.entries(MINIMUMS).map(([key, value]) => `${key} >= ${value}`)),
       'medium',
       JSON.stringify(budget ?? { max_wall_clock_ms: 60000, max_parallel_workers: 2, max_usage_units: 3000 }),
-      'completed',
+      status,
       JSON.stringify({ ...base, proof_run_id: proofRunId }),
       now,
       now
