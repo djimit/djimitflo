@@ -129,9 +129,9 @@ describe('AC-02 record-only rooms and a stable selection', () => {
 });
 
 describe('AC-01 runtime readiness', () => {
-  const readiness = (state: 'ready' | 'degraded' | 'offline' | 'unknown', extra: Partial<NonNullable<SocialAgentPresence['readiness']>> = {}) => ({
+  const readiness = (state: 'ready' | 'scheduled' | 'degraded' | 'offline' | 'unknown', extra: Partial<NonNullable<SocialAgentPresence['readiness']>> = {}) => ({
     state, reason: `${state} because`, last_heartbeat_at: '2026-10-24T10:00:00Z', last_successful_reply_at: null,
-    last_failed_attempt: null, runtime_failures_reported: false as const, ...extra,
+    last_failed_attempt: null, runtime_failures_reported: false as boolean, ...extra,
   });
 
   it('shows heartbeat, last successful reply and last failed attempt separately, and never invents a runtime error', () => {
@@ -139,8 +139,29 @@ describe('AC-01 runtime readiness', () => {
       { ...agents[0], readiness: readiness('degraded', { last_failed_attempt: { at: '2026-10-24T09:00:00Z', message_id: 'm-1', observed: 'claim_lapsed_without_reply' } }) },
       { ...agents[1], readiness: readiness('ready', { last_successful_reply_at: '2026-10-24T09:30:00Z' }) },
     ] }));
-    for (const text of ['degraded', 'ready', 'degraded because', 'claim lapsed without reply', 'failures not reported']) expect(html).toContain(text);
+    for (const text of ['degraded', 'ready', 'degraded because', 'claim lapsed without reply', 'shows up only as a claimed message whose lease lapsed']) expect(html).toContain(text);
     expect(html).toContain('none recorded');
+  });
+
+  it('shows a poller on a timer as scheduled and its own failure report as stage and category', () => {
+    const html = renderToStaticMarkup(createElement(ReadinessTable, { agents: [
+      { ...agents[0], readiness: readiness('scheduled', { last_successful_reply_at: '2026-11-18T18:00:00Z' }) },
+      { ...agents[1], readiness: readiness('offline', { runtime_failures_reported: true, last_reported_failure: { at: '2026-11-18T21:51:00Z', stage: 'runtime_inference', code: 'runtime_timeout' } }) },
+    ] }));
+    for (const text of ['>scheduled<', 'poller reported <code>runtime_inference</code> / <code>runtime_timeout</code>']) expect(html).toContain(text);
+  });
+
+  it('folds agents with no heartbeat in 30 days into a dormant group and keeps a never-seen agent in the main table', () => {
+    const now = Date.parse('2026-11-19T18:00:00Z');
+    const html = renderToStaticMarkup(createElement(ReadinessTable, { now, agents: [
+      { ...agents[0], name: 'Fresh', last_heartbeat_at: '2026-11-19T14:00:00Z', readiness: readiness('scheduled') },
+      { ...agents[1], name: 'Never', last_heartbeat_at: null, readiness: readiness('offline') },
+      { ...agents[1], id: 'c', name: 'Old', last_heartbeat_at: '2026-10-09T09:07:00Z', readiness: readiness('offline') },
+    ] }));
+    const [main, folded] = html.split('<details');
+    expect(main).toContain('Fresh'); expect(main).toContain('Never'); expect(main).not.toContain('Old');
+    expect(folded).toContain('1 dormant agent: no heartbeat in 30 days'); expect(folded).toContain('Old');
+    expect(renderToStaticMarkup(createElement(ReadinessTable, { now, agents: [agents[0]] }))).not.toContain('<details');
   });
 
   it('says unknown when the server sent no readiness instead of treating a heartbeat as ready', () => {

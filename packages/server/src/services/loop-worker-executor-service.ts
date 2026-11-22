@@ -38,6 +38,7 @@ import { makerUidSeparationMode, probeMakerContext, uidSeparationRefusal } from 
 import { recordLanePolicyShadow } from './lane-policy';
 import { observeSkillInvocation } from './skill-route';
 import { makerScopeRepairOn, repairMakerScope } from './maker-scope-repair';
+import { restoreAgentConfig } from './worktree-manager';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -554,6 +555,14 @@ export class LoopWorkerExecutorService {
       throw createError(409, 'Reviewer worktree must be independent of all other worker leases', 'CHECKER_WORKTREE_NOT_INDEPENDENT');
     }
     this.loopService.updateWorkerLeaseWorktree(checker.id, checkerWorktree, checkerBranch);
+    // D4: the reviewer's own agent config (opencode.json[c], .opencode/, AGENTS.md, CLAUDE.md, ...) comes from the runtime
+    // repository's HEAD, never from the maker's tree it was cut from
+    if (!run.repository_path) throw new Error('CHECKER_BASE_REPOSITORY_MISSING');
+    const restoredAgentConfig = restoreAgentConfig(run.repository_path, checkerWorktree);
+    if (restoredAgentConfig.length) {
+      this.loopService.recordLoopEvent(run.id, 'checker_agent_config_restored', 'warning', `${restoredAgentConfig.length} agent config path(s) in the ${reviewRole} worktree reset to the base commit: ${restoredAgentConfig.slice(0, 10).join(', ')}`,
+        { checker_lease_id: checker.id, maker_lease_id: maker.id, paths: restoredAgentConfig });
+    }
 
     const traceId = `loop-${run.id}-checker-${checker.id}`;
     const checkpointBefore = this.loopService.assurance.createCheckpoint({ loop_run_id: run.id, label: `before checker ${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, worker_role: checker.role, worker_runtime: runtime, phase: 'before_checker_execution' } });

@@ -16,7 +16,7 @@ import path from 'node:path';
 import { GATE_READ_JUDGMENTS, LEARNER_READ_JUDGMENTS, gateReadPredicate } from '../services/value-allocator';
 
 type Policy = 'enforce_only' | 'gate_read' | 'measurement' | 'non_shadow';
-interface Reader { policy: Policy; why: string; judgments?: string[]; flags?: string[] }
+interface Reader { policy: Policy; why: string; judgments?: string[]; flags?: string[]; /** enforce_only: the mode literal that acts, when not 'enforce' */ enforceMode?: string }
 
 const READERS: Record<string, Reader> = {
   // ── gate_read: a shadow-labelled row decides something (operator: see the PR's list before any shadow → enforce change) ──
@@ -53,6 +53,8 @@ const READERS: Record<string, Reader> = {
   // ── enforce_only ──
   'services/content-safety.ts': { policy: 'enforce_only', why: 'gateUntrustedForPrompt excludes text only under CONTENT_SAFETY_MODE=enforce; the rest reuses a verdict / dedupes its own record' },
   'services/decision-context-service.ts': { policy: 'enforce_only', why: "decision_context injects memories only when mode === 'enforce'" },
+  'services/loop-auto-merge.ts': { policy: 'enforce_only', enforceMode: 'act',
+    why: "auto_merge_audit: the tick reads only the row of the current AUDIT_SAMPLE_AUTO_MODE (the mode is part of the id); only an 'act' row lets a sample PR take the merge path, a 'shadow' row only stops a re-execution" },
   'services/self-improvement-auto-review-scheduler.ts': { policy: 'enforce_only', why: 'proposal_prescreen parks only under enforce with an enforce-labelled verdict' },
   // ── non_shadow: the acted-on judgments are never written with mode 'shadow' ──
   'services/outcome-attribution.ts': { policy: 'non_shadow', why: "outcome_attribution is mode 'annotation'; the gating list filters mode = 'enforce'; attribution_audit is operator_label" },
@@ -73,8 +75,10 @@ const READERS: Record<string, Reader> = {
   'services/loop-worker-executor-service.ts': { policy: 'measurement', why: 'checker second opinion recorded, never a verdict' },
   'services/ace-001.ts': { policy: 'measurement', why: 'proposal_embedding error → ACE fallback reason label' },
   'services/advisory-exposure.ts': { policy: 'measurement', why: 'own dedupe + evidence' },
+  'services/date-bomb-source.ts': { policy: 'measurement', why: 'cadence of its own date_bomb_scan rows (one scan per 7 d); never feeds a decision' },
   'services/auto-requeue.ts': { policy: 'measurement', why: 'dedupe of its own shadow would_* rows' },
   'services/checker-family.ts': { policy: 'measurement', why: 'F2 arm evidence' },
+  'services/commons-failure-recurrence.ts': { policy: 'measurement', why: 'failure_cause rows → discussed vs not-discussed recurrence counts on the Commons page; never feeds a decision' },
   'services/commons-investigation.ts': { policy: 'measurement', why: 'own dedupe' },
   'services/content-drafts.ts': { policy: 'measurement', why: 'own daily cap / dedupe + evidence' },
   'services/cost-ledger.ts': { policy: 'measurement', why: 'token ledger' },
@@ -103,6 +107,7 @@ const READERS: Record<string, Reader> = {
   'services/procedure-selector.ts': { policy: 'measurement', why: 'evidence' },
   'services/provenance-dag.ts': { policy: 'measurement', why: 'provenance report' },
   'services/resource-scheduler.ts': { policy: 'measurement', why: 'own shadow dedupe + evidence' },
+  'services/loop-stop-conditions.ts': { policy: 'measurement', why: 'M2 loop_stop_condition shadow: evidence counts of its own rows; nothing stops on it' },
   'services/settlement-execution.ts': { policy: 'measurement', why: 'own retry bookkeeping + settlement evidence' },
   'services/spec-gap-source.ts': { policy: 'measurement', why: 'own dedupe + evidence' },
   'services/stall-watch.ts': { policy: 'measurement', why: "health monitor: judgment error rates and its own 'stall' annotations" },
@@ -146,7 +151,7 @@ describe('judgments readers: every file that reads judgments declares its mode p
   });
 
   it('an enforce_only reader names enforce in code', () => {
-    for (const [f, r] of Object.entries(READERS)) if (r.policy === 'enforce_only') expect(code.get(f) ?? '', f).toMatch(/'enforce'/);
+    for (const [f, r] of Object.entries(READERS)) if (r.policy === 'enforce_only') expect(code.get(f) ?? '', f).toContain(`'${r.enforceMode ?? 'enforce'}'`);
   });
 
   it('the re-20261105 E8 acting-on-shadow couplings are declared gate_read', () => {

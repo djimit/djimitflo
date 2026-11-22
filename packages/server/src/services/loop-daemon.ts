@@ -1,11 +1,12 @@
 import fs from 'fs';
 import type { Database } from 'better-sqlite3';
-import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
+import { FINDING_FIX_AUTO_APPROVE_MAX_LINES, FINDING_FIX_AUTO_APPROVER, findingFixAutoApproveScope, recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
 import { mutationCheckEnv } from './test-gap-source-service';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { FINDING_FIX_DIFF_MAX, findingFixCheckEnv } from './finding-fix-source';
 import { ADVISORY_DIFF_MAX, advisoryGoalRefs } from './advisory-exposure';
-import { LoopService } from './loop-service';
+import { DEFAULT_MAX_FINDINGS, LoopService, loopContractStopConditions } from './loop-service';
+import { recordStopConditions, stopConditionsMode } from './loop-stop-conditions';
 import { randomUUID } from 'node:crypto';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
@@ -363,7 +364,7 @@ export class LoopDaemon {
 
         // Non-blocking: start the goal and don't wait for it to finish.
         this.executing.add(goal.id);
-        this.executeGoal(goal, { allowObjectiveMode }).catch((err) => {
+        this.executeGoal(goal, { allowObjectiveMode, tickId }).catch((err) => {
           console.error('[LoopDaemon] goal execution error:', err instanceof Error ? err.message : String(err));
         }).finally(() => this.executing.delete(goal.id));
       }
@@ -388,8 +389,10 @@ export class LoopDaemon {
    * the goal used to be marked failed and its proposal parked (the approval then expired unseen, 2026-09-21).
    * Park the goal as 'blocked' with what it waits for; resumeApprovalBlockedGoals() continues or fails it.
    */
-  private blockForApproval(goal: QueueEntry, runId: string, role: 'maker' | 'checker' | 'security_checker' = 'maker'): boolean {
-    const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = ? ORDER BY created_at DESC LIMIT 1").get(runId, role) as { id: string; metadata: string } | undefined;
+  private blockForApproval(goal: QueueEntry, runId: string, role: 'maker' | 'checker' | 'security_checker' = 'maker', retryLeaseId?: string): boolean {
+    const lease = (retryLeaseId
+      ? this.db.prepare('SELECT id, metadata FROM worker_leases WHERE id = ? AND loop_run_id = ?').get(retryLeaseId, runId)
+      : this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = ? ORDER BY created_at DESC LIMIT 1").get(runId, role)) as { id: string; metadata: string } | undefined;
     const leaseMeta = lease ? (JSON.parse(lease.metadata || '{}') as { approval_id?: string; execution_task_id?: string }) : {};
     // The engine records the approval on the task; not every lease path copies it onto the lease metadata (the checker's doesn't).
     const approvalId = leaseMeta.approval_id
@@ -408,14 +411,32 @@ export class LoopDaemon {
     // 'high risk' (prod 01-10: 8/8 oracle-lane makers went to the human). With ORACLE_LANES_AUTO_APPROVE=true an oracle-lane
     // maker is approved on its deterministic one-test-file scope; the scope gate, checks, oracle and human merge stay, and
     // the rule's verdict is still recorded.
+    // A retry maker that could not inherit (D4's strict rule) waits for a human: the lane auto-approvals below are for a
+    // goal's first maker, and a retry used to reach none of them.
     const oracleLane = process.env.ORACLE_LANES_AUTO_APPROVE === 'true' && shadow?.decision !== 'yes';
-    const scope = role === 'maker' && (shadow?.decision === 'yes' || oracleLane) ? testGapAutoApproveScope(this.db, goal.id) : null;
+    const scope = role === 'maker' && !retryLeaseId && (shadow?.decision === 'yes' || oracleLane) ? testGapAutoApproveScope(this.db, goal.id) : null;
     if (scope) {
       const why = oracleLane ? `Z4 oracle lane, scope ${scope}${shadow ? `; rule-v1: ${shadow.reason}` : ''}` : shadow!.reason;
       // Record the scope before approving: the maker resumes right after, and verification needs it to hold the diff to one file.
       this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?) WHERE id = ?").run(scope, lease.id);
       try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved ${approvalId} (${oracleLane ? 'oracle lane' : 'test-gap lane'}, scope ${scope})`, { goal_id: goal.id, approval_id: approvalId, reason: why }); } catch { /* best-effort */ }
       this.loops.decideWorkerApproval(approvalId, true, oracleLane ? 'autonomy:oracle-lane-v1' : 'autonomy:test-gap-rule-v1', why)
+        .catch((err: unknown) => console.warn(`[loop-daemon] auto-approve ${approvalId} failed:`, err instanceof Error ? err.message : String(err)));
+    }
+    // FINDING_FIX_AUTO_APPROVE=on (operator 11-14): a finding-fix maker on its finding file, the same mechanism and scope gate,
+    // plus this lane's diff cap; null with the flag off, for every other lane, and once the lane revoked itself.
+    const findingFix = !scope && role === 'maker' && !retryLeaseId ? findingFixAutoApproveScope(this.db, goal.id) : null;
+    if (findingFix) {
+      const why = `finding-fix lane, scope ${findingFix}, <= ${FINDING_FIX_AUTO_APPROVE_MAX_LINES} diff lines${shadow ? `; rule-v1: ${shadow.reason}` : ''}`;
+      this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?, '$.auto_approved_max_lines', ?) WHERE id = ?")
+        .run(findingFix, FINDING_FIX_AUTO_APPROVE_MAX_LINES, lease.id);
+      try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved ${approvalId} (finding-fix lane, scope ${findingFix})`, { goal_id: goal.id, approval_id: approvalId, reason: why }); } catch { /* best-effort */ }
+      try {
+        this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, latency_ms, model, created_at)
+          VALUES (?, 'finding_fix_auto_approve', 'approval', ?, '', 'act', 'approve', ?, ?, 0, 'rule-v1', ?)`)
+          .run(randomUUID(), approvalId, why, JSON.stringify({ goal_id: goal.id, run_id: runId, lease_id: lease.id, scope: findingFix, max_lines: FINDING_FIX_AUTO_APPROVE_MAX_LINES, approver: FINDING_FIX_AUTO_APPROVER }), new Date().toISOString());
+      } catch { /* evidence; the approval's own audit row is written by the engine */ }
+      this.loops.decideWorkerApproval(approvalId, true, FINDING_FIX_AUTO_APPROVER, why)
         .catch((err: unknown) => console.warn(`[loop-daemon] auto-approve ${approvalId} failed:`, err instanceof Error ? err.message : String(err)));
     }
     console.warn(`[loop-daemon] goal ${goal.id} waits for approval ${approvalId} (run ${runId})`);
@@ -426,7 +447,8 @@ export class LoopDaemon {
   /** N6: approve an evolve sibling when the run's first maker was auto-approved (J5), with the same scope. */
   private async autoApproveSibling(runId: string, primaryLeaseId: string, siblingLeaseId: string): Promise<boolean> {
     const lease = (id: string) => this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata: string } | undefined;
-    const scope = (JSON.parse(lease(primaryLeaseId)?.metadata || '{}') as { auto_approved_scope?: string }).auto_approved_scope;
+    const primary = JSON.parse(lease(primaryLeaseId)?.metadata || '{}') as { auto_approved_scope?: string; auto_approved_max_lines?: number };
+    const scope = primary.auto_approved_max_lines === undefined ? primary.auto_approved_scope : undefined; // finding-fix lane: siblings stay with the human
     const meta = JSON.parse(lease(siblingLeaseId)?.metadata || '{}') as { approval_id?: string; execution_task_id?: string };
     const approvalId = meta.approval_id ?? (meta.execution_task_id
       ? (this.db.prepare("SELECT id FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(meta.execution_task_id) as { id: string } | undefined)?.id
@@ -543,7 +565,7 @@ export class LoopDaemon {
    * The daemon discovers findings, creates leases, executes the maker+checker, runs
    * deterministic checks, and certifies the result.
    */
-  private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean } = { allowObjectiveMode: false }): Promise<void> {
+  private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean; tickId?: string } = { allowObjectiveMode: false }): Promise<void> {
     let runId: string | null = null;
     const startedAtMs = Date.now();
     // The cognitive/meta layer keys tuning by the run's loop name (loop-service getActiveLoopTuning), not by execution mode.
@@ -589,6 +611,16 @@ export class LoopDaemon {
         : this.loops.startDocDriftAndSmallFixLoop({ goal_id: goal.id });
       runId = run.id;
       loopName = (run as { loop_name?: string }).loop_name ?? loopName;
+      // M2 (LOOP_STOP_CONDITIONS_MODE=shadow): the run's declared stop conditions, evaluated where it would go on to its maker
+      // dispatch — one judgments row per run per tick; never stops anything. off: no-op (loop-stop-conditions.ts).
+      if (stopConditionsMode() === 'shadow') {
+        const contractStops = (run.metadata as { contract?: { stop_conditions?: unknown } } | undefined)?.contract?.stop_conditions;
+        recordStopConditions(this.db, {
+          runId: run.id, goalId: goal.id, loopName, tickId: opts.tickId ?? randomUUID(), run,
+          declared: Array.isArray(contractStops) ? contractStops.filter((c): c is string => typeof c === 'string') : loopContractStopConditions(loopName) ?? [],
+          scanBudget: DEFAULT_MAX_FINDINGS, daemonAction: run.findings.length === 0 ? 'complete_no_findings' : resumeRunId ? 'resume' : 'dispatch',
+        });
+      }
 
       // 3. Skip execution if no findings were discovered.
       if (run.findings.length === 0) {
@@ -635,8 +667,15 @@ export class LoopDaemon {
       const pendingSibling = resumeRunId
         ? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared' && typeof l.metadata?.evolve_sibling_of === 'string')
         : undefined;
-      const makerAlreadyDone = resumeRunId && !pendingSibling ? prepared.leases.find(l => l.role === 'maker' && l.status === 'completed') : undefined;
-      const makerLease = makerAlreadyDone ?? pendingSibling ?? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
+      // M0-A: a run resumed after its retry maker's approval reads that retry's result and evaluates it (the first maker,
+      // completed with failing checks, is not re-checked, retried again or given evolve siblings). Only a retry that already
+      // has an engine task: an interrupted-run recovery's fresh maker (also a retry, no task yet) runs as before.
+      const pendingRetry = resumeRunId && !pendingSibling
+        ? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared' && typeof l.metadata?.retry_of_maker_lease_id === 'string'
+          && typeof l.metadata?.execution_task_id === 'string')
+        : undefined;
+      const makerAlreadyDone = resumeRunId && !pendingSibling && !pendingRetry ? prepared.leases.find(l => l.role === 'maker' && l.status === 'completed') : undefined;
+      const makerLease = makerAlreadyDone ?? pendingSibling ?? pendingRetry ?? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
       if (!makerLease) {
         throw new Error('No prepared maker lease found after continueLoopRun');
       }
@@ -646,7 +685,7 @@ export class LoopDaemon {
       // LOOP_DAEMON_MAKER_RUNTIME, which stays on the lease as the fallback when the bandit makes no choice.
       // Never on a resumed evolve sibling: its species is the point of the sibling (prod 2026-10-01: the bandit rewrote
       // remote@workstation siblings to opencode, which then ran the task twice and drifted into README/CONTRIBUTING edits).
-      if (!makerAlreadyDone && !pendingSibling && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
+      if (!makerAlreadyDone && !pendingSibling && !pendingRetry && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
         const choice = chooseSpecies(this.db, loopName, banditSpecies());
         // D0 shadow: what a source-weighted, decaying fitness view (production + gym + merge survival) would have picked
         try { recordFitnessShadow(this.db, run.id, loopName, banditSpecies(), choice ? speciesKey(choice.species) : null); } catch { /* telemetry only */ }
@@ -668,10 +707,10 @@ export class LoopDaemon {
       // GENOME_APPLY_MODE=on (genome-apply.ts): an active genome promoted by the gym rule gets its lines into this maker's
       // LOOP_WORK.md — oracle lanes and its trialled species only, 10 % per-goal holdout, receipt on the lease. off/shadow: no-op.
       const applyGenome = (leaseId: string) => { try { applyGenomeToLease(this.db, { runId: run.id, goalId: goal.id, loopName, leaseId }); } catch { /* never blocks a maker */ } };
-      if (!makerAlreadyDone) applyGenome(makerLease.id);
+      if (!makerAlreadyDone && !pendingRetry) applyGenome(makerLease.id); // a retry got its genome when it was prepared
       // D2: attribute the maker to its strategy genome (lease stamp → outcomes, merge survival); GENOME_APPLY_MODE=shadow logs
       // what an active genome would inject; =on injects (above), so its delivery is always checked (a holdout maker is undelivered).
-      if (!makerAlreadyDone) try {
+      if (!makerAlreadyDone && !pendingRetry) try {
         const lease = this.db.prepare('SELECT runtime, json_extract(metadata, \'$.model\') AS model FROM worker_leases WHERE id = ?').get(makerLease.id) as { runtime: string; model: string | null } | undefined;
         const strategy = lease ? strategyGenomeFor(this.db, lease.runtime, lease.model) : null;
         // AG-trace gap A (SKILL_ROUTE_MODE shadow|on): the genome is this maker's strategy only if its lines are in the maker's
@@ -690,7 +729,7 @@ export class LoopDaemon {
           `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
       } catch { /* attribution is best-effort */ }
       // capability factory (CAPABILITY_FACTORY_MODE=on): the species chosen above is the run's `specialist` (no-op otherwise)
-      if (!makerAlreadyDone) try { recordFactorySpecialist(this.db, run.id, makerLease.id); } catch { /* attribution is best-effort */ }
+      if (!makerAlreadyDone && !pendingRetry) try { recordFactorySpecialist(this.db, run.id, makerLease.id); } catch { /* attribution is best-effort */ }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
       const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
@@ -711,13 +750,13 @@ export class LoopDaemon {
       // 7. Run deterministic checks (test, lint, type-check).
       let activeMakerLease = makerLease;
       try {
-        const checks = this.loops.runDeterministicChecks(run.id, {
+        const checks = await this.loops.runDeterministicChecks(run.id, {
           lease_id: makerLease.id,
           ...daemonCheckOptions(process.env, goalRepo),
         });
 
         // 8. If checks fail, retry once (G3 feedback law).
-        if (checks.run.status === 'blocked') {
+        if (checks.run.status === 'blocked' && !pendingRetry) {
           try {
             const retry = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
             const retryMaker = retry.retry_maker;
@@ -727,11 +766,18 @@ export class LoopDaemon {
               await this.loops.executeWorker(run.id, retryInput);
             } catch (error) {
               // a retry needs its own approval; it used to be dropped here silently. D4: inherit only under the strict rule.
-              if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error)) || !(await this.inheritApproval(run.id, retryMaker.id))) throw error;
+              if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error))) throw error;
+              if (!(await this.inheritApproval(run.id, retryMaker.id))) {
+                // M0-A (prod 30 d: 13 of 76 retry makers): not inheritable was swallowed by the catch below, so the goal failed
+                // while the approval stayed pending and an approved retry later ran with nobody reading its result. Wait on it,
+                // like the reviewer path; the resumed run evaluates the retry (pendingRetry above).
+                if (this.blockForApproval(goal, run.id, 'maker', retryMaker.id)) return;
+                throw error;
+              }
               await this.loops.awaitWorkerExecution(retryMaker.id);
               await this.loops.executeWorker(run.id, retryInput);
             }
-            this.loops.runDeterministicChecks(run.id, {
+            await this.loops.runDeterministicChecks(run.id, {
               lease_id: retryMaker.id,
               ...daemonCheckOptions(process.env, goalRepo),
             });
@@ -752,7 +798,7 @@ export class LoopDaemon {
       // the fittest (computed in code) stays the only non-superseded maker and goes on to the reviewers.
       // Y1: never a sibling of the species the bandit already chose as the first maker (it would run the same work twice)
       const primary = this.db.prepare("SELECT runtime, json_extract(metadata, '$.model') AS model FROM worker_leases WHERE id = ?").get(makerLease.id) as { runtime: string; model: string | null } | undefined;
-      const candidates = (!makerAlreadyDone && !pendingSibling && evolveEligible(this.db, goal.id) ? evolveSpecies() : [])
+      const candidates = (!makerAlreadyDone && !pendingSibling && !pendingRetry && evolveEligible(this.db, goal.id) ? evolveSpecies() : [])
         .filter((sp) => !(primary && sp.runtime === primary.runtime && (sp.model ?? null) === (primary.model ?? null)));
       // X1 (EFFORT_SIBLING_RANDOMISE, acting): arm 'off' of the goal-id hash gets no sibling; arm 'on' is today's behaviour
       const species = candidates.length && siblingRandomiseEnabled() && assignSiblingArm(this.db, run.id, goal.id) === 'off' ? [] : candidates;
@@ -787,7 +833,7 @@ export class LoopDaemon {
                 }
               }
             }
-            this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions(process.env, goalRepo) });
+            await this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions(process.env, goalRepo) });
           } catch (error) {
             // Y0b (prod 2026-09-30 16:17/18:29): a sibling that still needs a human approval is not a failed sibling — the
             // run used to conclude 'no winner' at once and the approval arrived after the proposal was labelled regressed.

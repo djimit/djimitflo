@@ -6,7 +6,7 @@ import { failureCause } from './judgments/failure-cause';
 import { MemoryCandidateService } from './memory-candidate-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { redactSecrets } from './secret-patterns';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 
 /**
  * Outcome-driven dream state (plan E11), step 1–2: replay the recent failed/blocked loop runs and classify each once with
@@ -77,7 +77,8 @@ export class DreamStateService {
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !dreamStateEnabled()) return;
     // One pass per interval, however often the container restarts (prod 2026-09-25: every auto-deploy added a ledger row).
-    const run = () => { markRun('dream_state'); if (!this.due(intervalMs)) return; this.replay().then((r) => { if (r.classified) console.log(`🌙 dream state: classified ${r.classified}/${r.candidates} failed runs`); }).catch((err) => console.warn('Dream state replay failed:', err instanceof Error ? err.message : String(err))); };
+    // D-S7-1: markTick records the attempt, markRun the outcome after the work (with its error)
+    const run = () => { markTick('dream_state'); if (!this.due(intervalMs)) return; this.replay().then((r) => { markRun('dream_state'); if (r.classified) console.log(`🌙 dream state: classified ${r.classified}/${r.candidates} failed runs`); }).catch((err) => { markRun('dream_state', err); console.warn('Dream state replay failed:', err instanceof Error ? err.message : String(err)); }); };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 120_000).unref?.();
   }

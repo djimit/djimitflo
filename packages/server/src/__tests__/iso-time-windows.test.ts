@@ -1,7 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { AgiGoalReasoningEngine } from '../services/agi-goal-reasoning-engine';
@@ -19,7 +19,8 @@ import { AdapterCache } from '../services/knowledge-adapters/adapter-cache';
 const MIN = 60_000;
 const H = 60 * MIN;
 const D = 24 * H;
-const iso = (agoMs: number) => new Date(Date.now() - agoMs).toISOString();
+// every window here is julianday('now', …): SQLite's clock is the OS clock, so seed against it, not a faked Date
+const iso = (agoMs: number) => new Date(vi.getRealSystemTime() - agoMs).toISOString();
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); });

@@ -122,7 +122,8 @@ describe('provisionWarmDeps', () => {
       hashes.push(createHash('sha256').update(lock).digest('hex'));
       const wt = worktree(root, `w${i}`, lock);
       provisionWarmDeps(wt, fakeInstall(wt, calls), { root: cache });
-      const t = new Date(Date.now() - (10 - i) * 60_000); fs.utimesSync(path.join(cache, hashes[i], 'READY.json'), t, t);
+      // mtimes are the file system's (OS) clock, and provisionWarmDeps() also stamps READY.json with it: not a faked Date
+      const t = new Date(vi.getRealSystemTime() - (10 - i) * 60_000); fs.utimesSync(path.join(cache, hashes[i], 'READY.json'), t, t);
     }
     pruneWarmDepsCache(cache);
     expect(fs.readdirSync(cache).sort()).toEqual(hashes.slice(2).sort());

@@ -75,7 +75,9 @@ it('exact one-sided Clopper-Pearson bound and the preregistered sample-size rule
 
 it('early REJECT once errors exceed what the maximum n allows; never early GO; YES stays descriptive', () => {
   for (let i = 0; i < 30; i++) { proposal(`n${i}`, 'regressed', after(10 + i)); prescreen(`n${i}`, 'no', after(10 + i)); }
-  let e = d5NoEvidence(db) as any;
+  // 'collecting' holds only before the deadline (cutoff + D5NO_DEADLINE_DAYS = 2027-01-09): evaluate inside the window
+  const inWindow = Date.parse(D5NO_CUTOFF) + 86_400_000;
+  let e = d5NoEvidence(db, inWindow) as any;
   expect(e.status).toBe('collecting');                 // 30 clean clusters: never an early GO
   proposal('f1', 'verified', after(100)); prescreen('f1', 'no', after(100));
   proposal('f2', 'verified', after(101)); prescreen('f2', 'no', after(101));

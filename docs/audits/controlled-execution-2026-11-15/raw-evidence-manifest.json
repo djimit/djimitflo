@@ -1,0 +1,46 @@
+{
+  "availability": "Committed audit files; hashes identify this capture, not a validation PASS. Builder logs are session-local and not distributed.",
+  "capability_matrix": "reused from docs PR #1274 (docs/audits/master-m0-20261114/inventory-matrix.json, 194 surfaces) \u2014 not duplicated here",
+  "files": [
+    {
+      "name": "CHECKPOINT.md",
+      "bytes": 1456,
+      "sha256": "f9c51db957c1cafeab5ccbf1907412c3f5061ad37bda0a5de52afae477c02557"
+    },
+    {
+      "name": "REPORT.md",
+      "bytes": 5147,
+      "sha256": "a4b09873e8fa6c8cc8787fdf50dce3db72d49c04aa301310cdc0b4b202376a1c"
+    },
+    {
+      "name": "denominators.json",
+      "bytes": 5179,
+      "sha256": "9fa92f2855c9159cb899bdfbeaddfecf116cb98a7d67e2d0e4f5c2bf5f985aa0"
+    },
+    {
+      "name": "findings.json",
+      "bytes": 15699,
+      "sha256": "34fadace3e9cb6ba00067da2a66a73d6563a2df145ebc0e53a17386471dfcaf9"
+    },
+    {
+      "name": "scenarios.json",
+      "bytes": 25495,
+      "sha256": "062b06d0afb61357e781f21b7d9e395cc097dbd27031b9b61652b4bfe19f838d"
+    },
+    {
+      "name": "scope.json",
+      "bytes": 1934,
+      "sha256": "4a3d1ebd382bac93fd334732baea4356b68c8fa945884b39015d0dcbb594493f"
+    },
+    {
+      "name": "verification.json",
+      "bytes": 16643,
+      "sha256": "c8be668f0bf5f22c41cdefb446332870483faa8a97c7ce331df7683f24c41410"
+    },
+    {
+      "name": "proposals/open-defects.md",
+      "bytes": 1915,
+      "sha256": "8af2a302b185f4e91dc252df566c45427c043ae20d2665ad13885e3505302123"
+    }
+  ]
+}

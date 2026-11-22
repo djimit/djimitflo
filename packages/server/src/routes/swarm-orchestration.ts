@@ -401,7 +401,7 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   router.post('/:agentId/heartbeat', (req, res) => {
     if (!authorized(req, res)) return;
     try {
-      const beat = comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id, 'runtime_token');
+      const beat = comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id, 'runtime_token', req.body?.failure);
       lure.recordHeartbeat(req.params.agentId, beat.timestamp); // a bite only if an invite was delivered first (causal)
       res.json(beat);
     } catch (error) { fail(res, error); }

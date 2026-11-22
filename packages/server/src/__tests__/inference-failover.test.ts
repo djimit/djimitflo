@@ -395,7 +395,8 @@ describe('INFERENCE_BUDGET_THROTTLE', () => {
     recordModelCall(db, { consumer: 'fallback', model: 'kimi-k3:cloud', provider: 'ollama:https://ollama.com', ok: false, latencyMs: 1, outChars: 0, shadow: 0, agree: null });
     recordModelCall(db, { consumer: 'content_safety', model: 'x', provider: 'nvidia', ok: true, latencyMs: 1, outChars: 0, shadow: 0, agree: null, tokensIn: 9999 });
     db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path) VALUES ('r', 'test-gap', 'closed', 'completed', '/x')").run();
-    const lease = (id: string, runtime: string, meta: Record<string, unknown>) => db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES (?, 'r', 'maker', ?, 'completed', ?)").run(id, runtime, JSON.stringify(meta));
+    // created_at on the clock ollamaUsage7d() windows with (Date.now() − 7 d), not SQLite's CURRENT_TIMESTAMP default
+    const lease = (id: string, runtime: string, meta: Record<string, unknown>) => db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at) VALUES (?, 'r', 'maker', ?, 'completed', ?, ?)").run(id, runtime, JSON.stringify(meta), new Date().toISOString());
     lease('l1', 'opencode', { model: 'ollama/glm-5.3:cloud', token_accounting: { version: 1, total_tokens: 2300 } });
     lease('l2', 'opencode', { model: 'ollama/glm-5.3:cloud' }); // no accounting: counted apart, not as 0
     lease('l3', 'claude', { model: 'ollama/glm-5.3:cloud', runtime_fallback: { from: 'opencode', to: 'claude' }, token_accounting: { version: 1, total_tokens: 50000 } });

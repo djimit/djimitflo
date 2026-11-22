@@ -11,7 +11,7 @@ import { wilson } from './evolution-estimators';
  *   - kb_retrieval judgments on a specialist_panel → self_improvements.panel_id → the proposal's runs
  *   - memory_access_log reads (agent_id 'loop-maker:<run>', assignment-context.ts) → that run
  *   - maker_genomes.knowledge_refs_json (#727; typed refs from DREAM_EVIDENCE_SOURCES) → runs whose maker lease ran that genome (metadata.genome_id)
- *   - outcome_credits kind knowledge / memory_rule (#707) → that run
+ *   - outcome_credits kind knowledge (#707) → that run (kind memory_rule rows were delivery, not use: skipped — M0 H5 D1)
  *   - an expert unit used by a run also credits the discovery it was made from (expert_identities.provenance_json.ref, E3)
  * Only maker-attributable outcomes count: an outcome_attribution of `verified` (n_verified) or `maker_failure`
  * (n_regressed); reviewer/environment failures and unattributed runs credit nobody. n < 5 → insufficient, never 0.
@@ -121,9 +121,7 @@ export function knowledgeFitness(db: Database, now = Date.now(), topN = 20): Kno
       if (k) use(k.kind, k.id, g.run); else use('expert_unit', ref, g.run);
     }
   }
-  for (const c of all<{ run: string; kind: string; ref: string }>("SELECT run_id AS run, kind, ref FROM outcome_credits WHERE kind IN ('knowledge', 'memory_rule')")) {
-    if (c.kind === 'memory_rule') use('memory_rule', c.ref, c.run); else useRef(c.ref, c.run);
-  }
+  for (const c of all<{ run: string; ref: string }>("SELECT run_id AS run, ref FROM outcome_credits WHERE kind = 'knowledge'")) useRef(c.ref, c.run);
   // an expert unit's runs also credit the discovery it was made from
   const unitIds = [...uses.keys()].filter((k) => k.startsWith('expert_unit\u0000')).map((k) => k.slice('expert_unit\u0000'.length));
   const unitTitles = new Map<string, string>();

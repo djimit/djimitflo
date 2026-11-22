@@ -10,7 +10,7 @@ import { UserRole } from '@djimitflo/shared';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
-import { attributeOutcome, attributionSummary, creditedContributors, leaseRanOn, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
+import { makerFailureClass, attributeOutcome, attributionSummary, creditedContributors, leaseRanOn, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
 import { chooseSpecies } from '../services/runtime-bandit';
 import { fitnessPosterior } from '../services/fitness-view';
 import { assignmentContext } from '../services/assignment-context';
@@ -23,6 +23,15 @@ import { createTestDb } from './helpers/test-db';
 
 const maker = (status: string, metadata: AttributionLease['metadata'] = { exit_status: 0, completed_at: 'x', changed_files: ['a.ts'] }): AttributionLease => ({ id: 'm', role: 'maker', status, metadata });
 const reviewer = (role: string, status: string, verdict?: string): AttributionLease => ({ role, status, metadata: { maker_lease_id: 'm', ...(verdict ? { verdict } : {}) } });
+
+describe('makerFailureClass: a check that timed out', () => {
+  const meta = (checks: Array<{ status: string; exit_status: number | null; timed_out: boolean }>) => ({ exit_status: 0, completed_at: 'x', changed_files: ['a.ts'], deterministic_checks: checks });
+  it('is infra_failed when every failed check timed out, regressed as soon as one check really failed', () => {
+    expect(makerFailureClass(meta([{ status: 'pass', exit_status: 0, timed_out: false }, { status: 'fail', exit_status: null, timed_out: true }]))).toBe('infra_failed');
+    expect(makerFailureClass(meta([{ status: 'fail', exit_status: 1, timed_out: false }, { status: 'fail', exit_status: null, timed_out: true }]))).toBe('regressed');
+    expect(makerFailureClass(meta([{ status: 'fail', exit_status: 1, timed_out: false }]))).toBe('regressed');
+  });
+});
 
 describe('attributeOutcome', () => {
   it('verified when every gate passed, with merge survival once known', () => {
@@ -190,11 +199,16 @@ describe('recording and credit', () => {
     expect(recordOutcomeAttribution(db, 'rv', 'm-rv', [], env)).toBeNull(); // once per run
     expect(rows('rv')).toEqual([{ subject_type: 'loop_run', mode: 'annotation', decision: 'verified' }]);
     const credits = db.prepare('SELECT kind, ref FROM outcome_credits WHERE run_id = ? ORDER BY kind, ref').all('rv');
+    // D1 (M0 H5, NE-002): rule rA and the example were only delivered in LOOP_WORK.md; nothing shows they were used, so they get
+    // no credit row (this test used to expect a memory_rule and an example credit here — that was crediting delivery as use)
     expect(credits).toEqual([
-      { kind: 'example', ref: 'packages/x.test.ts' }, { kind: 'genome', ref: 'gB' }, { kind: 'judgment', ref: 'proposal_prescreen' },
-      { kind: 'knowledge', ref: 'kb:pages/testing.md' }, { kind: 'maker', ref: 'opencode@ollama/kimi-k2.6:cloud' }, { kind: 'memory_rule', ref: 'rA' },
+      { kind: 'genome', ref: 'gB' }, { kind: 'judgment', ref: 'proposal_prescreen' },
+      { kind: 'knowledge', ref: 'kb:pages/testing.md' }, { kind: 'maker', ref: 'opencode@ollama/kimi-k2.6:cloud' },
       { kind: 'model', ref: 'ollama/kimi-k2.6:cloud' }, { kind: 'reviewer', ref: 'checker:opencode' },
     ]);
+    // delivery stays visible on the assignment_context event (the delivery record), never as a credit
+    expect(JSON.parse((db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = 'rv' AND event_type = 'assignment_context'").get() as { metadata: string }).metadata))
+      .toMatchObject({ rule_ids: ['rA'], examples: ['packages/x.test.ts — Add tests'] });
 
     expect(recordOutcomeAttribution(db, 'rr', 'm-rr', settled('rr', false, 'failed'), env)?.outcome).toBe('reviewer_failure');
     expect(db.prepare('SELECT COUNT(*) AS n FROM outcome_credits WHERE run_id = ?').get('rr')).toEqual({ n: 0 }); // failures credit nobody
@@ -202,6 +216,27 @@ describe('recording and credit', () => {
     const answers = (id: string) => JSON.parse((db.prepare("SELECT answers_json AS a FROM judgments WHERE judgment = 'outcome_attribution' AND subject_id = ?").get(id) as { a: string }).a);
     expect(answers('rr')).toEqual({ computed: true, failed_gates: ['checker_verdict'], sub_reason: 'timeout' });
     expect(answers('rv')).toEqual({ computed: true, failed_gates: [] }); // only reviewer_failure carries one
+  });
+
+  it('D1: delivered-only memory rules and examples are never credited, and legacy delivery credits leave the top contributors', () => {
+    const env = { OUTCOME_ATTRIBUTION_ENABLED: 'true' };
+    expect(recordOutcomeAttribution(db, 'rd1', 'm-rd1', settled('rd1', true, 'completed'), env)?.outcome).toBe('verified');
+    expect(creditedContributors(db, 'rd1', 'm-rd1').filter((c) => c.kind === 'memory_rule' || c.kind === 'example')).toEqual([]);
+    // rows written before this fix (prod: 108 memory_rule + 197 example credits in 30 d) were delivery, not use: not reported
+    db.prepare("INSERT INTO outcome_credits (run_id, kind, ref, created_at) VALUES ('old', 'memory_rule', 'rA', ?), ('old', 'example', 'packages/x.test.ts', ?), ('old', 'genome', 'strategy:baseline', ?)")
+      .run(iso(DAY), iso(DAY), iso(DAY));
+    const top = attributionSummary(db, NOW, 30, env).top_contributors;
+    expect(top.some((t) => t.kind === 'memory_rule' || t.kind === 'example' || t.ref === 'strategy:baseline')).toBe(false);
+    expect(top).toContainEqual({ kind: 'maker', ref: 'opencode@ollama/kimi-k2.6:cloud', credits: 1 });
+  });
+
+  it('D4: the baseline genome has no content, so it is never credited', () => {
+    const env = { OUTCOME_ATTRIBUTION_ENABLED: 'true' };
+    settled('rb', true, 'completed');
+    db.prepare("UPDATE worker_leases SET metadata = json_set(json_set(metadata, '$.genome_id', 'baseline'), '$.genome', json('{\"id\":\"baseline\"}')) WHERE id = 'm-rb'").run();
+    expect(recordOutcomeAttribution(db, 'rb', 'm-rb', [], env)?.outcome).toBe('verified');
+    expect(db.prepare("SELECT ref FROM outcome_credits WHERE run_id = 'rb' AND kind = 'genome'").all()).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM outcome_credits WHERE run_id = 'rb' AND kind = 'maker'").get()).toEqual({ n: 1 }); // the run is still credited
   });
 
   it('a checker_dispatch_failed event names dispatch_failed; a historical computed row without sub_reason is unrecorded', () => {

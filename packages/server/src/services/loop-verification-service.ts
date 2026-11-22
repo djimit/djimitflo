@@ -218,7 +218,8 @@ export class LoopVerificationService {
       const files = Array.isArray(lease.metadata.changed_files) ? lease.metadata.changed_files.map(String) : [];
       recordPolicyViolation(db, { kind: 'scope_gate', actor: `maker:${lease.runtime}`, severity: 'high', dedupe_key: lease.id, run_id: run.id, lease_id: lease.id,
         evidence_ref: `loop_run:${run.id}/lease:${lease.id}`,
-        description: `auto-approved maker changed files outside ${String(lease.metadata.auto_approved_scope)}: ${files.filter((f: string) => f !== lease.metadata.auto_approved_scope).join(', ') || '(none listed)'}` });
+        description: `auto-approved maker changed files outside ${String(lease.metadata.auto_approved_scope)}: ${files.filter((f: string) => f !== lease.metadata.auto_approved_scope).join(', ') || '(none listed)'}`
+          + (lease.metadata.auto_approved_max_lines === undefined ? '' : ` (diff ${String(lease.metadata.diff_lines ?? 'unknown')} line(s), cap ${String(lease.metadata.auto_approved_max_lines)})`) });
     }
     for (const lease of completedMakerLeases) {
       if (notApplicable.gates.has('objective_scope') || this.objectiveScopeObservation(run, lease) !== 'fail') continue;
@@ -259,7 +260,10 @@ export class LoopVerificationService {
 
   private leaseWithinScope(lease: WorkerLeaseRecord): boolean {
     const files = lease.metadata?.changed_files;
-    return Array.isArray(files) && files.length === 1 && files[0] === lease.metadata.auto_approved_scope;
+    // FINDING_FIX_AUTO_APPROVE: the finding-fix lane also pins its diff cap; an absent diff_lines fails it
+    const maxLines = lease.metadata?.auto_approved_max_lines;
+    return Array.isArray(files) && files.length === 1 && files[0] === lease.metadata.auto_approved_scope
+      && (maxLines === undefined || Number(lease.metadata?.diff_lines ?? NaN) <= Number(maxLines));
   }
 
   /** The one file an objective-mode maker may change (its finding's file), or null when no such scope applies. */
