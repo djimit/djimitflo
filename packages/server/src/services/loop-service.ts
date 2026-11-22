@@ -1182,6 +1182,7 @@ export class LoopService {
         };
       }
 
+      const startedAt = Date.now();
       const result = await spawnAsync('npm', ['run', scriptName], {
         cwd: makerLease.worktree_path!,
         timeout: timeoutMs,
@@ -1197,6 +1198,7 @@ export class LoopService {
         status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
         exit_status: exitStatus,
         timed_out: timedOut,
+        duration_ms: Date.now() - startedAt, // prod 2026-11-21: 18 of 144 makers hit the test:changed cap and nothing said how close the others came
         stdout_path: stdoutPath,
         stderr_path: stderrPath,
       };

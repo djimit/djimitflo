@@ -40,7 +40,7 @@ it('UX-16: an unknown runtime and a runtime without a probe render "no probe", n
 it('UX-16: the legacy expiry is a countdown in days and unused legacy runtimes are retire candidates', () => {
   const rows = runtimeHealth(seed(), NOW);
   const opencode = rows.find((r) => r.runtime === 'opencode')!;
-  expect(opencode.admission).toMatchObject({ decision: 'LEGACY_ADMITTED', expires_at: '2026-12-31T00:00:00Z', days_to_expiry: 85 });
+  expect(opencode.admission).toMatchObject({ decision: 'LEGACY_ADMITTED', expires_at: '2027-03-31T00:00:00Z', days_to_expiry: 175 });
   expect(opencode.readiness).toBe('reassess');
   expect(opencode.version).toMatchObject({ admitted: '1.18.10', observed: '1.18.10', drift: false });
   expect(rows.find((r) => r.runtime === 'gemini')!.readiness).toBe('retire_unused');
