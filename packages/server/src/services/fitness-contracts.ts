@@ -422,6 +422,7 @@ export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
   OPENCODE_BRAKE_CACHE_READ_WEIGHT: 'token brake accounting for opencode makers (cost guard); a treatment variable of the oracle experiments',
   MAKER_UID_SEPARATION: 'sandbox isolation of maker processes (security)',
   FLEET_EVENT_SIGNATURES: 'signature verification of fleet events (security)',
+  EVE_V_TENDER_INTAKE: 'intake plumbing: Eve-V tender events become candidate work items; never selects a learner',
   FLEET_SHELL_ENABLED: 'kill switch for fleet shell commands (security)',
   MEMORY_DELIVERY_RECEIPTS: 'delivery receipts for the memory-sync fan-out (plumbing)',
 };

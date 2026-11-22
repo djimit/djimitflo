@@ -11,7 +11,7 @@ const funnel = {
   refinement: { originals: 1, children: 1, childOutcomes: { needs_more_evidence: 1 }, childGoals: { reachedGoal: 0, completed: 0, failed: 0, other: 0 } },
   goals: { fromSelfImprovement: { completed: 2 } },
   learning: { cognitiveEpisodes: 5, cognitivePatterns: 0, cognitiveStrategies: 1, learningClosures: 2, memoryCandidates: {} },
-  kpi: { windowDays: 7, verified: 2, regressed: 1, regressionRate: 1 / 3, panels24h: 40, panels7d: 200, reviews24h: 120, reviews7d: 600, panelsPerVerified: 100, medianHoursToVerified: 3.5, approvalsPerRun: 1 },
+  kpi: { windowDays: 7, verified: 2, regressed: 1, regressionRate: 1 / 3, panels24h: 40, panels7d: 200, reviews24h: 120, reviews7d: 600, panelsPerVerified: 100, medianHoursToVerified: 3.5, approvalsPerRun: 1, runs: 10, runSuccessRate: 0.6, tokensPerVerified: 25000 },
   hygiene: { zombieGoals: 4, staleRuns: 5, blockedBoardItems: 6 },
   queues: { openWorkItems: 3, workItemsByLoop: [{ loop: 'agent-board-review-loop', status: 'blocked', n: 3 }], commonsReviews: { completed: 4 } },
 };
@@ -26,6 +26,17 @@ describe('ImprovementFunnelPage', () => {
     await waitFor(() => expect(screen.getByText('Panel goal rate')).toBeTruthy());
     expect(screen.getByText('20%')).toBeTruthy();
     expect(screen.getByText(/No proposal with an outcome yet/)).toBeTruthy();
+    expect(screen.getByText('Run cost')).toBeTruthy();
+    expect(screen.getByText('60%')).toBeTruthy();
+    expect(screen.getByText('25,000')).toBeTruthy();
+    expect(screen.getByText(/Data generated/)).toBeTruthy();
+  });
+
+  it('splits the regressed count into checker rejections and makers that never delivered', async () => {
+    vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [] });
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue({ ...funnel, kpi: { ...funnel.kpi, regressed: 11, regressedBreakdown: { rejected: 1, makerDidNotDeliver: { token_budget: 6, timeout: 3, cancelled: 0, check_failed: 0, other: 0 }, unknown: 1 } } });
+    render(<ImprovementFunnelPage />);
+    await waitFor(() => expect(screen.getByText(/1 rejected by a checker, 9 maker did not deliver \(6 token budget, 3 timeout\), 1 cause unknown/)).toBeTruthy());
   });
 
   it('names the leaks first and shows the Commons inflow and investigation arms; an older server reports the inflow as unknown', async () => {

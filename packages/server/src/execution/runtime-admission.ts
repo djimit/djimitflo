@@ -146,13 +146,19 @@ function legacy(runtime_id: string, runtime_version: string | null, reason: stri
   };
 }
 
+const REASSESSED_R11 = { assessment_timestamp: '2026-11-21T12:00:00Z', expires_at: '2027-03-31T00:00:00Z' } as const;
+
 const OPENHUMAN_REPORTS = 'reports/openhuman-20261001/OPENHUMAN_VERIFICATION_REPORT.md';
 
 export const RUNTIME_ADMISSIONS: readonly RuntimeAdmissionAssessment[] = [
   {
     runtime_id: 'djimitsec', runtime_version: '1.0.0', artifact_sha256: 'cc7fce21bb8d263b1019facf7ba794ed72342efa6816438a46e8803f6a34c9d9',
-    source_revision: '1109228f205c63cfac2a5131bbfc4e803e7b5219', assessment_timestamp: '2026-10-28T13:13:20Z',
-    assessed_by: 'djimitsec-native-integration-review',
+    source_revision: '1109228f205c63cfac2a5131bbfc4e803e7b5219', assessment_timestamp: '2026-11-21T10:00:00Z',
+    // reassessed 2026-11-21 (operator loop, before the 2026-11-27 expiry): adapter digest above unchanged since the 2026-10-28
+    // review; prod DJIMITSEC_SCAN_MODE=execute with DJIMITSEC_SCAN_TRIGGERS=off; scanner executor.json unchanged since its
+    // 2026-11-01 activation; 1 task (2026-11-02) + 1 ok contract probe, no failure or incident. No trigger fired → same
+    // conditions, same 30-day term.
+    assessed_by: 'djimitsec-native-integration-review; reassessed djimitflo-operator-loop',
     gates: {
       licensing: P('MIT first-party fixed HTTP adapter; no new runtime dependency', 'LICENSE', 'packages/server/src/execution/executors/djimitsec-executor.ts'),
       reproducibility: P('Exact adapter source digest above; source_revision names the inspected base, final feature revision is bound by release provenance', 'packages/server/src/__tests__/djimitsec-executor.test.ts'),
@@ -166,11 +172,15 @@ export const RUNTIME_ADMISSIONS: readonly RuntimeAdmissionAssessment[] = [
     authority: DJIMITFLO_OWNS_ALL, child_agents: 'NONE',
     capability_gap: { status: 'PROVEN', description: 'Existing plugin/MCP sidecar registries only catalog external tools; this fixed executor connects native task lifecycle to the separately controlled repository scanner without a second scheduler.', evidence_refs: ['packages/server/src/services/plugin-registry-service.ts', 'packages/server/src/routes/mcp.ts', 'packages/server/src/__tests__/djimitsec-executor.test.ts'] },
     conditions: ['DJIMITSEC_SCAN_MODE defaults off; shadow probes only; execute requires operator configuration.', 'No caller URL/path/shell/profile/budget, no autonomous authorization or verification.', 'Exact fixed-worker version/digest must be observed before dispatch; scanner observations remain independently unverified.', 'Production activation requires exact release checks, independent review and operator authorization.'],
-    reassessment_triggers: [...TRIGGERS, 'worker implementation digest/configuration or repository grants changed'], expires_at: '2026-11-27T00:00:00Z',
+    reassessment_triggers: [...TRIGGERS, 'worker implementation digest/configuration or repository grants changed'], expires_at: '2026-12-27T00:00:00Z',
   },
   // Positive control: the incumbent maker. Licence, pin, authority, interface, lifecycle and gym are evidenced; containment
   // (network egress, opencode's own subagents) is not — so it runs as LEGACY_ADMITTED, bound to the pinned version.
-  legacy('opencode', '1.18.10', 'incumbent maker/checker; containment of network egress and internal subagents not proven', {
+  // R11 2026-11-21 reassessment of the legacy cohort (prod evidence since 01-10): opencode (2,2k admitted dispatches, probe 1.18.10 =
+  // pinned) and remote (555 dispatches to 06-11; workstation pull maker) are in use with no denial or incident -> extended one quarter,
+  // same gates. atomic, codex, claude, hermes, gemini, editor, pi, deep-agent and mock: no dispatch since 19-10 or never -> left to
+  // expire 2026-12-31 (fail closed); re-admit with a fresh assessment if a loop needs one again.
+  { ...legacy('opencode', '1.18.10', 'incumbent maker/checker; containment of network egress and internal subagents not proven', {
     licensing: P('MIT; npm package and its only dependencies (per-platform opencode-* binaries of the same release) MIT', 'gh api repos/sst/opencode: MIT', 'npm view opencode-ai@1.18.10 license: MIT'),
     reproducibility: P('public source; exact version pinned; registry integrity sha512', 'Dockerfile: npm install --global opencode-ai@1.18.10', 'npm view opencode-ai@1.18.10 dist.integrity'),
     interface: P('headless run with --format json events, --dir cwd, usage parsing', 'packages/server/src/services/runtime-command-service.ts getRuntimeContract (conformance checks)'),
@@ -178,7 +188,7 @@ export const RUNTIME_ADMISSIONS: readonly RuntimeAdmissionAssessment[] = [
     evidence: P('diff, checks, JSON events and token usage recorded by Djimitflo, not taken from runtime logs', 'worker manifests (runtime_contract gate ref)', 'skill_outcomes'),
     supply_chain: NP('npm registry integrity only; no provenance attestation published for opencode-ai@1.18.10; global install has no lockfile'),
     gym_evidence: P('gym 15 outcomes / 40–50 % success; 12 verified real makers in 14 d (plan Phase Y, 30-09)', 'skill_outcomes domain gym + loop'),
-  }, 'RUNTIME_INTERNAL'),
+  }, 'RUNTIME_INTERNAL'), ...REASSESSED_R11 },
   legacy('atomic', '0.6.5', 'gym maker on the local model; plain-text interface, diff is the only evidence', {
     licensing: P('MIT', 'gh api repos/AtomicBot-ai/atomic-agent: MIT'),
     reproducibility: P('release tarball pinned by version + sha256 held in this repo', 'Dockerfile ATOMIC_AGENT_VERSION / ATOMIC_AGENT_SHA256_*'),
@@ -193,10 +203,10 @@ export const RUNTIME_ADMISSIONS: readonly RuntimeAdmissionAssessment[] = [
   legacy('claude', '2.1.282', 'registered executor; CLI needs an operator login in the container', {
     reproducibility: P('npm version pinned', 'Dockerfile: npm install --global @anthropic-ai/claude-code@2.1.282'),
   }),
-  legacy('remote', null, 'workstation pull maker (plan I3); the patch passes the VPS gates; the runtime on the host is atomic', {
+  { ...legacy('remote', null, 'workstation pull maker (plan I3); the patch passes the VPS gates; the runtime on the host is atomic', {
     containment: NP('runs on the workstation outside the VPS; only its patch enters Djimitflo, through the normal gates'),
     gym_evidence: P('remote gym on the workstation (plan I1)', 'skill_outcomes remote:workstation'),
-  }, 'NONE'),
+  }, 'NONE'), ...REASSESSED_R11 },
   legacy('mock', null, 'deterministic demo/test runtime; makes no real changes (W1 label)', {}, 'NONE'),
   legacy('hermes', null, 'registered executor'),
   legacy('gemini', null, 'registered executor'),

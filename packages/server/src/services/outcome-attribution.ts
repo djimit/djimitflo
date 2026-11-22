@@ -24,7 +24,7 @@ export const outcomeAttributionEnabled = (env: NodeJS.ProcessEnv = process.env):
 
 export interface MakerMeta {
   failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean; exit_status?: number | null; completed_at?: string;
-  changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null; reason?: string }>;
+  changed_files?: unknown; deterministic_checks?: Array<{ status?: string; exit_status?: number | null; reason?: string; timed_out?: boolean }>;
 }
 export interface AttributionLease { id?: string; role: string; status: string; metadata: MakerMeta & { verdict?: unknown; maker_lease_id?: unknown } }
 export interface AttributionRun {
@@ -55,6 +55,10 @@ export function makerFailureClass(meta: MakerMeta): 'regressed' | 'infra_failed'
   if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
   if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127 || c?.reason === 'missing_script')) return 'infra_failed'; // a check's tool or script was missing
+  // Prod 2026-10-21..11-20: 15 of 23 no-useless-assignment makers failed only because test:changed hit the 600 s check maximum
+  // (a widely imported service fans out to most of the suite). A check that never finished observed nothing about the change.
+  const failedChecks = (meta.deterministic_checks ?? []).filter((c) => c?.status === 'fail');
+  if (failedChecks.length && failedChecks.every((c) => c.timed_out === true)) return 'infra_failed';
   if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
   return 'regressed';
 }

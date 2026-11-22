@@ -14,7 +14,7 @@ import { LoopService } from '../services/loop-service';
 import { generateText, resetLlmBreaker } from '../services/llm-fallback';
 import { setLlmLedger, recordModelCall } from '../services/model-selector';
 import { applyOutageFallback } from '../services/ollama-outage-fallback';
-import { autoFailoverMode, noteOllamaOutput, ollamaLimitClass, ollamaLimited, probeModel, probeOllama, readOllamaLimit } from '../services/inference-failover';
+import { autoFailoverEvidence, autoFailoverMode, clearOllamaLimit, limitWatching, noteOllamaOutput, ollamaLimitClass, ollamaLimited, panelFallbackModel, panelFallbackRuntime, PROBE_INTERVAL_MS, probeModel, probeOllama, readOllamaLimit, startOllamaProbe } from '../services/inference-failover';
 import { budgetEvidence, budgetPause, ollamaUsage7d, resetBudgetCache, throttleMode } from '../services/inference-budget';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
@@ -52,6 +52,53 @@ describe('Ollama usage-limit shape', () => {
     expect(ollamaLimitClass('AI_APICallError: you (x) have reached your usage limit')).toBe('usage');
     expect(ollamaLimitClass('Ollama request failed: 429 [ollama_usage_limit:weekly] (fallbacks also failed: x)')).toBe('weekly');
     for (const t of ['Ollama request failed: 500', 'fetch failed', 'model "x" not found', '', null]) expect(ollamaLimitClass(t)).toBeNull();
+  });
+
+  it('the "<class> usage limit" alternative needs flexible whitespace and an unknown marker class falls back to usage', () => {
+    expect(ollamaLimitClass('weekly usage limit')).toBe('weekly');
+    expect(ollamaLimitClass('weekly  usage limit')).toBe('weekly');
+    expect(ollamaLimitClass('weekly usage  limit')).toBe('weekly');
+    expect(ollamaLimitClass('session usage limit reached')).toBe('session');
+    expect(ollamaLimitClass('add usage credits')).toBe('usage');
+    expect(ollamaLimitClass('[ollama_usage_limit:foobar]')).toBe('usage');
+    expect(ollamaLimitClass('[ollama_usage_limit:daily]')).toBe('daily');
+  });
+});
+
+describe('inference-failover flags and helpers', () => {
+  it('panelFallbackModel trims and defaults to haiku; panelFallbackRuntime reads claude', () => {
+    expect(panelFallbackModel({})).toBe('haiku');
+    expect(panelFallbackModel({ PANEL_FALLBACK_MODEL: '  sonnet  ' })).toBe('sonnet');
+    expect(panelFallbackRuntime({})).toBeNull();
+    expect(panelFallbackRuntime({ PANEL_FALLBACK_RUNTIME: '  Claude  ' })).toBe('claude');
+    expect(panelFallbackRuntime({ PANEL_FALLBACK_RUNTIME: 'foo' })).toBeNull();
+  });
+
+  it('limitWatching is true for auto-failover on or panel fallback claude', () => {
+    expect(limitWatching({})).toBe(false);
+    expect(limitWatching({ OLLAMA_AUTO_FAILOVER: 'on' })).toBe(true);
+    expect(limitWatching({ PANEL_FALLBACK_RUNTIME: 'claude' })).toBe(true);
+    expect(limitWatching({ OLLAMA_AUTO_FAILOVER: 'off', PANEL_FALLBACK_RUNTIME: 'claude' })).toBe(true);
+  });
+
+  it('PROBE_INTERVAL_MS is 30 minutes', () => {
+    expect(PROBE_INTERVAL_MS).toBe(30 * 60_000);
+    expect(PROBE_INTERVAL_MS).toBe(1_800_000);
+  });
+
+  it('probeModel: override (trimmed), cost-weight sorting (positive finite weights only), colon passthrough, empty/invalid defaults', () => {
+    expect(probeModel({ OLLAMA_FAILOVER_PROBE_MODEL: 'custom-model' })).toBe('custom-model');
+    expect(probeModel({ OLLAMA_FAILOVER_PROBE_MODEL: '  spaced  ' })).toBe('spaced');
+    expect(probeModel({ MODEL_COST_WEIGHTS: 'a=3,b=1' })).toBe('b:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: ' a = 3 , b = 1 ' })).toBe('b:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: 'z=5' })).toBe('z:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: 'hosted:qwen=2' })).toBe('hosted:qwen');
+    expect(probeModel({ MODEL_COST_WEIGHTS: '' })).toBe('glm-5.3-flash:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: 'bad' })).toBe('glm-5.3-flash:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: '=2' })).toBe('glm-5.3-flash:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: 'a=0' })).toBe('glm-5.3-flash:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: 'a=-1,b=2' })).toBe('b:cloud');
+    expect(probeModel({ MODEL_COST_WEIGHTS: 'a=abc,b=2' })).toBe('b:cloud');
   });
 });
 
@@ -152,6 +199,97 @@ describe('OLLAMA_AUTO_FAILOVER', () => {
     };
     expect(await run({})).toBeNull();
     expect(await run({ OLLAMA_AUTO_FAILOVER: 'on' })).toMatchObject({ error_class: 'weekly', source: 'opencode:maker' });
+  });
+
+  it('readOllamaLimit: a stored non-ollama_limited row is ignored; a missing table reads null', () => {
+    const db = freshDb();
+    db.prepare("INSERT INTO system_state (key, value, updated_at) VALUES ('inference_ollama_state', ?, datetime('now'))")
+      .run(JSON.stringify({ state: 'other', detected_at: '2026-01-01T00:00:00.000Z' }));
+    expect(readOllamaLimit(db)).toBeNull();
+    const bare = new Database(':memory:'); dbs.push(bare);
+    expect(readOllamaLimit(bare)).toBeNull();
+  });
+
+  it('noteOllamaOutput: source is sliced to 80 chars; excerpt is the matched phrase (sliced to 120)', () => {
+    const db = freshDb(); const on = { OLLAMA_AUTO_FAILOVER: 'on' };
+    const longSource = 'x'.repeat(100);
+    noteOllamaOutput(db, LIMIT_BODY, longSource, on);
+    const s = readOllamaLimit(db);
+    expect(s?.source).toBe(longSource.slice(0, 80));
+    expect(s?.source).toHaveLength(80);
+    expect(s?.excerpt).toBe('reached your weekly usage limit');
+
+    const db2 = freshDb();
+    const longMarker = `[ollama_usage_limit:${'a'.repeat(200)}]`;
+    noteOllamaOutput(db2, longMarker, 'test', on);
+    const s2 = readOllamaLimit(db2);
+    expect(s2?.error_class).toBe('usage');
+    expect(s2?.excerpt).toHaveLength(120);
+  });
+
+  it('noteOllamaOutput: on a bare DB the limited state is still persisted (ensure creates the table)', () => {
+    const bare = new Database(':memory:'); dbs.push(bare);
+    expect(readOllamaLimit(bare)).toBeNull();
+    expect(noteOllamaOutput(bare, LIMIT_BODY, 'test', { OLLAMA_AUTO_FAILOVER: 'on' })).toBe('weekly');
+    expect(readOllamaLimit(bare)).toMatchObject({ state: 'ollama_limited', error_class: 'weekly' });
+  });
+
+  it('recordLimitCalibration: the judgment reason carries the real 7-d token total', () => {
+    const db = freshDb(); setLlmLedger(db);
+    recordModelCall(db, { consumer: 'fallback', model: 'glm-5.3:cloud', provider: 'ollama:https://ollama.com', ok: true, latencyMs: 1, outChars: 1, shadow: 0, agree: null, tokensIn: 100, tokensOut: 20 });
+    noteOllamaOutput(db, LIMIT_BODY, 'test', { OLLAMA_AUTO_FAILOVER: 'on' });
+    const j = db.prepare("SELECT state_hash, decision, reason, answers_json FROM judgments WHERE judgment = 'ollama_limit_calibration'").all() as Array<{ state_hash: string; decision: string; reason: string; answers_json: string }>;
+    expect(j).toHaveLength(1);
+    const s = readOllamaLimit(db);
+    expect(j[0].state_hash).toBe(`weekly:${s?.detected_at}`);
+    expect(j[0].decision).toBe('limit_hit');
+    expect(j[0].reason).toContain('120');
+    expect(JSON.parse(j[0].answers_json)).toMatchObject({ total_tokens: 120, error_class: 'weekly' });
+  });
+
+  it('clearOllamaLimit: false when nothing is limited, true after a limit with a recovery event and log', () => {
+    const db = freshDb(); const on = { OLLAMA_AUTO_FAILOVER: 'on' };
+    expect(clearOllamaLimit(db, 'nothing')).toBe(false);
+    expect(audits(db)).toEqual([]);
+    noteOllamaOutput(db, LIMIT_BODY, 'test', on);
+    expect(readOllamaLimit(db)).not.toBeNull();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect(clearOllamaLimit(db, 'probe ok')).toBe(true);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(readOllamaLimit(db)).toBeNull();
+    expect(audits(db)).toEqual(['inference_ollama_limited', 'inference_ollama_recovered']);
+  });
+
+  it('probeOllama: skipped when mode off even if a limit is stored; a non-Error throw and a long message are stringified and sliced', async () => {
+    const db = freshDb(); const on = { OLLAMA_AUTO_FAILOVER: 'on' };
+    noteOllamaOutput(db, LIMIT_BODY, 'test', on);
+    const call = vi.fn(async () => 'ok');
+    expect(await probeOllama(db, call, { OLLAMA_AUTO_FAILOVER: 'off' })).toBe('skipped');
+    expect(call).not.toHaveBeenCalled();
+    expect(await probeOllama(db, async () => { throw 'plain string boom'; }, on)).toBe('still_limited');
+    expect(readOllamaLimit(db)?.last_probe_result).toBe('plain string boom');
+    expect(await probeOllama(db, async () => { throw new Error('x'.repeat(200)); }, on)).toBe('still_limited');
+    expect(readOllamaLimit(db)?.last_probe_result).toHaveLength(160);
+    expect(await probeOllama(db, call, on)).toBe('cleared');
+    expect(readOllamaLimit(db)).toBeNull();
+  });
+
+  it('startOllamaProbe: null when mode off, a stop function when on', () => {
+    const db = freshDb();
+    expect(startOllamaProbe(db, 10, {})).toBeNull();
+    const stop = startOllamaProbe(db, 10, { OLLAMA_AUTO_FAILOVER: 'on' });
+    expect(typeof stop).toBe('function');
+    expect(() => stop!()).not.toThrow();
+  });
+
+  it('autoFailoverEvidence: state is null when mode off (even if a limit is stored) and present when on; transitions counted', () => {
+    const db = freshDb(); const on = { OLLAMA_AUTO_FAILOVER: 'on' };
+    noteOllamaOutput(db, LIMIT_BODY, 'test', on);
+    expect(autoFailoverEvidence(db, '1970-01-01', on).state).toMatchObject({ state: 'ollama_limited', error_class: 'weekly' });
+    expect(autoFailoverEvidence(db, '1970-01-01', { OLLAMA_AUTO_FAILOVER: 'off' }).state).toBeNull();
+    expect(autoFailoverEvidence(db, '1970-01-01', on).transitions).toEqual([{ action: 'inference_ollama_limited', n: 1 }]);
+    const bare = new Database(':memory:'); dbs.push(bare);
+    expect(autoFailoverEvidence(bare, '1970-01-01', on).transitions).toBeNull();
   });
 });
 

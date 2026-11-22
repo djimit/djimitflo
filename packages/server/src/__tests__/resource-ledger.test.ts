@@ -14,7 +14,7 @@ import { createHostAgentRoutes, HOST_AGENT_SCOPE } from '../routes/host-agent';
 import { mintSpawnToken, resolveSpawnTokenSecret } from '../services/spawn-token';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
-import { efficiencyView, exclusiveWh, integrateWh, isLocalModel, recordPowerSample, valuePer } from '../services/resource-ledger';
+import { efficiencyView, exclusiveWh, integrateWh, isLocalModel, recordPowerSample, valuePer, windowEnergy } from '../services/resource-ledger';
 
 const NOW = Date.parse('2026-10-08T12:00:00Z');
 const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
@@ -199,4 +199,33 @@ it('CP3: per kWh counts only changes made on a metered host, and only with ≥ 8
   expect(w).toMatchObject({ local_verified: 1, per_kwh_reason: null });
   expect(w.coverage_pct!).toBeGreaterThanOrEqual(80);
   expect(w.per_kwh).toBeCloseTo(1 / w.local_kwh!, 2);
+});
+
+it('exclusiveWh windows the samples per piece: same result as integrating all samples (prod 11-19 perf fix)', () => {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const samples: Array<{ t: number; w: number }> = [];
+  for (let t = 0; t < 86_400_000; t += 20_000 + Math.floor(rnd() * 20_000)) if (rnd() > 0.05) samples.push({ t, w: 50 + rnd() * 250 }); // gaps too
+  const jobs = Array.from({ length: 60 }, () => { const s = Math.floor(rnd() * 86_400_000); return { start: s, end: s + Math.floor(rnd() * 3_600_000) }; });
+  jobs.push({ start: samples[3].t, end: samples[9].t }); // cuts exactly on sample times
+  const out = jobs.map(() => ({ wh: 0, covered_s: 0 }));
+  const cuts = [...new Set(jobs.flatMap((j) => [j.start, j.end]))].sort((a, b) => a - b);
+  for (let i = 1; i < cuts.length; i++) {
+    const active = jobs.flatMap((j, k) => (j.start <= cuts[i - 1] && j.end >= cuts[i] ? [k] : []));
+    const e = integrateWh(samples, cuts[i - 1], cuts[i]);
+    for (const k of active) { out[k].wh += e.wh / active.length; out[k].covered_s += e.covered_s; }
+  }
+  expect(exclusiveWh(samples, jobs)).toEqual(out.map((o) => ({ wh: +o.wh.toFixed(3), covered_s: o.covered_s })));
+});
+
+it('windowEnergy is exactly efficiencyView hosts + coverage.window_pct (evolutionLineage reads only these; prod 11-21 perf fix)', () => {
+  samples('ws', 200, 30 * H, 2 * H);
+  samples('mini', 40, 26 * 24 * H, 25 * 24 * H); // outside 7 d, inside 30 d
+  samples('mini', 50, 3 * H, 3 * H - 10 * 60_000);
+  for (const days of [7, 30]) {
+    const v = efficiencyView(db, NOW, process.env, days); const w = windowEnergy(db, NOW, days);
+    expect(w.hosts).toEqual(v.hosts);
+    expect(w.window_pct).toBe(v.coverage.window_pct);
+    expect(w.hosts.length).toBeGreaterThan(0);
+  }
+  expect(windowEnergy(new Database(':memory:'), NOW, 7)).toEqual({ hosts: [], window_pct: null }); // power table absent: unknown, never throws
 });

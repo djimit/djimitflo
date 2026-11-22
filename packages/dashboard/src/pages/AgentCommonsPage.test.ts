@@ -151,6 +151,19 @@ describe('AC-01 runtime readiness', () => {
     for (const text of ['>scheduled<', 'poller reported <code>runtime_inference</code> / <code>runtime_timeout</code>']) expect(html).toContain(text);
   });
 
+  it('folds agents with no heartbeat in 30 days into a dormant group and keeps a never-seen agent in the main table', () => {
+    const now = Date.parse('2026-11-19T18:00:00Z');
+    const html = renderToStaticMarkup(createElement(ReadinessTable, { now, agents: [
+      { ...agents[0], name: 'Fresh', last_heartbeat_at: '2026-11-19T14:00:00Z', readiness: readiness('scheduled') },
+      { ...agents[1], name: 'Never', last_heartbeat_at: null, readiness: readiness('offline') },
+      { ...agents[1], id: 'c', name: 'Old', last_heartbeat_at: '2026-10-09T09:07:00Z', readiness: readiness('offline') },
+    ] }));
+    const [main, folded] = html.split('<details');
+    expect(main).toContain('Fresh'); expect(main).toContain('Never'); expect(main).not.toContain('Old');
+    expect(folded).toContain('1 dormant agent: no heartbeat in 30 days'); expect(folded).toContain('Old');
+    expect(renderToStaticMarkup(createElement(ReadinessTable, { now, agents: [agents[0]] }))).not.toContain('<details');
+  });
+
   it('says unknown when the server sent no readiness instead of treating a heartbeat as ready', () => {
     const html = renderToStaticMarkup(createElement(ReadinessTable, { agents: [{ ...agents[0], present: true }] }));
     expect(html).toContain('unknown');
