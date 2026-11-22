@@ -9,10 +9,12 @@ let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); });
 afterEach(() => db.close());
 
+// a day old on the clock forecastScores() windows with (Date.now() − 60 d), not SQLite's datetime('now')
+const dayAgo = () => new Date(Date.now() - 86_400_000).toISOString();
 const prop = (id: string, source: string, status: string) => db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at)
-  VALUES (?, 'feature', ?, 'd', 'r', ?, ?, 0.5, datetime('now','-1 day'), datetime('now','-1 day'))`).run(id, id, source, status);
+  VALUES (?, 'feature', ?, 'd', 'r', ?, ?, 0.5, ?, ?)`).run(id, id, source, status, dayAgo(), dayAgo());
 const prescreen = (id: string, v: number) => db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
-  VALUES (?, 'proposal_prescreen', 'self_improvement', ?, '', 'shadow', 'yes', '', ?, datetime('now','-1 day'))`).run(`ps-${id}`, id, JSON.stringify({ verifiable: { noul: v }, concrete: { noul: v }, names_file: { noul: v } }));
+  VALUES (?, 'proposal_prescreen', 'self_improvement', ?, '', 'shadow', 'yes', '', ?, ?)`).run(`ps-${id}`, id, JSON.stringify({ verifiable: { noul: v }, concrete: { noul: v }, names_file: { noul: v } }), dayAgo());
 
 it('base rate is the Laplace-smoothed verified rate of the source', () => {
   prop('a', 'gap_analysis', 'verified'); prop('b', 'gap_analysis', 'regressed'); prop('c', 'gap_analysis', 'needs_more_evidence');

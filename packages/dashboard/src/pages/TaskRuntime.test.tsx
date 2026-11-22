@@ -127,13 +127,16 @@ it('shows the selected existing agent through the Swarm detail-link route', () =
 it('keeps every page reachable from the grouped navigation, once each', () => {
   render(<MemoryRouter><Layout /></MemoryRouter>);
   const hrefs = [...document.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
-  for (const path of ['/authority', '/audit', '/governance', '/pipeline-builder', '/agi-reasoning', '/consensus-debates', '/predictive-analytics', '/self-healing', '/explainers', '/improvement-funnel', '/decisions']) {
+  for (const path of ['/authority', '/audit', '/governance', '/fleet', '/agent-commons', '/observability', '/configuration', '/improvement-funnel', '/decisions', '/swarm-mission-control']) {
     expect(hrefs).toContain(path);
   }
   expect(new Set(hrefs).size).toBe(hrefs.length); // no duplicate menu targets
   expect(hrefs).not.toContain('/audit/logs'); // merged into /audit (tab)
   expect(hrefs).not.toContain('/compliance'); // merged into /governance (tab)
   expect(hrefs).not.toContain('/approvals'); // merged into /decisions (W2: one inbox)
+  // nav cut (UX-30): retired or merged into another page; App.tsx redirects them
+  for (const gone of ['/dashboard', '/swarm', '/economy', '/explainers', '/cognitive', '/agi-reasoning', '/predictive-analytics', '/consensus-debates', '/catalog',
+    '/federation', '/pipeline-builder', '/self-healing', '/interaction-board', '/fleet-cockpit', '/self-driving', '/swarm-resources']) expect(hrefs).not.toContain(gone);
 });
 
 it('W4: at most 20 top-level menu items; experimental pages sit in a collapsed Lab', () => {
@@ -143,10 +146,10 @@ it('W4: at most 20 top-level menu items; experimental pages sit in a collapsed L
   expect(lab!.hasAttribute('open')).toBe(false);
   const topLevel = [...document.querySelectorAll('nav a')].filter((a) => !a.closest('details'));
   expect(topLevel.length).toBeLessThanOrEqual(20);
-  expect([...lab!.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toContain('/self-driving');
+  expect([...lab!.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['/swarm-mission-control']);
 });
 
 it('W4: the Lab opens when the current page lives in it', () => {
-  render(<MemoryRouter initialEntries={['/self-driving']}><Layout /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/swarm-mission-control']}><Layout /></MemoryRouter>);
   expect(document.querySelector('nav details')!.hasAttribute('open')).toBe(true);
 });

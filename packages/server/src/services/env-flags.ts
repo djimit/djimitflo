@@ -127,8 +127,6 @@ export const NON_EVOLUTION_FLAGS: Readonly<Record<string, string>> = {
   PROOF_RUN_SKIP_PERMISSIONS: 'runtime',
   PROPOSAL_DEDUPE_MODE: 'dedupe',
   QUEUE_HYGIENE_ENABLED: 'hygiene',
-  RANSOMWARE_MODULE_ENABLED: 'security',
-  RANSOMWARE_MODULE_MODE: 'security',
   RECONCILIATION_NIGHTLY_APPLY: 'reconciliation',
   RECONCILIATION_NIGHTLY_ENABLED: 'scheduler',
   REFLECTION_PROPOSALS_MAX_PER_DAY: 'cap',

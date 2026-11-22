@@ -49,6 +49,10 @@ export function loopApprovalLink(db: Database, task: Pick<Task, 'metadata'>): Re
   } catch { return {}; }
 }
 
+export interface EndedWorker { lease_id: string; lease_status: string; loop_run_id: string; run_status: string | null }
+const ENDED_LEASE_STATUSES = "'cancelled', 'failed', 'completed'";
+const TERMINAL_RUN_STATUSES = "'completed', 'failed', 'cancelled', 'escalated'";
+
 export class ApprovalService {
   constructor(
     private db: Database,
@@ -264,20 +268,54 @@ export class ApprovalService {
     return updated;
   }
 
-  private expireApproval(approval: ApprovalRequest): void {
-    const expired = this.db.transaction(() => this.expireApprovalRecord(approval)).immediate();
-    if (!expired) return;
+  /**
+   * M0-F: the worker an approval was asked for, when that worker has ended: its lease is cancelled / failed / completed or
+   * its loop run is terminal (prod lease ac827d48 was superseded at 05:48Z, approved at 06:44Z and its task still ran).
+   * The lease is found by the server-owned links (lease metadata execution_task_id / approval_id) and by the lease named
+   * on the task. null for a live worker and for any task that is not a loop worker.
+   */
+  endedWorker(approvalId: string): EndedWorker | null {
+    const json = (col: string, key: string) => `json_extract(CASE WHEN json_valid(${col}) THEN ${col} ELSE '{}' END, '$.${key}')`;
+    return (this.db.prepare(`SELECT l.id AS lease_id, l.status AS lease_status, l.loop_run_id, r.status AS run_status
+      FROM approvals a JOIN tasks t ON t.id = a.task_id
+      JOIN worker_leases l ON (${json('l.metadata', 'execution_task_id')} = a.task_id OR ${json('l.metadata', 'approval_id')} = a.id OR l.id = ${json('t.metadata', 'lease_id')})
+      LEFT JOIN loop_runs r ON r.id = l.loop_run_id
+      WHERE a.id = ? AND (l.status IN (${ENDED_LEASE_STATUSES}) OR r.status IN (${TERMINAL_RUN_STATUSES}))
+      LIMIT 1`).get(approvalId) as EndedWorker | undefined) ?? null;
+  }
+
+  /** Expire a still-pending approval of an ended worker (audit, outbox, task cancelled as on TTL expiry); null if not pending. */
+  expireForEndedWorker(approvalId: string, reason: string): ApprovalRequest | null {
+    const approval = this.getApproval(approvalId);
+    return approval && approval.status === ApprovalStatus.PENDING ? this.expireApproval(approval, reason) : null;
+  }
+
+  /**
+   * M0-F: cancelling or failing a lease (operator stop, evolve supersede, the stale reaper, retirement) left its approval
+   * pending for a human, who could still start the dead work. Sweeps every pending approval whose worker has ended.
+   */
+  expirePendingForEndedWorkers(reason = 'worker_lease_ended'): number {
+    const pending = this.db.prepare("SELECT id FROM approvals WHERE status = 'pending'").all() as Array<{ id: string }>;
+    return pending.filter(({ id }) => this.endedWorker(id) && this.expireForEndedWorker(id, reason)).length;
+  }
+
+  private expireApproval(approval: ApprovalRequest, reason?: string): ApprovalRequest | null {
+    const expired = this.db.transaction(() => this.expireApprovalRecord(approval, reason)).immediate();
+    if (!expired) return null;
     this.publish(expired.task_id, {
       type: WebSocketEventType.APPROVAL_EXPIRED,
       payload: { approval: expired },
       timestamp: expired.updated_at,
     });
     this.recordDecision(expired, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system');
+    return expired;
   }
 
-  private expireApprovalRecord(approval: ApprovalRequest): ApprovalRequest | null {
+  private expireApprovalRecord(approval: ApprovalRequest, reason?: string): ApprovalRequest | null {
     const now = new Date().toISOString();
-    const result = this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'").run(now, approval.id);
+    const result = reason
+      ? this.db.prepare("UPDATE approvals SET status = 'expired', decision_reason = ?, updated_at = ? WHERE id = ? AND status = 'pending'").run(reason, now, approval.id)
+      : this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'").run(now, approval.id);
     if (!result.changes) return null;
 
     const expired = this.getApproval(approval.id)!;
@@ -289,6 +327,7 @@ export class ApprovalService {
       resource_id: expired.id,
       task_id: expired.task_id,
       risk_level: expired.risk_level,
+      ...(reason ? { metadata: { reason } } : {}),
     });
 
     // Bug fix: an expired approval used to leave its task stuck in

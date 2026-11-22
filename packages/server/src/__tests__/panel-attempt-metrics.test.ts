@@ -58,6 +58,7 @@ it('derives one state per attempt with n_attempt / n_valid next to every rate; r
   expect(m.legacy).toEqual({ coerced_unparseable: 1, coerced_generation_failed: 0, unprovenanced: 0 });
   expect(m.seat_attempts.totals).toMatchObject({ n_attempt: 7, n_valid: 2, n_quarantined: 5 });
   expect(m.unreadable).toEqual([]);
+  expect(m.window_days).toBe(7);
 });
 
 it('model calls group by model × provider; pre-E4 invalid stays the combined class; shadow counted apart', () => {
@@ -93,12 +94,16 @@ it('with enough outcome-labelled valid reviews the conditional quality is P(corr
   }
   const g = panelAttemptMetrics(db, { days: 7, now }).seat_attempts.groups[0];
   expect(g.semantic_quality).toMatchObject({ status: 'ok', value: 0.7, n_valid: 10, n_semantically_scored: 10 });
+  expect(g.n_first_pass).toBe(10);
+  expect(g.n_after_retry).toBe(0);
   expect(g.panel_agreement).toMatchObject({ status: 'ok', value: 1, circular: true });
 });
 
 it('a missing source is named unreadable, not read as 0 attempts', () => {
   db.exec('DROP TABLE specialist_review_quarantine');
-  expect(panelAttemptMetrics(db, { days: 7, now }).unreadable).toEqual(['specialist_review_quarantine']);
+  const m = panelAttemptMetrics(db, { days: 7, now });
+  expect(m.unreadable).toEqual(['specialist_review_quarantine']);
+  expect(m.model_calls.recorded).toBe(false);
 });
 
 it('the writer records parse vs schema on the ledger row (invalid_parse / invalid_schema)', async () => {
@@ -135,4 +140,95 @@ it('AC-03: the Commons projection reads the same legacy rows as a technical revi
   expect(c.legacy_fallback_reviews).toBe(3);
   // P1 had valid reviews (its stored decision is 'goal' but no goal row exists): not a technical failure
   expect(c.outcomes).toMatchObject({ technical_failure: 2, pending: 1 });
+});
+
+it('an unknown ledger status maps to UNKNOWN_FAILURE (the default case)', () => {
+  call('something-unrecognised');
+  const m = panelAttemptMetrics(db, { days: 7, now });
+  expect(m.model_calls.groups[0].states.UNKNOWN_FAILURE).toBe(1);
+});
+
+it('pre-#784 legacy rows: coerced generation failed and unprovenanced are classified apart from coerced unparseable', () => {
+  panel('PL', 'goal');
+  review('PL', 'genfail', { model: null, attempt: null, stance: 'needs_evidence', confidence: 0, findings: ['Review generation failed: timeout'] });
+  review('PL', 'unprov', { model: null, attempt: null, stance: 'needs_evidence', confidence: 0, findings: ['random text'] });
+  review('PL', 'parsed', { model: null, attempt: null, stance: 'needs_evidence', confidence: 0, findings: ['Model response could not be parsed: x'] });
+  const m = panelAttemptMetrics(db, { days: 7, now });
+  expect(m.legacy).toEqual({ coerced_unparseable: 1, coerced_generation_failed: 1, unprovenanced: 1 });
+  expect(m.seat_attempts.totals.n_attempt).toBe(0);
+});
+
+it('uncertain / needs_evidence stances are valid but never semantically scored', () => {
+  panel('PU', 'goal');
+  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, panel_id) VALUES ('si-u', 'x', 't', 'd', 'r', 'test', 'verified', 'PU')`).run();
+  review('PU', 'a', { attempt: 1, stance: 'uncertain' });
+  review('PU', 'b', { attempt: 1, stance: 'needs_evidence' });
+  const g = panelAttemptMetrics(db, { days: 7, now }).seat_attempts.groups[0];
+  expect(g.n_valid).toBe(2);
+  expect(g.semantic_quality.n_semantically_scored).toBe(0);
+  expect(g.panel_agreement.n_semantically_scored).toBe(0);
+});
+
+it('an oppose stance on a verified outcome is scored as incorrect for both quality and agreement', () => {
+  for (let i = 0; i < MIN_SEMANTIC_N; i++) {
+    panel(`Q${i}`, 'goal');
+    db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, panel_id) VALUES (?, 'x', 't', 'd', 'r', 'test', 'verified', ?)`)
+      .run(`si-${i}`, `Q${i}`);
+    review(`Q${i}`, 'a', { attempt: 1, stance: i < 3 ? 'oppose' : 'support' });
+  }
+  const g = panelAttemptMetrics(db, { days: 7, now }).seat_attempts.groups[0];
+  expect(g.semantic_quality).toMatchObject({ status: 'ok', value: 0.7, n_semantically_scored: 10 });
+  expect(g.panel_agreement).toMatchObject({ status: 'ok', value: 0.7, n_semantically_scored: 10 });
+});
+
+it('panel agreement: blocked makes support wrong; backlog scores like goal; both are scored', () => {
+  for (let i = 0; i < MIN_SEMANTIC_N; i++) {
+    const dec = i < 5 ? 'blocked' : 'backlog';
+    panel(`B${i}`, dec);
+    review(`B${i}`, 'a', { attempt: 1, stance: i < 5 ? 'support' : 'oppose' });
+  }
+  const g = panelAttemptMetrics(db, { days: 7, now }).seat_attempts.groups[0];
+  expect(g.panel_agreement).toMatchObject({ status: 'ok', value: 0, n_semantically_scored: 10 });
+});
+
+it('a non-scored consensus decision (needs_more_evidence) is not counted in panel agreement', () => {
+  for (let i = 0; i < MIN_SEMANTIC_N + 1; i++) {
+    panel(`N${i}`, i === 0 ? 'needs_more_evidence' : 'goal');
+    db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, panel_id) VALUES (?, 'x', 't', 'd', 'r', 'test', 'verified', ?)`)
+      .run(`si-${i}`, `N${i}`);
+    review(`N${i}`, 'a', { attempt: 1, stance: 'support' });
+  }
+  const g = panelAttemptMetrics(db, { days: 7, now }).seat_attempts.groups[0];
+  expect(g.panel_agreement.n_semantically_scored).toBe(10);
+});
+
+it('a quarantine row without prompt_sha256 does not inflate prompt_instances', () => {
+  panel('PQ', 'goal');
+  db.prepare(`INSERT INTO specialist_review_quarantine (id, panel_id, specialist_id, model, prompt_sha256, error, attempt, created_at)
+    VALUES (?, 'PQ', 's', 'm1', NULL, 'answer is not valid JSON', 2, ?)`).run('PQ:s', at);
+  const g = panelAttemptMetrics(db, { days: 7, now }).seat_attempts.groups[0];
+  expect(g.prompt_instances).toBe(0);
+});
+
+it('a review without prompt_sha256 does not inflate prompt_instances', () => {
+  panel('PR', 'goal');
+  db.prepare(`INSERT INTO specialist_reviews (id, panel_id, specialist_id, specialist_title, stance, confidence, findings_json, status, model, prompt_sha256, attempt, created_at)
+    VALUES (?, 'PR', 's', 'T', 'support', 0.8, '[]', 'submitted', 'm1', NULL, 1, ?)`).run('PR:s', at);
+  const g = panelAttemptMetrics(db, { days: 7, now }).seat_attempts.groups[0];
+  expect(g.prompt_instances).toBe(0);
+});
+
+it('seat groups are sorted by n_attempt descending (insertion order differs)', () => {
+  panel('S1', 'goal'); review('S1', 'a', { model: 'small', attempt: 1 });
+  panel('S2', 'goal'); review('S2', 'a', { model: 'big1', attempt: 1 });
+  panel('S3', 'goal'); review('S3', 'a', { model: 'big1', attempt: 1 });
+  const m = panelAttemptMetrics(db, { days: 7, now });
+  expect(m.seat_attempts.groups.map((g) => g.model)).toEqual(['big1', 'small']);
+});
+
+it('model call groups are sorted by n_attempt descending (insertion order differs)', () => {
+  call('ok', 'litellm');
+  call('ok', 'ollama'); call('ok', 'ollama');
+  const m = panelAttemptMetrics(db, { days: 7, now });
+  expect(m.model_calls.groups.map((g) => g.provider)).toEqual(['ollama', 'litellm']);
 });

@@ -271,7 +271,7 @@ it('SOUL subtraction: lines, ratio and route delta per ISO week; unknown with th
 });
 
 it('human-only needs-you: labelling has its own count, system work is shown apart, and the audit batch links to its card', async () => {
-  const n = { approvals: 1, requeue: 0, labels: 3, memory_review: 1, open_prs: 4, audit_batch: 3, flagged_prs: 1, dependency_human: 2, dependency_tracked: true,
+  const n = { approvals: 1, requeue: 0, labels: 3, memory_review: 1, open_prs: 4, audit_batch: 3, flagged_prs: 1, system_prs: 7, dependency_human: 2, dependency_tracked: true,
     proposals: 5, stalls: 2, total: 8, optional_labelling: { d5: 3, car: 2, e1: 0, di001: null, total: null },
     system: { requeue_will_handle: 40, requeue_mode: 'on', proposals_auto_reviewed: true } };
   const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
@@ -282,6 +282,7 @@ it('human-only needs-you: labelling has its own count, system work is shown apar
   expect(html).toContain('Optional labelling (unknown)'); expect(html).toContain('2 CAR audits'); expect(html).toContain('unknown DI-001 relevance labels');
   // system handles: shown, never in the headline
   expect(html).toContain('40 requeue rows the system will handle'); expect(html).toContain('5 proposals in panel review'); expect(html).toContain('2 silent stalls');
+  expect(html).toContain('7 loop PRs the auto-merge lane is handling'); // waiting / capped / transient: not in the headline 8
   expect(html).not.toContain('proposals awaiting approval');
   const fs = await import('node:fs'); const path = await import('node:path');
   const src = fs.readFileSync(path.join(process.cwd(), 'src/pages', 'DecisionsInboxPage.tsx'), 'utf8');

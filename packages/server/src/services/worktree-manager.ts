@@ -7,9 +7,65 @@
  */
 
 import { execFileSync } from 'child_process';
-import { cpSync, existsSync, mkdirSync, renameSync, statSync, readdirSync, rmSync, symlinkSync, lstatSync, copyFileSync, type Stats } from 'fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, statSync, readdirSync, rmSync, symlinkSync, lstatSync, copyFileSync, writeFileSync, type Stats } from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
+import { safeGit, safeGitBuffer } from './safe-git';
+import { isAgentConfigPath } from './diff-capture';
+
+/**
+ * D4 (H4 2026-11-14): a checker worktree is cut from the maker's, so the maker would write the opencode.json(c),
+ * .opencode/, AGENTS.md, CLAUDE.md, .claude/, .codex/ and .mcp.json its reviewer runs under. This puts back exactly the
+ * agent-config files of `trustedRepository`'s HEAD (the loop's runtime repository, never the maker's git metadata): an
+ * edited one gets the base content, an added one is removed, a deleted one comes back. The change is committed, so the
+ * checker's read-only contract still measures the checker alone. Returns the paths it changed.
+ */
+export function restoreAgentConfig(trustedRepository: string, worktreePath: string): string[] {
+  const root = realpathSync(worktreePath);
+  const trusted = new Map<string, { mode: string; sha: string }>();
+  for (const record of safeGit(trustedRepository, ['ls-tree', '-r', '-z', 'HEAD']).split('\0')) {
+    const tab = record.indexOf('\t');
+    if (tab < 0) continue;
+    const [mode, type, sha] = record.slice(0, tab).split(' ');
+    const file = record.slice(tab + 1);
+    if (type === 'blob' && isAgentConfigPath(file)) trusted.set(file, { mode, sha });
+  }
+  const present: string[] = [];
+  const walk = (rel: string): void => {
+    for (const entry of readdirSync(path.join(root, rel), { withFileTypes: true })) {
+      if (entry.name === '.git' || entry.name === 'node_modules') continue;
+      const file = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(file); // a symlink (e.g. a symlinked .opencode/) is never followed: it is an entry below
+      else if (isAgentConfigPath(file)) present.push(file);
+    }
+  };
+  walk('');
+  const changed = new Set<string>();
+  for (const file of present) {
+    if (!trusted.has(file)) { rmSync(path.join(root, file), { recursive: true, force: true }); changed.add(file); }
+  }
+  for (const [file, { mode, sha }] of trusted) {
+    const full = path.join(root, file);
+    const content = safeGitBuffer(trustedRepository, ['cat-file', 'blob', sha]);
+    const current = lstatSync(full, { throwIfNoEntry: false });
+    if (mode === '120000') {
+      if (current?.isSymbolicLink() && readlinkSync(full) === content.toString()) continue;
+    } else if (current?.isFile() && readFileSync(full).equals(content) && Boolean(current.mode & 0o100) === (mode === '100755')) continue;
+    mkdirSync(path.dirname(full), { recursive: true });
+    // a maker-made symlinked parent directory would send the write outside the worktree
+    if (!(realpathSync(path.dirname(full)) + path.sep).startsWith(root + path.sep)) throw new Error(`CHECKER_AGENT_CONFIG_UNSAFE_PATH: ${file}`);
+    if (current) rmSync(full, { recursive: true, force: true });
+    if (mode === '120000') symlinkSync(content.toString(), full);
+    else { writeFileSync(full, content); chmodSync(full, mode === '100755' ? 0o755 : 0o644); }
+    changed.add(file);
+  }
+  if (changed.size === 0) return [];
+  const files = [...changed].sort();
+  safeGit(root, ['--literal-pathspecs', 'add', '-A', '-f', '--', ...files]);
+  safeGit(root, ['commit', '-q', '--no-verify', '-m', 'Restore agent config from the base commit (checker independence)'],
+    { config: ['user.name=djimitflo', 'user.email=djimitflo@localhost'] });
+  return files;
+}
 
 export class WorktreeManager {
   constructor(private db: Database) {}
@@ -31,6 +87,8 @@ export class WorktreeManager {
     const sourceHead = this.git(repositoryPath, ['rev-parse', 'HEAD']).trim();
     const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees');
     const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
+    // '.' / '..' survive the sanitizer and would resolve to the run directory or the root holding every other worktree
+    if (/^\.*$/.test(sanitizedFindingId)) throw new Error(`WORKTREE_FINDING_ID_INVALID: ${JSON.stringify(findingId)}`);
     const worktreePath = path.join(worktreeRoot, runId, sanitizedFindingId);
     mkdirSync(path.dirname(worktreePath), { recursive: true });
     if (existsSync(worktreePath)) {
@@ -109,18 +167,8 @@ export class WorktreeManager {
    * Includes path traversal guards to prevent writes outside the worktree.
    */
   applySourceWorkingTreeDiff(repositoryPath: string, worktreePath: string): void {
-    const trackedDiff = execFileSync('git', ['-C', repositoryPath, 'diff', '--binary', 'HEAD'], {
-      encoding: null,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    if (trackedDiff.length > 0) {
-      execFileSync('git', ['-C', worktreePath, 'apply', '--binary', '-'], {
-        input: trackedDiff,
-        stdio: ['pipe', 'ignore', 'pipe'],
-        maxBuffer: 10 * 1024 * 1024,
-      });
-    }
+    const trackedDiff = safeGitBuffer(repositoryPath, ['diff', '--binary', 'HEAD']);
+    if (trackedDiff.length > 0) safeGit(worktreePath, ['apply', '--binary', '-'], { input: trackedDiff });
     const status = this.git(repositoryPath, ['status', '--porcelain=v1', '--untracked-files=all']);
     const untracked = status.split(/\r?\n/)
       .map((line) => line.trim())
@@ -235,11 +283,7 @@ export class WorktreeManager {
 
   private git(repositoryPath: string, args: string[]): string {
     try {
-      return execFileSync('git', ['-C', repositoryPath, ...args], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        maxBuffer: 10 * 1024 * 1024,
-      }).trim();
+      return safeGit(repositoryPath, args).trim();
     } catch (error) {
       const stderr = (error as { stderr?: Buffer | string }).stderr?.toString() || '';
       throw new Error(stderr.trim() || `git ${args.join(' ')} failed`);

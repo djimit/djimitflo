@@ -1,0 +1,40 @@
+{
+  "repository": "djimit/djimitflo",
+  "base_sha": "b496916b029dd4555c648203f4244706628ce79e",
+  "branch": "audit/controlled-execution-2026-11-15",
+  "window_start": "2026-11-15T00:10:00Z",
+  "prompt": "DJIMITFLO CODEX-MASTERPROMPT v1.1 (2026-11-14)",
+  "environment": {
+    "host": "operator MacBook (darwin), isolated git worktree",
+    "node": "v22.23.2",
+    "npm": "10.9.8",
+    "network": "available",
+    "production": "read-only probes via ssh vps-agentical (runbook 'Read-only probes')"
+  },
+  "running_production": {
+    "commit": "7758d153e415177de8e977721011c9675482934c",
+    "observed_at": "2026-11-15T00:12Z",
+    "note": "main b496916b is not deployed: main CI red (ACE-001 test clock, fixed in #1278)"
+  },
+  "preflight": {
+    "result": "GROEN",
+    "npm_ci": "exit 0 (759 packages)",
+    "build": "shared 0, agent-catalog 0",
+    "targeted_tests": "nested-spawn.test.ts + nested-spawn-loop.test.ts: 2 files, 21 of 21 passed"
+  },
+  "mandate": {
+    "source": "operator answers 2026-11-15 (AskUserQuestion)",
+    "session_budget": "M0 + M1 + M2",
+    "protected_paths_writable": "none",
+    "real_runtimes_in_tests": "no (mock + deterministic only)",
+    "paid_or_quota_model_calls": "no",
+    "production_read_only_probe": "yes",
+    "register_new_experiment": "no",
+    "holdout_open_build_freeze": "no",
+    "max_draft_prs": 5,
+    "flags_deploy_restart_merge_from_this_session": "no",
+    "carve_out": "two steps approved before this session stay under the earlier charter, separate from this audit: ACE_001_MODE=off + STE_001_MODE=off (backup, idle recreate) and the oracle-gate validation"
+  },
+  "evidence_ceiling": "E3 for behaviour (local, mock executor); E5 for read-only production observations bound to the deployed SHA; E4 BLOCKED by mandate (no real runtimes)",
+  "prior_work_reused": "M0 2026-11-14 on 7758d153 (docs PR #1274; H4 detail private) re-verified here on b496916b where the code changed"
+}

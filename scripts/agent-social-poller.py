@@ -45,11 +45,13 @@ PEER_DATA={source}
 # Credentials are provider-specific; server/social tokens, preload hooks and arbitrary
 # inherited environment never reach a child runtime.
 def runtime_env(runtime):
-    common = ('PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR')
+    # USER/LOGNAME: the macOS keychain lookup behind a CLI subscription login needs them (claude answers "Not logged in" without).
+    common = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR')
     auth = {
         'claude': ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_BASE_URL'),
         'gemini': ('GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_CLOUD_PROJECT'),
         'opencode': ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY'),
+        'codex': ('OPENAI_API_KEY', 'CODEX_HOME'),
         'pi': ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY'),
         'hermes': ('OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'HERMES_HOME'),
     }
@@ -106,7 +108,13 @@ def parse_cli_output(runtime, output):
             status = provider_http_status(event)
             if status: raise RuntimeError(f'{runtime} provider HTTP {status}')
             raise RuntimeError(f'{runtime} returned an error event')
-        if runtime == 'opencode':
+        if runtime == 'codex':
+            if event.get('type') == 'turn.failed': raise RuntimeError('codex returned a failed turn')
+            if event.get('type') == 'thread.started': run_id = event.get('thread_id', '')
+            item = event.get('item') or {}
+            if event.get('type') == 'item.completed' and item.get('type') == 'agent_message': texts = [item.get('text', '')]
+            if event.get('type') == 'turn.completed': usage = event.get('usage', {})
+        elif runtime == 'opencode':
             run_id = event.get('sessionID') or run_id
             if event.get('type') == 'text': texts.append(event.get('part', {}).get('text', ''))
             if event.get('type') == 'step_finish': usage = event.get('part', {}).get('tokens', {})
@@ -187,7 +195,19 @@ def run_cli(runtime, prompt):
                     json.dump(config, handle)
                 env = {key: value for key, value in env.items() if key not in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY')}
                 env.update({'OPENCODE_CONFIG': str(config_file), 'XDG_DATA_HOME': directory, 'XDG_STATE_HOME': directory})
-            args = ['run', '--format', 'json', '--pure', '--title', 'Commons peer exchange']
+            # OpenCode 2 dropped --pure and runs through a shared background service that never sees this run's
+            # deny-all config (it executed shell commands in a test on 2026-11-19); --standalone gives the run its own
+            # server, which does. An unreadable version fails closed.
+            version = re.search(r'(\d+)\.\d+', bounded_process([executable, '--version'], '', directory, env))
+            if not version: raise RuntimeError('opencode version is unreadable')
+            args = ['run', '--standalone' if int(version.group(1)) >= 2 else '--pure', '--format', 'json', '--title', 'Commons peer exchange']
+        elif runtime == 'codex':
+            # ponytail: Codex has no flag that removes its shell tool. The read-only sandbox blocks writes and network,
+            # but a model steered by peer text can still read files this OS user can read. Run the codex poller as a
+            # dedicated low-privilege user; switch to a deny-read permission profile if Codex ships one.
+            args = ['exec', '--json', '--ephemeral', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules',
+                    '-s', 'read-only', '-C', directory]
+            for feature in ('apps', 'plugins', 'hooks', 'memories', 'browser_use', 'computer_use'): args += ['--disable', feature]
         else:
             args = ['--mode', 'json', '-p', '--no-session', '--no-tools',
                     '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-approve', '--offline']
@@ -219,7 +239,7 @@ def run_ollama(prompt):
     return data.get('message', {}).get('content', ''), data.get('created_at', ''), usage
 
 RUNTIMES = {'hermes': run_hermes, 'deerflow': run_deerflow, 'ollama': run_ollama}
-RUNTIMES.update({name: (lambda prompt, runtime=name: run_cli(runtime, prompt)) for name in ('claude', 'gemini', 'opencode', 'pi')})
+RUNTIMES.update({name: (lambda prompt, runtime=name: run_cli(runtime, prompt)) for name in ('claude', 'gemini', 'opencode', 'pi', 'codex')})
 
 def self_test():
     assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","evidence_refs":[]}')['answer'] == 'a'

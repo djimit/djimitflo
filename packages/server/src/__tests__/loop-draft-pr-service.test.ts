@@ -10,7 +10,8 @@ import { LoopDraftPrService } from '../services/loop-draft-pr-service';
 
 let db: Database.Database; let wt: string; let remote: string;
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
-const env = () => ({ LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken' });
+// the test remote is a local path: safe-git allows the file transport only when GIT_ALLOW_PROTOCOL names it (production: https)
+const env = () => ({ LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', GIT_ALLOW_PROTOCOL: 'file' });
 const ok = () => vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => existingPr() });
 
 beforeEach(() => {
@@ -54,6 +55,18 @@ it('pushes only the maker files and opens one draft PR per run', async () => {
   expect(meta.verified_head_sha).toBe(git(remote, 'rev-parse', 'agent/loop/run-1'));
   expect(await svc.openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
   expect(f).toHaveBeenCalledTimes(1);
+});
+
+it('D3: the commit and push in the maker worktree run none of its hooks or fsmonitor', async () => {
+  const marker = path.join(path.dirname(wt), 'marker');
+  for (const [dir, hook] of [[path.join(wt, '.git', 'hooks'), 'pre-commit'], [path.join(wt, '.git', 'hooks'), 'commit-msg'],
+    [path.join(wt, '.git', 'hooks'), 'pre-push'], [path.join(wt, '.git', 'hooks'), 'reference-transaction']]) {
+    fs.writeFileSync(path.join(dir, hook), `#!/bin/sh\necho ${hook} "$GITHUB_TOKEN" >> "${marker}"\n`, { mode: 0o755 });
+  }
+  git(wt, 'config', 'core.fsmonitor', `sh -c 'echo fsmonitor >> "${marker}"; exit 0'`);
+  expect(await new LoopDraftPrService(db, ok() as unknown as typeof fetch, env()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(git(remote, 'ls-tree', '-r', '--name-only', 'agent/loop/run-1')).toContain('src/x.test.ts');
+  expect(fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8') : '').toBe('');
 });
 
 it('records draft_pr_failed when GitHub refuses and reconciliation is unavailable', async () => {
