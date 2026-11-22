@@ -21,6 +21,8 @@ let engine: ExecutionEngine;
 let approvals: ApprovalService;
 let start: ReturnType<typeof vi.fn>;
 const taskId = 'loop-worker-lease-x-0001';
+// the JS clock, not SQLite's 'now': the stale-lease cleanup compares against Date, which the time-travel harness shifts
+const now = () => new Date().toISOString();
 
 beforeEach(() => {
   db = new Database(':memory:'); db.pragma('foreign_keys = ON'); db.exec(schema); runMigrations(db);
@@ -29,7 +31,7 @@ beforeEach(() => {
   approvals = new ApprovalService(db, ws, new AuditService(db));
   db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status) VALUES ('run-x', 'doc-drift-and-small-fix-loop', 'closed', 'running')").run();
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
-    VALUES ('lease-x', 'run-x', 'maker', 'mock', 'prepared', ?, datetime('now'), datetime('now'))`).run(JSON.stringify({ execution_task_id: taskId }));
+    VALUES ('lease-x', 'run-x', 'maker', 'mock', 'prepared', ?, ?, ?)`).run(JSON.stringify({ execution_task_id: taskId }), now(), now());
   db.prepare(`INSERT INTO tasks(id,title,description,status,priority,risk_level,execution_mode,metadata)
     VALUES (?, 'maker worker', 'Fix the finding', 'pending', 'medium', 'high', 'local', ?)`).run(taskId, JSON.stringify({ loop_run_id: 'run-x', lease_id: 'lease-x' }));
   start = vi.fn(async (task: { id: string }) => ({ id: 'session', taskId: task.id, executorKind: 'mock', status: 'running',
@@ -86,7 +88,7 @@ it('the orphan lease cleanup expires a pending approval whose lease was cancelle
   db.exec("UPDATE worker_leases SET status = 'cancelled' WHERE id = 'lease-x'");
   const live = 'loop-worker-lease-y-0001'; // a live worker's approval stays pending
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
-    VALUES ('lease-y', 'run-x', 'maker', 'mock', 'prepared', ?, datetime('now'), datetime('now'))`).run(JSON.stringify({ execution_task_id: live }));
+    VALUES ('lease-y', 'run-x', 'maker', 'mock', 'prepared', ?, ?, ?)`).run(JSON.stringify({ execution_task_id: live }), now(), now());
   db.prepare(`INSERT INTO tasks(id,title,description,status,priority,risk_level,execution_mode,metadata)
     VALUES (?, 'maker worker', 'Other finding', 'pending', 'medium', 'high', 'local', ?)`).run(live, JSON.stringify({ loop_run_id: 'run-x', lease_id: 'lease-y' }));
   const liveApproval = (await engine.executeTask(live, 'mock', 'maker')).approvalId!;
