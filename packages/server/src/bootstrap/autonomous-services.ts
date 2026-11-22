@@ -4,7 +4,7 @@
  * Extracted from index.ts for separation of concerns.
  */
 import { lifecycleManager } from '../services/lifecycle-manager';
-import { guardTick, noteScheduler, registerRestart } from '../services/scheduler-registry';
+import { guardTick, markRun, noteScheduler, registerRestart } from '../services/scheduler-registry';
 import { LoopService } from '../services/loop-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { NestedSpawnService } from '../services/nested-spawn-service';
@@ -45,6 +45,7 @@ import { startEvidenceRoom } from '../services/commons-evidence-room';
 import { startInvestigationOutcomes } from '../services/commons-investigation';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
+import { startDateBombLane } from '../services/date-bomb-source';
 import { startFleetRepair } from '../services/fleet-repair';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
@@ -307,6 +308,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Settlement execution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // Date-bomb lane: weekly time-travel scan of recently changed server tests at origin/main (the settlement worktree path);
+  // shadow records judgments, on proposes test-only fixes (<= 2/day, panel + human approval and merge). DATE_BOMB_LANE, default off.
+  try {
+    const stopDateBomb = startDateBombLane(db, recoverySvc);
+    if (stopDateBomb) { lifecycleManager.register({ serviceName: 'DateBombLane', stop: stopDateBomb }); console.log('💣 Date-bomb lane on (weekly scan, max 2 proposals/day).'); }
+  } catch (error) {
+    console.warn('⚠️  Date-bomb lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // Track B EVE-V cron repair (shadow): fleet jobs with >= 3 verified agent.outcome failures in 7 d → one fleet_repair_candidate judgment / day. FLEET_REPAIR_MODE=shadow.
   try {
     const stopFleetRepair = startFleetRepair(db);
@@ -379,8 +389,8 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // Earned auto-merge for verified test-only loop PRs (shadow/act, self-revoking). LOOP_AUTO_MERGE_TEST_ONLY=shadow|act.
   try {
-    let stopAutoMerge = startLoopAutoMerge(db);
-    registerRestart('loop_auto_merge', () => { stopAutoMerge?.(); stopAutoMerge = startLoopAutoMerge(db); });
+    let stopAutoMerge = startLoopAutoMerge(db, undefined, recoverySvc);
+    registerRestart('loop_auto_merge', () => { stopAutoMerge?.(); stopAutoMerge = startLoopAutoMerge(db, undefined, recoverySvc); });
     noteScheduler('loop_auto_merge', 'LOOP_AUTO_MERGE_TEST_ONLY', !!stopAutoMerge, 15 * 60_000);
     if (stopAutoMerge) { lifecycleManager.register({ serviceName: 'LoopAutoMerge', stop: () => stopAutoMerge?.() }); console.log('🤝 Loop auto-merge (test-only) on (every 15 min).'); }
   } catch (error) {
@@ -408,7 +418,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   }
 
   // P0.1 scheduler self-heal watchdog: armed-but-not-ticking ⇒ diagnose ⇒ one bounded restart (act) ⇒ verify ⇒ quarantine + escalate.
-  // SCHEDULER_SELF_HEAL_MODE=shadow (default: diagnose + escalate, no restart) | act | off.
+  // SCHEDULER_SELF_HEAL_MODE=shadow (default: diagnose, no restart; escalate with SCHEDULER_STUCK_ESCALATE=shadow) | act | off.
   try {
     const stopWatchdog = startSchedulerWatchdog(db);
     if (stopWatchdog) { lifecycleManager.register({ serviceName: 'SchedulerWatchdog', stop: stopWatchdog }); console.log(`🩹 Scheduler watchdog on (${process.env.SCHEDULER_SELF_HEAL_MODE || 'shadow'}, every 15 min).`); }
@@ -499,8 +509,9 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     // Panel-authorised (scheduled) proposals used to become goals only at boot: a requeued or late-scheduled proposal
     // waited for the next restart (prod 2026-09-25: dc1143b8 sat 'scheduled' for 40+ min). Only this generator, hourly.
     const scheduledTick = guardTick('scheduled_proposal_goals', () => {
+      // D-S7-1: the error was only logged, so guardTick never saw it; it is now the scheduler's last_error (guardTick records success)
       try { const n = autonomousGoals.generateFromSelfImprovements(); if (n) console.log(`🎯 ${n} goal(s) from scheduled proposals`); }
-      catch (err) { console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
+      catch (err) { markRun('scheduled_proposal_goals', err); console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
     });
     const scheduledInterval = Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000;
     let scheduledTimer = setInterval(scheduledTick, scheduledInterval);

@@ -396,6 +396,11 @@ export interface EvolutionEvidence {
     candidates: { returned: number; accepted: number; rejected_by_reason: Record<string, number> } | null; routed: number | null;
     cited: { genomes: number; promoted: number; retired: number; inconclusive: number; pending: number;
       list: Array<{ genome: string; status: string; knowledge: string[]; trial: { state: string; b: number | null; c: number | null; p: number | null; deciding_n: number | null } | null }> } | null };
+  /** M2 (LOOP_STOP_CONDITIONS_MODE=shadow): declared loop stop_conditions at maker dispatch, per loop; null = mode off and no row (services/loop-stop-conditions.ts) */
+  loop_stop_conditions?: { mode: 'off' | 'shadow'; since: string; records: number | null;
+    loops: Array<{ loop_name: string; n: number; would_stop: number; continue: number; unknown: number; would_stop_while_dispatched: number;
+      would_stop_share: number | null; continue_share: number | null; unknown_share: number | null;
+      conditions: Record<string, { holds: number; false: number; unknown: number }> }> | null };
 }
 export type FitnessStatus = 'closed_loop' | 'measured_no_selection' | 'unmeasured' | 'circular';
 export type FitnessContractRow = {
@@ -654,6 +659,8 @@ export type OperatorCockpit = {
     total?: number | null;
     /** open loop PRs: audit-sample PRs (one weekly batch) and flagged PRs the auto-merge lane did not take */
     audit_batch?: number | null; flagged_prs?: number | null;
+    /** open loop PRs the auto-merge lane still handles (waiting, capped, transient ineligible): system, never counted */
+    system_prs?: number | null;
     /** Dependabot PRs the dependency lane leaves to a human; dependency_tracked false = lane off, not tracked */
     dependency_human?: number | null; dependency_tracked?: boolean;
     /** ground-truth labelling: optional, its own count, never a decision */
@@ -765,13 +772,22 @@ export type ImprovementFunnel = {
    * verified/regressed: current status with updated_at in windowDays (not first verifications). The median has its own window
    * (medianHoursWindowDays, n = medianHoursN): created_at → current updated_at, not first-verification latency.
    */
-  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
+  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; regressedBreakdown?: { rejected: number; makerDidNotDeliver: Record<string, number>; unknown: number } | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null;
+    /** J6: maker-run cost in the same seven-day window; absent on older servers. */
+    runs?: number; runSuccessRate?: number | null; tokensPerVerified?: number | null };
   /** null = unavailable (reason in `unavailable`), never a healthy 0 */
   hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null;
     /** in-flight work items not updated for more than agedWorkItemsDays (absent on older servers) */
     agedWorkItems?: number | null; agedWorkItemsByStatus?: Record<string, number>; agedWorkItemsOldest?: string | null; agedWorkItemsDays?: number };
   /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
   queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /**
+   * Agent Commons contribution (absent on older servers). inflow.state disabled = cap 0. evidenceEffect is descriptive, not
+   * causal: proposals that never reached a goal themselves, by arm (commons_review = a completed Commons review fed the refinement, investigated = a Commons thread only); decidedRate is null
+   * below effectMinN per arm.
+   */
+  commons?: { inflow: { cap: number | null; state: string } | null; proposals: number | null; verified: number | null; effectMinN: number;
+    evidenceEffect: Array<{ arm: 'commons_review' | 'investigated' | 'not_investigated'; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null };
   /** metric → `missing_schema: …` | `query_failed: …` */
   unavailable?: Record<string, string>;
 };
@@ -1639,10 +1655,12 @@ export type CommonsThreadKind = 'discussion' | 'record';
 
 /** Derived server-side from heartbeats, own runtime replies and lapsed delivery leases; the runtime itself reports no errors. */
 export type CommonsRuntimeReadiness = {
-  state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
+  state: 'ready' | 'scheduled' | 'degraded' | 'offline' | 'unknown'; reason: string;
   last_heartbeat_at: string | null; last_successful_reply_at: string | null;
   last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
-  runtime_failures_reported: false;
+  /** the poller's own report: fixed stage and category only (absent on older servers) */
+  last_reported_failure?: { at: string; stage: string; code: string } | null;
+  runtime_failures_reported: boolean;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
@@ -1658,7 +1676,11 @@ export type CommonsChildOutcomes = {
   grounded_proposals: number; no_refinement: number; children: number; legacy_fallback_reviews: number; note: string;
   outcomes: Record<'technical_failure' | 'needs_evidence' | 'blocked' | 'backlog' | 'goal' | 'pending', number>;
 };
-export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+/** Failure kinds by whether the Commons discussed them, and whether they came back within windowDays; rate null below minN. */
+export type FailureRecurrence = { windowDays: number; lookbackDays: number; minN: number;
+  arms: Array<{ arm: 'discussed' | 'not_discussed'; kinds: number; recurred: number; unsettled: number; rate: number | null }> };
+
+export type CommonsStats = { proposals_latest_at?: string | null; failure_recurrence?: FailureRecurrence | null; threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
   proposals_by_status?: Record<string, number>;
   /** where validly grounded proposals stopped (furthest stage of their refinement); null = could not be read */
   grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null;

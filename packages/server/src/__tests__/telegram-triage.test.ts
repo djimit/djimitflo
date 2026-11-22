@@ -40,10 +40,12 @@ beforeAll(async () => {
   for (const [tg, user] of [['111', adminId], ['222', approverId]]) {
     db.prepare("INSERT INTO telegram_identities (telegram_user_id, user_id, added_by, created_at) VALUES (?, ?, 'test', datetime('now'))").run(tg, user);
   }
+  // on the clock decisionsInbox() windows the requeue list with (Date.now() − 30 d), not SQLite's datetime('now')
   const ins = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at)
-    VALUES (?, 'test', ?, 'd', 'r', 'gap_analysis', ?, datetime('now'), datetime('now'))`);
-  ins.run('11111111-aaaa-4bbb-8ccc-000000000001', 'Vague refactor idea', 'needs_more_evidence');
-  ins.run('11111111-aaaa-4bbb-8ccc-000000000002', 'Regressed change', 'regressed');
+    VALUES (?, 'test', ?, 'd', 'r', 'gap_analysis', ?, ?, ?)`);
+  const seededAt = new Date().toISOString();
+  ins.run('11111111-aaaa-4bbb-8ccc-000000000001', 'Vague refactor idea', 'needs_more_evidence', seededAt, seededAt);
+  ins.run('11111111-aaaa-4bbb-8ccc-000000000002', 'Regressed change', 'regressed', seededAt, seededAt);
   db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
     VALUES ('j1', 'proposal_prescreen', 'self_improvement', '11111111-aaaa-4bbb-8ccc-000000000001', 'h', 'shadow', 'no', 'names no concrete file', datetime('now'))`).run();
   const mem = new MemoryCandidateService(db);

@@ -97,7 +97,7 @@ export const AuditLogViewer: React.FC = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Audit Log Viewer</h1>
+      <h2 className="text-xl font-bold mb-6">Audit Log Viewer</h2>
       {error && <p role="alert">{error}</p>}
 
       <div className="mb-4 flex gap-4">

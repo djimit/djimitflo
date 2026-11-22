@@ -66,8 +66,8 @@ describe('SelfHealingScheduler', () => {
   it('leaves a fresh (non-stale) worker lease alone', () => {
     db.prepare(`
       INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, updated_at)
-      VALUES ('lease-fresh', 'fixture-run', 'maker', 'mock', 'running', datetime('now'))
-    `).run();
+      VALUES ('lease-fresh', 'fixture-run', 'maker', 'mock', 'running', ?)
+    `).run(new Date().toISOString()); // fresh on the clock the scheduler judges staleness with (Date.now())
     process.env.SELF_HEALING_SCHEDULER_ENABLED = 'true';
     scheduler.tick();
     const status = (db.prepare("SELECT status FROM worker_leases WHERE id = 'lease-fresh'").get() as { status: string }).status;

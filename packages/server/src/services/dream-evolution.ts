@@ -6,7 +6,7 @@ import { generateText, llmEndpoints } from './llm-fallback';
 import { budgetPause } from './inference-budget';
 import { firstJsonObject } from './expert-council-service';
 import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantDecidingTiers, mutantHoldoutKeys, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
 import { prodGatesConfig, sweepOrphanedGymRuns } from './remote-gym-service';
 import { recordNegativeEvidenceMatches } from './negative-evidence-check';
@@ -720,7 +720,8 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   if (!dreamEvolutionEnabled()) return null;
   const species = process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
   const tick = () => {
-    markRun('dream_evolution');
+    markTick('dream_evolution'); // D-S7-1: the attempt; the outcome (with the first error) is recorded after the dream below
+    let failed: unknown;
     // GYM_ORPHAN_SWEEP: settle remote gym runs whose host never reported (before trials are evaluated: an orphan keeps its item pending)
     try {
       const swept = sweepOrphanedGymRuns(db);
@@ -733,9 +734,9 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
       // Z5 on but the mutant holdout not frozen yet (no claim since): don't settle a trial on the mined holdout alone
       if (!(mutantTrialsEnabled() && !mutants.length)) settleNoHeadroom(db, species, commits, mutants, Date.now(), writeTests);
       for (const s of mutantTrialsEnabled() && !mutants.length ? [] : evaluateTrials(db, species, commits, Date.now(), mutants, writeTests)) console.log(`🧬 genome ${s.id} ${s.status} (holdout ${s.wins} vs parent ${s.parentWins})`);
-    } catch (e) { console.warn('dream evolution: evaluate failed:', e instanceof Error ? e.message : String(e)); }
-    dreamOnce(db).then((r) => { if (r.created.length) console.log(`🧬 dreamt ${r.created.length} mutant(s): ${r.created.join(', ')}`); })
-      .catch((e) => console.warn('dream evolution: dream failed:', e instanceof Error ? e.message : String(e)));
+    } catch (e) { failed = e; console.warn('dream evolution: evaluate failed:', e instanceof Error ? e.message : String(e)); }
+    dreamOnce(db).then((r) => { markRun('dream_evolution', failed); if (r.created.length) console.log(`🧬 dreamt ${r.created.length} mutant(s): ${r.created.join(', ')}`); })
+      .catch((e) => { markRun('dream_evolution', failed ?? e); console.warn('dream evolution: dream failed:', e instanceof Error ? e.message : String(e)); });
   };
   tick(); const timer = setInterval(tick, intervalMs); timer.unref?.();
   return () => clearInterval(timer);

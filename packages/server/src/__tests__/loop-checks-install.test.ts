@@ -25,26 +25,26 @@ beforeEach(() => {
   loops = new LoopService(db, fs.mkdtempSync(path.join(os.tmpdir(), 'checks-ev-')));
 });
 afterEach(() => { process.env.PATH = PATH; db.close(); fs.rmSync(worktree, { recursive: true, force: true }); fs.rmSync(bin, { recursive: true, force: true }); });
-const statuses = () => loops.runDeterministicChecks('r', { lease_id: 'l', scripts: ['test:changed'] }).checks.map((c) => `${c.name}:${c.status}`);
+const statuses = async () => (await loops.runDeterministicChecks('r', { lease_id: 'l', scripts: ['test:changed'] })).checks.map((c) => `${c.name}:${c.status}`);
 
-it('installs dependencies before the checks when the worktree has a lockfile but no node_modules', () => {
+it('installs dependencies before the checks when the worktree has a lockfile but no node_modules', async () => {
   fs.writeFileSync(path.join(worktree, 'package-lock.json'), '{}');
-  expect(statuses()).toEqual(['test:changed:pass']);
+  expect(await statuses()).toEqual(['test:changed:pass']);
   expect(fs.readFileSync(path.join(bin, 'log'), 'utf8')).toBe('ci\n');
 });
 
-it('reports a failed install as its own check', () => {
+it('reports a failed install as its own check', async () => {
   fs.writeFileSync(path.join(worktree, 'package-lock.json'), '{}'); fs.writeFileSync(path.join(bin, 'FAIL'), '');
-  expect(statuses()).toEqual(['install:fail', 'test:changed:fail']);
+  expect(await statuses()).toEqual(['install:fail', 'test:changed:fail']);
 });
 
-it('leaves a worktree without a lockfile alone', () => {
-  expect(statuses()).toEqual(['test:changed:fail']);
+it('leaves a worktree without a lockfile alone', async () => {
+  expect(await statuses()).toEqual(['test:changed:fail']);
   expect(fs.existsSync(path.join(bin, 'log'))).toBe(false);
 });
 
-it('leaves a worktree that already has dependencies alone', () => {
+it('leaves a worktree that already has dependencies alone', async () => {
   fs.writeFileSync(path.join(worktree, 'package-lock.json'), '{}'); fs.mkdirSync(path.join(worktree, 'node_modules'));
-  expect(statuses()).toEqual(['test:changed:pass']);
+  expect(await statuses()).toEqual(['test:changed:pass']);
   expect(fs.existsSync(path.join(bin, 'log'))).toBe(false);
 });
