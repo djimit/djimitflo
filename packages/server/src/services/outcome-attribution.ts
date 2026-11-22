@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import { realRunIdSql } from './synthetic-runs';
 import { loopPrSettlements, survivalCounts, type SettlementState } from './merge-survival';
 import { skillRouteCreditable } from './skill-route';
+import { BASELINE_GENOME } from './genome-registry';
 import type { Database } from 'better-sqlite3';
 
 /**
@@ -23,7 +24,7 @@ export const outcomeAttributionEnabled = (env: NodeJS.ProcessEnv = process.env):
 
 export interface MakerMeta {
   failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean; exit_status?: number | null; completed_at?: string;
-  changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null; reason?: string }>;
+  changed_files?: unknown; deterministic_checks?: Array<{ status?: string; exit_status?: number | null; reason?: string; timed_out?: boolean }>;
 }
 export interface AttributionLease { id?: string; role: string; status: string; metadata: MakerMeta & { verdict?: unknown; maker_lease_id?: unknown } }
 export interface AttributionRun {
@@ -54,6 +55,10 @@ export function makerFailureClass(meta: MakerMeta): 'regressed' | 'infra_failed'
   if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
   if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127 || c?.reason === 'missing_script')) return 'infra_failed'; // a check's tool or script was missing
+  // Prod 2026-10-21..11-20: 15 of 23 no-useless-assignment makers failed only because test:changed hit the 600 s check maximum
+  // (a widely imported service fans out to most of the suite). A check that never finished observed nothing about the change.
+  const failedChecks = (meta.deterministic_checks ?? []).filter((c) => c?.status === 'fail');
+  if (failedChecks.length && failedChecks.every((c) => c.timed_out === true)) return 'infra_failed';
   if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
   return 'regressed';
 }
@@ -206,8 +211,19 @@ export function leaseRanOn(runtime: string, meta: { model?: unknown; effective_r
   return { runtime, model: typeof meta.model === 'string' ? meta.model : null };
 }
 
-/** `skill_invoked` (L1 skill route): ref `<capability id>@<version>`, only for an invoked ∧ checks-pass ∧ verified treatment attempt */
+/**
+ * `skill_invoked` (L1 skill route): ref `<capability id>@<version>`, only for an invoked ∧ checks-pass ∧ verified treatment attempt.
+ * `memory_rule` / `example` (DELIVERY_ONLY_CREDIT_KINDS) are no longer written: they were credited for being delivered in
+ * LOOP_WORK.md, with no evidence of use (M0 H5 D1, NE-002). Delivery is recorded by the assignment_context event (rule_ids,
+ * examples) and the lease's assignment_receipt; rows written before the fix stay in the table and readers skip them.
+ */
 export type CreditKind = 'maker' | 'reviewer' | 'model' | 'genome' | 'memory_rule' | 'example' | 'knowledge' | 'judgment' | 'skill_invoked';
+export const DELIVERY_ONLY_CREDIT_KINDS: readonly CreditKind[] = ['memory_rule', 'example'];
+/** SQL predicate: an outcome_credits row that is a real credit (not a legacy delivery-only row, not the empty baseline genome — D4) */
+export const realCreditSql = (alias = ''): string => {
+  const c = alias ? `${alias}.` : '';
+  return `(${c}kind NOT IN (${DELIVERY_ONLY_CREDIT_KINDS.map((k) => `'${k}'`).join(', ')}) AND NOT (${c}kind = 'genome' AND ${c}ref IN ('${BASELINE_GENOME}', 'strategy:${BASELINE_GENOME}')))`;
+};
 export function ensureCreditTable(db: Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS outcome_credits (run_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, created_at TEXT NOT NULL,
     PRIMARY KEY (run_id, kind, ref))`);
@@ -215,7 +231,7 @@ export function ensureCreditTable(db: Database): void {
 
 const KNOWLEDGE_REF = /^(kb|kb_page|okf|knowledge|expert|expert_claim|claim):/;
 
-/** What a verified run's contributors were — maker species + model + genome, accepting reviewers, rules/examples, knowledge, gating judgments. */
+/** What a verified run's contributors were — maker species + model + genome (not baseline), accepting reviewers, an invoked skill, knowledge, gating judgments. */
 export function creditedContributors(db: Database, runId: string, makerLeaseId: string | null): Array<{ kind: CreditKind; ref: string }> {
   const out: Array<{ kind: CreditKind; ref: string }> = [];
   const leases = db.prepare('SELECT id, role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ id: string; role: string; runtime: string; status: string; metadata: string }>;
@@ -226,8 +242,9 @@ export function creditedContributors(db: Database, runId: string, makerLeaseId: 
     const model = ran.model ?? '';
     out.push({ kind: 'maker', ref: model ? `${ran.runtime}@${model}` : ran.runtime });
     if (model) out.push({ kind: 'model', ref: model });
-    if (typeof m.genome?.id === 'string') out.push({ kind: 'genome', ref: m.genome.id });
-    if (typeof m.genome_id === 'string') out.push({ kind: 'genome', ref: `strategy:${m.genome_id}` });
+    // D4: the baseline genome has no lines, so there is nothing of it a maker could have used
+    if (typeof m.genome?.id === 'string' && m.genome.id !== BASELINE_GENOME) out.push({ kind: 'genome', ref: m.genome.id });
+    if (typeof m.genome_id === 'string' && m.genome_id !== BASELINE_GENOME) out.push({ kind: 'genome', ref: `strategy:${m.genome_id}` });
     // L1 M7: settled by settleSkillRoute before attribution; a shown, read, held-out or failed attempt is never a credit
     if (skillRouteCreditable(m.skill_route)) out.push({ kind: 'skill_invoked', ref: `${String(m.skill_route!.capability_id)}@${String(m.skill_route!.version)}` });
   }
@@ -237,12 +254,8 @@ export function creditedContributors(db: Database, runId: string, makerLeaseId: 
     const ranR = leaseRanOn(l.runtime, m as { model?: unknown; effective_runtime?: unknown; effective_model?: unknown });
     out.push({ kind: 'reviewer', ref: `${l.role}:${ranR.runtime}${ranR.model ? `@${ranR.model}` : ''}` });
   }
-  try {
-    const ev = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = ? AND event_type = 'assignment_context' ORDER BY created_at DESC LIMIT 1").get(runId) as { metadata: string } | undefined;
-    const m = parse(ev?.metadata) as { rule_ids?: unknown; examples?: unknown };
-    for (const id of Array.isArray(m.rule_ids) ? m.rule_ids : []) if (typeof id === 'string') out.push({ kind: 'memory_rule', ref: id });
-    for (const e of Array.isArray(m.examples) ? m.examples : []) if (typeof e === 'string') out.push({ kind: 'example', ref: e.split(' — ')[0] });
-  } catch { /* no events */ }
+  // memory rules and examples of the assignment_context event were delivered, not shown to be used: no credit (D1). A credit
+  // needs a use receipt first (as skill_invoked has); none exists for rules or examples today.
   const improvement = (db.prepare('SELECT g.improvement_id AS id FROM loop_runs r JOIN goals g ON g.id = r.goal_id WHERE r.id = ?').get(runId) as { id: string | null } | undefined)?.id ?? null;
   if (improvement) {
     try {
@@ -288,7 +301,7 @@ export function attributionSummary(db: Database, now = Date.now(), days = 30, en
     const key = r.sub && (REVIEWER_SUB_REASONS as readonly string[]).includes(r.sub) ? r.sub : 'unrecorded';
     reviewerSubReasons[key] += r.n;
   }
-  const top = all<{ kind: string; ref: string; credits: number }>(`SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE created_at >= ?
+  const top = all<{ kind: string; ref: string; credits: number }>(`SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE created_at >= ? AND ${realCreditSql()}
     GROUP BY 1, 2 ORDER BY credits DESC, kind, ref LIMIT 30`, since);
   // structured failure capture (lease-failure.ts, L3 v2 §5 #4): failed/cancelled leases by stage × stderr class; record-only,
   // the classes above never read it. Leases that ended before the capture existed are counted apart, never as a class.

@@ -39,5 +39,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // Date-bomb detector (scripts/time-travel-tests.mjs --workspace dashboard): a no-op unless TIME_TRAVEL_DAYS is set.
+    setupFiles: ['../server/src/__tests__/helpers/time-travel.ts'],
   },
 });

@@ -132,6 +132,17 @@ export function sweepEvidenceRoom(db: Database, now = Date.now(), env: NodeJS.Pr
   if (mode === 'off') return result;
   const comms = new AgentCommunicationService(db); // ensures agent_messages
   const since = new Date(now - WINDOW_DAYS * 86_400_000).toISOString();
+  // Event-loop-freeze plan (2026-11-18): json_extract on payload_json inside a correlated NOT EXISTS / join cost 30 s of
+  // blocked event loop per 15-min tick on prod (8.7k messages, 5.6k runs). The room's own threads are read once instead.
+  // ponytail: one scan of agent_messages per tick (no from_agent index); add a thread_id column if the room grows past ~100k posts.
+  const kinds = new Map<string, Set<string>>(); // thread_id → evidence_room_kind(s)
+  try {
+    for (const m of db.prepare("SELECT json_extract(payload_json, '$.thread_id') AS t, json_extract(payload_json, '$.params.evidence_room_kind') AS k FROM agent_messages WHERE from_agent = ?")
+      .all(EVIDENCE_ROOM_AUTHOR) as Array<{ t: string | null; k: string | null }>) {
+      if (!m.t) continue;
+      const set = kinds.get(m.t) ?? new Set<string>(); if (m.k) set.add(m.k); kinds.set(m.t, set);
+    }
+  } catch { /* agent_messages absent: no threads yet */ }
   let rows: OutcomeRow[] = [];
   try {
     // verified = the maker outcome succeeded; regression = it failed with outcome_class regressed (infra / no change are not
@@ -141,8 +152,8 @@ export function sweepEvidenceRoom(db: Database, now = Date.now(), env: NodeJS.Pr
       FROM skill_outcomes o JOIN loop_runs r ON r.id = o.task_id LEFT JOIN goals g ON g.id = r.goal_id LEFT JOIN self_improvements s ON s.id = g.improvement_id
       WHERE (o.skill_id LIKE 'loop-maker:%' OR o.skill_id LIKE 'repo:%:loop-maker:%') AND o.created_at >= ? AND r.status IN ('completed', 'blocked')
         AND (o.success = 1 OR o.evidence_refs_json LIKE '%"outcome_class:regressed"%')
-        AND NOT EXISTS (SELECT 1 FROM agent_messages m WHERE m.from_agent = ? AND json_extract(m.payload_json, '$.thread_id') = '${EVIDENCE_ROOM_PREFIX}' || o.task_id)
-      ORDER BY o.created_at ASC LIMIT ?`).all(since, EVIDENCE_ROOM_AUTHOR, SWEEP_LIMIT) as OutcomeRow[];
+      ORDER BY o.created_at ASC`).all(since) as OutcomeRow[];
+    rows = rows.filter((r) => !kinds.has(threadIdOf(r.run_id))).slice(0, SWEEP_LIMIT);
   } catch { rows = []; } // a source table is absent: nothing to post
   const seen = new Set<string>();
   for (const row of rows) {
@@ -155,19 +166,21 @@ export function sweepEvidenceRoom(db: Database, now = Date.now(), env: NodeJS.Pr
       threadId, epistemicRole: 'question', ttl: 86_400, idempotencyKey: `${threadId}:summary`,
       params: { topic: `Evidence room: ${summary.outcome} run ${row.run_id}`, topic_ref: threadId, effect_scope: 'isolated', facilitated_by: 'evidence-room',
         evidence_room_kind: 'summary', summary, board_summary: text.split('\n')[0] } });
+    kinds.set(threadId, new Set(['summary'])); // a run that already settled gets its survival post in this same pass
     result.threads += 1;
   }
 
   // survival follow-ups: threads whose run PR settled the 14-day window and that have no survival post yet
   let open: Array<{ run_id: string; created_at: string; pr_url: string; o: string | null }> = [];
   try {
-    open = db.prepare(`SELECT r.id AS run_id, r.created_at, json_extract(r.metadata, '$.pr_url') AS pr_url, json_extract(r.metadata, '$.pr_outcome') AS o
-      FROM agent_messages m JOIN loop_runs r ON '${EVIDENCE_ROOM_PREFIX}' || r.id = json_extract(m.payload_json, '$.thread_id')
-      WHERE m.from_agent = ? AND json_extract(m.payload_json, '$.params.evidence_room_kind') = 'summary'
-        AND json_extract(r.metadata, '$.pr_url') IS NOT NULL AND json_extract(r.metadata, '$.pr_outcome.settled_at') IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM agent_messages f WHERE f.from_agent = m.from_agent AND json_extract(f.payload_json, '$.thread_id') = json_extract(m.payload_json, '$.thread_id')
-          AND json_extract(f.payload_json, '$.params.evidence_room_kind') = 'survival')
-      LIMIT ?`).all(EVIDENCE_ROOM_AUTHOR, SWEEP_LIMIT) as typeof open;
+    const awaiting = [...kinds].filter(([t, k]) => t.startsWith(EVIDENCE_ROOM_PREFIX) && k.has('summary') && !k.has('survival')).map(([t]) => t.slice(EVIDENCE_ROOM_PREFIX.length));
+    const byId = db.prepare(`SELECT r.id AS run_id, r.created_at, json_extract(r.metadata, '$.pr_url') AS pr_url, json_extract(r.metadata, '$.pr_outcome') AS o
+      FROM loop_runs r WHERE r.id = ? AND json_extract(r.metadata, '$.pr_url') IS NOT NULL AND json_extract(r.metadata, '$.pr_outcome.settled_at') IS NOT NULL`);
+    for (const id of awaiting) {
+      const r = byId.get(id) as (typeof open)[number] | undefined;
+      if (r) open.push(r);
+      if (open.length >= SWEEP_LIMIT) break;
+    }
   } catch { open = []; }
   for (const r of open) {
     const s = settlementState(r.created_at, parseOutcome(r.o), now);

@@ -340,6 +340,13 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
     outcome: { metric: 'the finding is gone per finding-fix-gate.mjs — the same script that produced it', source: 'loop run checks (finding-fix-gate.mjs)', independence: 'circular' },
     cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'circular',
     note: "Pooled into lane 'other' in survival and settlement; production-code PRs mostly settle as no_test_files." },
+  // date-bomb-source.ts (scripts/time-travel-tests.mjs is the finding source and, with --strict, the maker gate test:date-bomb; refs map to
+  // lane 'other'; merge-survival.ts settles its PRs like every loop PR)
+  { component: 'lane_date_bomb', class: 'lane', name: 'Lane: date-bomb', unit: 'one loop PR of the lane (one test file)', flags: ['DATE_BOMB_LANE'],
+    outcome: { metric: 'every test of the file passes at +0 d and at +N d (test:date-bomb, the detector that found the bomb) and the PR survives 14 d (merge survival)',
+      source: 'loop run checks (test:date-bomb) + loop_runs.metadata.pr_outcome.survived', independence: 'circular' },
+    cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null }, comparison: { kind: 'none', ref: null }, decision_rule: null, inheritance: null, status: 'circular',
+    note: "The acceptance is the same script that produced the finding; survival is pooled into lane 'other' and cannot fail on test-only PRs, so nothing independent scores the lane yet. Static cap (2/day)." },
   // dead-code-source-service.ts (test:dead-code:grounded is a verification gate, not a value metric; lane 'other')
   { component: 'lane_dead_code', class: 'lane', name: 'Lane: dead-code', unit: 'one loop PR of the lane', flags: ['DEAD_CODE_LANE_ENABLED', 'DEAD_CODE_MAX_PER_DAY'],
     outcome: { metric: 'none', source: "none (pooled into lane 'other')", independence: 'none' }, cost: { tokens: LANE_TOKENS, kwh: null, operator_minutes: null },
@@ -366,9 +373,9 @@ export const FITNESS_CONTRACTS: readonly FitnessContract[] = [
   // ── merge ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
   // loop-auto-merge.ts eligibility; loop-auto-merge-state.ts (no earn rule in code: missing row = active); checkRevocations (revert, survival
   // SETTLED_REGRESSED — cannot fire on test-only PRs — or main CI red twice); settlementRevocation (exports: ≥ 50 % of the last 20 settled
-  // below 0.2 → lane revoked); isAuditSample (10 % by sha256 of the PR number, left to the human — no contrast computed)
+  // below 0.2 → lane revoked); isAuditSample (10 % by sha256 of the PR number, left to the human — no contrast computed; AUDIT_SAMPLE_AUTO_MODE=act judges it by an executed audit and keeps fail / unknown + a 1-in-5 spot check)
   { component: 'auto_merge', class: 'merge', name: 'Test-only auto-merge', unit: 'one eligible loop PR',
-    flags: ['LOOP_AUTO_MERGE_TEST_ONLY', 'LOOP_AUTO_MERGE_MAX_PER_DAY', 'LOOP_AUTO_MERGE_RECHECK', 'LOOP_AUTO_MERGE_RECHECK_HOURS', 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', 'LOOP_AUTO_MERGE_REPOS', 'WEAK_ASSERTION_CHECK_MODE', 'SETTLEMENT_EXECUTION_MODE'],
+    flags: ['LOOP_AUTO_MERGE_TEST_ONLY', 'AUDIT_SAMPLE_AUTO_MODE', 'LOOP_AUTO_MERGE_FINDING_FIX', 'LOOP_AUTO_MERGE_MAX_PER_DAY', 'LOOP_AUTO_MERGE_RECHECK', 'LOOP_AUTO_MERGE_RECHECK_HOURS', 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', 'LOOP_AUTO_MERGE_REPOS', 'WEAK_ASSERTION_CHECK_MODE', 'SETTLEMENT_EXECUTION_MODE'],
     outcome: { metric: `${SETTLED_KILL}; reverts and main CI on the merge commit`, source: 'latestSettlements + checkRevocations (loop-auto-merge.ts)', independence: 'independent' },
     cost: { ...NO_COST }, comparison: { kind: 'none', ref: null },
     decision_rule: 'revoke only: a revert, SETTLED_REGRESSED or main CI red twice revokes the class; exports lane revoked when ≥ 50 % of its last 20 settled PRs kill < 0.2 of fresh mutants',
@@ -398,6 +405,7 @@ export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
   LOOP_AUTO_APPROVE_TEST_GAP: 'approval routing for the test-gap lane (who approves), not a scored component',
   LOOP_AUTO_APPROVE_MUTATION_GAP: 'approval routing for the mutation-gap lane (who approves), not a scored component',
   ORACLE_LANES_AUTO_APPROVE: 'approval routing for the oracle lanes (who approves), not a scored component',
+  FINDING_FIX_AUTO_APPROVE: 'approval routing for the finding-fix lane (who approves), not a scored component',
   APPROVAL_INHERIT_ENABLED: 'approval plumbing: a re-run inherits the original approval within a TTL',
   LOOP_REVIEWER_APPROVAL_INHERIT: 'approval plumbing: reviewers inherit the run\'s one human approval',
   PROPOSAL_GROUNDING_REQUIRED: 'intake rule: ungrounded reflection proposals are parked before the panel',
@@ -414,6 +422,7 @@ export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
   OPENCODE_BRAKE_CACHE_READ_WEIGHT: 'token brake accounting for opencode makers (cost guard); a treatment variable of the oracle experiments',
   MAKER_UID_SEPARATION: 'sandbox isolation of maker processes (security)',
   FLEET_EVENT_SIGNATURES: 'signature verification of fleet events (security)',
+  EVE_V_TENDER_INTAKE: 'intake plumbing: Eve-V tender events become candidate work items; never selects a learner',
   FLEET_SHELL_ENABLED: 'kill switch for fleet shell commands (security)',
   MEMORY_DELIVERY_RECEIPTS: 'delivery receipts for the memory-sync fan-out (plumbing)',
 };

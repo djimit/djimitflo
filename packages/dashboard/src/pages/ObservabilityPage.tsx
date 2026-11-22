@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, CheckCircle, XCircle, Clock, Shield, BarChart3
 import type { ObservabilityMetrics } from '@djimitflo/shared';
 import { api } from '../lib/api';
 import { authenticatedFetch, useAuthStore } from '../lib/auth-store';
+import { SelfHealingSection } from './SelfHealingSection';
 
 type LiveEvent = {
   timestamp?: string;
@@ -105,7 +106,7 @@ export function ObservabilityPage() {
   }, [windowDays]);
 
   // W7: keep the page title when the metrics call fails (the route smoke found a bare error line)
-  if (metricsError) return <div className="p-8 space-y-4"><h1 className="text-3xl font-bold text-foreground">Observability</h1><div role="alert" className="text-status-error">{metricsError}</div></div>;
+  if (metricsError) return <div className="p-8 space-y-4"><h1 className="text-3xl font-bold text-foreground">Observability</h1><div role="alert" className="text-status-error">{metricsError}</div><SelfHealingSection /></div>;
 
   if (loading || !metrics) {
     return (
@@ -276,6 +277,8 @@ export function ObservabilityPage() {
           )}
         </div>
       </div>
+
+      <SelfHealingSection />
     </div>
   );
 }

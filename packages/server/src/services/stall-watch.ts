@@ -500,7 +500,8 @@ export async function stallWatchTick(db: Database, notify?: (s: Stall) => Promis
 
 export function startStallWatch(db: Database, intervalMs = 3_600_000, notify?: (s: Stall) => Promise<unknown>): (() => void) | null {
   if (process.env.STALL_WATCH_ENABLED !== 'true') return null;
-  const tick = guardTick('stall_watch', () => { void stallWatchTick(db, notify).catch((e) => console.warn('stall watch failed:', e instanceof Error ? e.message : String(e))); });
+  // D-S7-1: the promise goes to guardTick, so a rejected tick reads 'failing' (guardTick logs it) and a resolved one clears it
+  const tick = guardTick('stall_watch', () => stallWatchTick(db, notify));
   const timer = setInterval(tick, intervalMs); timer.unref?.();
   return () => clearInterval(timer);
 }

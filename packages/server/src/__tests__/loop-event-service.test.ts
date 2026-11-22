@@ -183,4 +183,132 @@ describe('LoopEventService', () => {
     });
     expect(future).toHaveLength(0);
   });
+
+  it('records event with large metadata without error', () => {
+    seedRun('run-1');
+    const large: Record<string, unknown> = {};
+    for (let i = 0; i < 80; i++) large[`k${i}`] = '';
+    large.kept = 'data';
+    service.recordEvent('run-1', 'event', 'info', 'Big', large);
+
+    const events = service.listEvents('run-1');
+    expect(events).toHaveLength(1);
+    expect(events[0].message).toBe('Big');
+  });
+
+  it('queries all events with an empty filter', () => {
+    seedRun('run-1');
+    seedRun('run-2');
+    service.recordEvent('run-1', 'evt', 'info', 'A');
+    service.recordEvent('run-2', 'evt', 'info', 'B');
+
+    const all = service.queryEvents({});
+    expect(all).toHaveLength(2);
+  });
+
+  it('filters by until date', () => {
+    seedRun('run-1');
+    service.recordEvent('run-1', 'evt', 'info', 'Past');
+
+    const included = service.queryEvents({
+      loop_run_id: 'run-1',
+      until: new Date(Date.now() + 60000).toISOString(),
+    });
+    expect(included).toHaveLength(1);
+
+    const excluded = service.queryEvents({
+      loop_run_id: 'run-1',
+      until: new Date(Date.now() - 60000).toISOString(),
+    });
+    expect(excluded).toHaveLength(0);
+  });
+
+  it('filters by loop_run_id excluding other runs', () => {
+    seedRun('run-1');
+    seedRun('run-2');
+    service.recordEvent('run-1', 'evt', 'info', 'A');
+    service.recordEvent('run-2', 'evt', 'info', 'B');
+
+    const onlyRun1 = service.queryEvents({ loop_run_id: 'run-1' });
+    expect(onlyRun1).toHaveLength(1);
+    expect(onlyRun1[0].message).toBe('A');
+
+    const onlyRun2 = service.queryEvents({ loop_run_id: 'run-2' });
+    expect(onlyRun2).toHaveLength(1);
+    expect(onlyRun2[0].message).toBe('B');
+  });
+
+  it('filters by event_type excluding other types', () => {
+    seedRun('run-1');
+    service.recordEvent('run-1', 'alpha', 'info', 'A1');
+    service.recordEvent('run-1', 'beta', 'info', 'B1');
+    service.recordEvent('run-1', 'beta', 'info', 'B2');
+
+    const alpha = service.queryEvents({ loop_run_id: 'run-1', event_type: 'alpha' });
+    expect(alpha).toHaveLength(1);
+    expect(alpha[0].event_type).toBe('alpha');
+
+    const beta = service.queryEvents({ loop_run_id: 'run-1', event_type: 'beta' });
+    expect(beta).toHaveLength(2);
+    expect(beta.every(e => e.event_type === 'beta')).toBe(true);
+  });
+
+  it('applies default limit of 100 when not specified', () => {
+    seedRun('run-1');
+    for (let i = 0; i < 110; i++) {
+      service.recordEvent('run-1', 'evt', 'info', `E${i}`);
+    }
+    const defaultLimited = service.queryEvents({ loop_run_id: 'run-1' });
+    expect(defaultLimited).toHaveLength(100);
+  });
+
+  it('returns changes count from deleteEvents', () => {
+    seedRun('run-1');
+    seedRun('run-2');
+    service.recordEvent('run-1', 'evt', 'info', 'A');
+    service.recordEvent('run-1', 'evt', 'info', 'B');
+    service.recordEvent('run-2', 'evt', 'info', 'C');
+
+    expect(service.deleteEvents('run-empty')).toBe(0);
+    expect(service.deleteEvents('run-2')).toBe(1);
+  });
+
+  it('aggregates events ordered by count descending', () => {
+    seedRun('run-1');
+    service.recordEvent('run-1', 'rare', 'info', 'R');
+    for (let i = 0; i < 5; i++) service.recordEvent('run-1', 'common', 'info', `C${i}`);
+    for (let i = 0; i < 3; i++) service.recordEvent('run-1', 'medium', 'info', `M${i}`);
+
+    const agg = service.aggregateEvents('run-1');
+    expect(agg).toHaveLength(3);
+    expect(agg[0].event_type).toBe('common');
+    expect(agg[0].count).toBe(5);
+    expect(agg[1].event_type).toBe('medium');
+    expect(agg[1].count).toBe(3);
+    expect(agg[2].event_type).toBe('rare');
+    expect(agg[2].count).toBe(1);
+    expect(typeof agg[0].last_occurred).toBe('string');
+  });
+
+  it('parses event with empty-string metadata as empty object', () => {
+    seedRun('run-1');
+    service.recordEvent('run-1', 'evt', 'info', 'Manual');
+    db.prepare('UPDATE loop_events SET metadata = ? WHERE loop_run_id = ?').run('', 'run-1');
+
+    const events = service.listEvents('run-1');
+    expect(events).toHaveLength(1);
+    expect(events[0].metadata).toEqual({});
+  });
+
+  it('gets latest event by explicit created_at ordering', () => {
+    seedRun('run-1');
+    db.prepare('INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('e1', 'run-1', 'evt', 'info', 'First', '{}', '2026-01-01T00:00:00.000Z');
+    db.prepare('INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('e2', 'run-1', 'evt', 'info', 'Second', '{}', '2026-01-02T00:00:00.000Z');
+    db.prepare('INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('e3', 'run-1', 'evt', 'info', 'Third', '{}', '2026-01-03T00:00:00.000Z');
+
+    const latest = service.getLatestEvent('run-1');
+    expect(latest).not.toBeNull();
+    expect(latest!.message).toBe('Third');
+    expect(latest!.id).toBe('e3');
+  });
 });

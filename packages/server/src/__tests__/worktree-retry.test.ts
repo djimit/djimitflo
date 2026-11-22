@@ -93,6 +93,13 @@ describe('createWorktree git-lock retry', () => {
     expect(worktreePathArg).toBe(result);
   });
 
+  it('refuses a finding id that would resolve to the run directory or the worktree root', () => {
+    const loops = new LoopService(db);
+    const repoPath = path.join(worktreeRoot, 'fake-repo');
+    vi.spyOn((loops as any).worktree, 'git').mockImplementation(() => repoPath);
+    for (const id of ['..', '.', '']) expect(() => (loops as any).createWorktree(repoPath, 'run-4', id, 'branch-4')).toThrow('WORKTREE_FINDING_ID_INVALID');
+  });
+
   it('keeps proof-run branch names unique beyond short common prefixes', () => {
     const loops = new LoopService(db);
     const first = (loops as any).branchNameFor('loop-73511111-aaaa', 'proof-finding:proof-11111111') as string;

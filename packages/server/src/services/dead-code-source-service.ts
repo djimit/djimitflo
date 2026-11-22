@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { UsageTelemetry, liveUsageTelemetry } from './usage-telemetry';
 
 /**
@@ -226,7 +226,8 @@ export class DeadCodeSourceService {
 
   start(intervalMs = 12 * 3600_000): void {
     if (this.timer || !deadCodeLaneEnabled()) return;
-    const run = () => { markRun('dead_code_lane'); try { const r = this.run(); if (r.created) console.log(`🧹 dead-code lane: ${r.created} proposal(s) created`); } catch (err) { console.warn('Dead-code lane failed:', err instanceof Error ? err.message : String(err)); } };
+    // D-S7-1: markTick records the attempt, markRun the outcome after the work (with its error)
+    const run = () => { markTick('dead_code_lane'); try { const r = this.run(); markRun('dead_code_lane'); if (r.created) console.log(`🧹 dead-code lane: ${r.created} proposal(s) created`); } catch (err) { markRun('dead_code_lane', err); console.warn('Dead-code lane failed:', err instanceof Error ? err.message : String(err)); } };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 120_000).unref?.();
   }
