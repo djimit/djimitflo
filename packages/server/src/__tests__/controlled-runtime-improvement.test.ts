@@ -259,7 +259,7 @@ it.skipIf(!enabled)(productScenario
     assertProductBoundary();
     phase = 'deterministic_checks';
     execFileSync('npm', ['test'], { cwd: maker.lease.worktree_path, stdio: 'pipe' });
-    const checks = loops.runDeterministicChecks(run.id, { lease_id: maker.lease.id });
+    const checks = await loops.runDeterministicChecks(run.id, { lease_id: maker.lease.id });
     expect(checks.checks.every(check => check.status === 'pass'), JSON.stringify(checks.checks)).toBe(true);
     phase = 'checker';
     const checker = await governed(() => loops.workerExecutor.executeChecker(run.id, { runtime: 'codex', timeout_ms: 180_000 })) as any;

@@ -117,6 +117,18 @@ test('every third-party action is pinned to a full commit sha (a moved tag chang
   assert.deepEqual(loose, []);
 });
 
+test('the time-travel (date-bomb) job is advisory: scheduled and dispatched only, never a PR context, never required', () => {
+  const tt = loadWorkflows().find((w) => w.file === 'time-travel-tests.yml');
+  assert.ok(tt, 'time-travel-tests.yml exists');
+  const on = tt.on.join('\n');
+  assert.match(on, /^ {2}schedule:/m);
+  assert.match(on, /^ {2}workflow_dispatch:/m);
+  assert.doesNotMatch(on, /^ {2}(pull_request|pull_request_target|push|merge_group):/m, 'a PR-triggered run would report a context on the head');
+  const contexts = Object.entries(tt.jobs).flatMap(([id, block]) => contextsOf(id, block));
+  assert.deepEqual(contexts.filter((c) => REQUIRED_CONTEXTS.includes(c)), []);
+  assert.match(tt.text, /node scripts\/time-travel-tests\.mjs --days "\$DAYS"/, 'the dispatch input reaches the script through env, not inline');
+});
+
 test('Dependabot auto-merge goes through the corrected gate, never GitHub-native auto-merge', () => {
   // GitHub-native auto-merge counts a skipped required check as passed; the Dependabot path calls scripts/dependabot-merge.sh
   // (merge-train checks_verdict on the exact head, then a sha-pinned merge) instead (operator decision on #1061).

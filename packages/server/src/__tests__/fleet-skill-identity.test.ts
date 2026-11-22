@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { execFileSync, spawnSync } from 'child_process';
 import { createHash } from 'crypto';
@@ -234,11 +234,12 @@ describe.skipIf(!python)('Python emitter and Hermes cron poller', () => {
     fs.rmSync(dir, { recursive: true, force: true });
     expect(event.skill).toBe('blog-publisher');
     expect(event.skill_sha).toBe(createHash('sha256').update('---\nname: blog-publisher\n---\nPublish.').digest('hex'));
-    expect(verifyFleetEvent(db, event, { master: MASTER }).verdict).toBe('verified');
+    // the Python emitter stamps occurred_at from the OS clock: verify against that clock, not a faked Date
+    expect(verifyFleetEvent(db, event, { master: MASTER, now: vi.getRealSystemTime() }).verdict).toBe('verified');
     // unreadable file: the name is still sent, the hash is not invented
     expect(missing.skill).toBe('blog-publisher');
     expect(missing).not.toHaveProperty('skill_sha');
-    expect(verifyFleetEvent(db, missing, { master: MASTER }).verdict).toBe('verified');
+    expect(verifyFleetEvent(db, missing, { master: MASTER, now: vi.getRealSystemTime() }).verdict).toBe('verified');
   });
 
   it('hermes-cron-outcomes.py: a two-skill run is one signed outcome; agent n = runs, each skill n = 1', () => {

@@ -38,6 +38,12 @@ const pullRequestPayload = z.object({
 
 const STABLE_ANCHOR_FILES = ['package.json', 'README.md', 'AGENTS.md'];
 
+/** GitHub sends every action of a subscribed event (closed, edited, ready_for_review, ...); only the ones we act on are validated. */
+function unhandledAction(json: unknown, handled: readonly string[]): boolean {
+  const action = (json as { action?: unknown } | null)?.action;
+  return typeof action === 'string' && !handled.includes(action);
+}
+
 /** A real relative file the review loop_run can point its bookkeeping finding at. */
 function stableAnchorFile(repositoryPath: string): string {
   const found = STABLE_ANCHOR_FILES.find((name) => statSync(`${repositoryPath}/${name}`, { throwIfNoEntry: false })?.isFile());
@@ -91,6 +97,7 @@ export function createGitHubWebhookRoutes(db: Database, scanTriggers?: () => Dji
       if (githubEvent !== 'issues') return void res.status(202).json({ status: 'ignored', reason: 'unsupported_event' });
       let json: unknown;
       try { json = JSON.parse(body.toString('utf8')); } catch { throw createError(400, 'Invalid JSON', 'GITHUB_WEBHOOK_PAYLOAD_INVALID'); }
+      if (unhandledAction(json, issuePayload.shape.action.options)) return void res.status(202).json({ status: 'ignored', reason: 'unsupported_action' });
       const parsed = issuePayload.safeParse(json);
       const deliveryId = req.get('X-GitHub-Delivery');
       if (!parsed.success || !deliveryId || !/^[A-Za-z0-9-]{1,128}$/.test(deliveryId)) throw createError(400, 'Invalid GitHub issues payload', 'GITHUB_WEBHOOK_PAYLOAD_INVALID');
@@ -147,6 +154,7 @@ export function createGitHubWebhookRoutes(db: Database, scanTriggers?: () => Dji
     try {
       let json: unknown;
       try { json = JSON.parse(body.toString('utf8')); } catch { throw createError(400, 'Invalid JSON', 'GITHUB_WEBHOOK_PAYLOAD_INVALID'); }
+      if (unhandledAction(json, pullRequestPayload.shape.action.options)) return void res.status(202).json({ status: 'ignored', reason: 'unsupported_action' });
       const parsed = pullRequestPayload.safeParse(json);
       const deliveryId = req.get('X-GitHub-Delivery');
       if (!parsed.success || !deliveryId || !/^[A-Za-z0-9-]{1,128}$/.test(deliveryId)) throw createError(400, 'Invalid GitHub pull_request payload', 'GITHUB_WEBHOOK_PAYLOAD_INVALID');

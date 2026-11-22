@@ -16,6 +16,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | compliance_report | `COMPLIANCE_REPORT_SCHEDULER_ENABLED` | `complianceReportSched.intervalHours()` h | `packages/server/src/index.ts` |
 | content_drafts | `CONTENT_DRAFTS_MODE` | 6 h | `packages/server/src/index.ts` |
 | content_safety_retry | `CONTENT_SAFETY_RATE_LIMIT` | 5 min | `packages/server/src/index.ts` |
+| date_bomb_lane | `DATE_BOMB_LANE` | 24 h | `packages/server/src/services/date-bomb-source.ts` |
 | dead_code_lane | `DEAD_CODE_LANE_ENABLED` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dependency_lane | `DEPENDENCY_LANE_MODE` | `laneIntervalMs()` | `packages/server/src/index.ts` |
 | djimitsec_repository_scan | `DJIMITSEC_SCAN_TRIGGERS` | 1 min | `packages/server/src/index.ts` |

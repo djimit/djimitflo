@@ -43,7 +43,8 @@ describe('LoopDaemon waits for worker approval', () => {
     db.prepare("INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, created_at, updated_at) VALUES ('appr-1', 'task-a', ?, 'high', 'high_risk_action', 'm', '{}', datetime('now'), datetime('now'))").run(status);
   };
   const daemonWith = (loops: Record<string, unknown>) => new LoopDaemon(db, { pruneOrphanedWorktrees: vi.fn(), ...loops } as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
-  const runTick = async (d: LoopDaemon) => { await d.tick(); d.stop(); };
+  // tick() starts executeGoal without awaiting it; setImmediate runs after its pending microtasks (checks are awaited since the freeze fix)
+  const runTick = async (d: LoopDaemon) => { await d.tick(); await new Promise((r) => setImmediate(r)); d.stop(); };
 
   it('blocks the goal (not failed) when the maker needs approval, and keeps the proposal in flight', async () => {
     seedRunWithApprovalLease();

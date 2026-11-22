@@ -17,6 +17,7 @@ import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
 import type { TelegramApiService } from './telegram-api-service';
 import { mayActViaTelegram, mayApproveViaTelegram } from './telegram-identity';
 import { CALLBACK_DATA_MAX_BYTES, triageEnabled, type DeliveryProgress, type TriageButton } from './operator-push';
+import { recordLaneFeedback } from './lane-feedback';
 
 interface TelegramConfig {
   botToken: string;
@@ -162,6 +163,10 @@ export class TelegramBotService {
 
       case '/reject':
         await this.handleReject(chatId, args, message.actorUserId);
+        break;
+
+      case '/lane':
+        await this.handleLaneFeedback(chatId, args, message.actorUserId);
         break;
 
       case '/mission':
@@ -357,8 +362,9 @@ export class TelegramBotService {
       '/dennis \\- Dennis Agent status en scopes\n' +
       '/dennis\\_task \\<beschrijving\\> \\- Maak Dennis dry\\-run taak\n' +
       '/mission \\- Mission control\n' +
-      '/approve \\<id\\> \\- Approve action\n' +
-      '/reject \\<id\\> \\- Reject action\n' +
+      '/approve \\<id\\> \\[reden\\] \\- Approve action\n' +
+      '/reject \\<id\\> \\[reden\\] \\- Reject action\n' +
+      '/lane 👍\\|👎 \\<pr\\> \\[reden\\] \\- Feedback op een test\\-gap loop\\-PR\n' +
       '/help \\- This message'
     );
   }
@@ -477,13 +483,13 @@ export class TelegramBotService {
   private async handleApprove(chatId: number, args: string[], actorUserId: string): Promise<void> {
     const approvalId = args[0];
     if (!approvalId) {
-      await this.sendMessage(chatId, 'Usage: /approve <approval_id>');
+      await this.sendMessage(chatId, 'Usage: /approve <approval_id> [reden]');
       return;
     }
 
     try {
       if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
-      await this.api.request(actorUserId, `/approvals/${encodeURIComponent(approvalId)}/approve`, 'POST');
+      await this.api.request(actorUserId, `/approvals/${encodeURIComponent(approvalId)}/approve`, 'POST', args.length > 1 ? { reason: args.slice(1).join(' ') } : undefined);
       await this.sendMessage(chatId, `✅ Approved: ${approvalId}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -496,14 +502,30 @@ export class TelegramBotService {
   private async handleReject(chatId: number, args: string[], actorUserId: string): Promise<void> {
     const approvalId = args[0];
     if (!approvalId) {
-      await this.sendMessage(chatId, 'Usage: /reject <approval_id>');
+      await this.sendMessage(chatId, 'Usage: /reject <approval_id> [reden]');
       return;
     }
 
     try {
       if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
-      await this.api.request(actorUserId, `/approvals/${encodeURIComponent(approvalId)}/deny`, 'POST');
+      await this.api.request(actorUserId, `/approvals/${encodeURIComponent(approvalId)}/deny`, 'POST', args.length > 1 ? { reason: args.slice(1).join(' ') } : undefined);
       await this.sendMessage(chatId, `❌ Rejected: ${approvalId}`);
+    } catch (error) {
+      await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** G2: `/lane up|down|👍|👎 <pr-number> [reden]` — the operator's verdict on a merged test-gap PR, per lane. */
+  private async handleLaneFeedback(chatId: number, args: string[], actorUserId: string): Promise<void> {
+    const verdict = ({ up: 'up', '👍': 'up', '+': 'up', down: 'down', '👎': 'down', '-': 'down' } as Record<string, 'up' | 'down'>)[args[0]?.toLowerCase() ?? ''];
+    const prNumber = Number(String(args[1] ?? '').replace(/^#/, ''));
+    if (!verdict || !Number.isSafeInteger(prNumber) || prNumber <= 0) {
+      await this.sendMessage(chatId, 'Usage: /lane 👍|👎 <pr-nummer> [reden]');
+      return;
+    }
+    try {
+      const { lane } = recordLaneFeedback(this.db, { prNumber, verdict, reason: args.slice(2).join(' '), actor: actorUserId });
+      await this.sendMessage(chatId, `${verdict === 'up' ? '👍' : '👎'} lane ${lane} (#${prNumber}) vastgelegd.`);
     } catch (error) {
       await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`);
     }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-// admission is judged at a fixed instant, not the wall clock (helpers/admission-now.ts; ledger expiries 2026-11-27 / 2026-12-31)
+// admission is judged at a fixed instant, not the wall clock (helpers/admission-now.ts; ledger expiries 2026-12-27 / 2026-12-31)
 vi.mock('../execution/runtime-admission', () => import('./helpers/admission-now').then((m) => m.admissionAtFixedNow()));
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
@@ -233,11 +233,11 @@ describe('executeMaker on the engine path records the failure (record-only: gate
 });
 
 describe('deterministic checks: stage checks / deps with the failed check\'s exit and stderr class', () => {
-  it('a test script failing with a missing module', () => {
+  it('a test script failing with a missing module', async () => {
     const { loops, db, repo } = fixture();
     fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'fixture', scripts: { test: 'node -e "console.error(\'Error: Cannot find module vitest\'); process.exit(4)"' } }));
     db.prepare("UPDATE worker_leases SET status = 'completed', metadata = json_set(metadata, '$.changed_files', json('[\"a.ts\"]')) WHERE id = 'maker'").run();
-    loops.runDeterministicChecks('lf-run', { lease_id: 'maker', scripts: ['test'] });
+    await loops.runDeterministicChecks('lf-run', { lease_id: 'maker', scripts: ['test'] });
     const lease = loops.getWorkerLease('maker');
     expect(lease.status).toBe('failed');
     expect(lease.metadata.failure).toMatchObject({ stage: 'checks', exit_code: 4, exit_observed: true, timed_out: false, stderr_class: 'missing_module', stderr_source: 'stderr' });
@@ -281,8 +281,9 @@ describe('cancel paths name their reason', () => {
 describe('evidence: attributionSummary.failure_capture (stage × stderr class, cancels with a reason)', () => {
   it('counts captured leases per cell and keeps pre-capture leases apart', () => {
     const db = memDb(); const repo = new WorkerLeaseRepo(db);
+    // updated_at on the clock attributionSummary() windows with (Date.now() − 30 d), not SQLite's CURRENT_TIMESTAMP default
     const ins = (id: string, role: string, status = 'running', m: Record<string, unknown> = {}) =>
-      db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES (?, 'r', ?, 'opencode', ?, ?)").run(id, role, status, JSON.stringify(m));
+      db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, updated_at) VALUES (?, 'r', ?, 'opencode', ?, ?, ?)").run(id, role, status, JSON.stringify(m), new Date().toISOString());
     ins('a', 'maker'); repo.updateStatus('a', 'failed', { failure_reason: 'maker_execution_error: spawn opencode ENOENT', execution_task_id: 't' });
     ins('b', 'maker'); repo.updateStatus('b', 'failed', { failure_reason: 'maker_execution_error: spawn opencode ENOENT', execution_task_id: 't' });
     ins('c', 'maker'); repo.updateStatus('c', 'cancelled', { cancellation_reason: 'operator_stop' });

@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { execFileSync, spawnSync } from 'child_process';
+import { safeGit, safeGitSpawn } from '../../services/safe-git';
 import { EventEmitter } from 'events';
 import type { Database } from 'better-sqlite3';
 import { Task, ExecutionEventType, LogLevel, type ExecutionEventCreateInput } from '@djimitflo/shared';
@@ -55,8 +55,8 @@ export class RemoteMakerExecutor implements TaskExecutor {
       if (!target) return finish(1, '', `remote maker needs model '<host>/<species>', got '${options?.model ?? ''}'`);
       let base: string;
       try {
-        base = execFileSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-        execFileSync('git', ['-C', cwd, 'merge-base', '--is-ancestor', base, 'origin/main'], { stdio: 'ignore' });
+        base = safeGit(cwd, ['rev-parse', 'HEAD']).trim();
+        safeGit(cwd, ['merge-base', '--is-ancestor', base, 'origin/main']);
       } catch { return finish(1, '', 'infra: base commit is not on origin/main, the remote host cannot fetch it'); }
       const meta = (task.metadata || {}) as Record<string, unknown>;
       jobId = this.queue.enqueue(target.host, target.species, base, task.description, {
@@ -74,7 +74,7 @@ export class RemoteMakerExecutor implements TaskExecutor {
             return cancelled('lease_not_active_at_apply', 'its lease is no longer the active maker lease');
           }
           if (!job.patch) return finish(0, `remote maker (${target.host}): ${job.reason || 'no change'}`);
-          const applied = spawnSync('git', ['-C', cwd, 'apply', '--whitespace=nowarn', '-'], { input: job.patch, encoding: 'utf8' });
+          const applied = safeGitSpawn(cwd, ['apply', '--whitespace=nowarn', '-'], { input: job.patch });
           return applied.status === 0 ? finish(0, `remote maker (${target.host}): ${job.reason || 'patch applied'}`) : finish(1, '', `remote patch did not apply: ${(applied.stderr || '').slice(0, 300)}`);
         }
         if (job && job.status === 'failed') return finish(1, '', `remote maker failed: ${job.reason || ''}`);

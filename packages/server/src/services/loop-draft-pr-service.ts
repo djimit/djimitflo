@@ -1,7 +1,6 @@
 import fs from 'fs';
 import { createHash, randomUUID } from 'crypto';
 import path from 'path';
-import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { LoopEventService } from './loop-event-service';
 import { redactSecrets } from './secret-patterns';
@@ -12,6 +11,7 @@ import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './
 import { guardTick, markRun } from './scheduler-registry';
 import { issueRefsLine } from './work-item-outcome-sync';
 import { onDraftPrOpened } from './capability-factory';
+import { safeGit } from './safe-git';
 
 interface DraftPublication {
   makerId: string; repo: string; branch: string; base: string; worktree: string;
@@ -50,7 +50,12 @@ export class LoopDraftPrService {
       AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(runId) as { id: string; worktree_path: string | null; branch_name: string | null } | undefined;
     if (!maker?.worktree_path || !maker.branch_name || !fs.existsSync(maker.worktree_path)) return fail('no completed maker worktree');
     const wt = maker.worktree_path;
-    const git = (...args: string[]) => execFileSync('git', ['-C', wt, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 }).trim();
+    // D3: the maker owns this worktree (and its git config): every git call goes through safe-git, the token only to the
+    // fetch/ls-remote/push that need it, scoped to github.com and out of argv
+    const git = (...args: string[]) => safeGit(wt, args, { timeout: 30_000 }).trim();
+    const transports = this.env.GIT_ALLOW_PROTOCOL || 'https';
+    const authed = (args: string[], timeout: number) => safeGit(wt, args, { timeout, protocols: transports,
+      secretConfig: { 'http.https://github.com/.extraheader': `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}` } });
 
     // B2: the worktree's push remote must be that same repo; when they differ nothing is pushed and no PR is opened.
     let remoteSlug: string | null = null;
@@ -81,8 +86,7 @@ export class LoopDraftPrService {
         let changed: string[] | null = null;
         if (rs && Object.keys(rs.files).length > 0) {
           try {
-            const fetchAuth = Buffer.from(`x-access-token:${token}`).toString('base64');
-            execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${fetchAuth}`, 'fetch', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', this.env.LOOP_DRAFT_PR_BASE || 'main'], { stdio: 'ignore', timeout: 60_000 });
+            authed(['fetch', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', this.env.LOOP_DRAFT_PR_BASE || 'main'], 60_000);
             changed = staleAgainst(wt, rs, 'FETCH_HEAD');
           } catch { changed = null; } // fetch failed: unknown, fail open
         }
@@ -147,7 +151,7 @@ export class LoopDraftPrService {
       if (!publication.head) {
         if (head === publication.parentHead) {
           git('add', '--', ...publication.files);
-          execFileSync('git', ['-C', wt, '-c', 'user.name=djimitflo-loop', '-c', 'user.email=loop@djimitflo.invalid', 'commit', '-q', '-m', commitMessage, '--only', '--', ...publication.files], { stdio: 'ignore', timeout: 60_000 });
+          safeGit(wt, ['commit', '-q', '-m', commitMessage, '--only', '--', ...publication.files], { config: ['user.name=djimitflo-loop', 'user.email=loop@djimitflo.invalid'], timeout: 60_000 });
         } else if (git('rev-parse', 'HEAD^') !== publication.parentHead || git('log', '-1', '--format=%B') !== commitMessage) {
           throw new Error('publication_head_changed');
         }
@@ -170,11 +174,10 @@ export class LoopDraftPrService {
       }
       if (publicationThrottled) return null;
       guard();
-      const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
-      const remoteHead = execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'ls-remote', '--heads', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `refs/heads/${maker.branch_name}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 }).trim().split(/\s+/)[0];
+      const remoteHead = authed(['ls-remote', '--heads', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `refs/heads/${maker.branch_name}`], 60_000).trim().split(/\s+/)[0];
       if (remoteHead && remoteHead !== verifiedHead) throw new Error('publication_remote_head_changed');
       guard();
-      execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'push', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `${verifiedHead}:refs/heads/${maker.branch_name}`], { stdio: 'ignore', timeout: 60_000 });
+      authed(['push', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `${verifiedHead}:refs/heads/${maker.branch_name}`], 60_000);
 
       const verdicts = (this.db.prepare(`SELECT role, json_extract(metadata, '$.verdict') AS verdict FROM worker_leases WHERE loop_run_id = ? AND role IN ('checker', 'security_checker') AND status = 'completed'`).all(runId) as Array<{ role: string; verdict: string | null }>)
         .map((l) => `- ${l.role}: ${l.verdict ?? 'n/a'}`).join('\n');

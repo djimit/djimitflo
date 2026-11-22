@@ -61,7 +61,7 @@ describe('LoopService: dispatching the checker enables the checker_verdict gate'
     expect(makerLease).toBeTruthy();
 
     await loops.executeWorker(run.id, { lease_id: makerLease!.id, timeout_ms: 10_000 });
-    loops.runDeterministicChecks(run.id, { lease_id: makerLease!.id, timeout_ms: 10_000, scripts: [] });
+    await loops.runDeterministicChecks(run.id, { lease_id: makerLease!.id, timeout_ms: 10_000, scripts: [] });
 
     // Confirms the bug's precondition: with the maker completed but the
     // checker lease (prepared by continueLoopRun above) never dispatched —

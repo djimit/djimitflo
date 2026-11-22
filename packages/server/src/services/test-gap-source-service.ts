@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
-import { markRun } from './scheduler-registry';
+import { laneFeedbackClause, laneOfTitle, lanePaused } from './lane-feedback';
+import { markRun, markTick } from './scheduler-registry';
 import { extraRepos, extraReposMode, registeredExtraRepos, type ExtraRepo } from './repo-registry';
 import { recordSpecGapShadow, specGapMode, specRepo } from './spec-gap-source';
 
@@ -61,12 +62,12 @@ export function discoverTestGaps(repoPath: string): TestGap[] {
   const gaps: TestGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (tested.has(service) || service === 'index' || !live.has(service)) continue;
+    if (tested.has(service) || service === 'index' || !live.has(service) || FROZEN.test(service)) continue;
     const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
     const loc = text.split('\n').length;
-    const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
-    if (loc < MIN_LOC || loc > MAX_LOC || !exports.length) continue;
-    gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `packages/server/src/__tests__/${service}.test.ts`, exports, loc });
+    const names = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+    if (loc < MIN_LOC || loc > MAX_LOC || !names.length) continue;
+    gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `packages/server/src/__tests__/${service}.test.ts`, exports: names, loc });
   }
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service)); // smallest, most self-contained first
 }
@@ -99,9 +100,9 @@ export function discoverPackageGaps(repoPath: string): TestGap[] {
       const name = path.basename(f, '.ts'); const rel = path.relative(src, f);
       if (name === 'index' || tested.has(name)) continue;
       const text = fs.readFileSync(f, 'utf8'); const loc = text.split('\n').length;
-      const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
-      if (loc < MIN_LOC || loc > MAX_LOC || !exports.length) continue;
-      gaps.push({ service: `${lane.pkg}/${name}`, pkg: lane.pkg, sourcePath: `packages/${lane.pkg}/src/${rel}`, testPath: `${lane.testDir(rel)}${name}.test.ts`, exports, loc });
+      const names = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+      if (loc < MIN_LOC || loc > MAX_LOC || !names.length) continue;
+      gaps.push({ service: `${lane.pkg}/${name}`, pkg: lane.pkg, sourcePath: `packages/${lane.pkg}/src/${rel}`, testPath: `${lane.testDir(rel)}${name}.test.ts`, exports: names, loc });
     }
   }
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
@@ -149,11 +150,11 @@ export function discoverDashboardGaps(repoPath: string): TestGap[] {
     if (tested.has(noExt(f)) || (rel.startsWith('pages/') && /Page$/.test(name))) continue;
     const text = fs.readFileSync(f, 'utf8'); const loc = text.split('\n').length;
     if (/^\s*\/[/*].*(?:@generated|\bgenerated\b.*do not edit)/i.test(text.split('\n', 1)[0]) || DASHBOARD_SHELL.test(text)) continue;
-    const exports = [...text.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
-    if (loc < MIN_LOC || loc > DASHBOARD_MAX_LOC || !exports.length) continue; // no runtime export = type-only
+    const names = [...text.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+    if (loc < MIN_LOC || loc > DASHBOARD_MAX_LOC || !names.length) continue; // no runtime export = type-only
     const ext = f.endsWith('.tsx') || name.startsWith('use') ? '.test.tsx' : '.test.ts';
     gaps.push({ service: `dashboard/${noExt(rel)}`, pkg: 'dashboard', sourcePath: `packages/dashboard/src/${rel}`,
-      testPath: `packages/dashboard/src/${path.posix.dirname(rel) === '.' ? '' : `${path.posix.dirname(rel)}/`}${name}${ext}`, exports, loc });
+      testPath: `packages/dashboard/src/${path.posix.dirname(rel) === '.' ? '' : `${path.posix.dirname(rel)}/`}${name}${ext}`, exports: names, loc });
   }
   return gaps.sort((a, b) => tier(a) - tier(b) || a.loc - b.loc || a.service.localeCompare(b.service));
 }
@@ -184,15 +185,15 @@ export function discoverNodeTestGaps(repoPath: string): TestGap[] {
     const fileExt = path.extname(file); const name = path.basename(file, fileExt); const rel = path.relative(repoPath, file).split(path.sep).join('/');
     if (name === 'index' || !/^[A-Za-z0-9_-]+$/.test(name)) continue;
     const text = fs.readFileSync(file, 'utf8'); const loc = text.split('\n').length;
-    const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]);
-    if (!exports.length || loc > MAX_EXPORT_GAP_LOC) continue;
+    const names = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]);
+    if (!names.length || loc > MAX_EXPORT_GAP_LOC) continue;
     if (!tested.has(name)) {
       if (loc < MIN_LOC || loc > MAX_LOC) continue;
       const testPath = `${dir}/${name}.test${fileExt}`;
-      gaps.push({ service: name, sourcePath: rel, testPath, exports: exports.slice(0, 6), loc, command: `node --test ${testPath}` });
+      gaps.push({ service: name, sourcePath: rel, testPath, exports: names.slice(0, 6), loc, command: `node --test ${testPath}` });
       continue;
     }
-    const untested = exports.filter((fn) => !new RegExp(`\\b${fn}\\b`).test(allTests)).slice(0, 3);
+    const untested = names.filter((fn) => !new RegExp(`\\b${fn}\\b`).test(allTests)).slice(0, 3);
     if (!untested.length || fs.existsSync(path.join(testDir, `${name}.exports.test${fileExt}`))) continue;
     const testPath = `${dir}/${name}.exports.test${fileExt}`;
     gaps.push({ service: name, sourcePath: rel, testPath, exports: untested, loc, kind: 'exports', command: `node --test ${testPath}` });
@@ -215,7 +216,7 @@ export function discoverExportGaps(repoPath: string): TestGap[] {
   const gaps: TestGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (!tested.has(service) || !live.has(service)) continue; // untested services are discoverTestGaps' job
+    if (!tested.has(service) || !live.has(service) || FROZEN.test(service)) continue; // untested services are discoverTestGaps' job
     const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
     const loc = text.split('\n').length;
     if (loc > MAX_EXPORT_GAP_LOC) continue;
@@ -238,6 +239,13 @@ export function discoverExportGaps(repoPath: string): TestGap[] {
 export interface MutationGap { service: string; sourcePath: string; testPath: string; loc: number }
 const MAX_MUTATION_LOC = 400;
 const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn)([-_]|$)/i;
+// Value filter (review 2026-11-16): mutation-hardening the loop's own machinery cost ~0.5M tokens per run for PRs such as
+// "raise the mutation score of loop-stop-conditions.ts" — the loop polishing itself. Those lanes stay covered by their
+// regular tests; mutation budget goes to services that serve users.
+const SELF_REFERENTIAL = /^(loop|evolution|gym|fitness|mutation|self-improvement)-/i;
+// Frozen features (operator decision 2026-11-17): no nginx traffic in 9 days and no scheduler armed in prod, so no lane
+// spends tokens testing them. ponytail: name list, not a flag; unfreeze = drop the prefix here.
+const FROZEN = /^(explain|explainer|expert|frontier-expert|council|discussion|multi-agent-consensus|fleet-mesh|segml)-/i;
 export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
@@ -245,7 +253,7 @@ export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const gaps: MutationGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (SENSITIVE.test(service) || !live.has(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
+    if (SENSITIVE.test(service) || SELF_REFERENTIAL.test(service) || FROZEN.test(service) || !live.has(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
     const loc = fs.readFileSync(path.join(servicesDir, file), 'utf8').split('\n').length;
     if (loc < MIN_LOC || loc > MAX_MUTATION_LOC) continue;
     gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `${TESTS_DIR}/${service}.test.ts`, loc });
@@ -269,11 +277,13 @@ export class TestGapSourceService {
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !testGapSourceEnabled()) return;
     const run = () => {
-      markRun('test_gap_source');
+      markTick('test_gap_source'); // D-S7-1: the attempt; the outcome (with the first error) is recorded after both passes
+      let error: unknown;
       const note = (lane: 'test-gap' | 'mutation-gap', r: { created: number; skipped: string }) => gapLaneResults.set(lane, { ...r, at: new Date().toISOString() });
       const failed = (err: unknown) => ({ created: 0, skipped: `failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200) });
-      try { const r = this.run(); note('test-gap', r); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { note('test-gap', failed(err)); console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
-      try { const r = this.runMutationGaps(); note('mutation-gap', r); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { note('mutation-gap', failed(err)); console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      try { const r = this.run(); note('test-gap', r); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { error ??= err; note('test-gap', failed(err)); console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      try { const r = this.runMutationGaps(); note('mutation-gap', r); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { error ??= err; note('mutation-gap', failed(err)); console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      markRun('test_gap_source', error);
     };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 90_000).unref?.();
@@ -305,6 +315,9 @@ export class TestGapSourceService {
       const ref = gap.kind === 'exports' ? `test-gap:${gap.service}#exports` : `test-gap:${gap.service}`;
       // a file that ever had a test-gap proposal of this kind (any outcome) is never proposed again automatically
       if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%${ref}"%`)) continue;
+      const title = gap.kind === 'exports' ? `Test untested exports of services/${gap.service}.ts` : `Add unit tests for ${gap.pkg ? gap.sourcePath.replace(/^packages\//, '') : `services/${gap.service}.ts`}`;
+      const lane = laneOfTitle(title);
+      if (lane && lanePaused(this.db, lane, now)) continue; // G3: the operator voted this lane down
       const testFile = path.basename(gap.testPath);
       const pkgDir = `packages/${gap.pkg ?? 'server'}`;
       const command = gap.pkg ? `npx vitest run ${path.relative(pkgDir, gap.testPath)}` : `npx vitest run src/__tests__/${testFile}`;
@@ -312,9 +325,10 @@ export class TestGapSourceService {
       const covering = gap.kind === 'exports' ? `the untested exported functions ${gap.exports.join(', ')} of ${gap.sourcePath} (no existing test names them)` : `the public behaviour of ${gap.sourcePath} (exports: ${gap.exports.join(', ')})`;
       const description = `Add ${gap.testPath} covering ${covering}. Test-only; no production code edits. `
         + `RUNTIME COMMAND: from ${pkgDir} run \`${command}\` (exit 0 = pass, Node 22, no network, no env flags needed). `
-        + `ARTIFACT: the vitest stdout captured by the worker, plus the git diff of the single new test file (expected < 150 lines added). BUDGET: ${budget}.`;
+        + `ARTIFACT: the vitest stdout captured by the worker, plus the git diff of the single new test file (expected < 150 lines added). BUDGET: ${budget}.`
+        + (lane ? laneFeedbackClause(this.db, lane) : '');
       const proposal = improvements.generateFromGroundedGap({
-        title: gap.kind === 'exports' ? `Test untested exports of services/${gap.service}.ts` : `Add unit tests for ${gap.pkg ? gap.sourcePath.replace(/^packages\//, '') : `services/${gap.service}.ts`}`, description,
+        title, description,
         rationale: gap.kind === 'exports'
           ? `${gap.exports.join(', ')} in ${gap.sourcePath} are exported but no test names them; a test-only change is verifiable by one command`
           : `${gap.sourcePath} (${gap.loc} lines) is not imported by any test; a test-only change is verifiable by one command`,
@@ -365,6 +379,7 @@ export class TestGapSourceService {
     const inFlight = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%mutation-gap:%' AND status IN ('proposed', 'scheduled', 'executing')").get() as { n: number }).n;
     if (createdToday >= (Number(process.env.MUTATION_GAP_MAX_PER_DAY) || 2)) return { created: 0, skipped: 'daily cap reached' };
     if (inFlight >= 1) return { created: 0, skipped: 'one in flight' };
+    if (lanePaused(this.db, 'mutation', now)) return { created: 0, skipped: 'lane paused by operator feedback' };
     for (const gap of discoverMutationGaps(repo)) {
       const ref = `mutation-gap:${gap.service}`;
       if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%"${ref}"%`)) continue;
@@ -372,7 +387,8 @@ export class TestGapSourceService {
       const description = `Strengthen ${gap.testPath} so it kills more Stryker mutants of ${gap.sourcePath}. Edit only that test file; no production code edits. `
         + `RUNTIME COMMAND: from the repository root run \`${command}\` — it runs Stryker on the committed and on your version of the test and exits 0 `
         + `when the mutation score gains >= 10 points (or reaches 90). Its JSON line shows before/after; aim at the surviving mutants. `
-        + 'ARTIFACT: the command output plus the diff of the one test file. BUDGET: one maker lease, <= 15 minutes, one checker lease.';
+        + 'ARTIFACT: the command output plus the diff of the one test file. BUDGET: one maker lease, <= 15 minutes, one checker lease.'
+        + laneFeedbackClause(this.db, 'mutation');
       const proposal = new SelfImprovementService(this.db).generateFromGroundedGap({
         title: `Raise the mutation score of services/${gap.service}.ts`, description,
         rationale: `${gap.testPath} exists, but a test that lets mutants survive does not guard behaviour; the gain is measured by one command`,
