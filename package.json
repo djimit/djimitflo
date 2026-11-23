@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.1.1",
-    "vite": "^8.2.2",
+    "vite": "^8.3.8",
     "ws": "^8.22.1"
   },
   "overrides": {
