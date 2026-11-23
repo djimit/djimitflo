@@ -65,6 +65,20 @@ const LLM_RUNTIMES: LlmRuntime[] = ['codex', 'opencode', 'claude', 'gemini', 'ed
 const LLM_CHECKER_TIMEOUT_MS = 480_000;
 const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
+const GIT_OBJECT_ID = /^[0-9a-f]{40,64}$/i;
+const GIT_BRANCH_CHARS = /^[A-Za-z0-9._/-]+$/;
+
+/** Inputs that reach git must be constrained before they become revisions or refspecs. */
+export function isSafeGitObjectId(value: string): boolean { return GIT_OBJECT_ID.test(value); }
+export function isSafeGitBranchRef(value: string): boolean {
+  if (!value || value.length > 256 || !GIT_BRANCH_CHARS.test(value)) return false;
+  if (value.startsWith('-') || value.startsWith('.') || value.startsWith('/') || value.endsWith('.') || value.endsWith('/')) return false;
+  return !value.includes('..') && !value.includes('//') && !value.includes('@{');
+}
+
+function validReviewInput(input: Pick<StartReviewInput, 'headSha' | 'baseRef'>): boolean {
+  return isSafeGitObjectId(input.headSha) && isSafeGitBranchRef(input.baseRef);
+}
 
 /**
  * Djimitflo's own Kilo Code Bot replacement, posted back to GitHub via the
@@ -131,6 +145,7 @@ export class GithubPrReviewService {
   }
 
   startReview(input: StartReviewInput, recovering = false): { status: 'commented' | 'pending' | 'failed' | 'superseded' | 'held'; verdict?: Verdict } {
+    if (!validReviewInput(input)) return { status: 'held' };
     const id = randomUUID();
     const now = new Date().toISOString();
     const claimed = this.db.transaction(() => {
@@ -456,17 +471,19 @@ export class GithubPrReviewService {
 
   /** Fetches the base branch and resolves it to a SHA once, so the merge base is computed against one fixed commit. */
   private fetchBaseTip(input: StartReviewInput): string {
+    if (!isSafeGitBranchRef(input.baseRef)) throw new GithubUnavailableError('PR_BASE_REF_INVALID');
     const tracking = `refs/remotes/origin/${input.baseRef}`;
-    execFileSync('git', ['fetch', 'origin', `+refs/heads/${input.baseRef}:${tracking}`], { cwd: input.repositoryPath, timeout: GH_TIMEOUT_MS });
+    execFileSync('git', ['fetch', 'origin', '--', `+refs/heads/${input.baseRef}:${tracking}`], { cwd: input.repositoryPath, timeout: GH_TIMEOUT_MS });
     return execFileSync('git', ['rev-parse', '--verify', `${tracking}^{commit}`], { cwd: input.repositoryPath, encoding: 'utf8', timeout: GH_TIMEOUT_MS }).trim();
   }
 
   /** pull/<n>/head may already point past (or after a force-push away from) headSha: fetch the exact commit when missing. */
   private ensureCommit(repositoryPath: string, sha: string): void {
+    if (!isSafeGitObjectId(sha)) throw new GithubUnavailableError('PR_HEAD_SHA_INVALID');
     try {
       execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: repositoryPath, timeout: GH_TIMEOUT_MS, stdio: 'ignore' });
     } catch {
-      execFileSync('git', ['fetch', 'origin', sha], { cwd: repositoryPath, timeout: GH_TIMEOUT_MS });
+      execFileSync('git', ['fetch', 'origin', '--', sha], { cwd: repositoryPath, timeout: GH_TIMEOUT_MS });
     }
   }
 
