@@ -39,6 +39,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   DREAM_EVIDENCE_MUTATIONS: 'off',
   DREAM_EVIDENCE_SOURCES: '\'\' (comma list of `skills`, `anti_patterns`, `knowledge`)',
   DREAM_EVOLUTION_ENABLED: 'off',
+  DREAM_KNOWLEDGE_SEED_MODE: 'off (`shadow`, `on`)',
   DREAM_PLAYBOOK_GENE: 'off (`on` enables)',
   DREAM_PROMOTION_ALPHA: '0.05',
   DREAM_PROMOTION_RULE: 'mcnemar',

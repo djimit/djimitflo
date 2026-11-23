@@ -13,6 +13,7 @@ it('shows the maker forecast score, curiosity, dreams and agent-to-agent counts'
     maker_forecast: { window_days: 60, n: 4, positives: 1, unresolved: 2, brier: 0.3375, base_rate: 0.25, baseline_brier: 0.1875, skill: -0.8, note: '' },
     knowledge_gaps: { mode: 'shadow', status: 'ok', window_days: 30, open: 7, open_by_source: null, recurrences: 3, oldest_age_days: 12, capability_candidates: 0, note: '' },
     knowledge_links: { genomes_with_refs: 2, genomes_total: 5, proposals_with_refs: 0 },
+    genomes: { by_status: [{ status: 'active', origin: 'baseline', n: 1 }, { status: 'retired', origin: 'dream', n: 17 }, { status: 'inconclusive', origin: 'dream', n: 11 }, { status: 'trial', origin: 'dream', n: 3 }], recent: [], holdout: { mined: null, mutant: null } },
   }, 42);
   expect(screen.getByText('mode shadow')).toBeTruthy();
   expect(screen.getByText('1 (25 %)')).toBeTruthy();
@@ -21,6 +22,9 @@ it('shows the maker forecast score, curiosity, dreams and agent-to-agent counts'
   expect(screen.getByText('7')).toBeTruthy();
   expect(screen.getByText('5')).toBeTruthy();
   expect(screen.getByText('42')).toBeTruthy();
+  expect(screen.getByText('17')).toBeTruthy(); // retired dream genomes, all of them — not only those citing web research
+  expect(screen.getByText('14')).toBeTruthy(); // inconclusive + trial
+  expect(screen.getByText('Promoted after a trial').nextSibling?.textContent).toBe('0'); // the active genome is the baseline, not a dream
 });
 
 it('renders missing evidence as a dash, never as zero', () => {
