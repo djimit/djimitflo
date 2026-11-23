@@ -6,9 +6,9 @@ Every environment variable read in `packages/server/src` (tests excluded), from 
 Registry = listed in `EVOLUTION_FLAGS` (`packages/server/src/services/evolution-evidence.ts`). Runbook = has a row in a flag table of `docs/runbooks/self-improvement-loop-operations.md`.
 A variable in neither is not wrong, but nothing else in the repository tells an operator that it exists.
 
-- Read by the server: 665
-- In the registry: 183
-- In the runbook: 231
+- Read by the server: 666
+- In the registry: 184
+- In the runbook: 232
 - In neither: 432
 
 | Variable | Registry | Runbook | Read in |
@@ -386,6 +386,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `LOOP_BANDIT_ENABLED` | yes | yes | `services/loop-daemon.ts`, `services/runtime-bandit.ts` |
 | `LOOP_BANDIT_MAX_SHARE` | yes | yes | `services/bandit-propensity.ts`, `services/loop-daemon.ts` +1 |
 | `LOOP_BANDIT_SPECIES` | yes | yes | `services/runtime-bandit.ts` |
+| `LOOP_CHECK_DIRECT_TESTS_MODE` | yes | yes | `services/loop-service.ts` |
 | `LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED` | yes | yes | `services/loop-daemon.ts` |
 | `LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED` | yes | yes | `services/loop-daemon.ts` |
 | `LOOP_DAEMON_CHECK_SCRIPTS` | no | no | `services/gym-gate-policy.ts`, `services/loop-daemon.ts` |
