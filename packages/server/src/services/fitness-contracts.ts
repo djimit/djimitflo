@@ -407,6 +407,7 @@ export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
   ORACLE_LANES_AUTO_APPROVE: 'approval routing for the oracle lanes (who approves), not a scored component',
   FINDING_FIX_AUTO_APPROVE: 'approval routing for the finding-fix lane (who approves), not a scored component',
   LOOP_CHECK_DIRECT_TESTS_MODE: 'which tests a maker check runs locally (CI still runs all on the PR head), not a scored component',
+  MAKER_FORECAST_MODE: 'one line asking the maker for a self-forecast that is only recorded and scored (evolution-evidence maker_forecast), not a scored component',
   APPROVAL_INHERIT_ENABLED: 'approval plumbing: a re-run inherits the original approval within a TTL',
   LOOP_REVIEWER_APPROVAL_INHERIT: 'approval plumbing: reviewers inherit the run\'s one human approval',
   PROPOSAL_GROUNDING_REQUIRED: 'intake rule: ungrounded reflection proposals are parked before the panel',

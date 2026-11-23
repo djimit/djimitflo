@@ -6,9 +6,9 @@ Every environment variable read in `packages/server/src` (tests excluded), from 
 Registry = listed in `EVOLUTION_FLAGS` (`packages/server/src/services/evolution-evidence.ts`). Runbook = has a row in a flag table of `docs/runbooks/self-improvement-loop-operations.md`.
 A variable in neither is not wrong, but nothing else in the repository tells an operator that it exists.
 
-- Read by the server: 666
-- In the registry: 184
-- In the runbook: 232
+- Read by the server: 667
+- In the registry: 185
+- In the runbook: 233
 - In neither: 432
 
 | Variable | Registry | Runbook | Read in |
@@ -421,6 +421,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `LOOP_WORKTREE_ROOT` | no | no | `scripts/nested-swarm-demo.ts`, `services/loop-service.ts` +1 |
 | `MAKER_DEPS_001_MODE` | no | no | `services/maker-deps-001.ts` |
 | `MAKER_DIFF_CAPTURE` | yes | yes | `services/maker-diff-capture.ts` |
+| `MAKER_FORECAST_MODE` | yes | yes | `services/maker-forecast.ts` |
 | `MAKER_SCOPE_REPAIR` | yes | yes | `services/maker-scope-repair.ts` |
 | `MAKER_UID_SEPARATION` | yes | yes | `execution/executors/maker-uid-separation.ts` |
 | `MAKER_WARM_DEPS` | yes | yes | `services/maker-warm-deps.ts` |

@@ -6,6 +6,7 @@
  * checker roles. Real runtimes dispatch through ExecutionEngine.
  */
 
+import { FORECAST_REQUEST, makerForecastMode, parseForecast } from './maker-forecast';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -329,7 +330,9 @@ export class LoopWorkerExecutorService {
         { maker_lease_id: makerLease.id, ...prep });
     }
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
-    const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
+    // MAKER_FORECAST_MODE=shadow: goal-run makers (never the gym) are asked for a self-forecast; LOOP_WORK.md itself is unchanged
+    const forecastOn = makerForecastMode() === 'shadow' && Boolean(run.goal_id) && run.loop_name !== 'evolution-gym';
+    const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8') + (forecastOn ? FORECAST_REQUEST : '');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     // ASG-001 (ASG_MODE, default off; docs/research/asg-001): oracle-lane makers only. off = this block never runs.
     const asg = asgMode() === 'off' ? null : asgBeforeMaker(this.db, run, makerLease, (cwd, args) => this.loopService.git(cwd, args));
@@ -374,6 +377,7 @@ export class LoopWorkerExecutorService {
     const timedOut = result.timedOut;
     const fallbackLimited = this.fallbackLimitHit(makerLease, exitStatus, result);
     this.noteOpencodeLimit(makerLease.runtime, 'maker', exitStatus, result);
+    if (forecastOn) this.loopService.patchWorkerLeaseMetadata(makerLease.id, { self_forecast: parseForecast(result.stdout || '') });
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     // §5 token accounting: what the runtime reported, never fabricated; a failure here is recorded, never changes the outcome
