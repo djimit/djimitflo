@@ -233,6 +233,8 @@ export interface EvolutionEvidence {
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
+  /** MAKER_FORECAST_MODE (shadow): the makers' own pass forecasts scored against checks + reviewer verdict; nulls at n = 0 */
+  maker_forecast?: { window_days: number; n: number; positives: number; unresolved: number; brier: number | null; base_rate: number | null; baseline_brier: number | null; skill: number | null; note: string };
   checker_family: CheckerFamilyVersionEvidence & {
     /** CHECKER_FAMILY_VERSION (default v1): the top level is this version only */
     version: string;
