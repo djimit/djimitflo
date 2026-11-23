@@ -21,15 +21,15 @@ function seed() {
   return db;
 }
 
-it('UX-7: lists loop draft PRs newest first with number, lane, age and settlement; runs without a PR are left out', () => {
+it('UX-7: lists loop draft PRs (the ones that need the operator first) with number, lane, age and settlement; runs without a PR are left out', () => {
   const r = listDraftPrs(seed(), 50, NOW);
   expect(r).toMatchObject({ total: 2, unsettled: 1 });
   expect(r.rows).toEqual([
-    { run_id: 'r2', lane: 'mutation-gap', pr_url: 'https://github.com/o/r/pull/616', pr_number: 616, age_days: 1, outcome: 'merged', survived: true, auto_merge: null,
-      settlement: 'SETTLED_SURVIVED', settlement_reason: 'survived', settlement_terminal: false, settlement_age_days: 4 },
-    // never polled 8 days after it was opened: a pipeline anomaly, not "open"
+    // never polled 8 days after it was opened: a pipeline anomaly for settlement, and still open for the operator (cockpit open_prs)
     { run_id: 'r1', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/474', pr_number: 474, age_days: 8, outcome: null, survived: null, auto_merge: null,
-      settlement: 'PIPELINE_ANOMALY', settlement_reason: 'never_polled', settlement_terminal: false, settlement_age_days: 8 },
+      settlement: 'PIPELINE_ANOMALY', settlement_reason: 'never_polled', settlement_terminal: false, settlement_age_days: 8, needs_operator: true },
+    { run_id: 'r2', lane: 'mutation-gap', pr_url: 'https://github.com/o/r/pull/616', pr_number: 616, age_days: 1, outcome: 'merged', survived: true, auto_merge: null,
+      settlement: 'SETTLED_SURVIVED', settlement_reason: 'survived', settlement_terminal: false, settlement_age_days: 4, needs_operator: false },
   ]);
   expect(listDraftPrs(seed(), 1, NOW).rows).toHaveLength(1);
   expect(listDraftPrs(seed(), 999, NOW).rows).toHaveLength(2); // clamp ≤ 100

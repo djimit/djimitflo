@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -50,6 +50,10 @@ describe('seedCommittee', () => {
 });
 
 describe('memberWeights', () => {
+  // the rows below are dated 2026-10-01 and forecastScores() looks back 60 days from the clock: pin it to NOW, or every
+  // weighted case goes empty from 2026-11-30 on
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(NOW)); });
+  afterEach(() => { vi.useRealTimers(); });
   const insForecast = (subjectId: string, member: string, p: number, asOf: string) => {
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
       VALUES (?, ?, 'self_improvement', ?, ?, 'shadow', ?, '', ?, ?)`)

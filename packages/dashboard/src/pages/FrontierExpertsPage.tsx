@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BookOpenCheck, GraduationCap, History, RefreshCw, Scale, Search, ShieldCheck, Swords, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api, type ExpertDedupeReport, type ExpertDetail, type ExpertLifecycleState, type ExpertResolution, type ExpertSummary, type ExpertSwarmRun } from '../lib/api';
-import { fmtDate } from '../lib/format';
+import { fmt, fmtDate } from '../lib/format';
 
 /** Visual tone per lifecycle state: only ACTIVE is verified-for-recommendation; everything else is tentative or closed (§36). */
 export const STATE_TONE: Record<ExpertLifecycleState, { label: string; tone: 'verified' | 'tentative' | 'blocked' | 'closed' }> = {
@@ -74,6 +74,10 @@ export function funnelCounts(funnel: Array<{ kind: string; state: ExpertLifecycl
 }
 
 const time = (value: string | null | undefined) => fmtDate(value, { fallback: '—' });
+const day = (value: string) => value.slice(0, 10); // ISO calendar day of a server timestamp
+/** Transitions that close a unit; they (and Deprecate) need an in-page confirmation with a reason. */
+const CLOSING = new Set<ExpertLifecycleState>(['REJECTED', 'REVOKED']);
+type DeprecateReason = 'stale' | 'unsupported' | 'superseded' | 'misattributed';
 const DECISION_CLASS: Record<string, string> = { VERIFIED_FOR_USE: TONE_CLASS.verified, HUMAN_REVIEW_REQUIRED: TONE_CLASS.tentative, CONTRADICTED: TONE_CLASS.blocked, INSUFFICIENT_EVIDENCE: TONE_CLASS.closed, UNVERIFIABLE: TONE_CLASS.closed };
 
 function StateBadge({ state }: { state: ExpertLifecycleState }) {
@@ -111,6 +115,10 @@ function ExpertDedupeSection() {
 export function FrontierExpertsPage() {
   const { expertId } = useParams();
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
+  const [listMeta, setListMeta] = useState<{ total: number | null; lastIngested: string | null }>({ total: null, lastIngested: null });
+  const [pending, setPending] = useState<{ label: string; run: (reason: string) => Promise<unknown>; done: string } | null>(null);
+  const [reason, setReason] = useState('');
+  const detailRef = useRef<HTMLElement>(null);
   const [filter, setFilter] = useState({ state: '', capability: '', name: '', kind: '' });
   const [funnel, setFunnel] = useState<Array<{ kind: string; state: ExpertLifecycleState; count: number }> | null>(null);
   const [detail, setDetail] = useState<ExpertDetail | null>(null);
@@ -130,6 +138,7 @@ export function FrontierExpertsPage() {
     try {
       const [list, history] = await Promise.all([api.listExperts({ ...filter, limit: 200 }), api.getExpertSwarmRuns()]);
       setExperts(list.experts);
+      setListMeta({ total: list.total ?? null, lastIngested: list.last_ingested_at ?? null });
       setFunnel(list.funnel ?? null);
       setRuns(history);
     } catch (err) { fail(err); }
@@ -140,9 +149,21 @@ export function FrontierExpertsPage() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { if (expertId) void loadDetail(expertId); else setDetail(null); }, [expertId, loadDetail]);
+  useEffect(() => { setPending(null); if (expertId) void loadDetail(expertId); else setDetail(null); }, [expertId, loadDetail]);
+  const linked = expertId && detail?.expert.id === expertId ? detail.expert : null;
+  // a deep link (/frontier-experts/:id) brings its detail into view
+  const linkedId = linked?.id;
+  useEffect(() => { if (linkedId) detailRef.current?.scrollIntoView?.({ block: 'start' }); }, [linkedId]);
 
   const counts = useMemo(() => (funnel ? funnelCounts(funnel, filter.kind) : stateCounts(experts)), [funnel, filter.kind, experts]);
+
+  const ask = (label: string, run: (why: string) => Promise<unknown>, done: string) => { setReason(''); setPending({ label, run, done }); };
+  const confirmPending = () => {
+    if (!pending || !reason.trim()) return;
+    const { run, done } = pending; const why = reason.trim();
+    setPending(null);
+    void act('transition', () => run(why), done);
+  };
 
   const act = async (label: string, work: () => Promise<unknown>, done: string) => {
     setBusy(label); setError(null); setNotice(null);
@@ -159,7 +180,8 @@ export function FrontierExpertsPage() {
     <div className="space-y-6 p-4 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold text-foreground"><GraduationCap className="h-8 w-8 text-accent-secondary" /> Frontier Experts</h1>
+          {linked && <p className="text-xs text-foreground-tertiary"><Link to="/frontier-experts" className="hover:underline">Frontier Experts</Link> · {linked.kind ?? 'expert'}</p>}
+          <h1 className="flex items-center gap-3 text-3xl font-bold text-foreground"><GraduationCap className="h-8 w-8 text-accent-secondary" /> {linked ? linked.canonical_name : 'Frontier Experts'}</h1>
           <p className="mt-2 max-w-3xl text-foreground-secondary">Evidence-backed fields of interest for the ExpertSwarm. Each area is a research field from the taxonomy, backed by the papers and repositories that work in it; no individual people are profiled. Contradictions stay visible.</p>
         </div>
         <button type="button" onClick={() => void refresh()} aria-label="Refresh experts" className="rounded-lg border border-border p-2 hover:bg-background-tertiary"><RefreshCw className="h-4 w-4" /></button>
@@ -216,6 +238,12 @@ export function FrontierExpertsPage() {
             <input value={filter.name} onChange={(event) => setFilter((current) => ({ ...current, name: event.target.value }))} placeholder="Name" className="rounded-lg border border-border bg-background px-2 py-1 text-xs" />
             <input value={filter.capability} onChange={(event) => setFilter((current) => ({ ...current, capability: event.target.value }))} placeholder="Capability id" className="rounded-lg border border-border bg-background px-2 py-1 text-xs" />
           </div>
+          <p className="mt-2 text-xs text-foreground-tertiary">
+            {listMeta.total !== null
+              ? `Showing ${fmt(experts.length)} of ${fmt(listMeta.total)} for this filter${listMeta.total > experts.length ? ' (most recently updated first; narrow the filter to see the rest)' : ''}`
+              : `Showing ${experts.length}${experts.length >= 200 ? ' (capped at 200; the total is unknown)' : ''}`}
+            {listMeta.lastIngested ? ` · last ingested ${day(listMeta.lastIngested)}` : ''}
+          </p>
           <ul className="mt-3 max-h-[32rem] divide-y divide-border overflow-auto">
             {experts.map((expert) => (
               <li key={expert.id} className={`flex flex-wrap items-center justify-between gap-2 py-2 text-xs ${detail?.expert.id === expert.id ? 'bg-background-tertiary/60' : ''}`}>
@@ -227,7 +255,7 @@ export function FrontierExpertsPage() {
           </ul>
         </section>
 
-        <section className="rounded-xl border border-border bg-background-secondary p-4">
+        <section ref={detailRef} className="scroll-mt-4 rounded-xl border border-border bg-background-secondary p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground"><BookOpenCheck className="h-4 w-4" /> Expert detail</h2>
           {!detail && <p className="mt-2 text-xs text-foreground-tertiary">Pick an expert from the registry or a resolution.</p>}
           {detail && (
@@ -280,14 +308,27 @@ export function FrontierExpertsPage() {
 
               <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
                 <ShieldCheck className="h-4 w-4 text-foreground-tertiary" />
-                {NEXT_STATES[detail.expert.lifecycle_state].map((state) => <button key={state} type="button" disabled={!!busy} onClick={() => void act('transition', () => api.transitionExpert(detail.expert.id, state), `Transition to ${state} recorded`)} className="rounded-lg border border-border px-2 py-1 hover:bg-background-tertiary">→ {STATE_TONE[state].label}</button>)}
+                {NEXT_STATES[detail.expert.lifecycle_state].map((state) => <button key={state} type="button" disabled={!!busy} onClick={() => (CLOSING.has(state)
+                  ? ask(STATE_TONE[state].label, (why) => api.transitionExpert(detail.expert.id, state, why), `Transition to ${state} recorded`)
+                  : void act('transition', () => api.transitionExpert(detail.expert.id, state), `Transition to ${state} recorded`))} className="rounded-lg border border-border px-2 py-1 hover:bg-background-tertiary">→ {STATE_TONE[state].label}</button>)}
                 {!['REJECTED', 'REVOKED'].includes(detail.expert.lifecycle_state) && (
-                  <select aria-label="Deprecate" disabled={!!busy} defaultValue="" onChange={(event) => { const reason = event.target.value as 'stale' | 'unsupported' | 'superseded' | 'misattributed'; if (reason) void act('deprecate', () => api.deprecateExpert(detail.expert.id, reason), `Expert deprecated (${reason})`); event.target.value = ''; }} className="rounded-lg border border-status-error/40 bg-background px-2 py-1 text-status-error">
+                  <select aria-label="Deprecate" disabled={!!busy} defaultValue="" onChange={(event) => { const why = event.target.value as DeprecateReason; if (why) ask(`Deprecate (${why})`, (note) => api.deprecateExpert(detail.expert.id, why, note), `Expert deprecated (${why})`); event.target.value = ''; }} className="rounded-lg border border-status-error/40 bg-background px-2 py-1 text-status-error">
                     <option value="">Deprecate…</option><option value="stale">stale</option><option value="unsupported">unsupported</option><option value="superseded">superseded</option><option value="misattributed">misattributed</option>
                   </select>
                 )}
                 <span className="text-foreground-tertiary">Checker and approver must differ; the server enforces this.</span>
               </div>
+              {pending && (
+                <form role="group" aria-label="Confirm action" onSubmit={(event) => { event.preventDefault(); confirmPending(); }} className="space-y-2 rounded-lg border border-status-error/40 bg-status-error/5 p-3">
+                  <p className="text-foreground">{pending.label}: “{detail.expert.canonical_name}”. This closes the unit for recommendation; the reason is recorded in its lifecycle.</p>
+                  <label htmlFor="expert-action-reason" className="block text-foreground-secondary">Reason</label>
+                  <textarea id="expert-action-reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={2} className="w-full rounded-lg border border-border bg-background px-2 py-1" />
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={!!busy || !reason.trim()} className="rounded-lg border border-status-error/40 px-2 py-1 text-status-error hover:bg-status-error/10 disabled:opacity-50">Confirm: {pending.label}</button>
+                    <button type="button" onClick={() => setPending(null)} className="rounded-lg border border-border px-2 py-1 hover:bg-background-tertiary">Cancel</button>
+                  </div>
+                </form>
+              )}
             </div>
           )}
         </section>

@@ -50,8 +50,10 @@ it('UX-14: states come from existing rows only (agents, social_lures, agent_mess
   const s = connectionStates(db, agents, NOW);
   expect(s.get('talker')?.state).toBe('live');
   expect(s.get('ghost')).toEqual({ state: 'dormant', reason: 'never connected; 3 invites unanswered' });
-  expect(s.get('silent')).toEqual({ state: 'enrolled', reason: 'runtime missing: no social runtime configured' });
-  expect(connectionStates(new Database(':memory:'), [{ id: 'x' }], NOW).get('x')).toEqual({ state: 'enrolled', reason: 'runtime missing: no social runtime configured' });
+  // truth audit 2026-11-12: connection state is a Commons concept — an agent without a social runtime is not "runtime missing"
+  expect(s.get('silent')).toEqual({ state: null, reason: 'factory worker — not a Commons participant' });
+  expect(connectionStates(new Database(':memory:'), [{ id: 'x' }], NOW).get('x')).toEqual({ state: null, reason: 'factory worker — not a Commons participant' });
+  expect(connectionStates(new Database(':memory:'), [{ id: 'r', metadata: { commons_resident: true } }], NOW).get('r')).toEqual({ state: 'enrolled', reason: 'runtime missing: no social runtime configured' });
 });
 
 it('UX-14: GET /api/agents adds connection_state and connection_reason; existing fields are unchanged', async () => {

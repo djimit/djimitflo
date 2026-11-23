@@ -2,7 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { quantile, wilson } from './evolution-estimators';
 import { modelPrice } from './loop-budget-service';
 import { infraFailing } from './evolution-gym-service';
-import { agentLiveness, type RegistryNode } from './agent-liveness';
+import { agentsWithLiveness } from './agent-liveness';
 import { connectionStates } from './agent-connection-state';
 
 /**
@@ -91,12 +91,10 @@ export function agentScorecards(db: Database, now = Date.now()): AgentScorecard[
   }
   // UX-14 connection state for agents that also have an agent record (fleet agents often only emit outcomes)
   const agents = all<Record<string, unknown>>(db, 'SELECT * FROM agents');
-  let registry = new Map<string, RegistryNode>();
-  try { registry = new Map((db.prepare('SELECT name, raw_json, synced_at FROM registry_agents').all() as RegistryNode[]).map((n) => [n.name, n])); } catch { /* no registry mirror */ }
-  const parsed = agents.map((a) => {
+  const parsed = agentsWithLiveness(db, agents as Array<{ id: string; metadata?: unknown }>, now).map((a) => {
     let metadata: unknown = {};
     try { metadata = JSON.parse(String(a.metadata || '{}')); } catch { /* bad row */ }
-    return { ...a, id: String(a.id), metadata, ...agentLiveness(a as never, registry, now) };
+    return { ...a, metadata };
   });
   const states = parsed.length ? connectionStates(db, parsed as never, now) : new Map();
   return [...by.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([agent, rs]) => {

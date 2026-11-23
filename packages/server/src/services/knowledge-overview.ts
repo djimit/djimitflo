@@ -21,6 +21,8 @@ export interface KnowledgeOverview {
   relevance_pause: { paused: boolean; unjudged: { pending: number; rejected: number; unit: number }; calls_avoided: number;
     mean_tokens_per_call: number | null; tokens_avoided_estimate: number | null; basis: string;
     backlog: number; states: Record<string, number>; oldest_unjudged_age_hours: number | null;
+    /** earliest paused_at still unjudged, and the newest real (non-error) discovery_relevance verdict — both null when none */
+    unjudged_since: string | null; last_verdict_at: string | null;
     rejudge: DiscoveryRejudgeConfig & { per_day: number; drain_estimate_days: number | null } };
   /** K1: per knowledge item, the maker-attributable outcomes of the runs that used it (read-only). */
   fitness: KnowledgeFitness;
@@ -115,7 +117,7 @@ export function knowledgeOverview(db: Database, now = Date.now(), env: NodeJS.Pr
   const relevance_pause = { paused: env.DISCOVERY_RELEVANCE_PAUSED === 'true', unjudged, calls_avoided, mean_tokens_per_call,
     tokens_avoided_estimate: mean_tokens_per_call === null ? null : calls_avoided * mean_tokens_per_call,
     basis: 'estimate: calls avoided × mean input+output tokens of the 7 days up to the last real discovery_relevance call',
-    backlog, states, oldest_unjudged_age_hours: oldest ? Math.round((now - Date.parse(oldest)) / 360_000) / 10 : null,
+    backlog, states, oldest_unjudged_age_hours: oldest ? Math.round((now - Date.parse(oldest)) / 360_000) / 10 : null, unjudged_since: oldest, last_verdict_at: last,
     rejudge: { ...cfg, per_day, drain_estimate_days: per_day ? Math.round((10 * backlog) / per_day) / 10 : null } };
   return {
     at: new Date(now).toISOString(), sources, relevance, recent_relevant, relevance_pause,

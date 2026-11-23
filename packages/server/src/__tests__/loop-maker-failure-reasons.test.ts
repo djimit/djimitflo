@@ -33,14 +33,14 @@ describe('failure reasons on failed leases', () => {
   });
   afterEach(() => { db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
-  it('a maker that fails its deterministic checks names the failed checks', () => {
+  it('a maker that fails its deterministic checks names the failed checks', async () => {
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
       VALUES ('r', 'doc-drift-and-small-fix-loop', 'closed', 'running', '[]', '{}', '[]', '[]', '{}', ?, ?)`).run(now, now);
     db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, worktree_path, metadata, created_at, updated_at)
       VALUES ('m', 'r', 'maker', 'opencode', 'completed', ?, '{}', ?, ?)`).run(tmp, now, now);
     fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ scripts: { 'test:changed': 'exit 3', lint: 'exit 0' } }));
-    loops.runDeterministicChecks('r', { lease_id: 'm', scripts: ['test:changed', 'lint'] });
+    await loops.runDeterministicChecks('r', { lease_id: 'm', scripts: ['test:changed', 'lint'] });
     expect(metaOf(db, 'm').failure_reason).toBe('deterministic_checks_failed:test:changed(exit=3)');
   });
 
@@ -49,7 +49,7 @@ describe('failure reasons on failed leases', () => {
     const prepared = loops.continueLoopRun(run.id, { runtime: 'mock', max_assignments: 1, max_maker_workers: 1 });
     const maker = prepared.leases.find((l) => l.role === 'maker')!;
     await loops.executeWorker(run.id, { lease_id: maker.id, timeout_ms: 10_000 });
-    loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
+    await loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
     vi.spyOn(loops.runtimeCommand, 'executeRuntimeCommand').mockResolvedValue({
       exitCode: 1, signal: null, timedOut: false,
       stdout: '{"verdict":"accepted","notes":"Test-only diff, looks fine"}',

@@ -3,6 +3,7 @@ import { Bot, Activity, XCircle, Clock } from 'lucide-react';
 import { useStore } from '../lib/store'
 import { api } from '../lib/api';
 import type { RuntimeGovernanceAgentStatus } from '../lib/api';
+import type { Agent } from '@djimitflo/shared';
 import { useAuthStore } from '../lib/auth-store';
 import { Link, useParams } from 'react-router-dom';
 import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
@@ -28,70 +29,81 @@ export function AgentsPage() {
   }, []);
   const state = agents.length ? 'loaded' : inventory;
 
+  const detail = agentId ? visibleAgents[0] : undefined;
+  const card = (agent: typeof agents[number]) => {
+    const currentTask = tasks.find((t) => t.agent_id === agent.id && t.status === 'running');
+    return (
+      <AgentCard
+        key={agent.id}
+        agentId={agent.id}
+        showGovernance={Boolean(agentId)}
+        linkToDetail={!agentId}
+        name={agent.name}
+        description={agent.description}
+        status={agent.status === 'active' && agent.liveness && agent.liveness !== 'live' ? agent.liveness : agent.status}
+        lastSeenAt={agent.last_seen_at ?? null}
+        livenessSignal={agent.liveness_signal ?? null}
+        connectionState={agent.connection_state ?? null}
+        connectionReason={agent.connection_reason ?? null}
+        telegramBot={agent.telegram_bot_name ?? null}
+        currentTask={currentTask?.title || null}
+        currentTaskId={currentTask?.id ?? null}
+        counters30d={agent.counters_30d ?? null}
+        capabilities={agent.capabilities}
+        retiredAt={agent.retired_at}
+        retirementReason={agent.retirement_reason}
+      />
+    );
+  };
+  // truth audit 2026-11-12: grouped by kind, most recent evidence first
+  const recent = [...visibleAgents].sort((a, b) => seenMs(b.last_seen_at) - seenMs(a.last_seen_at));
+  const groups = AGENT_GROUPS.map(([key, label]) => [label, recent.filter((a) => (a.agent_group ?? 'other') === key)] as const).filter(([, members]) => members.length > 0);
+
   return (
     <div className="p-8 space-y-6">
       <LoadErrorNotice failed={loadErrors} />
       {/* Header */}
       <div>
         {agentId && <Link to="/agents" className="text-accent">All agents</Link>}
-        <h1 className="text-3xl font-bold text-foreground">Agents</h1>
+        <h1 className="text-3xl font-bold text-foreground">{agentId ? detail?.name ?? 'Agent' : 'Agents'}</h1>
         <p className="text-foreground-secondary mt-2">
-          Monitor your AI agents
+          {agentId ? detail?.description ?? '' : 'Monitor your AI agents'}
         </p>
       </div>
-      
-      {/* Agent Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {visibleAgents.length === 0 ? (
-          <div className="col-span-2 bg-background-secondary border border-border rounded-lg p-12 text-center" aria-live="polite">
-            <p className="text-foreground-muted">{state === 'loading' ? 'Loading agents…'
-              : state === 'failed' ? 'Agent inventory unavailable — the agent list could not be read, so it is unknown whether any are configured.'
-              : agentId ? 'Agent not found' : 'No agents configured'}</p>
-          </div>
-        ) : (
-          visibleAgents.map((agent) => {
-            const agentTasks = tasks.filter((t) => t.agent_id === agent.id);
-            const currentTask = agentTasks.find((t) => t.status === 'running');
-            
-            return (
-              <AgentCard
-                key={agent.id}
-                agentId={agent.id}
-                showGovernance={Boolean(agentId)}
-                name={agent.name}
-                description={agent.description}
-                status={agent.status === 'active' && agent.liveness && agent.liveness !== 'live' ? agent.liveness : agent.status}
-                lastSeenAt={agent.last_seen_at ?? null}
-                connectionState={agent.connection_state ?? null}
-                connectionReason={agent.connection_reason ?? null}
-                telegramBot={agent.telegram_bot_name ?? null}
-                currentTask={currentTask?.title || null}
-                currentTaskId={currentTask?.id ?? null}
-                totalTasks={agent.total_tasks}
-                completedTasks={agent.completed_tasks}
-                failedTasks={agent.failed_tasks}
-                capabilities={agent.capabilities}
-                retiredAt={agent.retired_at}
-                retirementReason={agent.retirement_reason}
-              />
-            );
-          })
-        )}
-      </div>
 
-      {/* UX-17: runtime and fleet-agent scorecards (list view only) */}
+      {/* UX-17: runtime and fleet-agent scorecards (list view only), on top */}
       {!agentId && <ScorecardsSection />}
+
+      {visibleAgents.length === 0 ? (
+        <div className="bg-background-secondary border border-border rounded-lg p-12 text-center" aria-live="polite">
+          <p className="text-foreground-muted">{state === 'loading' ? 'Loading agents…'
+            : state === 'failed' ? 'Agent inventory unavailable — the agent list could not be read, so it is unknown whether any are configured.'
+            : agentId ? 'Agent not found' : 'No agents configured'}</p>
+        </div>
+      ) : agentId ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{visibleAgents.map(card)}</div>
+      ) : groups.map(([label, members]) => (
+        <section key={label} aria-label={label} className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">{label} ({members.length})</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{members.map(card)}</div>
+        </section>
+      ))}
     </div>
   );
 }
 
+const AGENT_GROUPS = [['factory_worker', 'Factory workers'], ['fleet_agent', 'Fleet agents'], ['commons_resident', 'Commons residents'], ['other', 'Other agents']] as const;
+const seenMs = (t: string | null | undefined) => { const v = t ? Date.parse(t) : NaN; return Number.isFinite(v) ? v : -Infinity; };
+
 interface AgentCardProps {
   agentId: string;
   showGovernance: boolean;
+  linkToDetail: boolean;
   name: string;
   description: string;
   status: string;
   lastSeenAt?: string | null;
+  livenessSignal?: string | null;
   connectionState?: string | null;
   connectionReason?: string | null;
   telegramBot?: string | null;
@@ -99,27 +111,25 @@ interface AgentCardProps {
   retirementReason?: string | null;
   currentTask: string | null;
   currentTaskId?: string | null;
-  totalTasks: number;
-  completedTasks: number;
-  failedTasks: number;
+  counters30d: NonNullable<Agent['counters_30d']> | null;
   capabilities: string[];
 }
 
 function AgentCard({
   agentId,
   showGovernance,
+  linkToDetail,
   name,
   description,
   status,
   currentTask,
   currentTaskId,
-  totalTasks,
-  completedTasks,
-  failedTasks,
+  counters30d,
   capabilities,
   retiredAt,
   retirementReason,
   lastSeenAt,
+  livenessSignal,
   connectionState,
   connectionReason,
   telegramBot,
@@ -161,7 +171,7 @@ function AgentCard({
   };
   const appearance = statusConfig[status] ?? statusConfig.offline;
   
-  const successRate = agentSuccessRate(totalTasks, completedTasks);
+  const successRate = counters30d ? agentSuccessRate(counters30d.tasks, counters30d.completed) : null;
   
   return (
     <div className="bg-background-secondary border border-border rounded-lg p-6 hover:border-accent/30 transition-colors">
@@ -172,8 +182,9 @@ function AgentCard({
             <Bot className="w-6 h-6 text-accent" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-foreground">{name}</h3>
-            <p className="text-sm text-foreground-secondary mt-1">{description}</p>
+            {/* on the detail page the H1 carries the name and description */}
+            {linkToDetail && <h3 className="text-lg font-semibold text-foreground"><Link to={`/agents/${encodeURIComponent(agentId)}`} className="hover:underline">{name}</Link></h3>}
+            {linkToDetail && <p className="text-sm text-foreground-secondary mt-1">{description}</p>}
             {telegramBot && <p className="text-xs text-foreground-secondary mt-1">Telegram <a className="underline" href={`https://t.me/${telegramBot.replace(/^@/, '')}`} target="_blank" rel="noreferrer">@{telegramBot.replace(/^@/, '')}</a></p>}
           </div>
         </div>
@@ -183,7 +194,9 @@ function AgentCard({
         </span>
       </div>
 
-      {connectionState && <p className="mb-4 text-sm text-foreground-secondary" data-testid="connection-state">Connection: <span className="font-medium text-foreground">{connectionState.replace('_', ' ')}</span>{connectionReason ? ` — ${connectionReason}` : ''}</p>}
+      <p className="mb-2 text-sm text-foreground-secondary" data-testid="liveness-signal">{livenessSignal ? `Last signal: ${livenessSignal}` : 'No activity evidence'}</p>
+      {connectionState ? <p className="mb-4 text-sm text-foreground-secondary" data-testid="connection-state">Connection: <span className="font-medium text-foreground">{connectionState.replace('_', ' ')}</span>{connectionReason ? ` — ${connectionReason}` : ''}</p>
+        : connectionReason && <p className="mb-4 text-sm text-foreground-secondary" data-testid="connection-state">Connection: not applicable — {connectionReason}</p>}
       {retiredAt && <p className="mb-4 text-sm text-foreground-secondary">Retired at {retiredAt}{retirementReason ? ` — ${retirementReason}` : ''}</p>}
       
       {/* Current Task */}
@@ -194,28 +207,31 @@ function AgentCard({
         </div>
       )}
       
-      {/* Stats — SW-01: the agents-table lifetime counters, not readiness (status/connection above) and not a windowed cohort */}
-      <div className="text-xs text-foreground-tertiary mb-2">Lifetime reported counters (agents table)</div>
-      <div className="grid grid-cols-3 gap-4 mb-4">
-        <div>
-          <div className="text-2xl font-bold text-foreground">{totalTasks}</div>
-          <div className="text-xs text-foreground-tertiary">Total</div>
+      {/* Stats — truth audit 2026-11-12: 30-day aggregates of task rows and outcomes; the agents-table lifetime columns are a frozen import and are not shown */}
+      <div className="text-xs text-foreground-tertiary mb-2">Tasks · 30 d</div>
+      {counters30d ? (
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div>
+            <div className="text-2xl font-bold text-foreground">{counters30d.tasks}</div>
+            <div className="text-xs text-foreground-tertiary">Total</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-status-completed">{counters30d.completed}</div>
+            <div className="text-xs text-foreground-tertiary">Completed</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-status-error">{counters30d.failed}</div>
+            <div className="text-xs text-foreground-tertiary">Failed</div>
+          </div>
         </div>
-        <div>
-          <div className="text-2xl font-bold text-status-completed">{completedTasks}</div>
-          <div className="text-xs text-foreground-tertiary">Completed</div>
-        </div>
-        <div>
-          <div className="text-2xl font-bold text-status-error">{failedTasks}</div>
-          <div className="text-xs text-foreground-tertiary">Failed</div>
-        </div>
-      </div>
-      
+      ) : <p className="mb-4 text-sm text-foreground-secondary">30-day counters not reported</p>}
+      {counters30d && counters30d.outcomes > 0 && <p className="mb-4 text-sm text-foreground-secondary" data-testid="agent-outcomes-30d">Outcomes · 30 d: {counters30d.outcomes} ({counters30d.outcomes_ok} ok)</p>}
+
       {/* Success Rate */}
       <div className="mb-4">
         <div className="flex items-center justify-between text-sm mb-2">
-          <span className="text-foreground-secondary">Lifetime completion</span>
-          <span data-testid="agent-success-rate" className="text-foreground font-semibold">{successRate === null ? 'insufficient — no tasks' : `${successRate} % (${completedTasks}/${totalTasks})`}</span>
+          <span className="text-foreground-secondary">Completion · 30 d</span>
+          <span data-testid="agent-success-rate" className="text-foreground font-semibold">{successRate === null ? 'insufficient — no tasks' : `${successRate} % (${counters30d?.completed}/${counters30d?.tasks})`}</span>
         </div>
         {successRate !== null && (
           <div className="w-full bg-background-elevated rounded-full h-2">
@@ -302,6 +318,9 @@ function RuntimeGovernancePanel({ agentId }: { agentId: string }) {
         <p role="status" className="mt-2 text-sm text-foreground-secondary">Loading governance status…</p>
       ) : error && !governance ? (
         <p role="alert" className="mt-2 text-sm text-status-error">Governance status unavailable: {error}</p>
+      ) : governance && !governance.baseline && !governance.quarantined && !governance.circuitBreakerTripped ? (
+        // truth audit 2026-11-12: no runtime_governance_agents row is "not monitored", not "clear / 0 violations"
+        <p className="mt-2 text-sm text-foreground-secondary" data-testid="governance-not-monitored">Runtime governance: not monitored — no governance baseline is registered for this agent.</p>
       ) : governance && (
         <>
           <div className="mt-2 space-y-1 text-sm text-foreground-secondary">

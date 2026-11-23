@@ -4,7 +4,8 @@ import { buildProvenance, type BuildProvenance } from '../utils/build-provenance
 /**
  * S3 (operator 2026-09-28): what the running server is configured with, read-only. Prod carries ~140 hand-edited flags in
  * runtime.env and nothing showed them. Only UPPER_SNAKE names are listed; anything that looks secret is masked by name
- * (KEY/TOKEN/SECRET/PASSWORD/…) or by value (credential patterns, URLs with user:pass@). Values are never editable here.
+ * (KEY/TOKEN/SECRET/PASSWORD/…, see isSecret) or by value (credential patterns, URLs with user:pass@), shown as `set` without
+ * its length. Values are never editable here.
  *
  * DF-08 (UX audit 2026-10-23): per key also where the value comes from and what it means —
  * - source: `env` (set in this process), `default` (unset; the runbook documents a comparable code default), `unset`
@@ -19,6 +20,12 @@ import { buildProvenance, type BuildProvenance } from '../utils/build-provenance
  * it differs, so a leftover runtime.env value is never shown as provenance.
  */
 const SECRET_NAME = /(^|_)(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|COOKIE|SESSION|SALT|PAT|WEBHOOK|DSN|AUTH)(_|$)/i;
+// Truth audit 2026-11-12: a secret word inside a name (HOST_TOKEN_WATCH_MODE, ATOMIC_AGENT_API_KEY_ENV) does not make a
+// mode/size/switch setting secret. Such a name is shown only when it ends in a setting suffix AND its value is a plain
+// number or word list that cannot be a credential; a name ending in the secret word (*_TOKEN, *_API_KEY, …) stays masked.
+const SETTING_SUFFIX = /_(MODE|ENV|BUDGET|ENABLED|ENABLE|DISABLED|LEVEL|STRATEGY|MS|SECONDS|SEC|MINUTES|HOURS|DAYS|TTL|TIMEOUT|INTERVAL|MAX|MIN|LIMIT|COUNT|CAP|THRESHOLD|RATE|SIZE|PORT)$/;
+const PLAIN_VALUE = /^(?:-?\d+(?:\.\d+)?|[A-Za-z][A-Za-z_-]{0,31}(?:,[A-Za-z][A-Za-z_-]{0,31})*)$/;
+const isSecret = (name: string, value: string) => SECRET_VALUE.test(value) || (SECRET_NAME.test(name) && !(SETTING_SUFFIX.test(name) && PLAIN_VALUE.test(value)));
 const SECRET_VALUE = /(?:apikey_|sk-|ghp_|github_pat_|xox[bp]-|AKIA|nvapi-)[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|:\/\/[^/\s:@]+:[^/\s@]+@|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 const SYSTEM = new Set(['PATH', 'HOME', 'HOSTNAME', 'PWD', 'SHLVL', 'TERM', 'YARN_VERSION', 'NODE_VERSION', 'OLDPWD', '_']);
 
@@ -27,7 +34,7 @@ export type ConfigArea = typeof CONFIG_AREAS[number];
 const SCHEDULER_FLAG_SET = new Set(SCHEDULER_FLAGS);
 const AREA_RULES: Array<[ConfigArea, RegExp]> = [
   ['budgets/caps', /_MAX(_|$)|_BUDGET(_|$)|_LIMIT(_|$)|_THROTTLE|_TIMEOUT_MS$|_CAP$|^RETENTION_/],
-  ['security/auth', /^(AUTH0?|OIDC|JWT|KEYCLOAK|SESSION|SECRET|CORS|CONTENT_SAFETY|HACK_DETECTOR|POLICY|RANSOMWARE|COMPLIANCE|GOVERNANCE|APPROVAL|SELF_APPROVAL|FLEET_EVENT_SIGNATURES|AUTONOMY|LOOP_AUTO_APPROVE|ORACLE_LANES_AUTO_APPROVE|LOOP_AUTO_MERGE)(_|$)|_SPAWN_TOKEN_|_ALLOWED_USERS$/],
+  ['security/auth', /^(AUTH0?|OIDC|JWT|KEYCLOAK|SESSION|SECRET|CORS|CONTENT_SAFETY|HACK_DETECTOR|POLICY|RANSOMWARE|COMPLIANCE|GOVERNANCE|APPROVAL|SELF_APPROVAL|FLEET_EVENT_SIGNATURES|AUTONOMY|LOOP_AUTO_APPROVE|ORACLE_LANES_AUTO_APPROVE|FINDING_FIX_AUTO_APPROVE|LOOP_AUTO_MERGE)(_|$)|_SPAWN_TOKEN_|_ALLOWED_USERS$/],
   ['schedulers', /_INTERVAL(_MS)?$|^SCHEDULE(D|R)_|_SCHEDULER_|_HOUR$|^(QUEUE_HYGIENE|DISK_GUARD|STALL_WATCH|OPERATOR_DIGEST|RECONCILIATION)_/],
   ['experiments', /^(DREAM|GYM|TRIAL|HOLDOUT|GENOME|EVOLUTION|LOOP_BANDIT|LOOP_EVOLVE|FITNESS|GRADED|ACE_001|STE_001|TG_001|EFFORT|CHECKER_FAMILY|CHECKER_CROSS|MEMORY_HOLDOUT|JEV_CHALLENGER|ARENA|MERGE_SURVIVAL|EXPERIMENT|OPENMYTHOS|SUBSCRIPTION_GYM|TRAINING_DATASET|VALUE_ALLOCATOR|SHIPPED_CODE|WEAK_ASSERTION|FAIL_BEFORE_PASS_AFTER|MUTATION|SPEC_GAP|NE_GENERATOR_CHECK|VALUE_ANOMALY|RESOURCE_LEDGER|OUTCOME_ATTRIBUTION|MAKER)(_|$)/],
   ['models/routing', /^(OLLAMA|LITELLM|MODEL|PANEL_FALLBACK|LLM|OPENAI|ANTHROPIC|GEMINI|NVIDIA|OPENROUTER|CLAUDE|CODEX|OPENCODE|CLINE|PI|HERMES|ATOMIC|RUNTIME|COUNCIL|SPECIALIST|CASCADE|INFERENCE|SOCIAL_COMPAT|AZURE|GOOGLE)(_|$)/],
@@ -53,6 +60,17 @@ export function parseDefault(text: string): ParsedDefault | null {
   return word ? { kind: 'string', s: word[1] } : null;
 }
 
+const MODE_WORD = /^[a-z][a-z0-9_-]*$/i;
+/** The modes a runbook default documents: `off (\`shadow\`, \`on\`)` → off, shadow, on. Null for prose or formats. */
+export function acceptedValues(text: string): string[] | null {
+  const parsed = parseDefault(text);
+  const head = parsed?.kind === 'off' ? 'off' : parsed?.kind === 'string' ? parsed.s : null;
+  const list = text.match(/^[^(]*\(((?:`[^`]+`(?:,\s*|\s*\/\s*|\s+or\s+)?)+)/)?.[1];
+  if (!head || !MODE_WORD.test(head) || !list) return null;
+  const words = [...list.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+  return words.every((w) => MODE_WORD.test(w)) ? [...new Set([head, ...words])] : null;
+}
+
 const label = (d: ParsedDefault) => (d.kind === 'off' ? 'off' : d.kind === 'empty' ? 'unset' : d.kind === 'number' ? String(d.n) : d.s);
 
 function differs(value: string, d: ParsedDefault): boolean | null {
@@ -76,6 +94,8 @@ export interface ConfigEntry {
   source: 'env' | 'default' | 'unset';
   default: string | null;
   overridden: boolean | null;
+  /** the modes the runbook documents for this flag (default first); null when it lists none */
+  accepted: string[] | null;
   takes_effect: 'restart';
   /** DJIMITFLO_COMMIT_SHA only: differs from the running build (null = no baked build commit to compare with) */
   stale?: boolean | null;
@@ -86,18 +106,19 @@ export function runtimeConfigView(env: NodeJS.ProcessEnv = process.env): { entri
   const set = Object.entries(env).filter(([name, value]) => /^[A-Z][A-Z0-9_]*$/.test(name) && !SYSTEM.has(name) && typeof value === 'string') as Array<[string, string]>;
   const registry = [...Object.keys(RUNBOOK_DEFAULTS), ...SCHEDULER_FLAGS].filter((name) => env[name] === undefined);
   const entries = [...set, ...[...new Set(registry)].map((name): [string, null] => [name, null])].map(([name, raw]): ConfigEntry => {
-    const masked = raw !== null && (SECRET_NAME.test(name) || SECRET_VALUE.test(raw));
+    const masked = raw !== null && isSecret(name, raw);
     const docText = RUNBOOK_DEFAULTS[name] ?? null;
     const parsed = docText === null ? null : parseDefault(docText);
     const entry: ConfigEntry = {
       name,
-      value: raw === null ? null : masked ? (raw ? `set (${raw.length} chars)` : 'empty') : raw.slice(0, 500),
+      value: raw === null ? null : masked ? (raw ? 'set' : 'empty') : raw.slice(0, 500),
       masked,
       group: name.split('_')[0],
       area: configArea(name),
       source: raw !== null ? 'env' : parsed ? 'default' : 'unset',
       default: parsed ? label(parsed) : docText,
       overridden: raw === null ? (parsed ? false : null) : masked || !parsed ? null : differs(raw, parsed),
+      accepted: docText === null ? null : acceptedValues(docText),
       takes_effect: 'restart',
     };
     if (name === 'DJIMITFLO_COMMIT_SHA' && raw !== null) entry.stale = build.built_commit ? !sameCommit(raw, build.built_commit) : null;

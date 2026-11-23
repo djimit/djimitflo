@@ -1,11 +1,14 @@
 import { Library } from 'lucide-react';
 import { api, type KnowledgeFitness, type KnowledgeOverview, type SkillCardsView } from '../lib/api';
 import { useResource } from '../hooks/useResource';
+import { fmt as num } from '../lib/format';
 
 const fetchKnowledge = () => api.getKnowledgeOverview();
 const fetchSkills = () => api.getSkillCards();
 
 const day = (value: string | null) => (value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—');
+/** ISO calendar day (UTC) of a server timestamp: unambiguous and independent of the browser's ICU data */
+const date = (value: string) => value.slice(0, 10);
 
 /** W5: what the knowledge pipeline brought in, per source, and whether jev judged it relevant (30 days). */
 export function KnowledgePage() {
@@ -33,12 +36,24 @@ export function KnowledgePage() {
 export function KnowledgeBody({ data }: { data: KnowledgeOverview }) {
   const { yes, uncertain, no } = data.relevance;
   const judged = yes + uncertain + no;
+  const pause = data.relevance_pause;
+  const lastVerdict = pause?.last_verdict_at ? date(pause.last_verdict_at) : null;
+  /** an empty relevance state says when the last verdict was, so "none in 30 days" never reads as "never" */
+  const none = (what: string) => (lastVerdict ? `${what} in the last 30 days (last verdict ${lastVerdict}).` : `${what} yet.`);
+  const unjudged = pause ? pause.unjudged.pending + pause.unjudged.rejected + pause.unjudged.unit : 0;
   return (
     <>
+      {pause && (pause.paused || pause.backlog > 0) && (
+        <p role="status" className="rounded-lg border border-status-warning/40 bg-status-warning/10 p-3 text-sm text-status-warning">
+          {pause.paused ? 'Relevance judging is paused (DISCOVERY_RELEVANCE_PAUSED): new discoveries are stored without a verdict.' : 'Relevance judging is running again; discoveries stored during the pause are re-judged in bounded batches.'}
+          {' '}{num(unjudged)} discoveries unjudged ({num(pause.unjudged.pending)} pending, {num(pause.unjudged.rejected)} rejected{pause.unjudged.unit ? `, ${num(pause.unjudged.unit)} units` : ''})
+          {pause.unjudged_since ? ` since ${date(pause.unjudged_since)}` : ''}{lastVerdict ? ` · last verdict ${lastVerdict}` : ''}. The relevance numbers below only cover what was judged.
+        </p>
+      )}
       <section aria-labelledby="sources">
         <h2 id="sources" className="text-lg font-semibold mb-2">Sources</h2>
         <p className="text-xs text-foreground-tertiary mb-2">
-          {judged ? `${yes} relevant, ${uncertain} uncertain, ${no} not relevant (${Math.round((100 * yes) / judged)} % relevant overall).` : 'No relevance verdicts yet.'} Sorted by relevant items: the sources worth keeping come first.
+          {judged ? `${yes} relevant, ${uncertain} uncertain, ${no} not relevant (${Math.round((100 * yes) / judged)} % relevant overall).${lastVerdict ? ` Last verdict ${lastVerdict}.` : ''}` : none('No relevance verdicts')} Sorted by relevant items: the sources worth keeping come first.
         </p>
         {data.sources.length === 0 ? <p className="text-sm text-foreground-secondary">No discoveries in the last 30 days.</p> : (
           <table className="w-full text-sm">
@@ -56,7 +71,7 @@ export function KnowledgeBody({ data }: { data: KnowledgeOverview }) {
       <section aria-labelledby="relevant" className="grid md:grid-cols-2 gap-6">
         <div>
           <h2 id="relevant" className="text-lg font-semibold mb-2">Recently judged relevant</h2>
-          {data.recent_relevant.length === 0 ? <p className="text-sm text-foreground-secondary">Nothing judged relevant yet.</p> : (
+          {data.recent_relevant.length === 0 ? <p className="text-sm text-foreground-secondary">{none('Nothing judged relevant')}</p> : (
             <ul className="space-y-1 text-sm">{data.recent_relevant.map((r) => (
               <li key={r.ref}><span className="text-foreground">{r.title}</span> <span className="text-xs text-foreground-tertiary">· {r.source} · {day(r.at)}</span></li>
             ))}</ul>
@@ -120,7 +135,7 @@ export function SkillCardsSection({ data }: { data: SkillCardsView }) {
   );
 }
 
-const STATUS_LABEL = { used_with_value: 'with value', used_no_value: 'no value', insufficient: 'insufficient', unused: 'unused' } as const;
+const STATUS_LABEL = { used_with_value: 'with value', used_no_value: 'no value', inconclusive: 'inconclusive', insufficient: 'insufficient', unused: 'unused' } as const;
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)} %`);
 
 /** K1: knowledge items credited by the maker-attributable outcomes of the runs that used them (read-only). */
@@ -130,22 +145,22 @@ export function FitnessSection({ fitness }: { fitness: KnowledgeFitness }) {
     <section aria-labelledby="fitness">
       <h2 id="fitness" className="text-lg font-semibold mb-2">Knowledge fitness</h2>
       <p className="text-xs text-foreground-tertiary mb-2">
-        {runs.in_window} runs in {fitness.window_days} days: {runs.maker_attributable} maker-attributable (baseline {pct(baseline.verified_rate)} verified), {runs.non_maker} reviewer/environment failures and {runs.unattributed} unattributed credit nobody. Fewer than {fitness.min_n} attributable uses is insufficient; decay half-life {fitness.half_life_days} days.
+        {runs.in_window} runs in {fitness.window_days} days: {runs.maker_attributable} maker-attributable (baseline {pct(baseline.verified_rate)} verified), {runs.non_maker} reviewer/environment failures and {runs.unattributed} unattributed credit nobody. Fewer than {fitness.min_n} attributable uses is insufficient. Status is decided on the 95 % Wilson interval of the verified rate over n attributable uses: with value only when its lower bound is above the baseline, no value only when its upper bound is below it, otherwise inconclusive. Decay half-life {fitness.half_life_days} days.
       </p>
       <table className="w-full text-sm mb-4">
-        <thead><tr className="text-left text-foreground-tertiary"><th>Kind</th><th>Known</th><th>With value</th><th>No value</th><th>Insufficient</th><th>Unused</th></tr></thead>
+        <thead><tr className="text-left text-foreground-tertiary"><th>Kind</th><th>Known</th><th>With value</th><th>No value</th><th>Inconclusive</th><th>Insufficient</th><th>Unused</th></tr></thead>
         <tbody>{fitness.by_kind.map((k) => (
           <tr key={k.kind} className="border-t border-border">
-            <td>{k.kind}</td><td>{k.inventory ?? '—'}</td><td className="text-status-completed">{k.used_with_value}</td><td>{k.used_no_value}</td><td>{k.insufficient}</td><td>{k.unused ?? '—'}</td>
+            <td>{k.kind}</td><td>{k.inventory ?? '—'}</td><td className="text-status-completed">{k.used_with_value}</td><td>{k.used_no_value}</td><td>{k.inconclusive ?? '—'}</td><td>{k.insufficient}</td><td>{k.unused ?? '—'}</td>
           </tr>
         ))}</tbody>
       </table>
       {fitness.top.length === 0 ? <p className="text-sm text-foreground-secondary">No knowledge item was used by a run in the window.</p> : (
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-foreground-tertiary"><th>Item</th><th>Kind</th><th>Used</th><th>Verified</th><th>Regressed</th><th>Survived 14 d</th><th>Wilson</th><th>Decayed</th><th>Status</th><th>Last</th></tr></thead>
+          <thead><tr className="text-left text-foreground-tertiary"><th>Item</th><th>Kind</th><th title="every run that used the item, including unattributed and reviewer/environment failures">Used (all runs)</th><th title="verified + maker_failure runs: the n the status is based on">n (attributable)</th><th>Verified</th><th>Regressed</th><th>Survived 14 d</th><th>Wilson</th><th>Decayed</th><th>Status</th><th>Last</th></tr></thead>
           <tbody>{fitness.top.map((i) => (
             <tr key={`${i.kind}:${i.id}`} className="border-t border-border">
-              <td title={i.id}>{i.title ?? i.id}</td><td>{i.kind}</td><td>{i.n_used}</td><td>{i.n_verified}</td><td>{i.n_regressed}</td><td>{i.n_survived_14d ?? '—'}</td>
+              <td title={i.id}>{i.title ?? i.id}</td><td>{i.kind}</td><td>{i.n_used}</td><td>{i.n_verified + i.n_regressed}</td><td>{i.n_verified}</td><td>{i.n_regressed}</td><td>{i.n_survived_14d ?? '—'}</td>
               <td>{i.wilson ? `${pct(i.wilson[0])}–${pct(i.wilson[1])}` : '—'}</td><td>{pct(i.decayed_verified_rate)}</td><td>{STATUS_LABEL[i.status]}</td><td>{day(i.last_used_at)}</td>
             </tr>
           ))}</tbody>

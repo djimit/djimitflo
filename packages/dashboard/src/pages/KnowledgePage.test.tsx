@@ -42,3 +42,33 @@ it('K1: shows knowledge fitness counts per kind and the top items; unknown stays
   }} />);
   for (const text of ['Knowledge fitness', '10 maker-attributable (baseline 40 % verified)', 'Runbook', '38 %–96 %', 'with value']) expect(html).toContain(text);
 });
+
+const pause = { paused: true, unjudged: { pending: 975, rejected: 2818, unit: 0 }, calls_avoided: 1075, mean_tokens_per_call: 900, tokens_avoided_estimate: 967500, basis: 'estimate',
+  backlog: 3793, states: { unjudged: 3793 }, oldest_unjudged_age_hours: 703.7, unjudged_since: '2026-10-14T07:20:30Z', last_verdict_at: '2026-10-14T07:20:07Z',
+  rejudge: { batch: 20, max_per_day: 200, claim_timeout_minutes: 15, max_attempts: 5, tick_minutes: 60, per_day: 200, drain_estimate_days: 19 } };
+const empty = { at: '', sources: [], relevance: { yes: 0, uncertain: 0, no: 0 }, recent_relevant: [], kb_retrieval: { hits_30d: 0, panels_30d: 0, last: null }, interest_profile: null };
+
+it('truth audit 2026-11-12: the relevance pause is shown with since when and how many discoveries are unjudged', () => {
+  const html = renderToStaticMarkup(<KnowledgeBody data={{ ...empty, relevance_pause: pause }} />);
+  for (const text of ['Relevance judging is paused', '3,793 discoveries unjudged', '975 pending', '2,818 rejected', 'since 2026-10-14', 'last verdict 2026-10-14']) expect(html).toContain(text);
+  expect(renderToStaticMarkup(<KnowledgeBody data={{ ...empty, relevance_pause: { ...pause, paused: false, backlog: 0 } }} />)).not.toContain('Relevance judging is paused');
+});
+
+it('truth audit 2026-11-12: every relevance empty state names the date of the last verdict', () => {
+  const html = renderToStaticMarkup(<KnowledgeBody data={{ ...empty, relevance_pause: pause }} />);
+  expect(html).toContain('No relevance verdicts in the last 30 days (last verdict 2026-10-14).');
+  expect(html).toContain('Nothing judged relevant in the last 30 days (last verdict 2026-10-14).');
+  expect(html).not.toContain('No relevance verdicts yet');
+  // with verdicts in the window the summary still says when the last one was
+  const judged = renderToStaticMarkup(<KnowledgeBody data={{ ...empty, relevance: { yes: 1, uncertain: 1, no: 2 }, relevance_pause: pause }} />);
+  expect(judged).toContain('Last verdict 2026-10-14.');
+});
+
+it('truth audit 2026-11-12: fitness shows inconclusive and the attributable n the status is based on', () => {
+  const html = renderToStaticMarkup(<KnowledgeBody data={{ ...empty,
+    fitness: { at: '', window_days: 90, half_life_days: 30, min_n: 5, baseline: { n: 200, verified_rate: 0.71 }, runs: { in_window: 220, maker_attributable: 200, non_maker: 10, unattributed: 10 },
+      by_kind: [{ kind: 'kb_page', inventory: 3, used_with_value: 0, used_no_value: 0, inconclusive: 1, insufficient: 0, unused: 2 }],
+      top: [{ kind: 'kb_page', id: 'a.md', title: 'Runbook', n_used: 120, n_verified: 68, n_regressed: 27, n_survived_14d: null, wilson: [0.618, 0.796], last_used_at: '2026-10-15T00:00:00Z', decayed_verified_rate: 0.7, status: 'inconclusive' }],
+      rule: 'r' } }} />);
+  for (const text of ['Inconclusive', '<td>inconclusive</td>', 'n (attributable)', '<td>95</td>', 'Used (all runs)']) expect(html).toContain(text);
+});

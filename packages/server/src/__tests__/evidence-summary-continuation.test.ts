@@ -151,3 +151,13 @@ it('labels legacy projections and uses actual decision timestamps without rewrit
   db.prepare("UPDATE approvals SET decided_at=NULL WHERE id='legacy'").run();
   expect(service.getAuditTrail('fixture')).toEqual(before);
 });
+
+it('counts the final task failure as an error when no error-level event was recorded (truth audit 2026-11-12)', () => {
+  db.prepare("UPDATE tasks SET status='failed' WHERE id='fixture'").run();
+  db.prepare("INSERT INTO execution_events(id,task_id,event_type,level,message) VALUES ('warn','fixture','stream.truncated','warning','Execution event stream truncated')").run();
+  service.captureEvidence({ task_id: 'fixture', evidence_type: EvidenceType.ERROR, severity: EvidenceSeverity.ERROR, title: 'Task execution failed', summary: 'Failed after 600042ms.', source: 'executor' });
+  expect(service.getExecutionSummary('fixture')).toMatchObject({ final_status: 'failed', error_count: 1, warning_count: 1 });
+  // an already recorded error event is not double counted
+  db.prepare("INSERT INTO execution_events(id,task_id,event_type,level,message) VALUES ('err','fixture','task.failed','error','OpenCode execution timed out')").run();
+  expect(service.getExecutionSummary('fixture')).toMatchObject({ error_count: 1 });
+});

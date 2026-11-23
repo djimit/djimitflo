@@ -43,7 +43,7 @@ import { extraRepos } from './repo-registry';
 import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { activeGatePolicyInput, currentPolicyIdentity, gatePolicyClause, policyKey, requireGatePolicyHash } from './gym-gate-policy';
-import { experimentsReport } from './experiment-registry';
+import { experimentDefs, experimentsReport } from './experiment-registry';
 import { learningLedger } from './learning-ledger';
 import { fleetSignatureEvidence } from './fleet-event-signatures';
 import { makerWarmDepsEvidence } from './maker-warm-deps';
@@ -65,6 +65,7 @@ import { gymNativeToolsEvidence } from './gym-native-tools';
 import { genomeApplyEvidence } from './genome-apply';
 import { webResearchEvidence } from './web-research';
 import { benchmarkEvidence } from './benchmark-schedule';
+import { loopStopConditionEvidence } from './loop-stop-conditions';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -85,9 +86,10 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
   { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: true }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: true },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
-  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
+  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'AUDIT_SAMPLE_AUTO_MODE', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_MERGE_SETTLEMENT_REVOKE', acting: true }, { name: 'LOOP_AUTO_MERGE_FINDING_FIX', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_DRAFT_PR_RETRY', acting: true },
   { name: 'LOOP_PR_CI_WATCH', acting: false }, { name: 'LOOP_PR_CI_WATCH_MINUTES', acting: false },
+  { name: 'SCHEDULER_STUCK_ESCALATE', acting: false },
   { name: 'WORK_ITEM_OUTCOME_SYNC', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
@@ -95,7 +97,9 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'MODEL_SELECTOR_MODE', acting: true }, { name: 'COUNCIL_JUDGE_ROUTING_MODE', acting: true }, { name: 'EVOLUTION_ESTIMATORS_ENABLED', acting: false }, { name: 'GYM_IRT_SELECTION', acting: true },
   { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
-  { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
+  { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true }, { name: 'FINDING_FIX_AUTO_APPROVE', acting: true },
+  { name: 'DATE_BOMB_LANE', acting: true },
+  { name: 'LOOP_CHECK_DIRECT_TESTS_MODE', acting: true },
   { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
   { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
   { name: 'GYM_PROD_GATES', acting: false }, { name: 'GYM_NATIVE_SKILL_TOOLS', acting: true },
@@ -140,6 +144,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
   { name: 'FLEET_EVENT_SIGNATURES', acting: true },
+  { name: 'EVE_V_TENDER_INTAKE', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
   { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
   // M2c (29-10): decision-changing flags that were read but unregistered (E-A28)
@@ -168,6 +173,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FLEET_SHELL_ENABLED', acting: true },
   { name: 'OPENCODE_BRAKE_CACHE_READ_WEIGHT', acting: true },
   { name: 'BENCHMARK_SCHEDULE_MODE', acting: false },
+  { name: 'LOOP_STOP_CONDITIONS_MODE', acting: false }, // M2: shadow evaluation of loop contracts' stop_conditions; records only, stops nothing
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -308,7 +314,17 @@ export function gateRuleDisagreements(db: Database, since: string): number | nul
   return n;
 }
 
-export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
+/** the registered start of an experiment (experiment-registry.ts) — where its evidence section counts from; `fallback` if unregistered */
+function experimentSince(id: string, fallback: string): string {
+  return experimentDefs().find((d) => d.id === id)?.started_at ?? fallback;
+}
+
+/**
+ * `opts.ope` (default false): RX-15's off-policy value (banditOpe: one 10 000-draw Monte Carlo per logged bandit decision,
+ * ~4 s of the build on prod 2026-11-12) is report-only and no page reads it, so the default build leaves it out (ope: null,
+ * the ledger note says so); GET /api/health/evolution-evidence?ope=1 computes it.
+ */
+export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30, opts: { ope?: boolean } = {}) {
   const window = Math.min(90, Math.max(1, Math.floor(days) || 30));
   const since = new Date(now - window * 86_400_000).toISOString();
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
@@ -491,8 +507,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     if (!t || t.estimator !== r.estimator || t.scope !== r.scope) { t = { estimator: r.estimator, scope: r.scope, days: [] }; estimates.push(t); }
     t.days.push({ day: r.day, value: r.value, ci_low: r.ci_low, ci_high: r.ci_high, n: r.n, status: r.status });
   }
-  // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit
-  const ope = (() => { try { return banditOpe(db, env); } catch { return null; } })();
+  // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit; only on request (opts.ope)
+  const ope = opts.ope ? (() => { try { return banditOpe(db, env); } catch { return null; } })() : null;
   // Batch-8: loop PRs whose read set (configs, lockfile, imports) changed on main between the checks and the PR
   const freshness = {
     by_state: all<{ state: string; n: number }>(`SELECT json_extract(metadata, '$.evidence_freshness.state') AS state, COUNT(*) AS n FROM loop_runs
@@ -503,7 +519,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
   const experiments = experimentsReport(db, env, now);
-  const ledger = learningLedger(db, experiments.experiments, ope);
+  const ledger = learningLedger(db, experiments.experiments, opts.ope ? ope : undefined);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -531,8 +547,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
     fail_before_pass_after: failBeforePassAfterEvidence(db, env, fisherExact, now),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
-    ace_001: ace001Evidence(db, since, env, now),
-    ste_001: ste001Evidence(db, since, env),
+    // ACE-001 / STE-001 count over the experiment's own analysis window, as the registry row does (from started_at; ace001Evidence
+    // takes max(started_at, analysis_since)), not the page window — a 30-d window cut ACE-001's first days (55/45/57/54 vs 62/50/60/58)
+    ace_001: ace001Evidence(db, experimentSince('ACE-001', since), env, now),
+    ste_001: ste001Evidence(db, experimentSince('STE-001', since), env),
     // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
     // MAKER_WARM_DEPS (nested; blocked_by_experiment while MAKER-DEPS-001 runs): leases per deps_source
     maker_deps_001: { ...makerDeps001Evidence(db, since, env), warm_deps: makerWarmDepsEvidence(db, since, env) },
@@ -614,5 +632,26 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     genome_apply: genomeApplyEvidence(db, env),
     // WEB-001 (WEB_RESEARCH_MODE): failure-driven web research — questions asked, candidates returned/accepted/rejected by reason,
     // knowledge routed (on), dream genomes citing it and their trial result; null = no job yet
-    web_research: webResearchEvidence(db, env, now) };
+    web_research: webResearchEvidence(db, env, now),
+    // M2 (LOOP_STOP_CONDITIONS_MODE, shadow): per loop would_stop / continue / unknown counts + shares of the declared stop
+    // conditions at maker dispatch, would-stop runs the daemon dispatched anyway, per-condition tallies (report only)
+    loop_stop_conditions: loopStopConditionEvidence(db, env, since) };
+}
+
+/**
+ * The evidence route's cache: one build per (db, window, ope) for EVIDENCE_CACHE_MS. A build reads ~2 500 statements and
+ * blocks the event loop for seconds; the page polls, the numbers move on the scale of minutes. `fresh` rebuilds now.
+ */
+export const EVIDENCE_CACHE_MS = 5 * 60_000;
+const evidenceCache = new WeakMap<Database, Map<string, { at: number; value: ReturnType<typeof buildEvolutionEvidence> }>>();
+export function cachedEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30,
+  opts: { ope?: boolean; fresh?: boolean } = {}): ReturnType<typeof buildEvolutionEvidence> {
+  const key = `${Math.min(90, Math.max(1, Math.floor(days) || 30))}|${opts.ope ? 1 : 0}`;
+  let byKey = evidenceCache.get(db);
+  if (!byKey) { byKey = new Map(); evidenceCache.set(db, byKey); }
+  const hit = byKey.get(key);
+  if (hit && !opts.fresh && now >= hit.at && now - hit.at < EVIDENCE_CACHE_MS) return hit.value;
+  const value = buildEvolutionEvidence(db, env, now, days, { ope: opts.ope });
+  byKey.set(key, { at: now, value });
+  return value;
 }

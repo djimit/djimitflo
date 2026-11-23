@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ObservabilityPage } from './ObservabilityPage';
 import { useAuthStore } from '../lib/auth-store';
@@ -20,6 +20,56 @@ it('shows failed metrics requests instead of an endless loading skeleton', async
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Metrics offline')));
   render(<ObservabilityPage />);
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Metrics offline');
+});
+
+// Dashboard truth audit 2026-11-12 (/observability): recommendations were labelled "Policy Decisions", every card was
+// all-time without saying so, and one 7,377-char error was listed ten times.
+describe('truthful labels and window', () => {
+  const blob = `vitest verification: The user has specified a rule which prevents you from using this tool. ${'x'.repeat(7_300)}`;
+  const body = {
+    window_days: 7, total_tasks: 4, completed_tasks: 2, failed_tasks: 1, pending_approvals: 0,
+    risk_distribution: { low: 0, medium: 0, high: 298, critical: 0 }, policy_decisions: { allow: 0, deny: 0, require_approval: 298 },
+    approval_outcomes: { approved: 687, denied: 5, expired: 12 },
+    recent_errors: [{ task_id: 'task-aaaaaaaa', message: blob, timestamp: '2026-11-11T12:17:04Z', count: 10 }],
+  };
+  let urls: string[] = [];
+  beforeEach(() => {
+    urls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => { urls.push(String(url)); return { ok: true, status: 200, json: async () => body }; }));
+  });
+
+  it('labels risk-engine recommendations as such and shows real approval outcomes', async () => {
+    render(<ObservabilityPage />);
+    expect(await screen.findByText('Risk-engine recommendations')).toBeTruthy();
+    expect(screen.queryByText('Policy Decisions')).toBeNull();
+    expect(screen.getByText('Approval outcomes')).toBeTruthy();
+    expect(screen.getByText('687')).toBeTruthy();
+    expect(screen.getByText('12')).toBeTruthy();
+  });
+
+  it('labels the window, defaults to 7 days, and refetches when it changes', async () => {
+    render(<ObservabilityPage />);
+    await screen.findByText('Risk-engine recommendations');
+    expect(urls.some((u) => u.includes('/observability/metrics?days=7'))).toBe(true);
+    expect(screen.getAllByText(/last 7 days/).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText('Window'), { target: { value: '30' } });
+    await waitFor(() => expect(urls.some((u) => u.includes('/observability/metrics?days=30'))).toBe(true));
+  });
+
+  it('notes a risk distribution dominated by one level', async () => {
+    render(<ObservabilityPage />);
+    expect(await screen.findByText(/100% of assessments are high/)).toBeTruthy();
+  });
+
+  it('shows a repeated error once with its count, clamped with an expand control', async () => {
+    render(<ObservabilityPage />);
+    const item = await screen.findByTestId('recent-error');
+    expect(screen.getAllByTestId('recent-error')).toHaveLength(1);
+    expect(item.textContent).toMatch(/×10/);
+    expect(item.textContent!.length).toBeLessThan(500);
+    fireEvent.click(screen.getByRole('button', { name: /Show full message/ }));
+    expect(screen.getByTestId('recent-error').textContent!.length).toBeGreaterThan(7_000);
+  });
 });
 
 // OBS-004 (forensic audit 2026-10-26): a stream EOF is never shown as a healthy, quiet feed.

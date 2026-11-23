@@ -11,13 +11,13 @@ import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { serviceMap } from '../services/service-map';
-import { operatorCockpit } from '../services/operator-cockpit';
+import { needsYouSnapshot, operatorCockpit } from '../services/operator-cockpit';
 import { listSchedulers } from '../services/scheduler-registry';
 import { knowledgeOverview } from '../services/knowledge-overview';
 import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
 import { runtimeHealth } from '../services/runtime-health';
 import { agentScorecards, runtimeScorecards } from '../services/scorecards';
-import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { cachedEvolutionEvidence } from '../services/evolution-evidence';
 import { provenanceDag } from '../services/provenance-dag';
 import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
@@ -135,6 +135,12 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(operatorCockpit(db));
   });
 
+  // W3: the cockpit's needs-you alone — the sidebar badge, tab title and /decisions header show the same number (read-only)
+  router.get('/needs-you', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    const { needs_you, warnings, errors } = needsYouSnapshot(db);
+    res.json({ at: new Date().toISOString(), needs_you, warnings, errors });
+  });
+
   // funnel phase 3 / E2: outcome classes (maker / reviewer / environment failure, verified) and the top credited contributors (read-only)
   router.get('/attribution', requireAuth, requirePermission('read:evidence'), (req, res) => {
     res.json(attributionSummary(db, Date.now(), Number(req.query.days) || 30));
@@ -214,9 +220,10 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json({ mode: evolutionFeedbackMode(), digest: latestEvolutionDigest(db) });
   });
 
-  // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)
+  // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only).
+  // Cached 5 min per window (`at` is the build time); ?fresh=1 rebuilds, ?ope=1 adds RX-15's off-policy value (seconds of Monte Carlo)
   router.get('/evolution-evidence', requireAuth, requirePermission('manage:config'), (req, res) => {
-    res.json(buildEvolutionEvidence(db, process.env, Date.now(), Number(req.query.days) || 30));
+    res.json(cachedEvolutionEvidence(db, process.env, Date.now(), Number(req.query.days) || 30, { ope: req.query.ope === '1', fresh: req.query.fresh === '1' }));
   });
 
   // TRAINING_DATASET_EXPORT=shadow: counts of the read-only maker fine-tune dataset (source × split × outcome, readiness); never a diff

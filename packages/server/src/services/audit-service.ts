@@ -2,6 +2,12 @@ import type { Database } from 'better-sqlite3';
 import { AuditEventCreateInput, AuditEventType, RiskLevel, type AuditQuery, type AuditEvent } from '@djimitflo/shared';
 import { ComplianceAuditService } from './compliance-audit-service';
 
+/**
+ * Service accounts are users on the reserved, never-deliverable `.invalid` TLD (RFC 2606), e.g. the DjimitSec integration
+ * principal that re-logs in every 5 min (287 of 315 audit events in 24 h, 12-11). Only used to filter the audit view.
+ */
+export const SERVICE_ACCOUNT_IDS_SQL = "SELECT id FROM users WHERE lower(email) LIKE '%.invalid'";
+
 export class AuditService {
   private readonly canonical: ComplianceAuditService;
 
@@ -60,6 +66,7 @@ export class AuditService {
     if (input.risk_level) { conditions.push('risk_level = ?'); params.push(input.risk_level); }
     if (input.from_date) { conditions.push('timestamp >= ?'); params.push(input.from_date); }
     if (input.to_date) { conditions.push('timestamp <= ?'); params.push(input.to_date); }
+    if (input.exclude_service_logins) conditions.push(`NOT (event_type = 'auth.login' AND COALESCE(user_id, '') IN (${SERVICE_ACCOUNT_IDS_SQL}))`);
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const limit = input.limit ?? 50;

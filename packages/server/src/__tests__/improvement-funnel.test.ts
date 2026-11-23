@@ -38,6 +38,37 @@ describe('ImprovementFunnelService', () => {
     expect(funnel.panel.goalRate).toBeNull();
   });
 
+  it('reports the Commons inflow state and what stuck proposals became, with and without a Commons investigation', () => {
+    expect(new ImprovementFunnelService(db).compute().commons).toMatchObject({ proposals: null, evidenceEffect: null }); // no Commons table yet: unknown, not 0
+    db.exec("CREATE TABLE agent_messages (id TEXT PRIMARY KEY, from_agent TEXT NOT NULL, to_agent TEXT NOT NULL, type TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}', timestamp TEXT NOT NULL)"); // created lazily by AgentCommunicationService in prod
+    const question = (id: string, proposal: string) => db.prepare("INSERT INTO agent_messages (id, from_agent, to_agent, type, payload_json, timestamp) VALUES (?, 'a', 'b', 'query', ?, datetime('now'))")
+      .run(id, JSON.stringify({ action: 'social.question', thread_id: `t-${id}`, params: { topic_ref: `proposal:${proposal}` } }));
+    const child = (id: string, parent: string, status: string, decision: string) => {
+      db.prepare("INSERT INTO specialist_panels (id, topic, question, status, risk_class, consensus_json) VALUES (?, 't', 'q', 'consensus_ready', 'low', ?)").run(`panel-${id}`, JSON.stringify({ decision }));
+      seed(id, 'refinement', status);
+      db.prepare('UPDATE self_improvements SET refined_from_id = ?, panel_id = ? WHERE id = ?').run(parent, `panel-${id}`, id);
+    };
+    seed('inv-1', 'reflection', 'archived'); seed('inv-2', 'reflection', 'archived'); seed('plain-1', 'reflection', 'archived'); seed('direct', 'gap_analysis', 'verified'); seed('rev-1', 'reflection', 'archived'); seed('rev-open', 'reflection', 'archived');
+    const review = (id: string, status: string) => db.prepare("INSERT INTO commons_proposal_reviews (improvement_id, thread_id, status, posted_at) VALUES (?, 't', ?, datetime('now'))").run(id, status);
+    review('rev-1', 'completed'); review('inv-1', 'completed'); review('rev-open', 'timeout'); // a review beats a thread; a timed-out review is no review
+    question('q1', 'inv-1'); question('q2', 'inv-1'); question('q3', 'inv-2'); question('q4', 'direct');
+    child('c1', 'inv-1', 'verified', 'goal'); child('c2', 'inv-2', 'archived', 'needs_more_evidence'); child('c3', 'plain-1', 'regressed', 'goal'); child('c4', 'rev-1', 'archived', 'needs_more_evidence');
+    const env = process.env.REFLECTION_PROPOSALS_MAX_PER_DAY;
+    process.env.REFLECTION_PROPOSALS_MAX_PER_DAY = '0';
+    try {
+      const { commons, unavailable } = new ImprovementFunnelService(db).compute();
+      expect(Object.keys(unavailable).filter((k) => k.startsWith('commons'))).toEqual([]);
+      expect(commons.inflow).toEqual({ cap: 0, state: 'disabled' });
+      expect(commons).toMatchObject({ proposals: 0, verified: 0 });
+      // 'direct' reached a goal itself, so it is in neither arm; one proposal with two threads counts once
+      expect(commons.evidenceEffect).toEqual([
+        { arm: 'commons_review', stuck: 2, refined: 2, decided: 1, verified: 1, regressed: 0, decidedRate: null },
+        { arm: 'investigated', stuck: 1, refined: 1, decided: 0, verified: 0, regressed: 0, decidedRate: null },
+        { arm: 'not_investigated', stuck: 2, refined: 1, decided: 1, verified: 0, regressed: 1, decidedRate: null },
+      ]);
+    } finally { if (env === undefined) delete process.env.REFLECTION_PROPOSALS_MAX_PER_DAY; else process.env.REFLECTION_PROPOSALS_MAX_PER_DAY = env; }
+  });
+
   it('reports the yield KPIs and zombie counters', () => {
     const now = new Date().toISOString();
     const stamp = (id: string) => db.prepare('UPDATE self_improvements SET updated_at = ?, created_at = ? WHERE id = ?').run(now, new Date(Date.now() - 4 * 3_600_000).toISOString(), id);

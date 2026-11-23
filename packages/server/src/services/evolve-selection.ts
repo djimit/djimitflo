@@ -108,9 +108,10 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
     for (const r of ranked) {
       const meta = r.makerLeaseId === winner.makerLeaseId
         ? `json_remove(json_set(metadata, '$.evolve', json(?)), '$.superseded_by_maker_lease_id', '$.superseded_at')`
-        : `json_set(metadata, '$.evolve', json(?), '$.superseded_by_maker_lease_id', '${winner.makerLeaseId}', '$.superseded_at', '${now}')`;
+        : `json_set(metadata, '$.evolve', json(?), '$.superseded_by_maker_lease_id', ?, '$.superseded_at', ?)`;
+      const superseded = r.makerLeaseId === winner.makerLeaseId ? [] : [winner.makerLeaseId, now];
       db.prepare(`UPDATE worker_leases SET metadata = ${meta}, updated_at = ? WHERE id = ?`)
-        .run(JSON.stringify({ rank: r.rank, species: r.species, reason: reasonOf(r) }), now, r.makerLeaseId);
+        .run(JSON.stringify({ rank: r.rank, species: r.species, reason: reasonOf(r) }), ...superseded, now, r.makerLeaseId);
       if (r.makerLeaseId !== winner.makerLeaseId) {
         db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
           AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, ...cancelLeaseBind('maker_lost_evolve_contest', now), runId, r.makerLeaseId);

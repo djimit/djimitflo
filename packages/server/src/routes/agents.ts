@@ -3,8 +3,8 @@
  */
 
 import { rateLimit } from 'express-rate-limit';
-import { agentLiveness, type RegistryNode } from '../services/agent-liveness';
-import { connectionStates } from '../services/agent-connection-state';
+import { agentCounters30d, agentsWithLiveness } from '../services/agent-liveness';
+import { agentGroup, connectionStates } from '../services/agent-connection-state';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
@@ -25,16 +25,20 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/agents - List all agents
   router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
-      const agents = db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all();
-      let registry = new Map<string, RegistryNode>();
-      try { registry = new Map((db.prepare('SELECT name, raw_json, synced_at FROM registry_agents').all() as RegistryNode[]).map((n) => [n.name, n])); } catch { /* no registry mirror */ }
-
-      const parsed = agents.map((agent: any) => ({
-        ...agent,
-        capabilities: JSON.parse(agent.capabilities || '[]'),
-        metadata: JSON.parse(agent.metadata || '{}'),
-        ...agentLiveness(agent, registry),
-      }));
+      const agents = db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all() as any[];
+      // truth audit 2026-11-12: liveness from evidence (outcomes, tasks, host components) and 30-day counters from
+      // task rows; the stored lifetime columns stay as they are (additive fields)
+      const counters = agentCounters30d(db);
+      const parsed = agentsWithLiveness(db, agents).map((agent: any) => {
+        const metadata = JSON.parse(agent.metadata || '{}');
+        return {
+          ...agent,
+          capabilities: JSON.parse(agent.capabilities || '[]'),
+          metadata,
+          agent_group: agentGroup({ agent_type: agent.agent_type, metadata }),
+          counters_30d: counters.get(agent.id) ?? { window_days: 30, tasks: 0, completed: 0, failed: 0, outcomes: 0, outcomes_ok: 0 },
+        };
+      });
       // UX-14: connection state + reason per agent (additive fields)
       const states = connectionStates(db, parsed);
       res.json({ agents: parsed.map((a: any) => ({ ...a, connection_state: states.get(a.id)?.state ?? null, connection_reason: states.get(a.id)?.reason ?? null })) });

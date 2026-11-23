@@ -36,8 +36,6 @@ COPY packages/agent-catalog/package.json packages/agent-catalog/
 COPY packages/agent-catalog/tsconfig.json packages/agent-catalog/
 COPY packages/mcp-server/package.json packages/mcp-server/
 COPY packages/mcp-server/tsconfig.json packages/mcp-server/
-COPY packages/ransomware-module/package.json packages/ransomware-module/
-COPY packages/ransomware-module/tsconfig.json packages/ransomware-module/
 
 # Install ALL dependencies (including dev) for building — strictly from package-lock.json, so the lockfile hash in the
 # build receipt (scripts/deploy-vps.sh) describes what was built; a lock out of sync with package.json fails the build
@@ -52,7 +50,6 @@ COPY packages/dashboard/vite.config.ts packages/dashboard/vite.config.ts
 COPY packages/telegram/src packages/telegram/src
 COPY packages/agent-catalog/src packages/agent-catalog/src
 COPY packages/mcp-server/src packages/mcp-server/src
-COPY packages/ransomware-module/src packages/ransomware-module/src
 
 # Build all workspaces
 RUN npm run build
@@ -74,7 +71,7 @@ RUN apt-get update && \
 # gh CLI: djimitflo's own PR review service shells out to it for PR
 # comments and Check Runs (see GithubPrReviewService). Static .deb, no
 # third-party apt repo needed; pinned like the other global installs below.
-ARG GH_CLI_VERSION=2.102.1
+ARG GH_CLI_VERSION=2.105.0
 RUN ARCH="$(dpkg --print-architecture)" && \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/gh.deb "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${ARCH}.deb" && \
     dpkg -i /tmp/gh.deb && \
@@ -136,6 +133,8 @@ COPY --from=builder /build/packages/agent-catalog/dist packages/agent-catalog/di
 COPY packages/agent-catalog/src/schema packages/agent-catalog/dist/schema
 COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 COPY specs specs
+# /compliance (SDD Assurance) scans openspec/changes relative to dist; without it prod scored only the old specs/ (12-11)
+COPY openspec/changes openspec/changes
 # ExplainerCriticService reads packages/server/corpus/explainer.corpus.jsonl relative to dist; without it every explainer task fails with ENOENT.
 COPY packages/server/corpus packages/server/corpus
 # NE_GENERATOR_CHECK_MODE reads the negative-evidence registry relative to dist (packages/server/dist/services → /app/docs)
@@ -182,6 +181,8 @@ ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 # Baked-at-build provenance so /health can distinguish the running revision from
 # the built artifact instead of trusting a runtime env that may be stale.
 ENV DJIMITFLO_BUILD_COMMIT=$VCS_REF
+# read by holdout-freeze, OpenMythos receipts and skill-artifact evolution (were silently null in prod)
+ENV DJIMITFLO_BUILD_SHA=$VCS_REF
 ENV DJIMITFLO_BUILD_TIME=$BUILD_TIME
 ENV DJIMITFLO_BUILD_SOURCE=$BUILD_SOURCE
 # sha256 of the package-lock.json the image was built from; deploy-vps.sh checks it against the build receipt

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
-import { markRun } from './scheduler-registry';
+import { markRun, markTick } from './scheduler-registry';
 import { SENSITIVE_SERVICE } from './gym-task-miner';
 
 /**
@@ -18,7 +18,9 @@ import { SENSITIVE_SERVICE } from './gym-task-miner';
  *   shadow — the scan runs and a `finding_fix_candidates` judgments row records the counts, the top ids and the proposals
  *            the lane would make. No self_improvements row is written, so nothing can reach a maker;
  *   on     — proposals via generateFromGroundedGap within FINDING_FIX_MAX_PER_DAY (default 2) and 1 in flight per repo.
- *            Normal risk like the dead-code lane: the panel stays, never auto-approved, the maker approval and merge are human.
+ *            Normal risk like the dead-code lane: the panel stays; the maker approval is human unless FINDING_FIX_AUTO_APPROVE=on
+ *            (autonomy-shadow-service.ts findingFixAutoApproveScope: autonomy:finding-fix-v1 on the finding file, <= 40 diff lines);
+ *            the merge is human.
  * Every finding-fix run gets the in-code check `test:finding-fix` (Djimitflo's copy of the gate, cwd = the worktree);
  * a missing gate, scanner or input FAILS it (never skipped).
  * TODO(G2.2): the security-review-commons scanner as a "no new security finding" regression gate — it is not in the
@@ -105,7 +107,8 @@ export class FindingFixSourceService {
 
   start(intervalMs = 12 * 3600_000): void {
     if (this.timer || findingFixMode() === 'off') return;
-    const run = () => { markRun('finding_fix_lane'); try { const r = this.run(); if (r.created) console.log(`🔧 finding-fix lane: ${r.created} proposal(s) created`); } catch (err) { console.warn('Finding-fix lane failed:', err instanceof Error ? err.message : String(err)); } };
+    // D-S7-1: markTick records the attempt, markRun the outcome after the work (with its error)
+    const run = () => { markTick('finding_fix_lane'); try { const r = this.run(); markRun('finding_fix_lane'); if (r.created) console.log(`🔧 finding-fix lane: ${r.created} proposal(s) created`); } catch (err) { markRun('finding_fix_lane', err); console.warn('Finding-fix lane failed:', err instanceof Error ? err.message : String(err)); } };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 150_000).unref?.();
   }

@@ -29,11 +29,18 @@ export interface Agent extends Timestamps {
   last_active_at: string | null;
   retired_at?: string | null;
   retirement_reason?: string | null;
-  /** Derived by GET /api/agents (plan I0): recent activity or an ONLINE registry node; `status` itself never decays. */
+  /** Derived by GET /api/agents (agent-liveness.ts): heartbeat, activity, outcome or task < 24 h, a running host component or an ONLINE registry node; `status` itself never decays. */
   liveness?: 'live' | 'stale' | 'unknown';
   last_seen_at?: string | null;
+  /** The evidence behind liveness, e.g. "outcome 5 h ago" or "host component running: user:hermes-gateway on workstation". */
+  liveness_signal?: string | null;
+  /** factory worker (loop runtime/role), fleet agent (typed host agent) or Commons resident */
+  agent_group?: 'factory_worker' | 'fleet_agent' | 'commons_resident';
+  /** 30-day aggregates from task rows and agent outcomes; the lifetime columns above are a frozen import, not shown. */
+  counters_30d?: { window_days: 30; tasks: number; completed: number; failed: number; outcomes: number; outcomes_ok: number };
   /** UX-14: where the agent is between 'registered' and 'connected and talking', with the evidence for it. */
   connection_state?: 'enrolled' | 'token_issued' | 'first_heartbeat' | 'first_reply' | 'live' | 'lapsed' | 'dormant' | 'retired' | null;
+  /** with connection_state null: why it does not apply ("factory worker — not a Commons participant") */
   connection_reason?: string | null;
   /** Public Telegram handle of the agent's bot (no token), set via PATCH /api/agents/:id/telegram. */
   telegram_bot_name?: string | null;

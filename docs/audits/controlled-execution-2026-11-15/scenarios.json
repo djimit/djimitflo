@@ -1,0 +1,219 @@
+{
+  "S1": {
+    "title": "Normal entry -> real start -> stored result -> independent check -> cost row -> dashboard projection",
+    "environment": {
+      "host": "operator MacBook (darwin), isolated git worktree on branch audit/controlled-execution-2026-11-15",
+      "node": "v22.23.2",
+      "test_runner": "vitest 4.1.12 (packages/server)",
+      "server": "in-process: real createRoutes route factory + AuthService (bootstrap admin, POST /api/auth/login JWT) + ExecutionEngine (MockExecutor) + errorHandler, bound to 127.0.0.1:<ephemeral>",
+      "database": "in-memory SQLite, full schema + runMigrations, one DB per test file (as in production: one process, one DB)",
+      "runtimes": "mock only: loop maker/checker = built-in deterministic mock commands (process.execPath -e), engine = MockExecutor; no opencode/claude/codex/atomic started",
+      "network": "global fetch wrapped: any non-loopback request refused and recorded; every scenario asserts outbound == []",
+      "production": "not touched (no reads, no writes)"
+    },
+    "commit": "90b68b250717b3d46bb312c53545c4a767f5bb13",
+    "configuration": {
+      "test process env (not runtime.env, no prod flags)": {
+        "SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED": "true",
+        "LOOP_DAEMON_MAKER_RUNTIME": "mock",
+        "LOOP_DAEMON_REPOSITORY_PATH": "<tmp fixture git repo; test/lint/type-check scripts exit 0>",
+        "LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED": "true",
+        "LOOP_WORKTREE_ROOT": "<tmp>",
+        "LOOP_EVIDENCE_ROOT": "<tmp>",
+        "LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED": "true (S1-A control only)",
+        "AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD": "scenario admin",
+        "NODE_ENV": "test (vitest config)"
+      }
+    },
+    "entry": "Leg A (chain C01, verified work): POST /api/goals {risk_class low, metadata.source self-improvement} -> LoopDaemon.tick() (the scheduler the autonomous profile starts at src/index.ts:140, same LoopDaemon + LoopService classes) -> objective loop -> maker lease (mock) -> deterministic checks -> automated checker lease -> verifyLoopRun -> llm_model_calls. Leg B (engine): POST /api/tasks -> POST /api/tasks/:id/execute {executor: mock} -> ExecutionEngine.",
+    "expected_observations": [
+      "goal picked up by the tick without any manual call or DB edit; maker lease started (started_at) and its runtime exited 0",
+      "result stored (maker stdout evidence file)",
+      "independent check distinct from the executor: deterministic checks in the maker worktree + a separate checker lease with a verdict",
+      "cost accounting: a ledger row per worker call; mock reports no price -> cost NULL / basis unknown (never 0); tokens as reported",
+      "engine leg: task reaches 'running' in the ExecutionEngine, then 'completed', with events",
+      "dashboard projection (GET /api/goals/:id, GET /api/loops/runs/:id) shows the run's real outcome"
+    ],
+    "actual_observations": {
+      "S1-A chain": "goal created 'created' (201) -> one tick -> loop run with 1 finding -> maker lease runtime mock status completed, started_at set, exit_status 0, stdout evidence contains '[mock-worker] starting' -> deterministic_checks_completed:info (tests_lint_typecheck:pass) -> checker lease mock completed verdict 'accepted' -> 12 gates: 11 pass + security_checker_verdict skipped ('Run is not high-risk'), 0 fail/unknown; loop_verified event 'Verification status: ready_for_human_merge; 0 gate(s) incomplete or failed'. outbound = [].",
+      "S1-A cost": "llm_model_calls: checker row (tokens_in 1, tokens_out 2, list_price_cost NULL, marginal_cost NULL, cost_basis 'unknown', status ok) and maker row (tokens_in 3, tokens_out NULL, costs NULL, cost_basis 'unknown', status 'verified'). The maker lease recorded runtime_usage {prompt_tokens 1, completion_tokens 2, total_tokens 3}.",
+      "S1-A projection": "GET /api/goals/:id -> status 'failed'; GET /api/loops/runs/:id -> status 'blocked' — for the same run whose verification reports 0 failed gates and whose ledger row says 'verified'.",
+      "S1-A control (objective contains 'auth' -> high-risk, security checker dispatched)": "maker + checker + security_checker leases completed/accepted, all 12 gates pass, goal 'completed', run 'completed' — the strict completion path is reachable on the same entry.",
+      "S1-A engine leg on the loop path": "no lease carries execution_task_id and no tasks row 'loop-worker-*' exists: runtime 'mock' bypasses the ExecutionEngine on the loop path (loop-worker-executor-service.ts:344 executeMockWorker vs executeViaEngine for every other runtime). The engine leg is therefore proven separately (S1-B), not inside the C01 chain.",
+      "S1-B": "POST /api/tasks 201 -> /execute 200 'started' -> GET /api/tasks/:id statuses observed ['running', 'completed'], started_at + completed_at set, execution_time_ms ~7000, 13 events, evidence rows 'Execution admitted to queue (allow)', 'Execution admission revalidated after capacity wait', 'Task completed successfully'. Cost: tasks.token_usage 1500 (MockExecutor's fixed figure); no llm_model_calls row for an engine task (the B29 ledger covers loop worker calls only). outbound = []."
+    },
+    "evidence_level": "E3",
+    "evidence_level_note": "Local server surface (real route factory, auth, engine) + the production scheduler class, mock executor. Not E4: no real runtime (mandate). The C01 chain and the engine leg are each E3, but not in one chain: with runtime mock the loop never enters the ExecutionEngine.",
+    "evidence_reference": [
+      "packages/server/src/__tests__/scenarios/s01-normal-entry.test.ts > 'S1-A chain: POST /api/goals → LoopDaemon.tick → mock maker started + result stored → checks + checker → ledger rows' (PASS)",
+      "… > 'S1-A control: the same entry reaches goal \"completed\" when the run is high-risk and the security checker is dispatched' (PASS)",
+      "… > 'S1-A engine leg: on the loop path the mock maker never becomes an ExecutionEngine task (no execution_task_id, no tasks row)' (PASS, observation)",
+      "… > 'S1-B engine leg: POST /api/tasks + /execute {executor:mock} → engine task running → completed, events + projection' (PASS)",
+      "… > 'FAIL D-S1-1 projection: …' (it.fails; red under SCENARIO_STRICT=1)",
+      "… > 'FAIL D-S1-2 cost: …' (it.fails; red under SCENARIO_STRICT=1)"
+    ],
+    "rerun_command": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s01-normal-entry.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+    "outcome": "FAIL",
+    "outcome_reason": "Entry, real start, stored result, independent check and cost row are all observed (PASS on those criteria), but the dashboard projection is wrong for the default (non-high-risk) case and the maker cost row misrecords the token split.",
+    "defect": [
+      {
+        "id": "D-S1-1",
+        "severity": "medium",
+        "kind": "projection / status semantics",
+        "what": "A daemon run whose verification has 0 failed or unknown gates (only security_checker_verdict 'skipped' because the run is not high-risk) is written as goal 'failed' and loop run 'blocked'; the loop_verified event says ready_for_human_merge and the maker ledger row says 'verified'. No draft PR is opened for it (openForRun only runs under allGatesPass). For the objective loop this holds for every non-high-risk run, since the security gate is always 'skipped' when !highRisk (loop-verification-service.ts:142-150).",
+        "where": "packages/server/src/services/loop-daemon.ts:945 (allGatesPass = every(gatePassesStrict)), :1055-1056 (goalStatus 'failed' / runStatus 'blocked'); the strict rule is a recorded operator decision (loop-daemon-checker-dispatch.test.ts 'P0-8 … completion unchanged').",
+        "smallest_fix": "Keep the strict completion rule but stop labelling the no-failure case as a failure: in loop-daemon.ts:1055-1056 use goal 'blocked' + run 'ready_for_human_merge' (or a metadata reason 'awaiting_security_review') when allGatesPassed(gates) is true and only the strict rule fails; 'failed'/'blocked' only when a gate is fail/unknown."
+      },
+      {
+        "id": "D-S1-2",
+        "severity": "medium",
+        "kind": "cost accounting (chain C12)",
+        "what": "The maker's llm_model_calls row records tokens_in = total (3) and tokens_out = NULL although the lease recorded prompt_tokens 1 / completion_tokens 2. The checker row for the identical usage records (1, 2). The daemon passes the lease's runtime_usage (prompt_/completion_ keys, as LoopService.extractRuntimeUsage returns them for every runtime) to recordMakerCall, and recordWorkerCall only reads input_tokens/output_tokens, so it falls back to 'total only'. Likely affects every maker row in production (not verified here: local-only mandate).",
+        "where": "packages/server/src/services/model-call-ledger.ts:42-44 (reads input_tokens/output_tokens only); packages/server/src/services/loop-daemon.ts:990/1016 (meta = lease runtime_usage passed unmapped); contrast loop-worker-executor-service.ts:578-580 (checker maps prompt->input, completion->output).",
+        "smallest_fix": "In recordWorkerCall read `usage.input_tokens ?? usage.prompt_tokens` and `usage.output_tokens ?? usage.completion_tokens` (one line each), or map in loop-daemon.ts:990 as the checker does."
+      }
+    ],
+    "notes": [
+      "The mock checker's verdict is a constant 'accepted' (LoopService.buildMockCheckerCommand); the independent evidence in this chain is the deterministic checks run in the maker's worktree, plus the fact that the checker is a separate lease/process. A real independent reviewer is E4 (BLOCKED by mandate).",
+      "Engine tasks have no llm_model_calls row; their only cost field is tasks.token_usage (recorded as gap, not scored as a failure of S1)."
+    ]
+  },
+  "S2": {
+    "title": "Prepared-but-not-started work stays visible as not started and is never shown as success",
+    "environment": {
+      "host": "operator MacBook (darwin), isolated git worktree on branch audit/controlled-execution-2026-11-15",
+      "node": "v22.23.2",
+      "test_runner": "vitest 4.1.12 (packages/server)",
+      "server": "in-process: real createRoutes route factory + AuthService (bootstrap admin, POST /api/auth/login JWT) + ExecutionEngine (MockExecutor) + errorHandler, bound to 127.0.0.1:<ephemeral>",
+      "database": "in-memory SQLite, full schema + runMigrations, one DB per test file (as in production: one process, one DB)",
+      "runtimes": "mock only: loop maker/checker = built-in deterministic mock commands (process.execPath -e), engine = MockExecutor; no opencode/claude/codex/atomic started",
+      "network": "global fetch wrapped: any non-loopback request refused and recorded; every scenario asserts outbound == []",
+      "production": "not touched (no reads, no writes)"
+    },
+    "commit": "90b68b250717b3d46bb312c53545c4a767f5bb13",
+    "configuration": {
+      "test process env": {
+        "LOOP_WORKTREE_ROOT": "<tmp>",
+        "LOOP_EVIDENCE_ROOT": "<tmp>",
+        "AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD": "scenario admin"
+      },
+      "fixtures": "two tmp git repos: one with a README TODO (run gets a finding, stays 'planning'), one clean (run is 'completed' no_change_required at start)"
+    },
+    "entry": "a) POST /api/loops/start + POST /api/swarms/spawns/root {runtime mock, role maker, depth_budget 0}; b) POST /api/tasks {risk_level high} + POST /api/tasks/:id/execute {executor mock}; c) POST /api/work-items/integrations/import + POST /api/swarms/scheduler/tick {plan_triaged, prepare_planned, runtime mock}. Nothing executes the prepared work afterwards.",
+    "expected_observations": [
+      "prepared lease/task stays 'prepared'/'awaiting_approval' with no started_at",
+      "no projection the dashboard reads (spawn status, loop run, loop run list, task, task list, needs-you, cockpit, mission control) reports it or its run as completed/succeeded/done/verified",
+      "approval-held work is visible to the operator (needs-you)"
+    ],
+    "actual_observations": {
+      "S2-a (open run)": "run 'planning'; root lease 'prepared', started_at null; GET /api/swarms/spawns/:id/status -> 'prepared'; mission control mentions the lease/run only with 'prepared'; loop run list 'planning'; cockpit / needs-you do not mention it. No success status anywhere.",
+      "S2-a (terminal run)": "POST /api/swarms/spawns/root is accepted (201) for a loop run that is already 'completed' (no_change_required); the root lease is 'prepared' (never started) but GET /api/loops/runs/:id and GET /api/loops/runs keep showing the run as 'completed'.",
+      "S2-b": "execute -> 200 'awaiting_approval' ('Task is awaiting approval before execution'); GET /api/tasks/:id 'awaiting_approval', started_at null, completed_at null; task list 'awaiting_approval'; one pending approval; GET /api/health/needs-you counts approvals 1 (needs-you is a count projection, it carries no ids). No success status anywhere.",
+      "S2-c": "work item 'leased'; maker (mock) + checker (manual) leases 'prepared'; mission control integration_spine: work_item 'leased', leases 'prepared', next_safe_action 'Run worker-pool scheduler'; production_pilot metrics total_runs 1, completed_runs 0, success_rate 0. But GET /api/loops/runs/:id reports the run as 'running' while none of its leases has started."
+    },
+    "evidence_level": "E3",
+    "evidence_reference": [
+      "packages/server/src/__tests__/scenarios/s02-prepared-not-started.test.ts > 'S2-a prepared spawn root on an open (planning) run: lease stays prepared in every projection, never success' (PASS)",
+      "… > 'S2-b task held by the approval gate: awaiting_approval, not started, visible in needs-you, never success' (PASS)",
+      "… > 'S2-c work item prepared by the scheduler tick: leases prepared, mission control shows no completed/successful run' (PASS)",
+      "… > 'FAIL D-S2-1 …' and 'FAIL D-S2-2 …' (it.fails; red under SCENARIO_STRICT=1)"
+    ],
+    "rerun_command": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s02-prepared-not-started.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+    "outcome": "FAIL",
+    "outcome_reason": "The three main cases hold (never shown as success, not started is visible at lease/task level), but a prepared root on a terminal run is projected as 'completed' (D-S2-1), and a tick-prepared run is projected as 'running' with nothing started (D-S2-2).",
+    "defect": [
+      {
+        "id": "D-S2-1",
+        "severity": "low-medium",
+        "kind": "projection / missing state guard",
+        "what": "createRoot/prepareNestedLease accept a loop run in a terminal status ('completed') and attach a prepared, never-started lease to it; the run stays 'completed', so the run list and run detail show prepared work under a success status.",
+        "where": "packages/server/src/services/nested-spawn-service.ts:168 (only assertOperatorNotPaused), packages/server/src/services/loop-service.ts:1895-1896 (prepareNestedLease: no status check)",
+        "smallest_fix": "In prepareNestedLease (loop-service.ts:1895) throw e.g. 'SPAWN_LOOP_RUN_TERMINAL' when run.status is completed/cancelled/failed, mapped to 409 in routes/spawns.ts mapSpawnError."
+      },
+      {
+        "id": "D-S2-2",
+        "severity": "low",
+        "kind": "projection / status semantics",
+        "what": "continueLoopRun sets loop_runs.status 'running' when it only prepares leases; the run is projected as running although no worker has started (the lease-level views and mission control's next_safe_action are correct).",
+        "where": "packages/server/src/services/loop-lifecycle-service.ts:134-135",
+        "smallest_fix": "Set the run to a not-started status at preparation (e.g. keep 'planning' or add 'prepared') and move it to 'running' where the first lease is marked running (loop-worker-executor-service.ts:274 updateWorkerLeaseStatus(…, 'running')); or derive it in the run projection when no lease has started_at."
+      }
+    ]
+  },
+  "S7": {
+    "title": "A scheduled task is demonstrably triggered and processed; a stuck scheduler becomes visible",
+    "environment": {
+      "host": "operator MacBook (darwin), isolated git worktree on branch audit/controlled-execution-2026-11-15",
+      "node": "v22.23.2",
+      "test_runner": "vitest 4.1.12 (packages/server)",
+      "server": "in-process: real createRoutes route factory + AuthService (bootstrap admin, POST /api/auth/login JWT) + ExecutionEngine (MockExecutor) + errorHandler, bound to 127.0.0.1:<ephemeral>",
+      "database": "in-memory SQLite, full schema + runMigrations, one DB per test file (as in production: one process, one DB)",
+      "runtimes": "mock only: loop maker/checker = built-in deterministic mock commands (process.execPath -e), engine = MockExecutor; no opencode/claude/codex/atomic started",
+      "network": "global fetch wrapped: any non-loopback request refused and recorded; every scenario asserts outbound == []",
+      "production": "not touched (no reads, no writes)"
+    },
+    "commit": "90b68b250717b3d46bb312c53545c4a767f5bb13",
+    "configuration": {
+      "test process env": {
+        "COMPLIANCE_REPORT_SCHEDULER_ENABLED": "true",
+        "COMPLIANCE_REPORT_INTERVAL_HOURS": "0.0002 (720 ms)",
+        "COMPLIANCE_REPORT_TYPE": "custom",
+        "SCHEDULER_SELF_HEAL_MODE": "unset (default shadow)"
+      },
+      "arming": "index.ts:309-311 verbatim: registerRestart('compliance_report', stop+start) + noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', sched.start(), intervalHours*3_600_000); resetSchedulers(now) per test = a fresh boot of the in-memory registry",
+      "watchdog": "startSchedulerWatchdog(db, 200 ms) — the product's start function, shadow mode",
+      "fault injection (scheduler's own seams only)": "stuck = sched.stop() (timer no longer fires); failing work = the ComplianceReportScheduler constructor's generator parameter with a generateReport that throws"
+    },
+    "entry": "the scheduler's own start function and timer (ComplianceReportScheduler.start -> guardTick('compliance_report', tick) on setInterval + boot catch-up); observed via GET /api/health/schedulers, GET /api/health/cockpit, GET /api/health/stalls, GET /api/health/needs-you and compliance_reports rows",
+    "expected_observations": [
+      "boot tick and at least one timer tick each write a compliance_reports row; registry status 'executing' with advancing last_run",
+      "a scheduler whose timer stops is shown 'armed_not_ticking' (health BREACHED) once 2x interval has passed since its last tick; the self-heal watchdog diagnoses it and, per its contract ('shadow diagnoses + escalates'), it reaches the stall watch / needs-you",
+      "a scheduler whose tick work throws is shown 'failing' (registry rule: 'its last tick reported an error')",
+      "a tick that failed once and then succeeds returns to 'executing'"
+    ],
+    "actual_observations": {
+      "S7-a triggered + processed": "reports before 0 -> after boot tick 1 -> after the timer 2 (720 ms interval); registry entry {armed true, interval_ms 720, status 'executing', last_error null}, last_run advanced 00:38:04.525Z -> 00:38:05.247Z (one interval); cockpit schedulers {armed 1, by_status.executing 1, health HEALTHY}. outbound [].",
+      "S7-c stuck timer": "after stop(): 'armed_not_ticking' detected 1458 ms after the last tick (rule: > 2x720 = 1440 ms), /api/health/schedulers health BREACHED, cockpit by_status.armed_not_ticking 1 / BREACHED; watchdog wrote one scheduler_recovery judgment 'diagnosed' ('restart attempt 0: diagnosed; next: escalate'). No stall for compliance_report in GET /api/health/stalls (only unrelated runtime_admission:djimitsec, experiment:ACE-001), needs-you stalls 0 for it — not escalated after 1.5 s of further watchdog ticks.",
+      "S7-b failing work": "with a generator that throws on every tick: 0 reports written since arming, yet registry status 'executing', last_error null, health HEALTHY; cockpit by_status.failing 0. The broken scheduler is indistinguishable from a healthy one.",
+      "S7-d guardTick primitive (E2)": "guardTick(name, fn) with fn throwing once then succeeding twice (fn does not call markRun, like inference_failover_probe / operator_digest): status stays 'failing', last_error 'S7 transient failure' after the successful ticks."
+    },
+    "evidence_level": "E3",
+    "evidence_level_note": "S7-a/b/c are E3 (real scheduler class armed as index.ts does, real timer, real registry + HTTP projections, real watchdog). S7-d is E2: the guardTick primitive exercised directly, because no guardTick user without its own success markRun has a cheap, deterministic, offline tick under this mandate (stall_watch never surfaces errors at all: its fn voids the promise; inference_failover_probe would call a model; operator_digest pushes externally).",
+    "evidence_reference": [
+      "packages/server/src/__tests__/scenarios/s07-scheduler-trigger.test.ts > 'S7-a triggered + processed: boot tick and timer ticks each write a report; registry shows executing' (PASS)",
+      "… > 'S7-c stuck (timer stops firing): registry turns armed_not_ticking past 2× interval; watchdog diagnoses it' (PASS)",
+      "… > 'FAIL D-S7-1 a tick whose work throws is never \"failing\": markRun runs before the work and the error is swallowed' (it.fails)",
+      "… > 'FAIL D-S7-2 stuck scheduler with a restart function is never escalated to the stall watch in the default (shadow) self-heal mode' (it.fails)",
+      "… > 'FAIL D-S7-3 (E2, primitive) guardTick never clears an earlier error for a tick fn that does not call markRun itself' (it.fails)"
+    ],
+    "rerun_command": "cd <worktree> && npm run test -w @djimitflo/server -- src/__tests__/scenarios/s07-scheduler-trigger.test.ts   # SCENARIO_STRICT=1 shows the open-defect tests as plain failures; SCENARIO_OBS_DIR=<dir> writes the observations as JSON",
+    "outcome": "FAIL",
+    "outcome_reason": "Triggering/processing and not-ticking detection work within the registry's own rule (PASS), but a scheduler whose work fails every tick never becomes visible (reproduces M0 finding 'markRun before work'), a diagnosed stuck scheduler is never escalated in the default mode, and (E2) guardTick never clears an earlier error (reproduces the second M0 finding).",
+    "defect": [
+      {
+        "id": "D-S7-1",
+        "severity": "high (observability)",
+        "kind": "scheduler health: false 'executing'",
+        "what": "ComplianceReportScheduler.tick calls markRun('compliance_report') (no error) before its work and catches the work's error itself, so guardTick never sees it: a scheduler that produces nothing on every tick is 'executing' / HEALTHY. Reproduces the M0 finding (10 of 66 schedulers call markRun before work).",
+        "where": "packages/server/src/services/compliance-report-scheduler.ts:68 (markRun first) and :76-80 (try/catch swallows generateReport errors); same shape in self-healing-scheduler.ts:70, specialist-panel-backlog-scheduler.ts:69, memory-candidate-review-scheduler.ts:110, frontier-expert-scheduler.ts:105, self-improvement-auto-review-scheduler.ts:138",
+        "smallest_fix": "Move markRun(name) to after the work and call markRun(name, err) in the catch (or rethrow and let guardTick record it); guardTick's markTick already records the attempt."
+      },
+      {
+        "id": "D-S7-2",
+        "severity": "medium",
+        "kind": "escalation gap",
+        "what": "In the default SCHEDULER_SELF_HEAL_MODE (shadow) healSchedulers only quarantines (and so only escalates to the stall watch / needs-you) when no restart function is registered; every scheduler armed in index.ts registers one, so a stuck one is 'diagnosed' (next_action 'escalate') once and never reaches the stall watch. It stays visible only on /api/health/schedulers and the cockpit health counter.",
+        "where": "packages/server/src/services/scheduler-registry.ts:128 (`if (mode !== 'act') { if (!restart) quarantine(...); continue; }`); stall-watch.ts:307-309 surfaces quarantined schedulers only",
+        "smallest_fix": "In shadow mode quarantine (escalate) after the same verify window act mode uses (or immediately, since shadow never restarts): replace line 128 with `if (mode !== 'act') { quarantine(restart ? 'restart' : 'none', restart ? 'shadow mode: restart not attempted' : 'no restart function registered'); continue; }`."
+      },
+      {
+        "id": "D-S7-3",
+        "severity": "medium",
+        "kind": "scheduler health: sticky 'failing'",
+        "what": "guardTick's markTick keeps the previous last_error and a successful fn does not clear it unless the fn itself calls markRun(name); a scheduler that failed once stays 'failing' forever (affects guardTick users without their own success markRun, e.g. inference_failover_probe, operator_digest). Reproduces the second M0 finding. Evidence E2 (primitive).",
+        "where": "packages/server/src/services/scheduler-registry.ts:39-41 (markTick preserves last_error), :47-53 (guardTick never marks success)",
+        "smallest_fix": "In guardTick call markRun(name) after a synchronous success and in the promise's then-branch (`r.then(() => markRun(name), fail)`), so success clears the error."
+      }
+    ]
+  }
+}

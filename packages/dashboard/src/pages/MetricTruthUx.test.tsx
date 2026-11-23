@@ -11,7 +11,6 @@ import { useStore } from '../lib/store';
 import { ImprovementFunnelPage } from './ImprovementFunnelPage';
 import { TaskDetailPage } from './TaskDetailPage';
 import { AgentsPage } from './AgentsPage';
-import { SwarmOverviewPage } from './SwarmOverviewPage';
 import { ExecutionTimeline } from '../components/ExecutionTimeline';
 import { Layout } from '../components/Layout';
 
@@ -172,18 +171,6 @@ describe('UX-007 loading, keyboard and mobile navigation', () => {
     expect(await screen.findByText('No agents configured')).toBeTruthy();
   });
 
-  it('SwarmOverviewPage: an agent card is a native link (keyboard, new tab)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      const body = url.startsWith('/api/agents') ? { agents: [{ id: 'a1', name: 'Live one', status: 'active', liveness: 'live', total_tasks: 0, capabilities: [] }] }
-        : url.startsWith('/api/tasks') ? { tasks: [] } : url.startsWith('/api/discussions') ? { discussions: [] } : url.startsWith('/api/learning') ? { learnings: [] } : {};
-      return { ok: true, status: 200, json: async () => body };
-    }));
-    useStore.setState({ agents: [{ id: 'a1', name: 'Live one', status: 'active', liveness: 'live', total_tasks: 0, capabilities: [] }] as never });
-    render(<MemoryRouter><SwarmOverviewPage /></MemoryRouter>);
-    const card = await screen.findByRole('link', { name: /Live one/ });
-    expect(card.getAttribute('href')).toBe('/agents/a1');
-  });
-
   it('Layout: the closed mobile drawer is hidden from focus below md, Escape closes it and restores focus', async () => {
     vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [] });
     vi.spyOn(api, 'getAuthorityStats').mockRejectedValue(new Error('x'));
@@ -212,7 +199,7 @@ describe('UX-005 exact run deep link (/goals-loops?run=)', () => {
     const fetch = vi.fn(async (url: string) => {
       const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
       if (url === '/api/goals') return ok({ goals: [] });
-      if (url === '/api/loops/runs') return ok({ runs: [newest] }); // the list holds only the newest runs; the linked run is older
+      if (url.split('?')[0] === '/api/loops/runs') return ok({ runs: [newest] }); // the list holds only the newest runs; the linked run is older
       if (url === '/api/loops/catalog') return ok({ loops: [] });
       if (url === '/api/loops/runs/older-run') return olderLookup === 'found' ? ok(older) : { ok: false, status: 404, json: async () => ({ error: 'not found' }) };
       if (url === '/api/loops/runs/older-run/review-bundle') return ok({ run: older, leases: [], events: [] });

@@ -1,7 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { wilson } from './evolution-estimators';
 import { ATTRIBUTION_OF_PROPOSAL } from './decisions-inbox';
-import { efficiencyView } from './resource-ledger';
+import { windowEnergy } from './resource-ledger';
 import { loopPrSettlements, parseOutcome, settlementState, survivalCounts, type SettlementState } from './merge-survival';
 
 /**
@@ -44,9 +44,15 @@ interface Row { id: string; status: string; created_at: string; updated_at: stri
   pr_state: string | null; merged_at: string | null; settled_at: string | null; survived: number | null; not_scored: string | null; cls: string | null;
   run_at: string | null; pr_url: string | null; pr_outcome: string | null; settlement?: SettlementState | null }
 
+/**
+ * Statuses still in a queue (truth audit 11-12: "oldest queue Proposal, median 53.1 d" was a median over 1,152 archived
+ * proposals while none was waiting). A stage's median wait and the oldest queue count only these; terminal rows are losses.
+ */
+const QUEUED_STATUSES = ['proposed', 'scheduled', 'executing', 'evaluating', 'needs_grounding'];
+const queued = (r: { status: string }) => QUEUED_STATUSES.includes(r.status);
 const median = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return +s[Math.floor(s.length / 2)].toFixed(1); };
 
-export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env, windowDays = 60) {
+export function evolutionLineage(db: Database, now = Date.now(), _env: NodeJS.ProcessEnv = process.env, windowDays = 60) {
   const since = new Date(now - windowDays * 86_400_000).toISOString();
   const days = (t: string | null) => (t ? (now - Date.parse(t)) / 86_400_000 : NaN);
   const errors: string[] = [];
@@ -95,19 +101,21 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
     const [k, n] = [...c.entries()].sort((a, b) => b[1] - a[1])[0]; return `${k} (${n})`; };
   const conv = (a: number | null, b: number | null) => (a === null || b === null || !b ? null : +(a / b).toFixed(3));
 
+  const expApprovals = humanApprovals(exp.map((r) => r.run_id));
+  const verTokens = tokensOf(ver.map((r) => r.run_id));
   const stages: Stage[] = [
     { stage: 'discovery', count: discoveries, conversion: null, median_age_days: null, top_failure: null, compute_tokens: null, operator_decisions: 0, measured: 'not_linked',
       note: 'discovery events are counted, but no proposal records which discovery it came from — discovery → proposal conversion is not measurable' },
-    { stage: 'proposal', count: rows.length, conversion: null, median_age_days: median(rows.filter((r) => !r.run_id).map((r) => days(r.created_at))),
+    { stage: 'proposal', count: rows.length, conversion: null, median_age_days: median(rows.filter((r) => !r.run_id && queued(r)).map((r) => days(r.created_at))),
       top_failure: top(rows.filter((r) => !r.run_id).map((r) => r.status)), compute_tokens: null, operator_decisions: labels, measured: 'measured' },
     { stage: 'experiment', count: exp.length, conversion: conv(exp.length, rows.length),
-      median_age_days: median(exp.filter((r) => r.status !== 'verified' && !['regressed', 'infra_failed', 'no_change', 'needs_more_evidence', 'blocked'].includes(r.status)).map((r) => days(r.goal_at))),
+      median_age_days: median(exp.filter(queued).map((r) => days(r.goal_at))),
       top_failure: top(exp.filter((r) => r.status !== 'verified').map((r) => (r.status === 'regressed' ? `regressed:${r.cls ?? 'unattributed'}` : r.status))),
-      compute_tokens: tokensOf(exp.map((r) => r.run_id)), operator_decisions: humanApprovals(exp.map((r) => r.run_id)), measured: 'measured' },
+      compute_tokens: tokensOf(exp.map((r) => r.run_id)), operator_decisions: expApprovals, measured: 'measured' },
     { stage: 'verified', count: ver.length, conversion: conv(ver.length, exp.length),
-      median_age_days: median(ver.filter((r) => r.pr_state !== 'merged').map((r) => days(r.updated_at))),
+      median_age_days: median(ver.filter((r) => r.pr_state !== 'merged' && r.pr_state !== 'closed_unmerged').map((r) => days(r.updated_at))),
       top_failure: top(ver.filter((r) => r.pr_state !== 'merged').map((r) => (r.pr_state === 'closed_unmerged' ? 'closed_unmerged' : r.pr_state === 'open' || !r.pr_state ? 'awaiting_human_merge' : r.pr_state))),
-      compute_tokens: tokensOf(ver.map((r) => r.run_id)), operator_decisions: null, measured: 'measured' },
+      compute_tokens: verTokens, operator_decisions: null, measured: 'measured' },
     { stage: 'merged', count: merged.length, conversion: conv(merged.length, ver.length),
       median_age_days: median(merged.filter((r) => r.settlement === 'MERGED_SURVIVAL_PENDING').map((r) => days(r.merged_at))),
       top_failure: top(merged.filter((r) => r.settlement === 'MERGED_SURVIVAL_PENDING' || r.settlement === 'PIPELINE_ANOMALY')
@@ -129,6 +137,7 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
   const transitions = stages.slice(2).map((s, j) => ({ from: stages[j + 1], to: s }))
     .filter((t) => t.from.measured === 'measured' && t.to.measured === 'measured' && (t.from.count ?? 0) >= 5 && t.to.count !== null);
   const worst = transitions.sort((a, b) => ((b.from.count ?? 0) - (b.to.count ?? 0)) - ((a.from.count ?? 0) - (a.to.count ?? 0)))[0];
+  // over queued rows only (see QUEUED_STATUSES); null = nothing is waiting in any stage ("no queue")
   const oldest = [...stages].filter((s) => s.median_age_days !== null).sort((a, b) => (b.median_age_days ?? 0) - (a.median_age_days ?? 0))[0];
   const bottleneck = worst ? { from: worst.from.stage, to: worst.to.stage, lost: (worst.from.count ?? 0) - (worst.to.count ?? 0), conversion: worst.to.conversion,
     reason: worst.from.top_failure, oldest_queue: oldest ? { stage: oldest.stage, median_age_days: oldest.median_age_days } : null } : null;
@@ -150,11 +159,11 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
   // NEV: survived − severity-weighted post-verification regressions, per resource (separately)
   const harm = SEVERITY.removed * regression_split.post_verification;
   const nevRaw = survived.length - harm;
-  const cloudTokens = tokensOf(ver.map((r) => r.run_id));
+  const cloudTokens = verTokens;
   let energyPct: number | null = null; let kwh: number | null = null;
-  try { const e = efficiencyView(db, now, env, Math.min(windowDays, 30)); energyPct = e.coverage.window_pct; kwh = e.hosts.reduce((a, h) => a + (h.gpu_kwh ?? 0), 0) || null; }
+  try { const e = windowEnergy(db, now, Math.min(windowDays, 30)); energyPct = e.window_pct; kwh = e.hosts.reduce((a, h) => a + (h.gpu_kwh ?? 0), 0) || null; }
   catch { /* power tables absent: energy unknown */ }
-  const decisions = (labels ?? 0) + merged.length + (humanApprovals(exp.map((r) => r.run_id)) ?? 0);
+  const decisions = (labels ?? 0) + merged.length + (expApprovals ?? 0);
   const enough = settled.length >= NEV_MIN_SETTLED;
   const nev = {
     status: enough ? 'ok' as const : 'INSUFFICIENT_EVIDENCE' as const,

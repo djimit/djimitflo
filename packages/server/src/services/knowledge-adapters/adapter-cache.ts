@@ -53,7 +53,7 @@ export class AdapterCache {
   }
 
   cleanup(): number {
-    const result = this.db.prepare("DELETE FROM knowledge_adapter_cache WHERE expires_at < datetime('now')").run();
+    const result = this.db.prepare("DELETE FROM knowledge_adapter_cache WHERE julianday(expires_at) < julianday('now')").run();
     return result.changes;
   }
 

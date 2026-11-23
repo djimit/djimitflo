@@ -25,4 +25,4 @@ jobs:
           stale-issue-label: stale
           stale-pr-label: stale
           exempt-issue-labels: 'P0-now,P1-this-week,security,critical'
-          exempt-pr-labels: 'security,critical,wip'
+          exempt-pr-labels: 'security,critical,wip,loop'  # loop PRs: stale-loop-prs.yml

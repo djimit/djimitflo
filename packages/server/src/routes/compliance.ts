@@ -7,7 +7,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { ComplianceAuditService } from '../services/compliance-audit-service';
-import { generateComplianceReport, exportReportAsJson, exportReportAsCsv, scanSpecsDirectory } from '../services/spec-compliance-service';
+import { generateComplianceReport, exportReportAsJson, exportReportAsCsv, scanSpecsDirectory, describeSpecSources } from '../services/spec-compliance-service';
 import { createError } from '../middleware/error-handler';
 
 function boundedLimit(value: unknown, fallback = 100): number {
@@ -28,7 +28,7 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
   let specReportCachedAt = 0;
   const getSpecReport = (refresh = false) => {
     if (refresh || !cachedSpecReport || Date.now() - specReportCachedAt >= 60 * 60 * 1000) {
-      cachedSpecReport = generateComplianceReport(scanSpecsDirectory());
+      cachedSpecReport = generateComplianceReport(scanSpecsDirectory(), describeSpecSources());
       specReportCachedAt = Date.now();
     }
     return cachedSpecReport;

@@ -24,3 +24,7 @@ CVE-2026-78669
 # GitHub API responses, so the only party that could feed it crafted HTML is GitHub itself, and a DoS ends one short gh
 # process. Revisit with the entries above when cli/cli ships a release with x/net >= 0.62.0 (bump GH_CLI_VERSION, drop this).
 CVE-2026-78661
+
+# picomatch <=4.0.7 extglob ReDoS (= GHSA-fc5q-39xc-vjpf), 2026-11-17, operator-approved: no patched release (latest 4.0.7);
+# reached only via vite/vitest build tooling, never user input. Drop once picomatch 4.0.8+ lands.
+CVE-2026-112366

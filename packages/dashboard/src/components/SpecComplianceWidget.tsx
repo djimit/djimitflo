@@ -33,6 +33,7 @@ interface ComplianceReport {
   partialCount: number;
   noneCount: number;
   specs: SpecComplianceResult[];
+  sources?: { repoRoot: string; commit: string | null; dirs: Array<{ path: string; found: boolean }> };
 }
 
 export function SpecComplianceWidget({ controls = false }: { controls?: boolean }) {
@@ -105,12 +106,27 @@ export function SpecComplianceWidget({ controls = false }: { controls?: boolean 
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
-        <MetricCard label="Total Specs" value={report.totalSpecs} color="blue" />
-        <MetricCard label="Full Compliance" value={report.fullComplianceCount} color="green" />
-        <MetricCard label="Partial" value={report.partialCount} color="yellow" />
-        <MetricCard label="Non-Compliant" value={report.noneCount} color="red" />
-      </div>
+      {report.sources && (
+        <div className="text-xs text-gray-400 space-y-0.5" data-testid="spec-sources">
+          <div>Scanned {report.sources.dirs.map(dir => dir.path).join(', ')} at commit {report.sources.commit ? report.sources.commit.slice(0, 12) : 'unknown'}</div>
+          {report.sources.dirs.filter(dir => !dir.found).map(dir => (
+            <div key={dir.path} className="text-yellow-400">No specs found at {dir.path} (directory missing): the score below leaves it out.</div>
+          ))}
+        </div>
+      )}
+
+      {report.totalSpecs === 0 ? (
+        <div className="text-center text-yellow-400 py-4 text-sm">
+          No specs found{report.sources ? ` at ${report.sources.dirs.map(dir => dir.path).join(', ')}` : ''}: there is nothing to score.
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 gap-3">
+          <MetricCard label="Total Specs" value={report.totalSpecs} color="blue" />
+          <MetricCard label="Full Compliance" value={report.fullComplianceCount} color="green" />
+          <MetricCard label="Partial" value={report.partialCount} color="yellow" />
+          <MetricCard label="Non-Compliant" value={report.noneCount} color="red" />
+        </div>
+      )}
 
       {visibleSpecs.length > 0 && (
         <div className="space-y-2">
@@ -169,7 +185,7 @@ export function SpecComplianceWidget({ controls = false }: { controls?: boolean 
         </div>
       )}
 
-      {visibleSpecs.length === 0 && (
+      {visibleSpecs.length === 0 && report.totalSpecs > 0 && (
         <div className="text-center text-gray-500 py-4 text-sm">
           No specs match this view.
         </div>

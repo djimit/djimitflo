@@ -64,6 +64,16 @@ export function banditOpe(db: Database, env: NodeJS.ProcessEnv = process.env): O
   try {
     events = db.prepare("SELECT loop_run_id AS run_id, message, metadata AS meta FROM loop_events WHERE event_type = 'bandit_selected' ORDER BY created_at").all() as typeof events;
   } catch { /* no loop_events table */ }
+  // one query per table for all logged runs instead of two lookups per event (737 events → 1 474 statements on prod)
+  const shadows = new Map<string, string>(); const outcomes = new Map<string, Array<{ skill_id: string; model: string; success: number }>>();
+  try {
+    for (const s of db.prepare(`SELECT loop_run_id AS run_id, metadata FROM loop_events WHERE event_type = 'fitness_shadow'
+        AND loop_run_id IN (SELECT loop_run_id FROM loop_events WHERE event_type = 'bandit_selected') ORDER BY created_at`).all() as Array<{ run_id: string; metadata: string }>) shadows.set(s.run_id, s.metadata); // latest wins
+    for (const o of db.prepare(`SELECT task_id, skill_id, COALESCE(model, '') AS model, success FROM skill_outcomes WHERE skill_id LIKE 'loop-maker:%'
+        AND task_id IN (SELECT loop_run_id FROM loop_events WHERE event_type = 'bandit_selected') ORDER BY created_at`).all() as Array<{ task_id: string; skill_id: string; model: string; success: number }>) {
+      const list = outcomes.get(o.task_id) ?? []; list.push(o); outcomes.set(o.task_id, list);
+    }
+  } catch { /* skill_outcomes is lazy */ }
   const rows: OpeRow[] = []; let notReconstructable = 0; let assumed = 0;
   for (const e of events) {
     let meta: { posterior?: ArmState[]; chosen?: string; max_share?: number } = {};
@@ -73,14 +83,12 @@ export function banditOpe(db: Database, env: NodeJS.ProcessEnv = process.env): O
     const idx = arms.findIndex((a) => a.species === chosen);
     if (arms.length < 2 || idx < 0 || arms.some((a) => !Number.isFinite(a.runs) || !Number.isFinite(a.ok))) { notReconstructable++; continue; }
     if (meta.max_share === undefined) assumed++;
-    let shadow: { would_pick?: string } | undefined; let reward: { success: number } | undefined;
-    try {
-      const s = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = ? AND event_type = 'fitness_shadow' ORDER BY created_at DESC LIMIT 1").get(e.run_id) as { metadata: string } | undefined;
-      shadow = s ? JSON.parse(s.metadata) : undefined;
-      const [runtime, ...model] = String(chosen).split('@');
-      reward = db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ? AND skill_id LIKE ? AND COALESCE(model, '') = ? ORDER BY created_at LIMIT 1")
-        .get(e.run_id, `loop-maker:%:${runtime}`, model.join('@')) as { success: number } | undefined;
-    } catch { /* skill_outcomes is lazy */ }
+    let shadow: { would_pick?: string } | undefined;
+    try { const s = shadows.get(e.run_id); shadow = s ? JSON.parse(s) : undefined; } catch { /* unparseable: not reconstructable */ }
+    // the first outcome of the chosen species: skill_id LIKE 'loop-maker:%:<runtime>' (case-insensitive, as SQLite LIKE) and the same model
+    const [runtime, ...model] = String(chosen).split('@'); const suffix = `:${runtime}`.toLowerCase();
+    const reward = outcomes.get(e.run_id)?.find((o) => o.model === model.join('@') && o.skill_id.length >= 'loop-maker:'.length + suffix.length
+      && o.skill_id.toLowerCase().endsWith(suffix));
     if (!shadow?.would_pick || !reward) { notReconstructable++; continue; }
     const p = propensities(arms, meta.max_share ?? defaultShare)[idx];
     if (p <= 0) { notReconstructable++; continue; }

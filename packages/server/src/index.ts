@@ -77,12 +77,6 @@ type TelegramBotConfig = { token: string; machineId: string; agentType: string; 
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
-const RANSOMWARE_MODULE_ENABLED = process.env.RANSOMWARE_MODULE_ENABLED !== 'false';
-const RANSOMWARE_MODULE_MODE = process.env.RANSOMWARE_MODULE_MODE || 'detect';
-
-if (RANSOMWARE_MODULE_ENABLED) {
-  console.log(`🛡️  Anti-agentic ransomware module active (mode: ${RANSOMWARE_MODULE_MODE})`);
-}
 
 // L1: derive a default nested-spawn control URL so a runtime child (running on the
 // same host) can call back to POST /api/swarms/spawns without operator config.

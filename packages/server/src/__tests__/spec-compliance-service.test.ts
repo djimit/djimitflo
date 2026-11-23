@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { evaluateSpecCompliance, generateComplianceReport, scanSpecsDirectory } from '../services/spec-compliance-service';
+import { describeSpecSources, evaluateSpecCompliance, generateComplianceReport, scanSpecsDirectory } from '../services/spec-compliance-service';
 
 describe('SpecComplianceService', () => {
   const fullSpec = `---
@@ -108,5 +108,33 @@ SC-001: Fast response.
       expect.objectContaining({ name: 'openspec/proof-change', source: 'openspec' }),
     ]);
     expect(generateComplianceReport(specs).specs[0]).toMatchObject({ lifecycleState: 'implemented' });
+  });
+});
+
+describe('spec scan sources (prod showed 3/3 Full Compliance with openspec/changes missing)', () => {
+  it('reports each scanned directory, whether it exists, and the build commit', () => {
+    const root = mkdtempSync(join(tmpdir(), 'djimitflo-spec-src-'));
+    mkdirSync(join(root, 'specs'), { recursive: true });
+    const prev = process.env.DJIMITFLO_BUILD_COMMIT;
+    process.env.DJIMITFLO_BUILD_COMMIT = 'abc1234';
+    try {
+      const report = generateComplianceReport(scanSpecsDirectory(root), describeSpecSources(root));
+      expect(report.sources).toEqual({
+        repoRoot: root,
+        commit: 'abc1234',
+        dirs: [
+          { path: join(root, 'specs'), found: true },
+          { path: join(root, 'openspec', 'changes'), found: false },
+        ],
+      });
+    } finally {
+      if (prev === undefined) delete process.env.DJIMITFLO_BUILD_COMMIT; else process.env.DJIMITFLO_BUILD_COMMIT = prev;
+    }
+  });
+
+  it('ships openspec/changes in the runtime image so the scan sees it in prod', () => {
+    const dockerfile = readFileSync(join(__dirname, '../../../../Dockerfile'), 'utf-8');
+    const runner = dockerfile.slice(dockerfile.indexOf('AS runner'));
+    expect(runner).toMatch(/^COPY openspec\/changes openspec\/changes$/m);
   });
 });

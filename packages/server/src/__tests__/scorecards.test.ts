@@ -60,6 +60,9 @@ it('UX-17: agent scorecard per fleet agent and task kind; connection state only 
   expect(card.task_kinds).toEqual([{ task_kind: 'dream-scout', n: 2, ok: 1, success_rate: 0.5 }, { task_kind: 'publish-goals', n: 1, ok: 1, success_rate: 1 }]);
   expect(card.ci).not.toBeNull();
   db.prepare("INSERT INTO agents (id, name, description, status, capabilities, metadata, last_active_at, created_at, updated_at) VALUES ('hermes-eve-v', 'Hermes Eve-V', 'fleet agent', 'active', '[]', '{}', ?, ?, ?)").run(ago(3), ago(30), ago(3));
+  // truth audit 2026-11-12: connection state is a Commons concept; without a social runtime the reason says why it does not apply
+  expect(agentScorecards(db, NOW)[0]).toMatchObject({ connection_state: null, connection_reason: 'factory worker — not a Commons participant' });
+  db.prepare("UPDATE agents SET metadata = ?, last_active_at = ? WHERE id = 'hermes-eve-v'").run(JSON.stringify({ social_runtime: { enabled: true } }), ago(3));
   expect(agentScorecards(db, NOW)[0]).toMatchObject({ connection_state: 'lapsed' });
 });
 

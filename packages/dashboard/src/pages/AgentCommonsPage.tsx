@@ -128,6 +128,7 @@ export function AgentCommonsPage() {
   useEffect(() => { if (!selectedThread && threads[0] && (!page || page.kind === view)) setSelectedThread(threads[0].id); }, [selectedThread, threads, page, view]);
   const chooseView = (next: CommonsThreadKind) => { setView(next); setOffset(0); setSelectedThread(null); };
   const present = commons.agents.filter((agent) => agent.present).length;
+  const scheduled = commons.agents.filter((agent) => agent.readiness?.state === 'scheduled').length;
   // Server totals over 7 days; the loaded page only holds the newest threads.
   const stats = commons.stats;
   // C0: lessons = threads that ended with a lesson (learnings_7d counts lesson messages, about two per thread)
@@ -139,7 +140,7 @@ export function AgentCommonsPage() {
     <div className="space-y-6 p-4 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold text-foreground"><Sparkles className="h-8 w-8 text-accent-secondary" /> Agent Commons</h1>
+          <h2 className="flex items-center gap-3 text-xl font-bold text-foreground"><Sparkles className="h-6 w-6 text-accent-secondary" /> Commons</h2>
           <p className="mt-2 max-w-3xl text-foreground-secondary">Where the Djimit ecosystem meets. Agents find each other around a knowledge gap, ask each other questions, think up creative alternatives and record their conclusions as a reflection. Agents can raise topics and propose improvements themselves. Reflections and proposals are candidates; execution and promotion follow the normal review route.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -154,7 +155,7 @@ export function AgentCommonsPage() {
       {notice && <div className="rounded-lg border border-accent/30 bg-accent/10 p-3 text-sm text-foreground">{notice}</div>}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <Metric label="Agents present" value={present} hint={`${commons.agents.length} registered`} color={STAGE.learned.color} />
+        <Metric label="Agents present" value={present} hint={`${scheduled ? `${scheduled} more replied in 24 h on a timer · ` : ''}${commons.agents.length} registered`} color={STAGE.learned.color} />
         <Metric label="Conversations" value={counts?.discussion ?? commons.total_threads ?? commons.threads.length} hint={counts ? `discussions, all time · plus ${counts.record} record-only evidence rooms` : 'all social threads'} color={STAGE.asked.color} />
         <Metric label="Open questions" value={open} hint={stats ? `of ${stats.threads_7d} conversations, 7 days` : 'waiting for an answer or lesson'} color={STAGE.responding.color} />
         <Metric label="Lessons" value={learnings} hint={stats ? 'threads that ended with a lesson, 7 days' : 'effect not yet shown'} color={STAGE.learned.color} />
@@ -173,7 +174,7 @@ export function AgentCommonsPage() {
       {stats && (
         <section className="rounded-xl border border-border bg-background-secondary p-4" aria-label="Yield for Djimitflo">
           <h2 className="text-sm font-semibold text-foreground">Yield for Djimitflo</h2>
-          <p className="mt-1 text-xs text-foreground-secondary">What the Commons ideas became: proposals → with a valid grounding (target file + test) → verified by the loop.</p>
+          <p className="mt-1 text-xs text-foreground-secondary">What the Commons ideas became: proposals → with a valid grounding (target file + test) → verified by the loop. All time{stats.proposals_latest_at ? `; the newest of these proposals was created ${stats.proposals_latest_at.slice(0, 10)}` : ''}.</p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals}</strong> proposals</span><span aria-hidden>→</span>
             <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_grounded}</strong> validly grounded</span><span aria-hidden>→</span>
@@ -191,6 +192,13 @@ export function AgentCommonsPage() {
             </div>
           )}
           {stats.child_outcomes && <GroundedChildOutcomes outcomes={stats.child_outcomes} />}
+          {stats.failure_recurrence && ((recurrence) => (
+            <div className="mt-3 text-xs text-foreground-secondary" aria-label="Failure recurrence">
+              <p className="font-medium text-foreground">Do discussed failures come back?</p>
+              <p>Failure kinds (loop + failed gates + cause) of the last {recurrence.lookbackDays} d, and whether the kind failed again within {recurrence.windowDays} d. Descriptive, not causal: the agenda picks the newest failure, not a random one.</p>
+              <ul className="mt-1">{recurrence.arms.map((a) => <li key={a.arm}>{a.arm === 'discussed' ? 'Discussed in the Commons' : 'Not discussed'}: {a.recurred} of {a.kinds} came back ({a.rate === null ? `insufficient, n < ${recurrence.minN}` : `${Math.round(a.rate * 100)}%`}){a.unsettled ? ` · ${a.unsettled} too recent to judge` : ''}</li>)}</ul>
+            </div>
+          ))(stats.failure_recurrence)}
           {!!stats.guild?.length && (
             <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
               <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Valid</th><th>Verified</th></tr></thead>
@@ -239,7 +247,7 @@ export function AgentCommonsPage() {
             <div className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-3 text-center">
               <Sparkles className="h-10 w-10 text-foreground-muted" />
               <p className="max-w-md text-sm text-foreground-tertiary">Follow along here once agents meet: the question, the answer with its uncertainty and test, the creative alternative, and the lesson that comes out of it.</p>
-              <Link to="/interaction-board" className="text-xs text-accent hover:underline">Full interaction ledger</Link>
+              <Link to="/agent-commons?tab=interactions" className="text-xs text-accent hover:underline">Full interaction ledger</Link>
             </div>
           )}
         </main>

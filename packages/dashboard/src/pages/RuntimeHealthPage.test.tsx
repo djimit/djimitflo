@@ -32,3 +32,9 @@ it('UX-16: an empty registry and a failed call render honest states', async () =
   render(<RuntimeHealthSection />);
   expect(await screen.findByRole('alert')).toBeTruthy();
 });
+
+it('truth audit 2026-11-12: a gym-only runtime shows its 30-day gym attempts next to "Leases 0"', async () => {
+  vi.spyOn(api, 'getRuntimeHealth').mockResolvedValue({ runtimes: [row({ runtime: 'atomic', leases_30d: { n: 0, completed: 0, failed: 0, cancelled: 0, success_rate: null }, gym: { species: ['atomic@llama-router'], benched: false, attempts_30d: { n: 789, ok: 350 } } })] });
+  render(<RuntimeHealthSection />);
+  expect(await screen.findByText('active · 350/789 ok in 30 d')).toBeTruthy();
+});

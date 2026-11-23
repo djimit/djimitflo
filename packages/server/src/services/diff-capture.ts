@@ -27,7 +27,16 @@ const SECRET_PATTERNS = [
 const MAX_DIFF_SIZE = 50000;
 const MAX_FILE_DIFF_SIZE = 10000;
 
+/**
+ * D4 (H4 2026-11-14): files that instruct or configure an agent CLI — opencode.json(c) (and its `instructions`: AGENTS.md,
+ * CLAUDE.md, .github/copilot-instructions.md), .opencode/, .claude/, .codex/, .mcp.json — at any depth. A maker that edits
+ * them would write its reviewer's instructions; they are high-risk and the checker gets them from the base commit.
+ */
+export const AGENT_CONFIG_PATH = /(^|\/)((AGENTS|CLAUDE|CLAUDE\.local)\.md|opencode\.jsonc?|\.mcp\.json)$|(^|\/)\.(opencode|claude|codex)(\/|$)|^\.github\/copilot-instructions\.md$/;
+export const isAgentConfigPath = (filePath: string): boolean => AGENT_CONFIG_PATH.test(filePath);
+
 const HIGH_RISK_PATHS = [
+  AGENT_CONFIG_PATH,
   /package-lock\.json$/,
   /pnpm-lock\.yaml$/,
   /yarn\.lock$/,

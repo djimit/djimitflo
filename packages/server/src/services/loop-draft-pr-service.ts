@@ -1,7 +1,6 @@
 import fs from 'fs';
 import { createHash, randomUUID } from 'crypto';
 import path from 'path';
-import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { LoopEventService } from './loop-event-service';
 import { redactSecrets } from './secret-patterns';
@@ -12,6 +11,7 @@ import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './
 import { guardTick, markRun } from './scheduler-registry';
 import { issueRefsLine } from './work-item-outcome-sync';
 import { onDraftPrOpened } from './capability-factory';
+import { safeGit } from './safe-git';
 
 interface DraftPublication {
   makerId: string; repo: string; branch: string; base: string; worktree: string;
@@ -50,7 +50,12 @@ export class LoopDraftPrService {
       AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(runId) as { id: string; worktree_path: string | null; branch_name: string | null } | undefined;
     if (!maker?.worktree_path || !maker.branch_name || !fs.existsSync(maker.worktree_path)) return fail('no completed maker worktree');
     const wt = maker.worktree_path;
-    const git = (...args: string[]) => execFileSync('git', ['-C', wt, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 }).trim();
+    // D3: the maker owns this worktree (and its git config): every git call goes through safe-git, the token only to the
+    // fetch/ls-remote/push that need it, scoped to github.com and out of argv
+    const git = (...args: string[]) => safeGit(wt, args, { timeout: 30_000 }).trim();
+    const transports = this.env.GIT_ALLOW_PROTOCOL || 'https';
+    const authed = (args: string[], timeout: number) => safeGit(wt, args, { timeout, protocols: transports,
+      secretConfig: { 'http.https://github.com/.extraheader': `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}` } });
 
     // B2: the worktree's push remote must be that same repo; when they differ nothing is pushed and no PR is opened.
     let remoteSlug: string | null = null;
@@ -81,8 +86,7 @@ export class LoopDraftPrService {
         let changed: string[] | null = null;
         if (rs && Object.keys(rs.files).length > 0) {
           try {
-            const fetchAuth = Buffer.from(`x-access-token:${token}`).toString('base64');
-            execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${fetchAuth}`, 'fetch', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', this.env.LOOP_DRAFT_PR_BASE || 'main'], { stdio: 'ignore', timeout: 60_000 });
+            authed(['fetch', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', this.env.LOOP_DRAFT_PR_BASE || 'main'], 60_000);
             changed = staleAgainst(wt, rs, 'FETCH_HEAD');
           } catch { changed = null; } // fetch failed: unknown, fail open
         }
@@ -147,7 +151,7 @@ export class LoopDraftPrService {
       if (!publication.head) {
         if (head === publication.parentHead) {
           git('add', '--', ...publication.files);
-          execFileSync('git', ['-C', wt, '-c', 'user.name=djimitflo-loop', '-c', 'user.email=loop@djimitflo.invalid', 'commit', '-q', '-m', commitMessage, '--only', '--', ...publication.files], { stdio: 'ignore', timeout: 60_000 });
+          safeGit(wt, ['commit', '-q', '-m', commitMessage, '--only', '--', ...publication.files], { config: ['user.name=djimitflo-loop', 'user.email=loop@djimitflo.invalid'], timeout: 60_000 });
         } else if (git('rev-parse', 'HEAD^') !== publication.parentHead || git('log', '-1', '--format=%B') !== commitMessage) {
           throw new Error('publication_head_changed');
         }
@@ -170,11 +174,10 @@ export class LoopDraftPrService {
       }
       if (publicationThrottled) return null;
       guard();
-      const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
-      const remoteHead = execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'ls-remote', '--heads', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `refs/heads/${maker.branch_name}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 }).trim().split(/\s+/)[0];
+      const remoteHead = authed(['ls-remote', '--heads', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `refs/heads/${maker.branch_name}`], 60_000).trim().split(/\s+/)[0];
       if (remoteHead && remoteHead !== verifiedHead) throw new Error('publication_remote_head_changed');
       guard();
-      execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'push', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `${verifiedHead}:refs/heads/${maker.branch_name}`], { stdio: 'ignore', timeout: 60_000 });
+      authed(['push', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `${verifiedHead}:refs/heads/${maker.branch_name}`], 60_000);
 
       const verdicts = (this.db.prepare(`SELECT role, json_extract(metadata, '$.verdict') AS verdict FROM worker_leases WHERE loop_run_id = ? AND role IN ('checker', 'security_checker') AND status = 'completed'`).all(runId) as Array<{ role: string; verdict: string | null }>)
         .map((l) => `- ${l.role}: ${l.verdict ?? 'n/a'}`).join('\n');
@@ -362,12 +365,17 @@ export function startDraftPrRetry(db: Database, intervalMs = 15 * 60_000): (() =
 
 export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null;
   /** E1: evolutionary settlement state (merge-survival settlementState) — `outcome` stays the GitHub poll state */
-  settlement: SettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null }
+  settlement: SettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null;
+  /** open on GitHub as merge survival last saw it (never polled = open): waits for the operator's merge or close — the
+   *  cockpit's open_prs rule. false = the row only waits (survival window) or is done. */
+  needs_operator: boolean }
 /**
  * UX-7: the loop's draft PRs, read from loop_runs.metadata (no GitHub call). `outcome` is the GitHub state merge survival
  * last polled (open / merged / closed_unmerged); `settlement` is the evolutionary settlement state derived from it (E1).
  * unsettled = PRs that still wait for anything: not SETTLED_SURVIVED / SETTLED_REGRESSED and not a terminal (closed-unmerged)
  * OPEN_BLOCKED — open, merged and inside the survival window, or a pipeline anomaly. by_settlement counts every state.
+ * Rows (truth audit 11-12: a newest-50 table hid the five oldest open PRs the cockpit counts): every PR that needs the
+ * operator first, oldest first, never cut by `limit`; then merged PRs inside the survival window, then the rest, newest first.
  */
 /** Cockpit 3.0: a failed read gives total/unsettled/by_settlement null (unknown), not 0. */
 export function listDraftPrs(db: Database, limit = 50, now = Date.now(), env: NodeJS.ProcessEnv = process.env): { total: number | null; unsettled: number | null; by_settlement: Record<SettlementState, number> | null; closed_unmerged: number | null; rows: DraftPrRow[] } {
@@ -384,12 +392,17 @@ export function listDraftPrs(db: Database, limit = 50, now = Date.now(), env: No
     const o = parseOutcome(r.o);
     return { r, o, s: settlementState(r.created_at, o, now) };
   });
-  const rows = all.slice(0, n).map(({ r, o, s }) => ({
+  const open = (o: ReturnType<typeof parseOutcome>) => (o?.state ?? 'open') === 'open';
+  const waiting = all.filter(({ o }) => open(o)).reverse(); // raw is newest first
+  const rest = all.filter(({ o }) => !open(o));
+  const ordered = [...waiting, ...rest.filter(({ s }) => s.state === 'MERGED_SURVIVAL_PENDING'), ...rest.filter(({ s }) => s.state !== 'MERGED_SURVIVAL_PENDING')];
+  const rows = ordered.slice(0, Math.max(n, waiting.length)).map(({ r, o, s }) => ({
     run_id: r.id, lane: r.loop_name, pr_url: r.url, pr_number: Number(/\/pull\/(\d+)/.exec(r.url)?.[1]) || null,
     age_days: +((now - Date.parse(r.created_at)) / 86_400_000).toFixed(1), outcome: typeof o?.state === 'string' ? o.state : null,
     survived: typeof o?.survived === 'boolean' ? o.survived : null,
     auto_merge: r.auto_merge ?? null, // earned auto-merge decision ('audit_sample' = stays for the human)
     settlement: s.state, settlement_reason: s.reason, settlement_terminal: s.terminal, settlement_age_days: s.age_days,
+    needs_operator: open(o),
   }));
   const by = emptySettlementCounts();
   for (const { s } of all) by[s.state]++;

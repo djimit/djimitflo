@@ -240,7 +240,7 @@ export function forceModel(text, alias) {
   try {
     const d = JSON.parse(text);
     if (!d || typeof d !== 'object' || Array.isArray(d)) return { body: text, forced: false, chat: false };
-    return { body: JSON.stringify({ ...d, model: alias }), forced: true, chat: Array.isArray(d.messages) };
+    return { body: JSON.stringify({ ...d, model: alias }), forced: true, chat: Array.isArray(d.messages) || completionConversation(d.prompt) !== null };
   } catch { return { body: text, forced: false, chat: false }; }
 }
 /** The model names the router put in a response (JSON or SSE chunks); escaped quotes inside generated text never match. */
@@ -263,8 +263,34 @@ export function controlVectors(args) {
  */
 export const EDIT_TOOL = /edit|write|patch|replace|create|insert|apply/i;
 export const VITEST_PASS = /^\s*Tests\s+\d+\s+passed\s+\(\d+\)/m;
+/**
+ * atomic-agent's llama-server provider sends llama.cpp `/completion` bodies: a rendered `prompt` whose `### conversation`
+ * section lists `user: …`, `assistant_tool_call: <tool> <json args>` and `tool_result[<tool> <status>]: <output…>` lines.
+ * The section, or null when the prompt has none (e.g. its session-title request).
+ */
+export function completionConversation(prompt) {
+  if (typeof prompt !== 'string') return null;
+  const m = /(^|\n)### conversation\n/.exec(prompt); if (!m) return null;
+  const start = m.index + m[0].length; let end = prompt.indexOf('\n### profile\n', start);
+  if (end < 0) end = prompt.indexOf('\n### ', start);
+  return prompt.slice(start, end < 0 ? undefined : end);
+}
+function completionMessages(conv) {
+  const out = []; let result = null;
+  for (const line of conv.split('\n')) {
+    const call = /^assistant_tool_call: (\S+) ?(.*)$/.exec(line);
+    const res = /^tool_result\[[^\]]*\]: ?(.*)$/.exec(line);
+    if (call) { result = null; out.push({ role: 'assistant', tool_calls: [{ function: { name: call[1], arguments: call[2] } }] }); }
+    else if (res) { result = { role: 'tool', content: res[1] }; out.push(result); }
+    else if (/^(user|assistant|system): /.test(line)) result = null;
+    else if (result) result.content += `\n${line}`;
+  }
+  return out;
+}
 export function transcriptMetrics(text) {
   let d; try { d = JSON.parse(text); } catch { return null; }
+  const conv = Array.isArray(d?.messages) ? null : completionConversation(d?.prompt);
+  if (conv !== null) d = { messages: completionMessages(conv) };
   if (!Array.isArray(d?.messages)) return null;
   const textOf = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (typeof x?.text === 'string' ? x.text : '')).join('') : '');
   let calls = 0; let broken = 0; let passSeen = false; let postPass = 0; let run = 0; let longest = 0; let last = null;
@@ -1139,6 +1165,15 @@ function modelOverrideCheck() {
   const loop = JSON.stringify({ messages: [1, 2, 3].map(() => ({ role: 'assistant', content: '<tool_call>{"name":"read","arguments":{"p":"a.ts"}}</tool_call>' })) });
   assert(transcriptMetrics(loop).loop === true && transcriptMetrics(loop).tool_calls === 3, 'the same call 3 times in a row is a loop (text-mode tool calls)');
   assert(transcriptMetrics('{"prompt":"x"}') === null && transcriptMetrics('nope') === null, 'no chat messages = unknown (null)');
+  // atomic-agent (llama-server provider) sends /completion bodies with a rendered prompt, not chat messages (CV-001 2026-11-10)
+  const conv = ['### tools', 'x', '### conversation', 'user: fix add', 'assistant_tool_call: os.shell.run {"cmd":"npx","args":["vitest","run"]}',
+    'tool_result[os.shell.run ok]: $ npx vitest run', '      Tests  3 passed (3)', '### fake heading inside output', 'assistant_tool_call: os.fs.edit {"path":"/w/a.ts"}',
+    'tool_result[os.fs.edit ok]: --- a', 'assistant_tool_call: os.fs.read {bad', '', '### profile', '(no profile)', '### respond', 'Respond now.'].join('\n');
+  const comp = forceModel(JSON.stringify({ prompt: conv, grammar: 'g', stream: true }), 'qwen38-27b-cvd15');
+  assert(comp.forced && comp.chat, 'a /completion body with a conversation is the transcript');
+  assert(!forceModel(JSON.stringify({ prompt: 'Name this work session.' }), 'x').chat, 'the session-title request is not (it would overwrite the transcript)');
+  const ct = transcriptMetrics(comp.body);
+  assert(ct && ct.tool_calls === 3 && ct.broken_tool_calls === 1 && ct.pass_seen && ct.post_pass_edits === 1 && !ct.loop, 'completion transcript counts: calls, broken, an edit after the first pass');
   assert(!('model_check' in resultPayload({ status: 'failure', reason: 'r' }, { durationMs: 1 })), 'a claim without an alias sends the result body as before');
 }
 

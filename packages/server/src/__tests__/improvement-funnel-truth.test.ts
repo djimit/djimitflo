@@ -16,6 +16,28 @@ describe('ImprovementFunnelService metric truth', () => {
     "INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at) VALUES (?, 'feature', 't', 'd', 'r', 'test', ?, 0.5, ?, ?)")
     .run(id, status, new Date(Date.now() - createdAgoH * 3_600_000).toISOString(), new Date(Date.now() - updatedAgoH * 3_600_000).toISOString());
 
+  it('regressedBreakdown: a regressed proposal is split into checker rejections and makers that never delivered, by reason', () => {
+    const regressed = (id: string, gates: Array<{ name: string; status: string }> | null, makers: Array<[string, Record<string, unknown>]> = []) => {
+      proposal(id, 'regressed', 48, 1);
+      if (!gates) return;
+      db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id) VALUES (?, 'o', 'low', 'failed', '{}', ?)").run(`g-${id}`, id);
+      db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json) VALUES (?, ?, 'l', 'closed', 'failed', ?)").run(`r-${id}`, `g-${id}`, JSON.stringify(gates));
+      makers.forEach(([status, meta], n) => db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES (?, ?, 'maker', 'opencode', ?, ?)").run(`l-${id}-${n}`, `r-${id}`, status, JSON.stringify(meta)));
+    };
+    const miss = [{ name: 'maker_completion', status: 'fail' }, { name: 'checker_verdict', status: 'skipped' }];
+    regressed('rej', [{ name: 'maker_completion', status: 'pass' }, { name: 'checker_verdict', status: 'fail' }], [['completed', {}]]);
+    regressed('tok', miss, [['failed', { failure_reason: 'maker_gate_failed:maker_runtime_exit_zero', failure: { token_budget_hit: true } }]]);
+    regressed('time', miss, [['failed', { failure_reason: 'deterministic_checks_failed:test:changed(timed_out)' }], ['cancelled', {}]]);
+    regressed('canc', miss, [['cancelled', {}]]);
+    regressed('chk', miss, [['failed', { failure_reason: 'deterministic_checks_failed:test:mutation:grounded(exit=1)' }]]);
+    regressed('oth', miss, [['failed', { failure_reason: 'maker_gate_failed:diff_under_threshold' }]]);
+    regressed('norun', null);
+    proposal('old', 'regressed', 24 * 20, 24 * 10); // outside the 7-day window
+    const { kpi } = new ImprovementFunnelService(db).compute();
+    expect(kpi.regressed).toBe(7);
+    expect(kpi.regressedBreakdown).toEqual({ rejected: 1, makerDidNotDeliver: { token_budget: 1, timeout: 1, cancelled: 1, check_failed: 1, other: 1 }, unknown: 1 });
+  });
+
   it('UX-002: the open-work total counts every eligible row, not the top-12 breakdown', () => {
     for (let n = 0; n < 13; n++) workItem(`w${n}`, `loop-${String(n).padStart(2, '0')}`);
     workItem('done', 'loop-00', 'done'); // not open
@@ -26,6 +48,19 @@ describe('ImprovementFunnelService metric truth', () => {
     expect(queues.workItemsByLoop).toHaveLength(12);
     expect(queues.workItemsByLoopLimit).toBe(12);
     expect(queues.workItemGroups).toBe(13);
+  });
+
+  it('truth audit 2026-11-12: hygiene counts in-flight work items untouched for more than 14 days (prod: 3 leased since 2026-09-08)', () => {
+    const aged = (id: string, status: string, daysAgo: number) => db.prepare(
+      "INSERT INTO work_items (id, title, description, source, risk_class, status, recommended_loop, created_at, updated_at) VALUES (?, 't', 'd', 'test', 'low', ?, 'l', ?, ?)")
+      .run(id, status, new Date(Date.now() - (daysAgo + 1) * 86_400_000).toISOString(), new Date(Date.now() - daysAgo * 86_400_000).toISOString());
+    aged('l1', 'leased', 65); aged('l2', 'leased', 64); aged('b1', 'blocked', 20); aged('p1', 'planned', 15);
+    aged('t-fresh', 'triaged', 2); aged('c-old', 'candidate', 100); aged('d-old', 'done', 100); // fresh, backlog and closed rows are not aged in-flight work
+    const { hygiene } = new ImprovementFunnelService(db).compute();
+    expect(hygiene.agedWorkItems).toBe(4);
+    expect(hygiene.agedWorkItemsByStatus).toEqual({ leased: 2, blocked: 1, planned: 1 });
+    expect(Date.parse(hygiene.agedWorkItemsOldest!)).toBeLessThan(Date.now() - 64.9 * 86_400_000);
+    expect(hygiene.agedWorkItemsDays).toBe(14);
   });
 
   it('UX-003: the latency median states its 30-day current-status cohort and size, and is a true median', () => {

@@ -139,8 +139,11 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
       if (reason.length < 5 || reason.length > 500) throw createError(400, 'reason (5-500 characters) is required', 'VALIDATION_ERROR');
       const actor = String(req.user?.sub || req.user?.email || '');
       if (!actor) throw createError(401, 'an authenticated operator is required', 'UNAUTHORIZED');
+      // optional class: 'finding_fix' (LOOP_AUTO_MERGE_FINDING_FIX) re-enables only that class; default the test-only class + lanes
+      const cls = req.body?.class === undefined ? 'test_only' : req.body.class;
+      if (cls !== 'test_only' && cls !== 'finding_fix') throw createError(400, 'class must be test_only or finding_fix', 'VALIDATION_ERROR');
       try {
-        reEnableClass(db, actor, reason);
+        reEnableClass(db, actor, reason, new Date(), cls);
       } catch (error) {
         if (error instanceof Error && error.message === 'AUTO_MERGE_NOT_REVOKED') throw createError(409, 'the auto-merge class is not revoked', 'AUTO_MERGE_NOT_REVOKED');
         throw error;
@@ -151,9 +154,15 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.get('/runs', requirePermission('read:evidence'), (_req, res, next) => {
+  router.get('/runs', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      res.json({ runs: loopService.listLoopRuns() });
+      // ?synthetic=exclude: production runs only (no PR-review bookkeeping runs); default/include: every run
+      const synthetic = req.query.synthetic;
+      if (synthetic !== undefined && synthetic !== 'include' && synthetic !== 'exclude') {
+        res.status(400).json({ error: { message: 'synthetic must be include or exclude', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      res.json({ runs: loopService.listLoopRuns({ real_only: synthetic === 'exclude' }) });
     } catch (error) {
       next(error);
     }
@@ -347,9 +356,9 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/run-checks', requirePermission('create:task'), (req, res, next) => {
+  router.post('/runs/:id/run-checks', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(loopService.runDeterministicChecks(param(req, 'id'), req.body || {}));
+      res.json(await loopService.runDeterministicChecks(param(req, 'id'), req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);

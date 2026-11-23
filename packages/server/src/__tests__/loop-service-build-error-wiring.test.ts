@@ -50,11 +50,11 @@ describe('LoopService deterministic checks -> self-improvement wiring', () => {
     `).run(leaseId, runId, 'maker', 'codex', 'completed', worktree, '{}', now, now);
   }
 
-  it('creates a concrete self-improvement proposal from a failed deterministic check', () => {
+  it('creates a concrete self-improvement proposal from a failed deterministic check', async () => {
     fs.writeFileSync(path.join(worktree, 'package.json'), JSON.stringify({ scripts: { lint: 'node -e "process.stderr.write(\'boom: unexpected token\\n\'); process.exit(1)"' } }));
     seedLoopRunWithMakerLease('run-fail', 'lease-fail');
 
-    loops.runDeterministicChecks('run-fail', { lease_id: 'lease-fail', scripts: ['lint'] });
+    await loops.runDeterministicChecks('run-fail', { lease_id: 'lease-fail', scripts: ['lint'] });
 
     const improvements = new SelfImprovementService(db);
     const proposals = improvements.listImprovements();
@@ -65,21 +65,21 @@ describe('LoopService deterministic checks -> self-improvement wiring', () => {
     expect(proposals[0].description).toContain('boom: unexpected token');
   });
 
-  it('creates no self-improvement proposal when all deterministic checks pass', () => {
+  it('creates no self-improvement proposal when all deterministic checks pass', async () => {
     fs.writeFileSync(path.join(worktree, 'package.json'), JSON.stringify({ scripts: { lint: 'node -e "process.exit(0)"' } }));
     seedLoopRunWithMakerLease('run-pass', 'lease-pass');
 
-    loops.runDeterministicChecks('run-pass', { lease_id: 'lease-pass', scripts: ['lint'] });
+    await loops.runDeterministicChecks('run-pass', { lease_id: 'lease-pass', scripts: ['lint'] });
 
     const improvements = new SelfImprovementService(db);
     expect(improvements.listImprovements()).toHaveLength(0);
   });
 
-  it('creates no self-improvement proposal when the script is simply not present (B1: a failed check, but config, not a code error)', () => {
+  it('creates no self-improvement proposal when the script is simply not present (B1: a failed check, but config, not a code error)', async () => {
     fs.writeFileSync(path.join(worktree, 'package.json'), JSON.stringify({ scripts: {} }));
     seedLoopRunWithMakerLease('run-skip', 'lease-skip');
 
-    const result = loops.runDeterministicChecks('run-skip', { lease_id: 'lease-skip', scripts: ['lint'] });
+    const result = await loops.runDeterministicChecks('run-skip', { lease_id: 'lease-skip', scripts: ['lint'] });
     expect(result.checks).toEqual([expect.objectContaining({ name: 'lint', status: 'fail', reason: 'missing_script' })]);
 
     const improvements = new SelfImprovementService(db);

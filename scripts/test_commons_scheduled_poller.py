@@ -1,3 +1,4 @@
+import urllib.error
 import importlib.util
 import json
 import os
@@ -38,6 +39,29 @@ class ControllerTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             c.isolate_environment.__globals__['AGENT'] = 'opencode-control'
 
+    def test_runtime_is_selectable_and_only_opencode_gets_provider_settings(self):
+        env = {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_RUNTIME': 'codex', 'COMMONS_MODEL': 'm', 'USER': 'me', 'OPENAI_API_KEY': 'k', 'SOCIAL_OPENCODE_PROVIDER_API_KEY': 'p'}
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                c.isolate_environment()
+                self.assertEqual(dict(os.environ), {'USER': 'me', 'DJIMITFLO_URL': c.DJIMITFLO, 'DJIMITFLO_AGENT_ID': c.AGENT, 'SOCIAL_RUNTIME': 'codex', 'SOCIAL_MODEL_ID': 'm'})
+                p = Mock()
+                p.api.side_effect = [(200, {}), (200, {'messages': [{'id': 'one'}]}), (201, {'message': {'payload': {'action': 'social.response'}}})]
+                p.run_cli.return_value = ('json', 'run', {}); p.extract_object.return_value = {}
+                c.poll_once(p, 'operator')
+                self.assertEqual(p.run_cli.call_args.args[0], 'codex')
+                self.assertEqual(p.api.call_args_list[0].args[2]['runtime'], 'codex')
+                self.assertEqual(p.api.call_args_list[2].args[2]['runtime'], 'codex')
+            with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_PROVIDER_URL': ''}, clear=True):
+                c.isolate_environment()
+                self.assertEqual(os.environ['SOCIAL_RUNTIME'], 'opencode')
+                self.assertNotIn('SOCIAL_OPENCODE_PROVIDER_URL', os.environ)
+            with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_RUNTIME': 'bash'}, clear=True):
+                with self.assertRaisesRegex(RuntimeError, 'Unsupported COMMONS_RUNTIME'): c.isolate_environment()
+            self.assertEqual(c.failure_code(RuntimeError('codex failed with exit 1')), 'runtime_exit')
+        finally:
+            with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN}, clear=True): c.isolate_environment()
+
     def test_pending_message_never_creates_round_and_only_one_model_call(self):
         p = Mock()
         msg = {'id': 'one', 'deliveryLeaseToken': 'lease'}
@@ -70,6 +94,34 @@ class ControllerTests(unittest.TestCase):
         p.run_cli.assert_not_called()
         self.assertEqual(result['model_calls'], 0)
 
+    def test_auto_peer_is_a_present_other_agent_and_no_round_opens_without_one(self):
+        import datetime
+        now = datetime.datetime(2026, 11, 18, 12, 0, tzinfo=datetime.timezone.utc)
+        agent = lambda id, beat, **extra: {'id': id, 'status': 'active', 'metadata': {'social_runtime': {'enabled': True, 'last_heartbeat_at': beat}}, **extra}
+        listed = {'agents': [agent(c.AGENT, '2026-11-18T11:59:00.000Z'), agent('stale', '2026-11-18T11:39:59.000Z'),
+                             agent('retired', '2026-11-18T11:59:00.000Z', retired_at='2026-11-01'), {'id': 'no-social', 'status': 'active', 'metadata': {}},
+                             agent('present', '2026-11-18T11:41:00.000Z')]}
+        with patch.object(c, 'request', return_value=listed):
+            self.assertEqual(c.present_peer('operator-secret', now), 'present')
+        p = Mock()
+        p.api.return_value = (200, {'messages': []})
+        with patch.object(c, 'PEER', 'auto'), patch.object(c, 'present_peer', return_value='present'), patch.object(c, 'request') as request:
+            c.poll_once(p, 'operator-secret')
+        self.assertEqual(request.call_args.args[3]['participant_ids'], [c.AGENT, 'present'])
+        with patch.object(c, 'PEER', 'auto'), patch.object(c, 'present_peer', return_value=None), patch.object(c, 'request') as request:
+            self.assertEqual(c.poll_once(p, 'operator-secret')['reason'], 'no_peer_present')
+        request.assert_not_called()
+
+    def test_outside_the_scheduled_utc_hours_nothing_is_contacted(self):
+        import datetime
+        off = (datetime.datetime.now(datetime.timezone.utc).hour + 1) % 24
+        with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN, 'COMMONS_HOURS_UTC': str(off)}, clear=True), \
+             patch.object(c, 'request') as request, patch.object(c, 'admit_run') as admit, patch('builtins.print') as printed:
+            self.assertEqual(c.main(), 0)
+        request.assert_not_called(); admit.assert_not_called()
+        self.assertEqual(json.loads(printed.call_args.args[0])['reason'], 'outside_schedule')
+        with patch.dict(os.environ, {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': LOGIN}, clear=True): c.isolate_environment()
+
     def test_daily_cap_admits_n_runs_then_stops_and_resets_next_day(self):
         with tempfile.TemporaryDirectory() as state, patch.dict(c.CONFIG, {'COMMONS_MAX_RUNS_PER_DAY': '2'}):
             self.assertEqual([c.admit_run(state, today='2026-09-21') for _ in range(3)], [True, True, False])
@@ -99,6 +151,24 @@ class ControllerTests(unittest.TestCase):
             written = ''.join(call.args[0] for call in err.write.call_args_list)
             self.assertIn('unclassified', written)
             self.assertNotIn('secret-value', written)
+
+    def test_failure_is_reported_to_the_server_as_two_fixed_tokens_and_only_with_a_scoped_token(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(c, 'request') as request:
+            c.report_failure('operator_login', 'http_401')
+            request.assert_not_called()  # no scoped token yet: nothing to report with
+        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'scoped'}, clear=True), patch.object(c, 'request', side_effect=RuntimeError('POST HTTP 500')) as request:
+            c.report_failure('runtime_inference', 'runtime_timeout')  # a failing report never raises
+            method, _, path, body, token = request.call_args.args
+            self.assertEqual((method, path, token), ('POST', f'/api/swarm-v2/social-runtime/{c.AGENT}/heartbeat', 'scoped'))
+            self.assertEqual(body['failure'], {'stage': 'runtime_inference', 'code': 'runtime_timeout'})
+        sent = []
+        def urlopen(req, timeout=0):
+            sent.append(dict(req.header_items())); raise urllib.error.HTTPError(req.full_url, 401, 'no', {}, None)
+        with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'scoped'}, clear=True), patch.object(c.urllib.request, 'urlopen', side_effect=urlopen):
+            c.report_failure('runtime_inference', 'runtime_exit')
+        # the route authenticates on this header; a bearer token got 401 and the report was silently lost (prod 2026-11-19)
+        self.assertEqual(sent[0].get('X-agent-social-token'), 'scoped')
+        self.assertNotIn('Authorization', sent[0])
 
     def test_renewal_uses_only_fixed_target_and_short_ttl(self):
         calls = []

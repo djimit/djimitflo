@@ -41,7 +41,7 @@ export function RuntimeHealthSection() {
                 <td>{fmt(r.leases_30d.n)} ({fmt(r.leases_30d.completed)} done / {fmt(r.leases_30d.failed)} failed / {fmt(r.leases_30d.cancelled)} cancelled)</td>
                 <td>{r.leases_30d.success_rate === null ? '— (n=0)' : `${Math.round(r.leases_30d.success_rate * 100)}% (n=${r.leases_30d.completed + r.leases_30d.failed})`}</td>
                 <td>{r.last_success_at ? since(r.last_success_at) : 'never'}</td>
-                <td>{r.gym.species.length === 0 ? '—' : r.gym.benched ? 'benched (circuit breaker)' : 'active'}</td>
+                <td>{gymCell(r.gym)}</td>
                 <td>{READINESS[r.readiness]}</td>
               </tr>
             ))}</tbody>
@@ -50,4 +50,11 @@ export function RuntimeHealthSection() {
       )}
     </section>
   );
+}
+
+/** truth audit 2026-11-12: the gym state plus its 30-day attempts — atomic ran 789 gym attempts while its leases said n=0 */
+function gymCell(gym: RuntimeHealthRow['gym']): string {
+  const state = gym.species.length === 0 ? null : gym.benched ? 'benched (circuit breaker)' : 'active';
+  const attempts = gym.attempts_30d?.n ? `${fmt(gym.attempts_30d.ok)}/${fmt(gym.attempts_30d.n)} ok in 30 d` : null;
+  return [state, attempts].filter(Boolean).join(' · ') || '—';
 }

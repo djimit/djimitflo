@@ -36,7 +36,7 @@ describe('recordWorkerCall: the maker helper, generalised', () => {
     expect(ledger(db, 'gym')).toEqual([expect.objectContaining({ model: 'atomic', provider: 'local', ok: 1, tokens_in: 1200, tokens_out: null, run_id: 'g1', purpose: 'gym:evolution-gym', status: 'ok' })]);
   });
 
-  it('a reviewer row is a lease mirror: cost and resource ledgers count its tokens once (from the lease)', () => {
+  it('a reviewer row is a lease mirror: cost and resource ledgers count its tokens once (from the lease)', async () => {
     expect(LEASE_MIRROR_CONSUMERS).toEqual(expect.arrayContaining(['maker', 'checker']));
     const now = new Date().toISOString(); db.pragma('foreign_keys = OFF'); // a lease without its loop_runs row
     db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('c1', 'r1', 'checker', 'claude', 'completed', ?, ?, ?)`)
@@ -66,7 +66,7 @@ describe('executeChecker writes one reviewer ledger row per settled lease', () =
     const prepared = loops.continueLoopRun(run.id, { runtime: 'mock', max_assignments: 1, max_maker_workers: 1 });
     const maker = prepared.leases.find((l) => l.role === 'maker')!;
     await loops.executeWorker(run.id, { lease_id: maker.id, timeout_ms: 10_000 });
-    loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
+    await loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
     vi.spyOn(loops.runtimeCommand, 'executeRuntimeCommand').mockResolvedValue({ signal: null, timedOut: false, ...result });
     await loops.executeChecker(run.id, { runtime: 'mock', timeout_ms: 10_000 });
     return run.id;
@@ -83,7 +83,7 @@ describe('executeChecker writes one reviewer ledger row per settled lease', () =
     const prepared = loops.continueLoopRun(run.id, { runtime: 'mock', max_assignments: 1, max_maker_workers: 1 });
     const maker = prepared.leases.find((l) => l.role === 'maker')!;
     await loops.executeWorker(run.id, { lease_id: maker.id, timeout_ms: 10_000 });
-    loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
+    await loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
     const checkerId = loops.listWorkerLeases(run.id).find((l) => l.role === 'checker')!.id;
     vi.spyOn(loops.runtimeCommand, 'executeRuntimeCommand').mockImplementation(async () => {
       loops.updateWorkerLeaseStatus(checkerId, 'cancelled', { cancellation_reason: 'operator_stop' }); // cancelled while it ran

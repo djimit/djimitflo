@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { CHECKER_INSTRUCTIONS, LoopService } from '../services/loop-service';
+import { PSTACK_INTERROGATE_VERSION } from '../services/pstack-interrogate';
 
 // F1-R (the checker benchmark, rebuilt): committed items, deterministic weakening, the scorer, and the periodic-benchmark
 // options of the shared SEC-F1 runner (--role checker, --benchmark). No network, no model.
@@ -128,6 +129,7 @@ describe('the shared runner\'s benchmark options (sec-f1-run.mjs)', () => {
     const { prompt } = buildPrompt(loops, item, co, 'checker');
     expect(prompt).toContain('# doc-drift-and-small-fix-loop Checker Assignment');
     expect(prompt).toContain(CHECKER_INSTRUCTIONS.checker);
+    expect(prompt).toContain(`PSTACK INTERROGATE POLICY (version ${PSTACK_INTERROGATE_VERSION})`);
     expect(prompt).not.toContain(CHECKER_INSTRUCTIONS.security);
     expect(prompt).toContain('-it(1)\n+it(2)');
     expect(() => buildPrompt(loops, item, co, 'maker')).toThrow('SEC_F1_BAD_ROLE');

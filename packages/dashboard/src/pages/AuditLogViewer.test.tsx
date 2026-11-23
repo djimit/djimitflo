@@ -63,3 +63,12 @@ it('exports with the same filter scope as the list and labels it as filtered', a
   expect(exported.get('format')).toBe('json');
   expect(exported.get('resource_type')).toBe('loop_run');
 });
+
+it('uses theme tokens only: no light-mode-only greys or white that the dark-only app cannot read', async () => {
+  authenticatedFetch.mockImplementation(async () => page([row('a')], true, 2));
+  const { container } = render(<AuditLogViewer />);
+  await screen.findByText('a-res');
+  const classes = [...container.querySelectorAll('[class]')].map((el) => el.getAttribute('class')).join(' ');
+  expect(classes).not.toMatch(/(?:^|\s)(?:dark:)?(?:bg-white|bg-gray-\d+|text-gray-\d+)(?=\s|$)/);
+  expect(screen.getByRole('table').className).toContain('bg-background-secondary');
+});

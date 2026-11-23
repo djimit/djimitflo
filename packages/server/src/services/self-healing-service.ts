@@ -19,6 +19,8 @@ import { realRunSql } from './synthetic-runs';
 import { WorktreeManager } from './worktree-manager';
 import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 import { RuntimeLeaseRegistry } from './loop-recovery-service';
+import { AuditService } from './audit-service';
+import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 
 const HOUR_MS = 60 * 60 * 1000;
 const STALE_LEASE_MS = HOUR_MS;
@@ -51,7 +53,8 @@ interface HealingAction {
   id: string;
   incidentId: string;
   action: string;
-  result: 'success' | 'failed' | 'skipped';
+  /** advisory: the check only produced a recommendation; nothing was changed, so the incident is not resolved. */
+  result: 'success' | 'failed' | 'skipped' | 'advisory';
   output: string;
   timestamp: string;
 }
@@ -83,11 +86,13 @@ export class SelfHealingService {
       WHERE julianday(created_at) > julianday(?) AND ${realRunSql()}
     `).get(new Date(clock.getTime() - 24 * HOUR_MS).toISOString()) as any;
 
-    const failureRate = loopStats.total > 0 ? (loopStats.failed || 0) / loopStats.total : 0;
+    // a blocked run did not produce its result either: 0/49 read "healthy" while every product-loop run was blocked (12-11)
+    const unsuccessful = (loopStats.failed || 0) + (loopStats.blocked || 0);
+    const failureRate = loopStats.total > 0 ? unsuccessful / loopStats.total : 0;
     checks.push({
       name: 'loop_failure_rate',
       status: failureRate > 0.3 ? 'critical' : failureRate > 0.1 ? 'degraded' : 'healthy',
-      message: `${((failureRate) * 100).toFixed(0)}% failure rate (${loopStats.failed || 0}/${loopStats.total || 0})`,
+      message: `${((failureRate) * 100).toFixed(0)}% failed or blocked (${loopStats.failed || 0} failed + ${loopStats.blocked || 0} blocked = ${unsuccessful}/${loopStats.total || 0})`,
       lastChecked: now,
     });
 
@@ -237,11 +242,11 @@ export class SelfHealingService {
     const clock = this.now();
     const cutoff = new Date(clock.getTime() - STALE_LEASE_MS);
     const candidates = this.db.prepare(`
-      SELECT l.id, l.runtime, l.metadata, r.status AS run_status, r.metadata AS run_metadata
+      SELECT l.id, l.status, l.runtime, l.loop_run_id, l.metadata, r.status AS run_status, r.metadata AS run_metadata
       FROM worker_leases l LEFT JOIN loop_runs r ON r.id = l.loop_run_id
       WHERE l.status IN ('running', 'prepared')
       AND julianday(l.updated_at) < julianday(?)
-    `).all(cutoff.toISOString()) as Array<{ id: string; runtime: string | null; metadata: string | null; run_status: string | null; run_metadata: string | null }>;
+    `).all(cutoff.toISOString()) as Array<{ id: string; status: string; runtime: string | null; loop_run_id: string | null; metadata: string | null; run_status: string | null; run_metadata: string | null }>;
     const legacyCutoff = sqliteText(cutoff);
     const legacyMatch = this.db.prepare('SELECT 1 FROM worker_leases WHERE id = ? AND updated_at < ?');
     const hasTasks = Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get());
@@ -266,7 +271,18 @@ export class SelfHealingService {
       UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL}
       WHERE id = ? AND status IN ('running', 'prepared')
     `);
-    const cancelled = this.db.transaction(() => abandoned.reduce((n, l) => n + cancel.run(now, ...cancelLeaseBind('self_healing_stale_lease', now), l.id).changes, 0))();
+    // each cancellation is a real DB write: record it in the persistent audit trail (the heal log itself is in-memory only)
+    const audit = abandoned.length ? new AuditService(this.db) : null;
+    const cancelled = this.db.transaction(() => abandoned.reduce((n, l) => {
+      const changes = cancel.run(now, ...cancelLeaseBind('self_healing_stale_lease', now), l.id).changes;
+      if (changes) audit!.record({
+        event_type: 'worker_lease.cancelled' as AuditEventType, user_id: 'system:self-healing', action: 'self_healing.cancel_stale_lease',
+        resource_type: 'worker_lease', resource_id: l.id, risk_level: RiskLevel.MEDIUM,
+        before: { status: l.status }, after: { status: 'cancelled' },
+        metadata: { reason: 'self_healing_stale_lease', loop_run_id: l.loop_run_id, run_status: l.run_status, runtime: l.runtime },
+      });
+      return n + changes;
+    }, 0))();
     return { cancelled, kept: candidates.length - cancelled };
   }
 
@@ -284,7 +300,7 @@ export class SelfHealingService {
       case 'loop_failure_rate':
         action.action = 'analyze_failures';
         action.output = 'Failure analysis complete. Recommend reviewing failed loop logs.';
-        action.result = 'success';
+        action.result = 'advisory'; // a recommendation only: nothing was fixed
         break;
 
       case 'stale_leases':
@@ -302,19 +318,19 @@ export class SelfHealingService {
       case 'orphaned_worktrees':
         action.action = 'flag_for_cleanup';
         action.output = 'Orphaned worktrees flagged for manual cleanup (filesystem operation)';
-        action.result = 'success';
+        action.result = 'advisory'; // a recommendation only: nothing was fixed
         break;
 
       case 'database_size':
         action.action = 'vacuum_recommend';
         action.output = 'Database size exceeds threshold. Recommend running VACUUM during maintenance window.';
-        action.result = 'success';
+        action.result = 'advisory'; // a recommendation only: nothing was fixed
         break;
 
       case 'memory_usage':
         action.action = 'gc_suggest';
         action.output = 'High memory usage detected. Recommend restarting the server process.';
-        action.result = 'success';
+        action.result = 'advisory'; // a recommendation only: nothing was fixed
         break;
 
       default:

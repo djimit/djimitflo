@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { DreamStateService } from './dream-state-service';
 import { supersededMergeOutcomeSql } from './merge-superseded';
+import { reflectionProposalPolicy } from './self-improvement-service';
 import { realRunSql, syntheticRunSql } from './synthetic-runs';
 
 /** Read-only SQL aggregation of the whole improvement chain, so "where does it leak" is one call. */
@@ -24,6 +25,12 @@ export interface ImprovementFunnel {
   kpi: {
     /** verified/regressed: proposals whose CURRENT status is positive/regressed and whose updated_at falls in the window — not first verifications. */
     windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null;
+    /**
+     * Why the window's regressed proposals ended there, from the newest loop run of each: `rejected` = a checker or security
+     * checker refused a delivered change; `makerDidNotDeliver` = the maker never completed, by first matching reason;
+     * `unknown` = no run or no failed gate found. null when it could not be read. The three add up to `regressed`.
+     */
+    regressedBreakdown: { rejected: number; makerDidNotDeliver: Record<MakerMissReason, number>; unknown: number } | null;
     /** panels24h/7d count panels created; reviews24h/7d count submitted specialist reviews (DF-03) */
     panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null;
     /**
@@ -35,12 +42,29 @@ export interface ImprovementFunnel {
     runs: number; runSuccessRate: number | null; tokensPerVerified: number | null;
   };
   /** UX-004: null = the read failed or its table is absent (reason in `unavailable`), never a healthy 0. */
-  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  hygiene: {
+    zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null;
+    /** in-flight work items (triaged/planned/leased/blocked) not updated for more than agedWorkItemsDays; candidates are backlog, not aged */
+    agedWorkItems: number | null; agedWorkItemsByStatus: Record<string, number>; agedWorkItemsOldest: string | null; agedWorkItemsDays: number;
+  };
   /**
    * UX-002: openWorkItems is COUNT(*) over every open row; workItemsByLoop is only the largest workItemsByLoopLimit
    * (loop, status) groups of workItemGroups.
    */
   queues: { openWorkItems: number | null; workItemGroups: number | null; workItemsByLoopLimit: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /**
+   * What the Agent Commons contributes. inflow: the reflection-proposal cap its learnings share (state disabled = cap 0, nothing
+   * can enter). proposals/verified: proposals a Commons learning created. evidenceEffect: descriptive, not causal (threads are
+   * not assigned at random) — proposals that never reached a goal themselves, split by whether a Commons thread investigated
+   * them, and what their refinement children became. Arms: commons_review = a completed Commons proposal review was fed into the
+   * refinement (COMMONS_PROPOSAL_REVIEW_ENABLED, run 2026-09-20..30); investigated = a Commons thread on the proposal (a
+   * question with topic_ref proposal:<id>) and no review; not_investigated = neither. Rates are null below
+   * effectMinN per arm. null = unreadable.
+   */
+  commons: {
+    inflow: { cap: number | null; state: string } | null; proposals: number | null; verified: number | null; effectMinN: number;
+    evidenceEffect: Array<{ arm: CommonsArm; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null;
+  };
   /** UX-004: metric → why it could not be read (`missing_schema: …` for an absent table/column, `query_failed: …` otherwise). */
   unavailable: Record<string, string>;
   /** TypeSafe judgments (ADR 0002): volume, latency and agreement with the final outcome where one exists (plan E7/E10). */
@@ -72,12 +96,33 @@ const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'appli
 const OPEN_WORK = "status IN ('candidate','triaged','planned','leased','blocked')";
 const WORK_GROUP_LIMIT = 12;
 const MEDIAN_WINDOW_DAYS = 30;
+export type CommonsArm = 'commons_review' | 'investigated' | 'not_investigated';
+const EFFECT_MIN_N = 30; // same floor as the skill-route contrast: below it a rate is noise
+const AGED_WORK_DAYS = 14; // the queue-hygiene work-item TTL (WORK_ITEM_TTL_DAYS) for the shortest-lived loops
 
 const median = (sorted: number[]) => {
   if (!sorted.length) return null;
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
+
+export type MakerMissReason = 'token_budget' | 'timeout' | 'cancelled' | 'check_failed' | 'other';
+interface RegressedRunRow { id: string; gates: string | null; lease_status: string | null; meta: string | null }
+const parse = (text: string | null): unknown => { try { return JSON.parse(text || 'null'); } catch { return null; } };
+
+/** Pure: one regressed proposal's newest run (its gates and maker leases) → why it is regressed. */
+export function regressedCause(gatesJson: string | null, makers: Array<{ status: string | null; meta: string | null }>): 'rejected' | MakerMissReason | 'unknown' {
+  const gates = parse(gatesJson);
+  const failed = new Set((Array.isArray(gates) ? gates : []).filter((g) => g?.status === 'fail').map((g) => String(g.name)));
+  if (failed.has('checker_verdict') || failed.has('security_checker_verdict')) return 'rejected';
+  if (!failed.size) return 'unknown';
+  const metas = makers.map((m) => (parse(m.meta) ?? {}) as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean; failure?: { timed_out?: boolean; token_budget_hit?: boolean } });
+  if (metas.some((m) => m.failure?.token_budget_hit === true || /token budget exceeded/i.test(m.failure_reason ?? ''))) return 'token_budget';
+  if (metas.some((m) => m.failure?.timed_out === true || m.timed_out === true || m.runtime_timed_out === true || /timed_out/.test(m.failure_reason ?? ''))) return 'timeout';
+  if (makers.some((m) => m.status === 'cancelled')) return 'cancelled';
+  if (metas.some((m) => /^deterministic_checks_failed/.test(m.failure_reason ?? ''))) return 'check_failed';
+  return 'other';
+}
 
 export class ImprovementFunnelService {
   private unavailable: Record<string, string> = {};
@@ -163,6 +208,34 @@ export class ImprovementFunnelService {
     return { reachedGoal, completed, failed, other: reachedGoal - completed - failed };
   }
 
+  private commons(): ImprovementFunnel['commons'] {
+    let inflow: ImprovementFunnel['commons']['inflow'] = null;
+    try { const p = reflectionProposalPolicy(this.db); inflow = { cap: p.cap, state: p.state }; } catch (err) { this.unavailable.commonsInflow = `query_failed: ${err instanceof Error ? err.message : String(err)}`; }
+    const own = this.tryRows<{ n: number; verified: number | null }>('commonsProposals', `SELECT COUNT(*) AS n, SUM(status IN ('verified', 'evaluating', 'applied')) AS verified FROM self_improvements WHERE id IN (
+      SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')`);
+    // one scan of agent_messages and one of the children, then a join on ids (no json_extract per proposal row)
+    const arms = this.tryRows<{ arm: CommonsArm; stuck: number; refined: number; decided: number; verified: number; regressed: number }>('commonsEvidenceEffect', `
+      WITH inv AS MATERIALIZED (SELECT DISTINCT substr(json_extract(payload_json, '$.params.topic_ref'), 10) AS id FROM agent_messages
+          WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_extract(payload_json, '$.params.topic_ref') LIKE 'proposal:%'),
+        kids AS MATERIALIZED (SELECT c.refined_from_id AS id,
+            MAX(COALESCE(json_extract(p.consensus_json, '$.decision'), '') IN ('goal', 'blocked', 'backlog')) AS decided,
+            MAX(c.status IN ('verified', 'evaluating', 'applied')) AS verified, MAX(c.status = 'regressed') AS regressed
+          FROM self_improvements c LEFT JOIN specialist_panels p ON p.id = c.panel_id WHERE c.refined_from_id IS NOT NULL GROUP BY c.refined_from_id)
+      SELECT CASE WHEN r.improvement_id IS NOT NULL THEN 'commons_review' WHEN inv.id IS NOT NULL THEN 'investigated' ELSE 'not_investigated' END AS arm, COUNT(*) AS stuck, COUNT(kids.id) AS refined, COALESCE(SUM(kids.decided), 0) AS decided,
+        COALESCE(SUM(kids.verified), 0) AS verified, COALESCE(SUM(kids.regressed), 0) AS regressed
+      FROM self_improvements s LEFT JOIN inv ON inv.id = s.id LEFT JOIN kids ON kids.id = s.id
+        LEFT JOIN commons_proposal_reviews r ON r.improvement_id = s.id AND r.status = 'completed'
+      WHERE s.refined_from_id IS NULL AND s.status NOT IN (${REACHED_GOAL.map((x) => `'${x}'`).join(', ')}) GROUP BY 1`);
+    const arm = (name: CommonsArm, r?: { stuck: number; refined: number; decided: number; verified: number; regressed: number }) => {
+      const { stuck = 0, refined = 0, decided = 0, verified = 0, regressed = 0 } = r ?? {};
+      return { arm: name, stuck, refined, decided, verified, regressed, decidedRate: stuck >= EFFECT_MIN_N ? decided / stuck : null };
+    };
+    return {
+      inflow, proposals: own === null ? null : own[0]?.n ?? 0, verified: own === null ? null : own[0]?.verified ?? 0, effectMinN: EFFECT_MIN_N,
+      evidenceEffect: arms === null ? null : (['commons_review', 'investigated', 'not_investigated'] as const).map((name) => arm(name, arms.find((a) => a.arm === name))),
+    };
+  }
+
   compute(): ImprovementFunnel {
     this.unavailable = {};
     const byStatus = this.counts('SELECT status AS k, COUNT(*) AS n FROM self_improvements GROUP BY status', 'proposals');
@@ -194,6 +267,21 @@ export class ImprovementFunnelService {
     const DAY = 86_400_000;
     const verified7 = one('verified', `SELECT COUNT(*) AS n FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(7 * DAY)}'`);
     const regressed7 = one('regressed', `SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'regressed' AND updated_at >= '${iso(7 * DAY)}'`);
+    const regressedRuns = this.tryRows<RegressedRunRow>('regressedBreakdown', `
+      SELECT s.id, r.gates_json AS gates, l.status AS lease_status, l.metadata AS meta FROM self_improvements s
+      LEFT JOIN loop_runs r ON r.id = (SELECT r2.id FROM goals g JOIN loop_runs r2 ON r2.goal_id = g.id WHERE g.improvement_id = s.id ORDER BY r2.created_at DESC LIMIT 1)
+      LEFT JOIN worker_leases l ON l.loop_run_id = r.id AND l.role = 'maker'
+      WHERE s.status = 'regressed' AND s.updated_at >= '${iso(7 * DAY)}'`);
+    let regressedBreakdown: ImprovementFunnel['kpi']['regressedBreakdown'] = null;
+    if (regressedRuns !== null) {
+      regressedBreakdown = { rejected: 0, makerDidNotDeliver: { token_budget: 0, timeout: 0, cancelled: 0, check_failed: 0, other: 0 }, unknown: 0 };
+      const byProposal = new Map<string, RegressedRunRow[]>();
+      for (const row of regressedRuns) byProposal.set(row.id, [...(byProposal.get(row.id) ?? []), row]);
+      for (const rows of byProposal.values()) {
+        const cause = regressedCause(rows[0].gates, rows.filter((r) => r.lease_status !== null).map((r) => ({ status: r.lease_status, meta: r.meta })));
+        if (cause === 'rejected' || cause === 'unknown') regressedBreakdown[cause]++; else regressedBreakdown.makerDidNotDeliver[cause]++;
+      }
+    }
     const reviews = (metric: string, ms: number) => one(metric, `SELECT COUNT(*) AS n FROM specialist_reviews WHERE status = 'submitted' AND julianday(created_at) >= julianday('${iso(ms)}')`);
     const panels7 = one('panels7d', `SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(7 * DAY)}'`);
     const hours = this.tryRows<{ h: number }>('medianHoursToVerified', `SELECT (julianday(updated_at) - julianday(created_at)) * 24 AS h FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(MEDIAN_WINDOW_DAYS * DAY)}' AND updated_at > created_at ORDER BY h`)?.map((r) => r.h) ?? null;
@@ -202,7 +290,7 @@ export class ImprovementFunnelService {
       SELECT COUNT(*) AS approvals, COUNT(DISTINCT json_extract(t.metadata, '$.loop_run_id')) AS runs FROM approvals a JOIN tasks t ON t.id = a.task_id
       WHERE a.status = 'approved' AND a.created_at >= '${iso(7 * DAY)}' AND json_valid(COALESCE(t.metadata, '{}')) = 1 AND json_extract(t.metadata, '$.loop_run_id') IS NOT NULL`)[0];
     const kpi: ImprovementFunnel['kpi'] = {
-      windowDays: 7, verified: verified7, regressed: regressed7,
+      windowDays: 7, verified: verified7, regressed: regressed7, regressedBreakdown,
       regressionRate: verified7 !== null && regressed7 !== null && verified7 + regressed7 ? regressed7 / (verified7 + regressed7) : null,
       panels24h: one('panels24h', `SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(DAY)}'`), panels7d: panels7,
       reviews24h: reviews('reviews24h', DAY), reviews7d: reviews('reviews7d', 7 * DAY),
@@ -212,12 +300,18 @@ export class ImprovementFunnelService {
       approvalsPerRun: approvals?.runs ? Math.round((approvals.approvals / approvals.runs) * 10) / 10 : null,
       ...this.runCost(iso(7 * DAY), verified7 ?? 0),
     };
+    const aged = this.tryRows<{ status: string; n: number; oldest: string }>('agedWorkItems',
+      `SELECT status, COUNT(*) AS n, MIN(updated_at) AS oldest FROM work_items WHERE status IN ('triaged','planned','leased','blocked') AND updated_at < '${iso(AGED_WORK_DAYS * DAY)}' GROUP BY status`);
     const hygiene: ImprovementFunnel['hygiene'] = {
       zombieGoals: one('zombieGoals', `SELECT COUNT(*) AS n FROM goals WHERE ((status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
         OR (status = 'blocked' AND updated_at < '${iso(7 * DAY)}' AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval') IS NULL))
         AND NOT EXISTS (SELECT 1 FROM loop_runs sr WHERE sr.goal_id = goals.id AND ${syntheticRunSql('sr')})`),
       staleRuns: one('staleRuns', `SELECT COUNT(*) AS n FROM loop_runs WHERE (status = 'interrupted' AND updated_at < '${iso(2 * DAY)}' OR status = 'planning' AND updated_at < '${iso(DAY)}') AND ${realRunSql()}`),
       blockedBoardItems: one('blockedBoardItems', "SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
+      agedWorkItems: aged === null ? null : aged.reduce((a, r) => a + r.n, 0),
+      agedWorkItemsByStatus: Object.fromEntries((aged ?? []).map((r) => [r.status, r.n])),
+      agedWorkItemsOldest: aged?.length ? aged.map((r) => r.oldest).sort()[0] : null,
+      agedWorkItemsDays: AGED_WORK_DAYS,
     };
     return {
       judgments: this.judgmentAgreement(),
@@ -241,7 +335,7 @@ export class ImprovementFunnelService {
         learningClosures: one('learningClosures', 'SELECT COUNT(*) AS n FROM loop_learning_closures'),
         memoryCandidates: this.counts('SELECT status AS k, COUNT(*) AS n FROM memory_candidates GROUP BY status'),
       },
-      kpi, hygiene,
+      kpi, hygiene, commons: this.commons(),
       queues: {
         openWorkItems, workItemGroups, workItemsByLoopLimit: WORK_GROUP_LIMIT, workItemsByLoop,
         commonsReviews: this.counts('SELECT status AS k, COUNT(*) AS n FROM commons_proposal_reviews GROUP BY status', 'commonsReviews'),

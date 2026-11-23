@@ -67,8 +67,8 @@ describe('SelfHealingService', () => {
     for (let i = 0; i < 10; i++) {
       db.prepare(`
         INSERT INTO loop_runs (id, loop_name, status, created_at)
-        VALUES (?, 'test-loop', 'failed', datetime('now', '-1 hour'))
-      `).run(`run-${i}`);
+        VALUES (?, 'test-loop', 'failed', ?)
+      `).run(`run-${i}`, new Date(Date.now() - 3_600_000).toISOString()); // checkHealth() windows on Date.now() − 24 h
     }
 
     const checks = service.checkHealth();

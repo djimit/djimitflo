@@ -1,0 +1,53 @@
+name: Stale loop PRs
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch: {}
+
+# Queue hygiene for the autonomous loop's PRs (title "loop: ..."): stale after 14 days without activity, closed 7 days
+# later. actions/stale cannot filter on a title, so the first step labels open loop PRs `loop` and the stale step acts only
+# on that label (only-labels). Issues and every other PR stay under stale.yml (which exempts `loop`). Labeling and closing
+# fire no CI: neither `labeled` nor `closed` is in the default pull_request activity types the CI workflows listen to.
+# Exempt: keep, pinned, security, critical, wip.
+
+permissions:
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: stale-loop-prs
+  cancel-in-progress: false
+
+jobs:
+  stale-loop-prs:
+    if: github.repository == 'djimit/djimitflo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Label open loop PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh label create loop --repo "$REPO" --color c5def5 --description 'Opened by the autonomous loop (title "loop: ...")' 2>/dev/null || true
+          gh pr list --repo "$REPO" --state open --limit 200 --json number,title,labels \
+            --jq '.[] | select(.title | startswith("loop:")) | select([.labels[].name] | index("loop") | not) | .number' \
+          | while read -r pr; do
+              echo "Labeling #$pr loop"
+              gh api -X POST "repos/$REPO/issues/$pr/labels" -f "labels[]=loop" --silent || echo "Could not label #$pr; skipping."
+            done
+
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11
+        with:
+          only-pr-labels: loop
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          days-before-pr-stale: 14
+          days-before-pr-close: 7
+          stale-pr-label: stale
+          stale-pr-message: 'This loop PR has had no activity for 14 days. It will be closed in 7 days unless it is updated or labeled `keep`.'
+          close-pr-message: 'Closed as a stale loop PR (queue hygiene). Reopen, or let the loop re-propose it, if still relevant.'
+          exempt-pr-labels: 'keep,pinned,security,critical,wip'
+          remove-pr-stale-when-updated: true
+          operations-per-run: 60

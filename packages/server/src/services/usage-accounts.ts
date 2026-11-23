@@ -38,6 +38,10 @@ export type CostBasisLabel = 'flat_subscription' | 'free_tier' | 'metered' | 'lo
  *
  * Every Ollama provider row is Ollama Cloud: the same rule as inference-budget ollamaUsage7d, which counts them against the
  * weekly limit (the workstation daemon proxies :cloud models). runtime mock / manual are not usage.
+ *
+ * A lease's model (truth audit 2026-11-12: 141 opencode leases on the configured default were 'other'): token_accounting.model_id,
+ * else metadata.model, else metadata.model_id (the dispatch identity, leaseIdentity: the lease model or the runtime's configured
+ * default at dispatch), else the runtime's configured default now (DJIMITFLO_<RUNTIME>_MODEL, the same rule).
  */
 export const ACCOUNTS: ReadonlyArray<{ id: AccountId; label: string; cost_basis: CostBasisLabel }> = [
   { id: 'ollama_cloud', label: 'Ollama Cloud (subscription)', cost_basis: 'flat_subscription' },
@@ -77,15 +81,32 @@ export function accountOfLease(runtime: string, model: string | null | undefined
   return 'other';
 }
 
+/** The model a runtime runs when the lease names none (the executors pass DJIMITFLO_<RUNTIME>_MODEL as --model; leaseIdentity). */
+export function configuredDefaultModel(runtime: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  return env[`DJIMITFLO_${runtime.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`]?.trim() || null;
+}
+
 /** One usage record (a ledger call or a lease session), normalised. */
 export interface UsageRecord {
-  account: AccountId; at: number; tokens: number | null; ok: boolean; consumer: string; provider: string; model: string | null;
+  /** tokens: the reported total (provider-counted, cache reads included); fresh_tokens: uncached input + output (+ cache writes);
+   * cache_read_tokens: cache reads (null = not reported: ledger rows). tokens = fresh + cache reads when both are known. */
+  account: AccountId; at: number; tokens: number | null; fresh_tokens?: number | null; cache_read_tokens?: number | null; ok: boolean; consumer: string; provider: string; model: string | null;
   /** mirror rows: limit evidence only, never counted */
   mirror: boolean; limit_hit: boolean; /** when the limit hit (lease subscription_limit_hit_at), else at */ limit_at?: number; error: string | null; list_price_cost: number | null; cost_basis: string | null;
 }
 
 export type WindowId = '5h' | 'today' | '7d' | 'month';
-export interface WindowSum { calls: number; tokens: number | null; calls_without_tokens: number }
+/** tokens = the reported total incl. cache reads (what limits compare); fresh_tokens = uncached input + output; cache_read_tokens null = none reported */
+export interface WindowSum { calls: number; tokens: number | null; fresh_tokens: number | null; cache_read_tokens: number | null; calls_without_tokens: number }
+
+/** fresh = total − cache reads; a record without the split counts its total as fresh (no cache reported) */
+const freshOf = (r: Pick<UsageRecord, 'tokens' | 'fresh_tokens' | 'cache_read_tokens'>): number | null =>
+  r.fresh_tokens ?? (r.tokens === null ? null : r.tokens - (r.cache_read_tokens ?? 0));
+/** sum of the known values; null when none is known */
+const sumKnown = (vs: Array<number | null | undefined>): number | null => {
+  const known = vs.filter((v): v is number => typeof v === 'number');
+  return known.length ? known.reduce((s, v) => s + v, 0) : null;
+};
 
 /** Window starts (ms). today / month are UTC calendar boundaries. */
 export function windowStarts(now: number): Record<WindowId, number> {
@@ -101,7 +122,9 @@ export function windowSums(records: UsageRecord[], now: number): Record<WindowId
   for (const w of Object.keys(starts) as WindowId[]) {
     const rs = records.filter((r) => !r.mirror && r.at >= starts[w] && r.at <= now);
     const known = rs.filter((r) => r.tokens !== null);
-    out[w] = { calls: rs.length, tokens: rs.length && !known.length ? null : known.reduce((s, r) => s + (r.tokens ?? 0), 0), calls_without_tokens: rs.length - known.length };
+    const tokens = rs.length && !known.length ? null : known.reduce((s, r) => s + (r.tokens ?? 0), 0);
+    out[w] = { calls: rs.length, tokens, fresh_tokens: tokens === null ? null : sumKnown(known.map(freshOf)) ?? 0,
+      cache_read_tokens: sumKnown(known.map((r) => r.cache_read_tokens)), calls_without_tokens: rs.length - known.length };
   }
   return out;
 }
@@ -178,7 +201,9 @@ export function limitView(l: PlanLimit, sums: Record<WindowId, WindowSum>, accou
   const used = measuredUnit === 'calls' ? s.calls : s.tokens;
   const windowNote = l.window === 'session' ? 'session length not published; shown against our last 5 h. ' : l.window === 'none' ? 'no window published; shown against this month. ' : '';
   const plan = accountPlan[l.account];
-  const unitNote = l.unit === 'tokens' ? (s.calls_without_tokens ? `${s.calls_without_tokens} calls without reported tokens are not in 'used'` : null)
+  // the vendor's token unit is not documented (provider-counted totals include cache reads): 'used' is our total and says so
+  const cacheNote = s.cache_read_tokens ? `used = total tokens incl. ${s.cache_read_tokens.toLocaleString('en-US')} cache reads (${(s.fresh_tokens ?? 0).toLocaleString('en-US')} fresh)` : null;
+  const unitNote = l.unit === 'tokens' ? ([s.calls_without_tokens ? `${s.calls_without_tokens} calls without reported tokens are not in 'used'` : null, cacheNote].filter(Boolean).join('; ') || null)
     : l.unit === 'requests' ? 'vendor counts requests; we count calls (a CLI session counts once but makes many requests)'
     : l.unit === 'unknown' ? 'vendor unit unknown; we measure tokens — not comparable'
     : `vendor counts ${l.unit}; we measure tokens — not comparable`;
@@ -194,7 +219,7 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const LIMIT_TEXT = /subscription_limit|usage[ _]limit|rate[ _-]?limit|\b429\b|quota|too many requests|FreeUsageLimitError|FreeTierError/i;
 const MIRROR_PURPOSES = new Set(['evolution_gym:subscription_maker', 'evolution_gym:free_tier_maker']);
 
-export function loadRecords(db: Database, since: string): { records: UsageRecord[]; sources: Record<'llm_model_calls' | 'worker_leases', 'ok' | 'missing'> } {
+export function loadRecords(db: Database, since: string, env: NodeJS.ProcessEnv = process.env): { records: UsageRecord[]; sources: Record<'llm_model_calls' | 'worker_leases', 'ok' | 'missing'> } {
   const records: UsageRecord[] = [];
   const sources = { llm_model_calls: 'ok' as 'ok' | 'missing', worker_leases: 'ok' as 'ok' | 'missing' };
   try {
@@ -213,20 +238,28 @@ export function loadRecords(db: Database, since: string): { records: UsageRecord
   } catch { sources.llm_model_calls = 'missing'; }
   try {
     type Row = { role: string; runtime: string; status: string; created_at: string; loop_name: string | null; ta_total: unknown; ru_total: unknown; ta_model: string | null;
+      ta_cache_read: unknown; ru_prompt: unknown; ru_completion: unknown; model_id: string | null;
       model: string | null; from_model: string | null; sub_auth: string | null; fallback: number; limit_hit_at: string | null; failure_reason: string | null; cost: unknown };
     const rows = db.prepare(`SELECT l.role, l.runtime, l.status, l.created_at, r.loop_name,
         json_extract(l.metadata, '$.token_accounting.total_tokens') AS ta_total, json_extract(l.metadata, '$.runtime_usage.total_tokens') AS ru_total,
-        json_extract(l.metadata, '$.token_accounting.model_id') AS ta_model, json_extract(l.metadata, '$.model') AS model,
+        json_extract(l.metadata, '$.token_accounting.model_id') AS ta_model, json_extract(l.metadata, '$.model') AS model, json_extract(l.metadata, '$.model_id') AS model_id,
+        json_extract(l.metadata, '$.token_accounting.cache_read_tokens') AS ta_cache_read, json_extract(l.metadata, '$.runtime_usage.prompt_tokens') AS ru_prompt,
+        json_extract(l.metadata, '$.runtime_usage.completion_tokens') AS ru_completion,
         json_extract(l.metadata, '$.runtime_fallback.from_model') AS from_model, json_extract(l.metadata, '$.subscription_auth') AS sub_auth,
         json_extract(l.metadata, '$.runtime_fallback') IS NOT NULL AS fallback, json_extract(l.metadata, '$.subscription_limit_hit_at') AS limit_hit_at,
         json_extract(l.metadata, '$.failure_reason') AS failure_reason, json_extract(l.metadata, '$.token_accounting.estimated_cost_usd') AS cost
       FROM worker_leases l LEFT JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.created_at >= ? AND l.status != 'prepared'`).all(since) as Row[];
     for (const r of rows) {
-      const model = r.ta_model ?? r.model;
+      const model = r.ta_model ?? r.model ?? r.model_id ?? configuredDefaultModel(r.runtime, env);
       const account = accountOfLease(r.runtime, model, Boolean(r.sub_auth) || r.fallback === 1);
       if (!account) continue;
       const limited = Boolean(r.limit_hit_at) || r.failure_reason === LIMIT_HIT;
-      records.push({ account, at: isoMs(r.created_at), ...(r.limit_hit_at ? { limit_at: isoMs(r.limit_hit_at) } : {}), tokens: num(r.ta_total) ?? num(r.ru_total), ok: r.status !== 'failed',
+      // token_accounting splits out cache reads; runtime_usage only has prompt (uncached input) + completion, the rest of its total is cache
+      const ta = num(r.ta_total); const ru = num(r.ru_total); const prompt = num(r.ru_prompt); const completion = num(r.ru_completion);
+      const split = ta !== null ? { tokens: ta, cache_read_tokens: num(r.ta_cache_read) }
+        : ru !== null && prompt !== null && completion !== null ? { tokens: ru, fresh_tokens: prompt + completion, cache_read_tokens: Math.max(0, ru - prompt - completion) }
+          : { tokens: ru, cache_read_tokens: null };
+      records.push({ account, at: isoMs(r.created_at), ...(r.limit_hit_at ? { limit_at: isoMs(r.limit_hit_at) } : {}), ...split, ok: r.status !== 'failed',
         consumer: `lease:${r.role}:${r.loop_name ?? 'unknown'}${r.fallback === 1 ? ' (ollama outage fallback)' : ''}`, provider: `lease:${r.runtime}`, model,
         mirror: false, limit_hit: limited, error: r.status === 'failed' && limited ? LIMIT_HIT : null, list_price_cost: num(r.cost), cost_basis: null });
     }
@@ -273,17 +306,18 @@ export function usageAccounts(db: Database, opts: { now?: number; env?: NodeJS.P
   const now = opts.now ?? Date.now(); const env = opts.env ?? process.env;
   const starts = windowStarts(now);
   const since = new Date(Math.min(starts.month, starts['7d']) - 86_400_000).toISOString().slice(0, 10); // date prefix: both timestamp formats compare
-  const { records, sources } = loadRecords(db, since);
+  const { records, sources } = loadRecords(db, since, env);
   const plan = opts.planLimits ?? loadPlanLimits();
   const snapshots = latestSnapshots(db, now);
   const accounts = ACCOUNTS.map((a) => {
     const rs = records.filter((r) => r.account === a.id);
     const sums = windowSums(rs, now);
     const counted7d = rs.filter((r) => !r.mirror && r.at >= starts['7d']);
-    const consumers = new Map<string, { consumer: string; calls: number; tokens: number; calls_without_tokens: number }>();
+    const consumers = new Map<string, { consumer: string; calls: number; tokens: number; fresh_tokens: number; cache_read_tokens: number; calls_without_tokens: number }>();
     for (const r of counted7d) {
-      const c = consumers.get(r.consumer) ?? { consumer: r.consumer, calls: 0, tokens: 0, calls_without_tokens: 0 };
-      c.calls++; if (r.tokens === null) c.calls_without_tokens++; else c.tokens += r.tokens;
+      const c = consumers.get(r.consumer) ?? { consumer: r.consumer, calls: 0, tokens: 0, fresh_tokens: 0, cache_read_tokens: 0, calls_without_tokens: 0 };
+      c.calls++;
+      if (r.tokens === null) c.calls_without_tokens++; else { c.tokens += r.tokens; c.fresh_tokens += freshOf(r) ?? 0; c.cache_read_tokens += r.cache_read_tokens ?? 0; }
       consumers.set(r.consumer, c);
     }
     const month = rs.filter((r) => !r.mirror && r.at >= starts.month);
@@ -299,7 +333,8 @@ export function usageAccounts(db: Database, opts: { now?: number; env?: NodeJS.P
     return {
       id: a.id, label: a.label, scope: 'djimitflo_ledger' as const, windows: sums, lease_sessions,
       ...(accountUsage ? { account_usage: accountUsage } : {}),
-      consumers_7d: [...consumers.values()].map((c) => ({ ...c, tokens: c.calls === c.calls_without_tokens ? null : c.tokens })).sort((x, y) => y.calls - x.calls),
+      consumers_7d: [...consumers.values()].map((c) => (c.calls === c.calls_without_tokens ? { ...c, tokens: null, fresh_tokens: null, cache_read_tokens: null } : c))
+        .sort((x, y) => y.calls - x.calls),
       providers_seen: [...new Set(rs.map((r) => r.provider))].sort(),
       last_error: brief(lastError), last_limit_hit: brief(lastLimit), state: accountState(db, a.id, records, now, env, accountUsage, snap),
       cost: { basis: a.cost_basis, observed_bases: [...new Set(month.map((r) => r.cost_basis).filter((b): b is string => Boolean(b)))].sort(),
@@ -312,5 +347,5 @@ export function usageAccounts(db: Database, opts: { now?: number; env?: NodeJS.P
   }).filter((a) => a.id !== 'other' || a.providers_seen.length > 0);
   return { generated_at: new Date(now).toISOString(), window_starts: Object.fromEntries(Object.entries(starts).map(([k, v]) => [k, new Date(v).toISOString()])),
     sources, plan_limits: { source: plan.source, entries: plan.limits.length, invalid: plan.invalid, error: plan.error }, accounts,
-    note: "Calls and tokens are Djimitflo's share, as recorded (scope djimitflo_ledger): llm_model_calls rows + worker_leases CLI sessions. A lease counts once although the CLI makes many requests; ledger mirrors of a lease are not counted twice; other services on the same vendor account are not in it. tokens null = calls without reported tokens. today/month are UTC; a vendor weekly limit is compared with our rolling 7 d. Account-wide Ollama figures come only from the Ollama balance API (OLLAMA_BALANCE_MODE=on); operator_snapshot = figures the operator copied from the vendor's usage page (stale after 24 h), never overriding an API figure." };
+    note: "Calls and tokens are Djimitflo's share, as recorded (scope djimitflo_ledger): llm_model_calls rows + worker_leases CLI sessions. A lease counts once although the CLI makes many requests; ledger mirrors of a lease are not counted twice; other services on the same vendor account are not in it. tokens null = calls without reported tokens; tokens is the provider-reported total incl. cache reads, fresh_tokens = uncached input + output, cache_read_tokens apart (a lease with only runtime_usage: total − prompt − completion). today/month are UTC; a vendor weekly limit is compared with our rolling 7 d. Account-wide Ollama figures come only from the Ollama balance API (OLLAMA_BALANCE_MODE=on); operator_snapshot = figures the operator copied from the vendor's usage page (stale after 24 h), never overriding an API figure." };
 }
