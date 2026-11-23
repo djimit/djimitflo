@@ -1,3 +1,4 @@
+import { makerForecastScore } from './maker-forecast';
 import type { Database } from 'better-sqlite3';
 import { emptySettlementCounts, loopPrSettlements, survivalCounts } from './merge-survival';
 import { supersededMergeOutcomeSql } from './merge-superseded';
@@ -100,6 +101,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true }, { name: 'FINDING_FIX_AUTO_APPROVE', acting: true },
   { name: 'DATE_BOMB_LANE', acting: true },
   { name: 'LOOP_CHECK_DIRECT_TESTS_MODE', acting: true },
+  { name: 'MAKER_FORECAST_MODE', acting: true },
   { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
   { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
   { name: 'GYM_PROD_GATES', acting: false }, { name: 'GYM_NATIVE_SKILL_TOOLS', acting: true },
@@ -542,6 +544,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     effort_x1,
     // F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts, outcome agreement and kappa per checker-family arm
     checker_family: checkerFamilyEvidence(db, since, env, fisherExact, now),
+    // MAKER_FORECAST_MODE (shadow): Brier score of the makers' own pass forecasts against checks + reviewer verdict (60 d)
+    maker_forecast: makerForecastScore(db),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
     graded: gradedEvidence(db, since, env),
     // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
