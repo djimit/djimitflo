@@ -69,6 +69,7 @@ import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandid
 import { captureReadSet, freshnessMode, type ReadSet } from './evidence-freshness';
 import { provisionWarmDeps, type WarmDepsResult } from './maker-warm-deps';
 import { checksFailureHint } from './lease-failure';
+import { pstackInterrogatePolicy } from './pstack-interrogate';
 
 export type {
   LoopName,
@@ -2610,6 +2611,7 @@ export class LoopService {
       '',
       ...CHECKER_INSTRUCTIONS.common,
       checker.role === 'security_checker' ? CHECKER_INSTRUCTIONS.security : CHECKER_INSTRUCTIONS.checker,
+      ...pstackInterrogatePolicy(),
       ...CHECKER_INSTRUCTIONS.tail,
       '{"verdict":"accepted|needs_revision|rejected|insufficient_evidence","notes":"...","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
       '',

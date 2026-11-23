@@ -100,8 +100,13 @@ A change is complete when all of these hold, with the output read, not assumed:
 
 ## Review and approval
 
-- Agents open PRs; agents never merge. Merging is the operator's, through `scripts/merge-train.sh` with a pinned head.
-  The only exception is the earned, capped test-only auto-merge class (core-invariants FR-004), which the operator arms.
+- Agents may merge a PR only when the operator has explicitly authorized autonomous merging for the current task or plan,
+  and only through `scripts/merge-train.sh` with the exact PR head pinned. The merge-train must independently re-read the
+  live PR and base state, require every required check to be green on that exact head, re-check mergeability and policy,
+  and record the merge outcome. Agents must not bypass branch protection, use a direct GitHub merge call, merge a stale
+  head, or merge protected/deploy/auth changes without separate explicit operator authorization. The default remains
+  propose-only when no such authorization is present. The earned, capped test-only auto-merge class (core-invariants
+  FR-004) remains a separate operator-armed path.
 - Maker and checker are separate leases; a checker never reviews its own maker's work.
 - Ask first, always: money, security boundaries, data deletion, a new external service or host.
 - Production is read-only for agents: no branch code in the prod container, no writes to the prod DB.

@@ -43,8 +43,9 @@ async function startApp() {
   app.use('/loops', createLoopRoutes(db, auth, path.join(tempDir, 'agent-evidence')));
   app.use(errorHandler);
 
-  server = await new Promise<Server>((resolve) => {
-    const listening = app.listen(0, () => resolve(listening));
+  server = await new Promise<Server>((resolve, reject) => {
+    const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+    listening.on('error', reject);
   });
   const address = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${address.port}`;
