@@ -6,6 +6,7 @@ import path from 'node:path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
+import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 import { assessAssertionStrength, ASSERTION_STRENGTH_CHECK, weakAssertionCheckMode, WEAK_SHARE_MAX } from '../services/test-assertion-strength';
 
 // F1 experiment 09-10: the LLM checker accepted 3/7 diffs whose matchers were swapped for toBeDefined() (kind B); it
@@ -113,6 +114,24 @@ describe('runDeterministicChecks: test:assertion-strength', () => {
     const check = (await run(GOOD)).checks.find((c) => c.name === 'test:changed')!;
     expect(check.duration_ms).toBeGreaterThanOrEqual(150);
     expect(check.duration_ms).toBeLessThan(60_000);
+  });
+
+  it('LOOP_CHECK_DIRECT_TESTS_MODE: on runs test:changed:direct in place of test:changed, shadow records it beside the unchanged verdict', async () => {
+    // the fake npm fails test:changed (as the 600 s timeout does) and passes the direct selection
+    fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\n[ "$2" = test:changed:direct ] && exit 0\nexit 1\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(worktree, 'package.json'), JSON.stringify({ scripts: { 'test:changed': 'x', 'test:changed:direct': 'x' } }));
+    const check = async () => {
+      db.prepare("UPDATE worker_leases SET status = 'completed' WHERE id = 'l'").run(); // a failed check settles the lease; each call starts fresh
+      db.prepare("UPDATE loop_runs SET status = 'running' WHERE id = 'r'").run();
+      return (await run(GOOD)).checks.find((c) => c.name === 'test:changed')!;
+    };
+    expect(await check()).toMatchObject({ status: 'fail' });
+    expect((await check()).direct_shadow).toBeUndefined();
+    vi.stubEnv('LOOP_CHECK_DIRECT_TESTS_MODE', 'shadow');
+    expect(await check()).toMatchObject({ status: 'fail', direct_shadow: { status: 'pass', exit_status: 0, timed_out: false } });
+    vi.stubEnv('LOOP_CHECK_DIRECT_TESTS_MODE', 'on');
+    expect(await check()).toMatchObject({ status: 'pass', ran_script: 'test:changed:direct' });
+    expect(EVOLUTION_FLAGS).toContainEqual({ name: 'LOOP_CHECK_DIRECT_TESTS_MODE', acting: true });
   });
 
   it('off (default) adds no check', async () => {

@@ -99,7 +99,7 @@ export function findingFixAutoApproveScope(db: Database, goalId: string): string
   if (!findingFixAutoApproveOn()) return null;
   const imp = db.prepare(`SELECT s.evidence_refs_json AS refs, json_extract(s.grounding_json, '$.artifactPath') AS artifact
     FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE g.id = ?`).get(goalId) as { refs: string | null; artifact: string | null } | undefined;
-  let refs: unknown[] = [];
+  let refs: unknown[];
   try { refs = JSON.parse(imp?.refs || '[]'); } catch { return null; }
   const strings = Array.isArray(refs) ? refs.filter((r): r is string => typeof r === 'string') : [];
   const file = strings.find((r) => r.startsWith('finding-file:'))?.slice('finding-file:'.length);
