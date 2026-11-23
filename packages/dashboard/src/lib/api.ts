@@ -235,6 +235,9 @@ export interface EvolutionEvidence {
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
   /** MAKER_FORECAST_MODE (shadow): the makers' own pass forecasts scored against checks + reviewer verdict; nulls at n = 0 */
   maker_forecast?: { window_days: number; n: number; positives: number; unresolved: number; brier: number | null; base_rate: number | null; baseline_brier: number | null; skill: number | null; note: string };
+  /** forecasts scored on P(verified | goal), written before the proposal resolved (services/forecast-post-goal.ts); metrics null below min_n */
+  forecasts_post_goal?: { window_days: number; min_n: number; written_after_resolution: number; note: string;
+    forecasters: Array<{ forecaster: string; n: number; positives: number; base_rate: number | null; brier: number | null; baseline_brier: number | null; skill: number | null; auc: number | null }> };
   checker_family: CheckerFamilyVersionEvidence & {
     /** CHECKER_FAMILY_VERSION (default v1): the top level is this version only */
     version: string;
