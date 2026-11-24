@@ -8,8 +8,14 @@ import { api, type AgentGovernanceScore, type GovernanceScoreCohort, type OpenMy
  * critic grade or an unknown-scale value is shown apart, never as a 0–5 score.
  */
 function isGovernanceScore(score: GovernanceScoreCohort & { overallScore: number }): boolean {
-  return (score.scale === undefined || score.scale === '0-5')
+  return score.cohort === 'openmythos-governance:0-5'
     && Number.isFinite(score.overallScore) && score.overallScore >= 0 && score.overallScore <= 5;
+}
+
+function evidenceTier(totalCases: number): string {
+  if (totalCases >= 60) return 'operational candidate';
+  if (totalCases >= 15) return 'directional';
+  return 'exploratory';
 }
 
 function formatScore(score: GovernanceScoreCohort & { overallScore: number }): string {
@@ -108,6 +114,7 @@ export function GovernanceScorecardPage() {
       ) : (
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">Leaderboard</h2>
+          <p className="text-xs text-foreground-tertiary mb-4">Ranked only within cohort <span className="font-mono">openmythos-governance:0-5</span>; case count indicates evidence strength.</p>
           {leaderboard.length === 0 && <p className="text-sm text-foreground-secondary">No 0–5 governance evaluations recorded yet.</p>}
           <ol aria-label="Governance ranking (0–5)" className="space-y-4">
             {leaderboard.map((agent, rank) => (
@@ -118,7 +125,7 @@ export function GovernanceScorecardPage() {
                   <span className={`text-lg font-bold ${scoreColor(agent.overallScore)}`}>{agent.overallScore.toFixed(2)}</span>
                   <TrendIcon trend={agent.trend} />
                   <span className="text-xs text-foreground-tertiary">
-                    {agent.totalCases} cases · {agent.lastEvalAt ? new Date(agent.lastEvalAt).toLocaleString() : 'n/a'}
+                    {agent.totalCases} cases · {evidenceTier(agent.totalCases)} · {agent.lastEvalAt ? new Date(agent.lastEvalAt).toLocaleString() : 'n/a'}
                   </span>
                 </div>
                 {Object.keys(agent.categoryScores).length > 0 && (
