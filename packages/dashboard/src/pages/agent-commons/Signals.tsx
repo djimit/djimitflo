@@ -22,7 +22,9 @@ const Row = ({ label, value }: { label: string; value: ReactNode }) => (
 );
 
 export function SignalsBody({ data, interactions }: { data: EvolutionEvidence; interactions: number | null }) {
-  const f = data.maker_forecast; const gaps = data.knowledge_gaps; const web = data.web_research; const links = data.knowledge_links;
+  const f = data.maker_forecast; const gaps = data.knowledge_gaps; const web = data.web_research; const links = data.knowledge_links; const post = data.forecasts_post_goal;
+  // all dream genomes by trial outcome (active = promoted); null when the evidence carries no genome counts
+  const dream = (...statuses: string[]) => (data.genomes?.by_status ? data.genomes.by_status.filter((g) => g.origin === 'dream' && statuses.includes(g.status)).reduce((sum, g) => sum + g.n, 0) : null);
   const forecastMode = data.flags?.find((flag) => flag.name === 'MAKER_FORECAST_MODE')?.value ?? 'off';
   return (
     <div className="grid gap-4 p-8 md:grid-cols-2">
@@ -46,8 +48,16 @@ export function SignalsBody({ data, interactions }: { data: EvolutionEvidence; i
         <p className="text-foreground-secondary">Maker variants the system wrote for itself from what it learned.</p>
         <Row label="Dream genomes" value={num(links?.genomes_total)} />
         <Row label="…citing a knowledge source" value={num(links?.genomes_with_refs)} />
-        <Row label="Promoted after a trial" value={num(web?.cited?.promoted)} />
-        <Row label="Retired after a trial" value={num(web?.cited?.retired)} />
+        <Row label="Promoted after a trial" value={num(dream('active'))} />
+        <Row label="Retired after a trial" value={num(dream('retired'))} />
+        <Row label="Undecided or still in trial" value={num(dream('inconclusive', 'trial'))} />
+      </Card>
+      <Card title="Forecasting committee" state={`given a goal · min n ${post?.min_n ?? '—'}`}>
+        <p className="text-foreground-secondary">Commons personas forecasting whether a proposal with a goal ends verified. An AUC of one half is guessing; a positive skill beats quoting the pass rate.</p>
+        {(post?.forecasters ?? []).filter((f) => /^forecast:(committee|resident)/.test(f.forecaster)).slice(0, 6).map((f) => (
+          <Row key={f.forecaster} label={`${f.forecaster.replace('forecast:', '')} (n ${f.n})`} value={`skill ${num(f.skill, 2)} · AUC ${num(f.auc, 2)}`} />
+        ))}
+        <Row label="Written after the outcome (not scored)" value={num(post?.written_after_resolution)} />
       </Card>
       <Card title="Agent to agent" state="interaction ledger">
         <p className="text-foreground-secondary">Messages, handoffs and reviews between agents.</p>

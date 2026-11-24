@@ -68,6 +68,7 @@ const READERS: Record<string, Reader> = {
   'services/decisions-inbox.ts': { policy: 'non_shadow', why: "requeue_dismiss (enforce, operator) filters requeue candidates; prescreen rows and labels are shown to the operator" },
   'services/capability-factory.ts': { policy: 'non_shadow', why: "capability_request rows are the factory's own records, mode 'on'" },
   // ── measurement ──
+  'services/forecast-post-goal.ts': { policy: 'measurement', why: 'evidence forecasts_post_goal: forecasts scored on P(verified | goal) for display; nothing schedules, retires or decides on it' },
   'services/lane-policy.ts': { policy: 'measurement', why: 'lane_policy shadow readout: counts its own rows for the evidence section, never feeds a decision (#1159)' },
   'services/explainer-mermaid-service.ts': { policy: 'measurement', why: 'mermaid_validate shadow: reads its own rows for dedupe, the daily credit cap and the readout; never feeds a product decision (#1156)' },
   'services/judgment-service.ts': { policy: 'measurement', why: 'the runner: records verdicts, returns them to the callers listed here' },

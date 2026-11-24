@@ -1,3 +1,4 @@
+import { postGoalForecastScores } from './forecast-post-goal';
 import { makerForecastScore } from './maker-forecast';
 import type { Database } from 'better-sqlite3';
 import { emptySettlementCounts, loopPrSettlements, survivalCounts } from './merge-survival';
@@ -139,7 +140,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'ASG_MODE', acting: true },
   { name: 'SETTLEMENT_EXECUTION_MODE', acting: true },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
-  { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
+  { name: 'DREAM_EVIDENCE_SOURCES', acting: false }, { name: 'DREAM_KNOWLEDGE_SEED_MODE', acting: true },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
   { name: 'WEB_RESEARCH_MODE', acting: true },
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
@@ -546,6 +547,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     checker_family: checkerFamilyEvidence(db, since, env, fisherExact, now),
     // MAKER_FORECAST_MODE (shadow): Brier score of the makers' own pass forecasts against checks + reviewer verdict (60 d)
     maker_forecast: makerForecastScore(db),
+    // forecasts (committee, residents, code) scored on P(verified | goal): written before the proposal resolved; read-only
+    forecasts_post_goal: postGoalForecastScores(db, now),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
     graded: gradedEvidence(db, since, env),
     // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)

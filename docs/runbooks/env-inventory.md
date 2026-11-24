@@ -6,9 +6,9 @@ Every environment variable read in `packages/server/src` (tests excluded), from 
 Registry = listed in `EVOLUTION_FLAGS` (`packages/server/src/services/evolution-evidence.ts`). Runbook = has a row in a flag table of `docs/runbooks/self-improvement-loop-operations.md`.
 A variable in neither is not wrong, but nothing else in the repository tells an operator that it exists.
 
-- Read by the server: 667
-- In the registry: 185
-- In the runbook: 233
+- Read by the server: 668
+- In the registry: 186
+- In the runbook: 234
 - In neither: 432
 
 | Variable | Registry | Runbook | Read in |
@@ -236,6 +236,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `DREAM_EVOLUTION_MODEL` | no | no | `services/dream-evolution.ts` |
 | `DREAM_EVOLUTION_SPECIES` | no | no | `services/benchmark-runner.ts`, `services/dream-evolution.ts` +2 |
 | `DREAM_HOLDOUT_REUSE_LIMIT` | no | no | `services/genome-promotion.ts` |
+| `DREAM_KNOWLEDGE_SEED_MODE` | yes | yes | `services/dream-evidence-sources.ts` |
 | `DREAM_PLAYBOOK_GENE` | yes | yes | `services/lane-playbook.ts` |
 | `DREAM_PROMOTION_ALPHA` | yes | yes | `services/dream-evolution.ts` |
 | `DREAM_PROMOTION_RULE` | yes | yes | `services/dream-evolution.ts` |
