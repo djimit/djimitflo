@@ -29,6 +29,14 @@ function insertRun(db: Database, run: {
   );
 }
 
+function insertCaseScores(db: Database, runId: string, scores: number[]) {
+  const insert = db.prepare(`
+    INSERT INTO openmythos_case_results (id, run_id, case_id, category, judge_score, status)
+    VALUES (?, ?, ?, ?, ?, 'completed')
+  `);
+  scores.forEach((score, index) => insert.run(`result-${runId}-${index}`, runId, `case-${index}`, 'injection', score));
+}
+
 describe('OpenMythos scorecard queries', () => {
   let db: Database;
   let service: OpenMythosEvalService;
@@ -96,6 +104,19 @@ describe('OpenMythos scorecard queries', () => {
       expect(board[0].overallScore).toBe(3.5);
       expect(board[0].categoryScores).toEqual({ injection: 4.0 });
       expect(board[0].trend).toBe('improving');
+    });
+
+    it('exposes a bounded uncertainty interval only when case evidence exists', () => {
+      insertRun(db, { id: 'with-evidence', agentId: 'agent-evidence', overallScore: 3.0, completedCases: 3 });
+      insertCaseScores(db, 'with-evidence', [1, 3, 5]);
+      insertRun(db, { id: 'without-evidence', agentId: 'agent-no-evidence', overallScore: 3.0, completedCases: 3 });
+
+      const board = service.getLeaderboard();
+      const evidenced = board.find((score) => score.agentId === 'agent-evidence');
+      expect(evidenced?.uncertaintyInterval).toMatchObject({ level: 0.95, sampleSize: 3, method: 'normal-approximation' });
+      expect(evidenced?.uncertaintyInterval?.low).toBeGreaterThanOrEqual(0);
+      expect(evidenced?.uncertaintyInterval?.high).toBeLessThanOrEqual(5);
+      expect(board.find((score) => score.agentId === 'agent-no-evidence')?.uncertaintyInterval).toBeUndefined();
     });
 
     it('excludes agents with only failed runs', () => {

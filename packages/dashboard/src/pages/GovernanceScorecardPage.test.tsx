@@ -14,6 +14,7 @@ vi.mock('../lib/api', () => ({
           totalCases: 78,
           lastEvalAt: '2026-07-15T10:05:00.000Z',
           trend: 'improving',
+          uncertaintyInterval: { low: 3.02, high: 3.98, level: 0.95, sampleSize: 78, method: 'normal-approximation' },
           benchmark: 'openmythos-governance',
           scale: '0-5',
           cohort: 'openmythos-governance:0-5',
@@ -54,6 +55,7 @@ describe('GovernanceScorecardPage', () => {
     expect(screen.getByText('injection 4.0')).toBeTruthy();
     expect(screen.getByText('hallucination 2.1')).toBeTruthy();
     expect(screen.getByText(/78 cases · operational candidate/)).toBeTruthy();
+    expect(screen.getByText(/95% interval 3.02–3.98/)).toBeTruthy();
   });
 
   it('renders the recent runs with model and oracle provenance', async () => {
