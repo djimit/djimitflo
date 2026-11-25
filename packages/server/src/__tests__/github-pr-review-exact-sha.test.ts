@@ -36,6 +36,7 @@ vi.mock('child_process', async (importOriginal) => {
 import { createTestDb } from './helpers/test-db';
 import { createGitHubWebhookRoutes } from '../routes/github-webhooks';
 import { LoopService } from '../services/loop-service';
+import { isSafeGitBranchRef, isSafeGitObjectId } from '../services/github-pr-review-service';
 
 /** The real checker input: every prompt LoopService builds for a checker runtime. */
 const checkerPrompts: string[] = [];
@@ -48,6 +49,17 @@ vi.spyOn(LoopService.prototype, 'buildCheckerPrompt').mockImplementation(functio
 
 const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
+
+describe('Git review input guards', () => {
+  it('accepts GitHub SHA/ref forms and rejects option or traversal forms', () => {
+    expect(isSafeGitObjectId(SHA_A)).toBe(true);
+    expect(isSafeGitObjectId('--upload-pack=sh')).toBe(false);
+    expect(isSafeGitBranchRef('feature/security-fix')).toBe(true);
+    expect(isSafeGitBranchRef('--upload-pack=sh')).toBe(false);
+    expect(isSafeGitBranchRef('../main')).toBe(false);
+    expect(isSafeGitBranchRef('feature/../main')).toBe(false);
+  });
+});
 
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
