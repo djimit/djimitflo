@@ -818,6 +818,13 @@ export type AgentGovernanceScore = GovernanceScoreCohort & {
   totalCases: number;
   lastEvalAt: string;
   trend: 'improving' | 'stable' | 'declining';
+  uncertaintyInterval?: {
+    low: number;
+    high: number;
+    level: 0.95;
+    sampleSize: number;
+    method: 'normal-approximation';
+  };
 };
 
 export type GovernanceOtherCohort = Required<GovernanceScoreCohort> & {

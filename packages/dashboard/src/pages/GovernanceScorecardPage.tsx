@@ -18,6 +18,11 @@ function evidenceTier(totalCases: number): string {
   return 'exploratory';
 }
 
+function formatUncertainty(interval: AgentGovernanceScore['uncertaintyInterval']): string | null {
+  if (!interval) return null;
+  return `95% interval ${interval.low.toFixed(2)}–${interval.high.toFixed(2)}`;
+}
+
 function formatScore(score: GovernanceScoreCohort & { overallScore: number }): string {
   if (isGovernanceScore(score)) return score.overallScore.toFixed(2);
   if (score.scale === '0-100') return `${score.overallScore.toFixed(0)}/100`;
@@ -114,7 +119,7 @@ export function GovernanceScorecardPage() {
       ) : (
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">Leaderboard</h2>
-          <p className="text-xs text-foreground-tertiary mb-4">Ranked only within cohort <span className="font-mono">openmythos-governance:0-5</span>; case count indicates evidence strength.</p>
+          <p className="text-xs text-foreground-tertiary mb-4">Ranked only within cohort <span className="font-mono">openmythos-governance:0-5</span>; case count indicates evidence strength. Intervals are descriptive normal approximations and do not affect ranking.</p>
           {leaderboard.length === 0 && <p className="text-sm text-foreground-secondary">No 0–5 governance evaluations recorded yet.</p>}
           <ol aria-label="Governance ranking (0–5)" className="space-y-4">
             {leaderboard.map((agent, rank) => (
@@ -125,7 +130,9 @@ export function GovernanceScorecardPage() {
                   <span className={`text-lg font-bold ${scoreColor(agent.overallScore)}`}>{agent.overallScore.toFixed(2)}</span>
                   <TrendIcon trend={agent.trend} />
                   <span className="text-xs text-foreground-tertiary">
-                    {agent.totalCases} cases · {evidenceTier(agent.totalCases)} · {agent.lastEvalAt ? new Date(agent.lastEvalAt).toLocaleString() : 'n/a'}
+                    {agent.totalCases} cases · {evidenceTier(agent.totalCases)}
+                    {formatUncertainty(agent.uncertaintyInterval) && ` · ${formatUncertainty(agent.uncertaintyInterval)}`}
+                    {' · '}{agent.lastEvalAt ? new Date(agent.lastEvalAt).toLocaleString() : 'n/a'}
                   </span>
                 </div>
                 {Object.keys(agent.categoryScores).length > 0 && (

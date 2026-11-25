@@ -105,6 +105,15 @@ export interface AgentScore extends ScoreCohort {
   totalCases: number;
   lastEvalAt: string;
   trend: 'improving' | 'stable' | 'declining';
+  uncertaintyInterval?: ScoreUncertainty;
+}
+
+export interface ScoreUncertainty {
+  low: number;
+  high: number;
+  level: 0.95;
+  sampleSize: number;
+  method: 'normal-approximation';
 }
 
 export const GOVERNANCE_BENCHMARK = 'openmythos-governance';
@@ -783,6 +792,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     if (same.length === 0) return null;
     const latest = same[0];
     const metadata = parseMetadata(latest.metadata) as { category_scores?: Record<string, number> };
+    const uncertaintyInterval = this.scoreUncertainty(latest.id);
     return {
       agentId,
       overallScore: latest.overall_score as number,
@@ -790,7 +800,35 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       totalCases: latest.completed_cases as number,
       lastEvalAt: latest.finished_at as string,
       trend: trendOf(same),
+      ...(uncertaintyInterval ? { uncertaintyInterval } : {}),
       ...classifyEvalRun(latest),
+    };
+  }
+
+  /**
+   * Descriptive 95% interval over the stored case scores for one run. This is
+   * intentionally absent when case evidence is unavailable and is not used for
+   * ranking or promotion decisions.
+   */
+  private scoreUncertainty(runId: string | undefined): ScoreUncertainty | null {
+    if (!runId) return null;
+    const rows = this.db.prepare(`
+      SELECT judge_score FROM openmythos_case_results
+      WHERE run_id = ? AND status = 'completed'
+    `).all(runId) as Array<{ judge_score: number | null }>;
+    const scores = rows
+      .map((row) => row.judge_score)
+      .filter((score): score is number => typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 5);
+    if (scores.length < 2) return null;
+    const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+    const variance = scores.reduce((sum, score) => sum + (score - mean) ** 2, 0) / (scores.length - 1);
+    const margin = 1.96 * Math.sqrt(variance / scores.length);
+    return {
+      low: Math.max(0, mean - margin),
+      high: Math.min(5, mean + margin),
+      level: 0.95,
+      sampleSize: scores.length,
+      method: 'normal-approximation',
     };
   }
 
@@ -991,12 +1029,12 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
 
   private getModelOnlyAgentScore(agentId: string, corpusSha: string): AgentScore | null {
     const runs = this.db.prepare(`
-      SELECT overall_score, finished_at, completed_cases, metadata
+      SELECT id, overall_score, finished_at, completed_cases, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed' AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
         AND json_extract(metadata, '$.corpus_sha256') = ?
       ORDER BY finished_at DESC
-    `).all(agentId, corpusSha) as Array<{ overall_score: number; finished_at: string; completed_cases: number; metadata: string }>;
+    `).all(agentId, corpusSha) as Array<{ id: string; overall_score: number; finished_at: string; completed_cases: number; metadata: string }>;
 
     if (runs.length === 0) return null;
 
@@ -1010,6 +1048,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
 
     let metadata: { category_scores?: Record<string, number> } = {};
     try { metadata = JSON.parse(latest.metadata || '{}'); } catch { /* malformed must not sink the score */ }
+    const uncertaintyInterval = this.scoreUncertainty(latest.id);
 
     return {
       agentId,
@@ -1018,6 +1057,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       totalCases: latest.completed_cases,
       lastEvalAt: latest.finished_at,
       trend,
+      ...(uncertaintyInterval ? { uncertaintyInterval } : {}),
       ...classifyEvalRun(latest),
     };
   }
