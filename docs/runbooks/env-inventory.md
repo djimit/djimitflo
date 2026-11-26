@@ -576,7 +576,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `REVIEW_EVIDENCE_REPO_PATH` | no | no | `services/self-improvement-agent-review-service.ts` |
 | `ROBOREV_PENDING_PATH` | no | no | `services/roborev-findings-service.ts` |
 | `RUNTIME_ADMISSION_MODE` | no | no | `execution/execution-engine.ts` |
-| `RUNTIME_ALLOW_SKIP_PERMISSIONS` | no | no | `execution/execution-engine.ts`, `scripts/swarm-demo-proof.ts` +4 |
+| `RUNTIME_ALLOW_SKIP_PERMISSIONS` | no | no | `execution/execution-engine.ts`, `scripts/swarm-demo-proof.ts` +3 |
 | `RUNTIME_ENV_PASSTHROUGH` | no | no | `execution/executors/executor-env.ts`, `services/env-flags.ts` +1 |
 | `RUNTIME_MAX_CONCURRENCY` | no | no | `services/concurrency-semaphore.ts`, `services/loop-budget-service.ts` |
 | `RUNTIME_PROCESS_GROUP_KILL` | yes | yes | `execution/executors/runtime-process.ts` |

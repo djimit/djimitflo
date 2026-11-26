@@ -32,8 +32,9 @@ import { ExecutionEngine } from '../execution/execution-engine';
 import type { ExecutorKind } from '../execution/types';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { parseOutcome, settlementState } from './merge-survival';
+import { withoutHiddenChecks } from './fail-before-pass-after';
 import {
-  artifactDigest, digestMatches, extractJson, PLAN_SCHEMA_VERSION, PROFILE_VERSION, profilePrompt, sha256, validatePlanDraft, validateReviewDraft,
+  artifactDigest, digestMatches, extractJson, PLAN_SCHEMA_VERSION, planContent, PROFILE_VERSION, profilePrompt, reviewContent, sha256, validatePlanDraft, validateReviewDraft,
   type PlanArtifact, type PlanDraft, type Provenance, type RefResolver, type ReviewArtifact, type ReviewDraft, type RoomProfile, type Snapshot, type SourceRef,
 } from './plan-artifact';
 
@@ -63,10 +64,10 @@ export const roomSelected = (metadata: Json): boolean => metadata.task_profile =
 export const roomVariant = (metadata: Json): 'two_stage' | 'single' => (json(JSON.stringify(metadata.project_room ?? {})).variant === 'single' ? 'single' : 'two_stage');
 
 // ── snapshot and source references ──────────────────────────────────────────────────────────────────────────────────────
-/** The commit plus, when the tree is dirty, a digest of exactly those local changes — never an unnamed moving tree. */
+/** The commit plus, when tracked files differ from it, a digest of exactly those changes — never an unnamed moving tree. */
 export function repoSnapshot(repoRoot: string, git: Git = defaultGit): Snapshot {
   const base = git(repoRoot, ['rev-parse', 'HEAD']).trim();
-  const dirty = git(repoRoot, ['status', '--porcelain']);
+  const dirty = git(repoRoot, ['status', '--porcelain', '--untracked-files=no']); // tracked changes: an untracked file is not part of any commit a plan reads
   let slug = path.basename(repoRoot);
   try { slug = git(repoRoot, ['config', '--get', 'remote.origin.url']).trim().replace(/^.*[:/]([^/:]+\/[^/]+?)(\.git)?$/, '$1') || slug; } catch { /* no remote: the directory name */ }
   return { slug, base_commit: base, local_changes_digest: dirty.trim() ? sha256(`${dirty}\n${git(repoRoot, ['diff', 'HEAD'])}`) : null };
@@ -131,7 +132,7 @@ export type ProfileRunner = (request: ProfileRequest) => Promise<ProfileResult>;
  */
 export function profileRuntimeGate(runtime: string, env: NodeJS.ProcessEnv = process.env): { allowed: boolean; enforced_by: string | null; reason: string | null } {
   if (runtime !== 'codex') return { allowed: false, enforced_by: null, reason: `PROJECT_ROOM_RUNTIME_NOT_READ_ONLY: ${runtime} has no runtime-enforced read-only mode in its adapter` };
-  if (env.RUNTIME_ALLOW_SKIP_PERMISSIONS === 'true') return { allowed: false, enforced_by: null, reason: 'PROJECT_ROOM_RUNTIME_NOT_READ_ONLY: RUNTIME_ALLOW_SKIP_PERMISSIONS=true lets codex bypass its sandbox' };
+  for (const k of ['RUNTIME_ALLOW_SKIP_PERMISSIONS', 'CODEX_SKIP_PERMISSIONS']) if (env[k] === 'true') return { allowed: false, enforced_by: null, reason: `PROJECT_ROOM_RUNTIME_NOT_READ_ONLY: ${k}=true lets codex bypass its sandbox` };
   return { allowed: true, enforced_by: 'codex --sandbox read-only', reason: null };
 }
 
@@ -146,16 +147,24 @@ export function engineProfileRunner(db: Database, engine?: ExecutionEngine, env:
     const gate = profileRuntimeGate(runtime, env);
     if (!gate.allowed) throw new Error(gate.reason ?? 'PROJECT_ROOM_RUNTIME_NOT_READ_ONLY');
     const worktree = fs.mkdtempSync(path.join(os.tmpdir(), 'project-room-'));
-    git(request.repoRoot, ['worktree', 'add', '--detach', '--force', worktree, request.baseCommit]);
     try {
+      git(request.repoRoot, ['worktree', 'add', '--detach', '--force', worktree, request.baseCommit]);
       const taskId = `project-room-${request.profile}-${randomUUID().slice(0, 8)}`; const now = new Date().toISOString();
       db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
         VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', ?, ?, ?, ?)`).run(taskId, `${request.profile} for goal ${request.goalId}`, request.prompt,
         JSON.stringify(['project-room', request.profile, runtime]),
         JSON.stringify({ project_room: { goal_id: request.goalId, profile: request.profile }, workingDirectory: worktree, timeoutMs: request.timeoutMs, skipPermissions: false, codexSandbox: 'read-only' }), now, now);
       const execution = await (engine ?? new ExecutionEngine(db)).executeTask(taskId, runtime as ExecutorKind);
-      if (!execution.completion) throw new Error(`PROJECT_ROOM_CALL_NOT_STARTED: ${execution.reason || execution.status}`);
+      if (!execution.completion) {
+        // not started (denied, or waiting for an approval): its worktree is about to go, so the task must not be startable later
+        db.prepare("UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('pending', 'queued', 'awaiting_approval')").run(new Date().toISOString(), taskId);
+        throw new Error(`PROJECT_ROOM_CALL_NOT_STARTED: ${execution.reason || execution.status}`);
+      }
       const done = await execution.completion;
+      // a fallback or retry switches the executor, and only codex honours the read-only sandbox: any attempt on another
+      // executor (or a second attempt, whose process may still be using this worktree) voids the call
+      const attempts = (db.prepare("SELECT metadata FROM execution_events WHERE task_id = ? AND json_extract(metadata, '$.executorKind') IS NOT NULL").all(taskId) as Array<{ metadata: string }>).map((e) => String(json(e.metadata).executorKind));
+      if (attempts.length > 1 || attempts.some((k) => k !== runtime)) throw new Error(`PROJECT_ROOM_READ_ONLY_UNPROVEN: the engine used ${attempts.join(' then ')} for a ${runtime} read-only call`);
       if (done.status !== 'completed') throw new Error(`PROJECT_ROOM_CALL_FAILED: ${(done.error || done.message || done.status).slice(0, 200)}`);
       const clean = git(worktree, ['status', '--porcelain']).trim() === '';
       if (!clean) throw new Error('PROJECT_ROOM_READ_ONLY_VIOLATED: the profile changed its working tree');
@@ -179,6 +188,8 @@ function goalTokensUsed(db: Database, goalId: string): number {
   return roomTokens(db, goalId) + leases.reduce((sum, l) => sum + (Number(json(json(l.metadata).runtime_usage as string | undefined ? JSON.stringify(json(l.metadata).runtime_usage) : '{}').total_tokens) || 0), 0);
 }
 
+/** Blocks that pass on their own or after an operator fix: the goal waits, it has not failed. */
+export const ROOM_WAIT = /^PROJECT_ROOM_(IN_PROGRESS|DIRTY_SOURCE|CALL_NOT_STARTED|RUNTIME_NOT_READ_ONLY|VERSION_CONFLICT)/;
 export type RoomResult = { status: 'issued' | 'exists'; plan: PlanArtifact } | { status: 'blocked'; reason: string };
 
 /**
@@ -186,6 +197,13 @@ export type RoomResult = { status: 'issued' | 'exists'; plan: PlanArtifact } | {
  * current snapshot is returned as-is, and a second caller while a call is running is refused.
  */
 export async function runProjectRoom(db: Database, goalId: string, repoRoot: string, runner: ProfileRunner, env: NodeJS.ProcessEnv = process.env, git: Git = defaultGit): Promise<RoomResult> {
+  try { return await runRoom(db, goalId, repoRoot, runner, env, git); } catch (error) {
+    // e.g. a concurrent issue (PROJECT_ROOM_VERSION_CONFLICT) or an unreadable repository: a reason, never an unhandled throw
+    const message = error instanceof Error ? error.message : String(error);
+    return { status: 'blocked', reason: message.startsWith('PROJECT_ROOM_') ? message : `PROJECT_ROOM_FAILED: ${message.slice(0, 200)}` };
+  }
+}
+async function runRoom(db: Database, goalId: string, repoRoot: string, runner: ProfileRunner, env: NodeJS.ProcessEnv, git: Git): Promise<RoomResult> {
   if (projectRoomMode(env) !== 'on') return { status: 'blocked', reason: 'PROJECT_ROOM_NOT_ACTIVE: COMMONS_PROJECT_ROOM_MODE is not on (shadow starts no profile call)' };
   const goal = goalRow(db, goalId);
   if (!goal) return { status: 'blocked', reason: 'PROJECT_ROOM_GOAL_NOT_FOUND' };
@@ -204,7 +222,7 @@ export async function runProjectRoom(db: Database, goalId: string, repoRoot: str
   const maxTokens = Number(goal.budget.max_tokens) || 0;
 
   const call = async (profile: RoomProfile, prompt: string): Promise<{ result: ProfileResult; provenance: Provenance } | { blocked: string }> => {
-    if (calls(db, goalId).length >= limits.calls) return { blocked: `PROJECT_ROOM_CALL_LIMIT: ${limits.calls} profile calls already made for this goal` };
+    if (calls(db, goalId).filter((c) => c.status !== 'refused').length >= limits.calls) return { blocked: `PROJECT_ROOM_CALL_LIMIT: ${limits.calls} profile calls already made for this goal` };
     if (maxTokens && goalTokensUsed(db, goalId) >= maxTokens) return { blocked: 'PROJECT_ROOM_BUDGET_EXHAUSTED: the goal token budget is used up' };
     const id = randomUUID();
     db.prepare("INSERT INTO project_room_calls (id, goal_id, profile, status, started_at) VALUES (?, ?, ?, 'running', ?)").run(id, goalId, profile, new Date().toISOString());
@@ -216,7 +234,8 @@ export async function runProjectRoom(db: Database, goalId: string, repoRoot: str
       return { result, provenance: { profile, profile_version: PROFILE_VERSION, prompt_sha256: sha256(prompt), runtime: result.runtime, model: result.model, harness: result.harness } };
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 300) : 'unknown error';
-      finish.run('failed', null, null, message, null, new Date().toISOString(), id);
+      // refused = no model session was started (no read-only runtime, or the engine did not start the task): not counted against the call limit
+      finish.run(/^PROJECT_ROOM_(RUNTIME_NOT_READ_ONLY|CALL_NOT_STARTED)/.test(message) ? 'refused' : 'failed', null, null, message, null, new Date().toISOString(), id);
       return { blocked: message };
     }
   };
@@ -228,10 +247,10 @@ export async function runProjectRoom(db: Database, goalId: string, repoRoot: str
     const draft = extractJson(r.result.stdout);
     const errors = validateReviewDraft(draft);
     if (errors.length) return { status: 'blocked', reason: `PROJECT_ROOM_REVIEW_INVALID: ${errors.slice(0, 5).join('; ')}` };
-    const d = draft as ReviewDraft;
+    const content = reviewContent(draft as ReviewDraft); // content fields only
     const expected = (db.prepare("SELECT COALESCE(MAX(version), 0) AS v FROM project_room_artifacts WHERE goal_id = ? AND kind = 'architecture_review'").get(goalId) as { v: number }).v;
-    review = issueArtifact<ReviewArtifact>(db, goalId, 'architecture_review', { kind: 'architecture_review', schema_version: PLAN_SCHEMA_VERSION, goal_id: goalId, repository: snapshot, provenance: r.provenance,
-      ...d, claims: d.claims.map((c) => ({ ...c, refs_resolved: c.refs.length > 0 && c.refs.every(resolve) })) }, expected);
+    review = issueArtifact<ReviewArtifact>(db, goalId, 'architecture_review', { ...content, kind: 'architecture_review', schema_version: PLAN_SCHEMA_VERSION, goal_id: goalId, repository: snapshot, provenance: r.provenance,
+      claims: content.claims.map((c) => ({ ...c, refs_resolved: c.refs.length > 0 && c.refs.every(resolve) })) }, expected);
   }
 
   const planner: RoomProfile = review ? 'implementation-planner' : 'single-planner';
@@ -244,9 +263,10 @@ export async function runProjectRoom(db: Database, goalId: string, repoRoot: str
     if (errors.length) continue;
     const expected = (db.prepare("SELECT COALESCE(MAX(version), 0) AS v FROM project_room_artifacts WHERE goal_id = ? AND kind = 'plan'").get(goalId) as { v: number }).v;
     const budget = Object.fromEntries(Object.entries(goal.budget).filter((e): e is [string, number] => typeof e[1] === 'number')); // inherited, never set by a profile
-    const plan = issueArtifact<PlanArtifact>(db, goalId, 'plan', { kind: 'plan', schema_version: PLAN_SCHEMA_VERSION, plan_id: `plan:${goalId}`, goal_id: goalId,
+    // content first, control-plane fields after it: nothing a profile wrote can replace identity, mandate, snapshot or budget
+    const plan = issueArtifact<PlanArtifact>(db, goalId, 'plan', { ...planContent(draft as PlanDraft), kind: 'plan', schema_version: PLAN_SCHEMA_VERSION, plan_id: `plan:${goalId}`, goal_id: goalId,
       investigation_thread: goal.improvement_id ? `proposal:${goal.improvement_id}` : null, proposal_ids: goal.improvement_id ? [goal.improvement_id] : [], review_digest: review?.digest ?? null,
-      repository: snapshot, objective: goal.objective, constraints: goal.constraints, acceptance_criteria: goal.acceptance_criteria, budget, provenance: r.provenance, ...(draft as PlanDraft) }, expected);
+      repository: snapshot, objective: goal.objective, constraints: goal.constraints, acceptance_criteria: goal.acceptance_criteria, budget, provenance: r.provenance }, expected);
     return { status: 'issued', plan };
   }
   return { status: 'blocked', reason: `PROJECT_ROOM_PLAN_INVALID after ${limits.revisions} revision(s): ${errors.slice(0, 5).join('; ')}` };
@@ -298,7 +318,7 @@ export function projectDossier(db: Database, goalId: string, env: NodeJS.Process
       const receipt = json(JSON.stringify((json(JSON.stringify(m.assignment_receipt ?? {})).blocks as Json | undefined)?.plan ?? {}));
       const taskId = typeof m.execution_task_id === 'string' ? m.execution_task_id : null;
       const task = taskId ? db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string } | undefined : undefined;
-      const checks = Array.isArray(m.deterministic_checks) ? (m.deterministic_checks as Json[]).map((c) => ({ name: String(c.name ?? '?'), status: String(c.status ?? 'unknown') })) : null;
+      const checks = Array.isArray(m.deterministic_checks) ? withoutHiddenChecks(m.deterministic_checks as Json[]).map((c) => ({ name: String(c.name ?? '?'), status: String(c.status ?? 'unknown') })) : null;
       return { id: l.id, role: l.role, runtime: l.runtime, status: l.status, superseded: typeof m.superseded_by_maker_lease_id === 'string',
         // a lease can still read 'prepared' while its engine task runs (approval resume): show both, claim neither
         task: taskId ? { id: taskId, status: task?.status ?? null } : null,
@@ -340,7 +360,7 @@ export function listRooms(db: Database, limit = 50) {
   return db.prepare(`SELECT g.id, g.objective, g.status, g.updated_at,
       (SELECT MAX(version) FROM project_room_artifacts a WHERE a.goal_id = g.id AND a.kind = 'plan') AS plan_version,
       (SELECT COUNT(*) FROM loop_runs r WHERE r.goal_id = g.id) AS runs
-    FROM goals g WHERE json_extract(g.metadata, '$.task_profile') = 'project_room' OR EXISTS (SELECT 1 FROM project_room_artifacts a WHERE a.goal_id = g.id)
+    FROM goals g WHERE (CASE WHEN json_valid(g.metadata) THEN json_extract(g.metadata, '$.task_profile') END) = 'project_room' OR EXISTS (SELECT 1 FROM project_room_artifacts a WHERE a.goal_id = g.id)
     ORDER BY g.updated_at DESC LIMIT ?`).all(Math.min(200, Math.max(1, limit))) as Array<{ id: string; objective: string; status: string; updated_at: string; plan_version: number | null; runs: number }>;
 }
 

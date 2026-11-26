@@ -496,7 +496,7 @@ A goal opts in with `metadata.task_profile = "project_room"` (optionally `metada
 planner call instead of reviewer + planner). Every other goal keeps the direct route in every mode.
 
 - **Activate (development or experiment environment only):** set `COMMONS_PROJECT_ROOM_MODE=on`, keep
-  `RUNTIME_ALLOW_SKIP_PERMISSIONS` unset, and make sure `PROJECT_ROOM_RUNTIME` (default `codex`) is logged in. Any other
+  `RUNTIME_ALLOW_SKIP_PERMISSIONS` and `CODEX_SKIP_PERMISSIONS` unset, and make sure `PROJECT_ROOM_RUNTIME` (default `codex`) is logged in. Any other
   runtime is refused for the profiles (`PROJECT_ROOM_RUNTIME_NOT_READ_ONLY`): only codex has a runtime-enforced read-only
   sandbox in its adapter. Limits: `PROJECT_ROOM_MAX_REVISIONS` (default 1), `PROJECT_ROOM_MAX_CALLS` per goal (default 6),
   `PROJECT_ROOM_TIMEOUT_MS` (default 600 000). Profile tokens count against the goal's `budget.max_tokens`.
@@ -507,7 +507,12 @@ planner call instead of reviewer + planner). Every other goal keeps the direct r
   contained the plan digest. Neither says the plan was used or that it helped; that is what PR-ABC-001 measures.
 - **Blocked goal:** the reason is on the dossier and in the daemon's failure for that goal (`PROJECT_ROOM_PLAN_REQUIRED`,
   `_PLAN_STALE`, `_PLAN_INVALID`, `_BUDGET_EXHAUSTED`, `_CALL_LIMIT`, `_READ_ONLY_VIOLATED`, `_DIRTY_SOURCE`). A stale plan
-  needs a new version: the next room run makes one. To send one goal down the direct route, remove its `task_profile`.
+  needs a new version: the room runs again when the goal next starts, or at once with
+  `POST /api/swarm-v2/project-rooms/<goal id>/run` (operator) — a run already in flight cannot continue or retry until then.
+  `_IN_PROGRESS`, `_DIRTY_SOURCE` (tracked local changes in the daemon's checkout), `_CALL_NOT_STARTED` and
+  `_RUNTIME_NOT_READ_ONLY` make the goal wait, not fail: it is tried again each tick and no model session starts while the
+  cause stands. `_READ_ONLY_UNPROVEN` means the engine fell back to another executor for a profile call; that call is void.
+  To send one goal down the direct route, remove its `task_profile`.
 - **Deactivate / roll back:** set the mode to `shadow` or `off` and restart. Nothing else is needed: prepared and running
   leases keep the packet they were given, new assignments carry no plan, the plan requirement no longer applies, and the
   tables stay as a record (they are never read in mode off except by the dossier page).

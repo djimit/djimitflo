@@ -94,7 +94,7 @@ export function daemonReviewerTimeoutMs(env: NodeJS.ProcessEnv = process.env): n
   const timeout = Number(env.LOOP_REVIEWER_TIMEOUT_MS);
   return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 900_000) : 300_000;
 }
-import { engineProfileRunner, projectRoomMode, proposeRoomCandidates, roomSelected, runProjectRoom } from './project-room';
+import { engineProfileRunner, projectRoomMode, proposeRoomCandidates, ROOM_WAIT, roomSelected, runProjectRoom } from './project-room';
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
 /** A reviewer lease whose runtime gave out (timeout or OPENCODE_MAX_RUN_TOKENS) delivered no verdict at all — retryable.
@@ -1115,6 +1115,9 @@ export class LoopDaemon {
       if (runId && error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, runId)) return;
       // A dependency that became unmet after the pre-dispatch check (decompose/startLoop assert it again) is a wait, not a failure.
       if (error instanceof Error && error.message.startsWith('GOAL_DEPENDENCY_') && this.dependencyBlocked(goal.id)) return;
+      // Project room: a call in flight, tracked local changes, a call the engine did not start or no read-only runtime is a wait
+      // (the goal stays queued and is tried again next tick; no model call is made while the cause stands), not a failed goal.
+      if (!runId && error instanceof Error && ROOM_WAIT.test(error.message)) { console.warn(`[loop-daemon] goal ${goal.id} waits for its project room: ${error.message}`); return; }
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
