@@ -4,6 +4,7 @@ import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { createTestDb } from './helpers/test-db';
 import { AgentCommunicationService } from '../services/agent-communication-service';
 import { AgentLureService } from '../services/agent-lure-service';
+import type { TrajectoryStore } from '../services/trajectory-store';
 
 
 let db: Database.Database;
@@ -24,6 +25,10 @@ describe('G127: Continuous Learning Loop', () => {
     const result = await loop.runCycle();
     expect(result.id).toBeDefined();
     expect(result.timestamp).toBeDefined();
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    expect(result.durationMs).toBeLessThan(10_000);
+    expect(result.producer).toBe('continuous-learning-loop');
+    expect(result.schemaVersion).toBe(1);
   });
 
   it('counts one social exchange even though it emits two peer messages', async () => {
@@ -111,7 +116,11 @@ describe('G127: Continuous Learning Loop', () => {
   it('tracks history', async () => {
     await loop.runCycle();
     await loop.runCycle();
-    expect(loop.getHistory(10).length).toBe(2);
+    const hist = loop.getHistory(10);
+    expect(hist).toHaveLength(2);
+    expect(hist[0].producer).toBe('continuous-learning-loop');
+    expect(hist[0].schemaVersion).toBe(1);
+    expect(hist[0].id).toBeDefined();
   });
 
   it('gets last cycle', async () => {
@@ -165,6 +174,7 @@ describe('G127: Continuous Learning Loop', () => {
     expect(first.episodesIngested).toBe(1);
     expect(first.reflectionsGenerated).toBe(1);
     expect(first.proposalsGenerated).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM central_memories WHERE type = 'episode'").get() as { n: number }).n).toBe(1);
 
     loop.stop();
     loop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
@@ -218,5 +228,128 @@ describe('G127: Continuous Learning Loop', () => {
     loop.start();
     loop.stop();
     expect(true).toBe(true);
+  });
+
+  it('uses the default 3600_000ms interval when no options are given', () => {
+    const defaultLoop = new ContinuousLearningLoop(db);
+    try {
+      expect((defaultLoop as unknown as { intervalMs: number }).intervalMs).toBe(3600_000);
+    } finally {
+      defaultLoop.stop();
+    }
+  });
+
+  it('does not start a second timer on double start()', () => {
+    const spy = vi.spyOn(global, 'setInterval');
+    try {
+      loop.start();
+      const callsAfterFirst = spy.mock.calls.length;
+      loop.start();
+      expect(spy.mock.calls.length).toBe(callsAfterFirst);
+    } finally {
+      spy.mockRestore();
+      loop.stop();
+    }
+  });
+
+  it('a scheduled cycle that has data writes a learning_cycles row via the timer', async () => {
+    db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"analysis\"]'), ('agent-b', 'Agent B', 'active', '[\"research\"]')").run();
+    const communication = new AgentCommunicationService(db);
+    communication.heartbeat('agent-a', 'runtime-a', 'model-a', 'runtime_token');
+    communication.heartbeat('agent-b', 'runtime-b', 'model-b', 'runtime_token');
+    vi.useFakeTimers();
+    try {
+      const scheduled = new ContinuousLearningLoop(db, { intervalMs: 1000 });
+      scheduled.start();
+      await vi.advanceTimersByTimeAsync(1000);
+      scheduled.stop();
+    } finally { vi.useRealTimers(); }
+    await new Promise((r) => setTimeout(r, 0));
+    const rows = (db.prepare('SELECT COUNT(*) AS n FROM learning_cycles').get() as { n: number }).n;
+    expect(rows).toBeGreaterThanOrEqual(1);
+  });
+
+  it('enriches episodes with a trajectory summary when one is available', async () => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at, completed_at)
+      VALUES ('traj-run', 'doc-drift-and-small-fix-loop', 'closed', 'completed', '[]', '{}', '[]', '[]', '{}', ?, ?, ?)
+    `).run(now, now, now);
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, budget_json, metadata, created_at, updated_at)
+      VALUES ('traj-maker', 'traj-run', 'maker', 'mock', 'completed', '{}', '{}', ?, ?)
+    `).run(now, now);
+    loop.setTrajectoryStore({ getTrajectorySummary: () => '✓ edit(mock-runtime)' } as unknown as TrajectoryStore);
+    await loop.runCycle();
+    const mem = db.prepare("SELECT content FROM central_memories WHERE type = 'episode'").get() as { content: string };
+    expect(mem.content).toContain('trajectory: ✓ edit(mock-runtime)');
+  });
+
+  it('does not enrich episodes when the trajectory summary says none was recorded', async () => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at, completed_at)
+      VALUES ('traj-none-run', 'doc-drift-and-small-fix-loop', 'closed', 'completed', '[]', '{}', '[]', '[]', '{}', ?, ?, ?)
+    `).run(now, now, now);
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, budget_json, metadata, created_at, updated_at)
+      VALUES ('traj-none-maker', 'traj-none-run', 'maker', 'mock', 'completed', '{}', '{}', ?, ?)
+    `).run(now, now);
+    loop.setTrajectoryStore({ getTrajectorySummary: () => '_No trajectory recorded_' } as unknown as TrajectoryStore);
+    await loop.runCycle();
+    const mem = db.prepare("SELECT content FROM central_memories WHERE type = 'episode'").get() as { content: string };
+    expect(mem.content).not.toContain('trajectory');
+  });
+
+  it('runs the legacy dream ranking when DREAM_CYCLE_LEGACY_ENABLED is true', async () => {
+    const dreamMock = { runCycle: () => [{ id: 'dream-1' }], exportPending: () => 0 };
+    Object.assign(loop as unknown as { dreams: unknown; dreamTasks: unknown }, { dreams: dreamMock, dreamTasks: dreamMock });
+    process.env.DREAM_CYCLE_LEGACY_ENABLED = 'true';
+    try {
+      const result = await loop.runCycle();
+      expect(result.dreamOpportunitiesGenerated).toBe(1);
+      expect(result.dreamTasksPlanned).toBe(0);
+    } finally {
+      delete process.env.DREAM_CYCLE_LEGACY_ENABLED;
+    }
+  });
+
+  it('uses DJIMITFLO_PUBLIC_URL as the lure baseUrl when set', async () => {
+    const pending = `${process.env.TMPDIR || '/tmp'}/lure-url-${Date.now()}.jsonl`;
+    process.env.DENNIS_AGENT_PAPERCLIP_PENDING = pending;
+    process.env.AUTONOMOUS_LURES_ENABLED = 'true';
+    process.env.DJIMITFLO_PUBLIC_URL = 'http://public.example.test';
+    try {
+      const lapsed = JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } });
+      db.prepare("INSERT INTO agents (id, name, description, status, metadata) VALUES ('url-a', 'Url A', '', 'active', ?)").run(lapsed);
+      await loop.runCycle();
+      const joinUrls = db.prepare("SELECT json_extract(payload_json, '$.params.join') AS join_url FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.invite'").all() as Array<{ join_url: string }>;
+      expect(joinUrls.length).toBeGreaterThan(0);
+      expect(joinUrls.every((u) => u.join_url.startsWith('http://public.example.test/'))).toBe(true);
+    } finally {
+      delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
+      delete process.env.AUTONOMOUS_LURES_ENABLED;
+      delete process.env.DJIMITFLO_PUBLIC_URL;
+    }
+  });
+
+  it('uses PORT in the lure fallback baseUrl when DJIMITFLO_PUBLIC_URL is unset', async () => {
+    const pending = `${process.env.TMPDIR || '/tmp'}/lure-port-${Date.now()}.jsonl`;
+    process.env.DENNIS_AGENT_PAPERCLIP_PENDING = pending;
+    process.env.AUTONOMOUS_LURES_ENABLED = 'true';
+    process.env.PORT = '4321';
+    delete process.env.DJIMITFLO_PUBLIC_URL;
+    try {
+      const lapsed = JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } });
+      db.prepare("INSERT INTO agents (id, name, description, status, metadata) VALUES ('port-a', 'Port A', '', 'active', ?)").run(lapsed);
+      await loop.runCycle();
+      const joinUrls = db.prepare("SELECT json_extract(payload_json, '$.params.join') AS join_url FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.invite'").all() as Array<{ join_url: string }>;
+      expect(joinUrls.length).toBeGreaterThan(0);
+      expect(joinUrls.every((u) => u.join_url.startsWith('http://127.0.0.1:4321/'))).toBe(true);
+    } finally {
+      delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
+      delete process.env.AUTONOMOUS_LURES_ENABLED;
+      delete process.env.PORT;
+    }
   });
 });
