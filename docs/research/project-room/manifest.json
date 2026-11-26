@@ -1,0 +1,355 @@
+{
+  "schema_version": 1,
+  "experiment": "PR-ABC-001",
+  "frozen_at_commit": "b7f5050fe892fffc3eb1e3119613cf3d7302bb2b",
+  "seed": 20261126,
+  "budget": {
+    "max_tokens": 400000,
+    "max_runtime_ms": 1800000
+  },
+  "check": [
+    "npm",
+    "run",
+    "test",
+    "-w",
+    "@djimitflo/server",
+    "--",
+    "{tests}"
+  ],
+  "tasks": [
+    {
+      "id": "d932cbdf3a82",
+      "set": "dev",
+      "commit": "d932cbdf3a821c2e240f3b575bc47009189b06b1",
+      "parent": "7698c06aa42927128bbca21cfcc3a2ad7e96610e",
+      "source": "packages/server/src/services/model-call-ledger.ts",
+      "tests": [
+        "packages/server/src/__tests__/model-call-ledger.test.ts"
+      ],
+      "subject": "fix(ledger): maker rows keep the prompt/completion token split (D-S1-2) (#1279)"
+    },
+    {
+      "id": "e3fc4999e391",
+      "set": "dev",
+      "commit": "e3fc4999e3919ea3fde8e9efea0c4842a4b87baf",
+      "parent": "4b0b92d5bb2c9f95f65d6b3b08e4a98465c19b4b",
+      "source": "packages/server/src/services/llm-fallback.ts",
+      "tests": [
+        "packages/server/src/__tests__/llm-fallback.test.ts"
+      ],
+      "subject": "fix(llm-fallback): back off 15 min from a host that answers 429/402 (#1304)"
+    },
+    {
+      "id": "9d749b47ad83",
+      "set": "dev",
+      "commit": "9d749b47ad83ecfbaa1540d67c1ca1fb85cdaffb",
+      "parent": "76b7847a3bfc44495e8ae0292cd28f274a4e75a6",
+      "source": "packages/server/src/services/evolve-selection.ts",
+      "tests": [
+        "packages/server/src/__tests__/evolve-selection.test.ts"
+      ],
+      "subject": "fix(evolve): bind the superseding lease id and timestamp instead of splicing them into SQL (#1317)"
+    },
+    {
+      "id": "18891656e0dc",
+      "set": "dev",
+      "commit": "18891656e0dcffb27a6b4da2186c15d326a841e3",
+      "parent": "74b01e5001fb2cec47dda9092e0859587f90d109",
+      "source": "packages/server/src/services/improvement-funnel-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/improvement-funnel.test.ts"
+      ],
+      "subject": "feat(funnel): name the leaks first, show the Commons inflow state and what stuck proposals became with and without a Commons investigation (#1325)"
+    },
+    {
+      "id": "38be63d520bb",
+      "set": "dev",
+      "commit": "38be63d520bb5fef89be99458cf3b562098224c3",
+      "parent": "8c0c335ca541b3aa245ce5d1ddc316e53bf7c85f",
+      "source": "packages/server/src/services/resource-scheduler.ts",
+      "tests": [
+        "packages/server/src/__tests__/resource-scheduler-observed.test.ts"
+      ],
+      "subject": "fix(scheduler): measure container cpu use from cgroup accounting under a cgroup limit (#1021)"
+    },
+    {
+      "id": "e8d0de33bbae",
+      "set": "dev",
+      "commit": "e8d0de33bbae8736d7ab0b4f9195292a2e9f56aa",
+      "parent": "06437c3f50232952a6cb774b702ad004d8c2085b",
+      "source": "packages/server/src/services/runtime-command-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/runtime-process-group.test.ts"
+      ],
+      "subject": "feat(runtime): ORCA-PG process-group termination behind RUNTIME_PROCESS_GROUP_KILL + Orca assimilation research (#1002)"
+    },
+    {
+      "id": "ddfd56f5dbee",
+      "set": "dev",
+      "commit": "ddfd56f5dbee3b123fa5abe2c5dbb1858386d8dd",
+      "parent": "c0361da9e83915c35580bb289564c665887a8d5c",
+      "source": "packages/server/src/services/resource-ledger.ts",
+      "tests": [
+        "packages/server/src/__tests__/resource-ledger.test.ts"
+      ],
+      "subject": "perf(resource-ledger): window samples per piece in exclusiveWh (#1330)"
+    },
+    {
+      "id": "0f71ef3d1bab",
+      "set": "dev",
+      "commit": "0f71ef3d1bab52344fad0be8032495018a0d83b4",
+      "parent": "0a84e7633b817ae0449f0a09430c9b433b486235",
+      "source": "packages/server/src/services/loop-run-query-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/gym-outcome-route.test.ts"
+      ],
+      "subject": "feat(dashboard): read-only GymRunPanel in the Goals & Loops run view (#1022)"
+    },
+    {
+      "id": "87966e93b7aa",
+      "set": "dev",
+      "commit": "87966e93b7aaaf77d40964065571d93153b03071",
+      "parent": "8d35339c6bfa9c95ede24bc3ae32fc52ed1d78ed",
+      "source": "packages/server/src/services/test-gap-source-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/test-gap-source.test.ts"
+      ],
+      "subject": "feat(test-gap): skip frozen features in all gap lanes (#1314)"
+    },
+    {
+      "id": "855a33693a2f",
+      "set": "dev",
+      "commit": "855a33693a2f761abf8d3e2b2ed77b4b32ead3a3",
+      "parent": "8ece163cc9e6b80ef93306ec8a58ee80ab77eb4a",
+      "source": "packages/server/src/services/experiment-registry.ts",
+      "tests": [
+        "packages/server/src/__tests__/experiment-registry.test.ts"
+      ],
+      "subject": "docs(tg-001): close TG-001 INCONCLUSIVE at 20 tasks (operator 2026-10-26) (#1032)"
+    },
+    {
+      "id": "e239470c6be0",
+      "set": "dev",
+      "commit": "e239470c6be0ad1cede403276f0f1266d02e5ebc",
+      "parent": "aa63c3f69382e5ac5946d5c091985bffd0931479",
+      "source": "packages/server/src/services/operator-push.ts",
+      "tests": [
+        "packages/server/src/__tests__/operator-digest-scheduler.test.ts"
+      ],
+      "subject": "feat(ux-evo): UXE-01 — flag default rows and operator_digest scheduler registration (#1126)"
+    },
+    {
+      "id": "f14cd2b96682",
+      "set": "dev",
+      "commit": "f14cd2b966820fe5752ce092947948095d929ce7",
+      "parent": "4e276a80600655cb2fc5064d396ee905c529ba1c",
+      "source": "packages/server/src/services/loop-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/test-assertion-strength.test.ts"
+      ],
+      "subject": "feat(checks): record duration_ms per scripted deterministic check (#1346)"
+    },
+    {
+      "id": "e196e22c54a0",
+      "set": "dev",
+      "commit": "e196e22c54a041de576ac4193530fae7b93bcda3",
+      "parent": "8ac78277bc4d3d2d636dd7ccd4b0fc2a0361bc0f",
+      "source": "packages/server/src/services/evolution-evidence.ts",
+      "tests": [
+        "packages/server/src/__tests__/navigation-discovery-health.test.ts"
+      ],
+      "subject": "feat(ui): searchable function navigation with persistent page shell (#1137)"
+    },
+    {
+      "id": "51fc32bf1571",
+      "set": "dev",
+      "commit": "51fc32bf157117c3dd796fdc4be4ee6c2df3b3cd",
+      "parent": "bb59ba8b050f37c3b1b14e091d2de812cc4d513d",
+      "source": "packages/server/src/services/worktree-manager.ts",
+      "tests": [
+        "packages/server/src/__tests__/worktree-repair.test.ts"
+      ],
+      "subject": "fix(worktree): repair keeps main's tracked files instead of reverting them (#1209)"
+    },
+    {
+      "id": "b496916b029d",
+      "set": "dev",
+      "commit": "b496916b029dd4555c648203f4244706628ce79e",
+      "parent": "3a4445b942cb88a7a0367f3b8103c72719aeb227",
+      "source": "packages/server/src/services/experiment-registry.ts",
+      "tests": [
+        "packages/server/src/__tests__/experiment-registry.test.ts",
+        "packages/server/src/__tests__/learning-ledger.test.ts"
+      ],
+      "subject": "docs(ste-001): registered readout at stop_by — INSUFFICIENT_EVIDENCE (arm 1 at 99/100); registry close (#1271)"
+    },
+    {
+      "id": "8dae5472d0e6",
+      "set": "dev",
+      "commit": "8dae5472d0e6a816dd83a4681d96ccfffd454394",
+      "parent": "64d7a97e288d63bd25913626021bafeed9619c03",
+      "source": "packages/server/src/services/test-gap-source-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/test-gap-source.test.ts"
+      ],
+      "subject": "fix(test-gap): every run failed with a TDZ on 'exports' since #1314 (#1323)"
+    },
+    {
+      "id": "09a6758cb232",
+      "set": "dev",
+      "commit": "09a6758cb23244af831712e8c9adee456bcaf487",
+      "parent": "c80df7a1b2d4c67613a54392300f6fa42c89b937",
+      "source": "packages/server/src/services/evolution-evidence.ts",
+      "tests": [
+        "packages/server/src/__tests__/evolution-evidence.test.ts",
+        "packages/server/src/__tests__/merge-survival-settlement.test.ts"
+      ],
+      "subject": "fix(evolution): Gate C counts loop PRs still open, not merged ones in the survival window (#1204)"
+    },
+    {
+      "id": "094afc83284b",
+      "set": "dev",
+      "commit": "094afc83284b10b7ac0affaaa80c1dec9761e426",
+      "parent": "09a6758cb23244af831712e8c9adee456bcaf487",
+      "source": "packages/server/src/services/commons-proposal-review-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/commons-proposal-review-service.exports.test.ts"
+      ],
+      "subject": "fix(self-improvement): a worktree ENOENT counts as an infrastructure failure (#1205)"
+    },
+    {
+      "id": "7d709621b0d2",
+      "set": "dev",
+      "commit": "7d709621b0d214297c3aa9516b895fa8b21ac6ea",
+      "parent": "ea65fd0738a7f633742d8348d554072870d6b8c6",
+      "source": "packages/server/src/services/content-safety.ts",
+      "tests": [
+        "packages/server/src/__tests__/content-safety.test.ts"
+      ],
+      "subject": "fix(content-safety): CONTENT_SAFETY_IGNORE_CATEGORIES for category-only false positives (#1121)"
+    },
+    {
+      "id": "66394af93ca7",
+      "set": "dev",
+      "commit": "66394af93ca7f56ca825f3b88b79901cd7a7b3d4",
+      "parent": "afb1ff78ccf47917df34d12be0247464dbefd8e7",
+      "source": "packages/server/src/services/openmythos-eval-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/openmythos-scorecard.test.ts"
+      ],
+      "subject": "feat(dashboard): expose score uncertainty (#1368)"
+    },
+    {
+      "id": "4b0b92d5bb2c",
+      "set": "holdout",
+      "commit": "4b0b92d5bb2c9f95f65d6b3b08e4a98465c19b4b",
+      "parent": "debe4b11a24d5d28b59cfa489d11ad87a001d1a4",
+      "source": "packages/server/src/services/agent-communication-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/agent-social-commons.test.ts"
+      ],
+      "subject": "fix(social): dead-letter social questions after repeated lapsed leases (#1303)"
+    },
+    {
+      "id": "0cfeabb60837",
+      "set": "holdout",
+      "commit": "0cfeabb60837001f8e6403134c98a603c5cbb72a",
+      "parent": "60998677868e50297774be4e0b77532c1c6417d0",
+      "source": "packages/server/src/services/worktree-manager.ts",
+      "tests": [
+        "packages/server/src/__tests__/worktree-repair.test.ts"
+      ],
+      "subject": "fix(worktree): repair keeps a tracked dangling symlink instead of failing ENOENT (#1199)"
+    },
+    {
+      "id": "f5c5f97d20d1",
+      "set": "holdout",
+      "commit": "f5c5f97d20d12a41906e79d30d8829dd4a099e57",
+      "parent": "1e4929b42b71b5fb50470f68bc20840c2cfeacb2",
+      "source": "packages/server/src/services/requeue-policy.ts",
+      "tests": [
+        "packages/server/src/__tests__/auto-requeue.test.ts"
+      ],
+      "subject": "fix(requeue): hold escalated candidates before the automatic ineligible dismiss (ROOT-001) (#1079)"
+    },
+    {
+      "id": "6db55fd2fd7f",
+      "set": "holdout",
+      "commit": "6db55fd2fd7f695657e863a7265531088b3e5dca",
+      "parent": "ddfd56f5dbee3b123fa5abe2c5dbb1858386d8dd",
+      "source": "packages/server/src/services/outcome-attribution.ts",
+      "tests": [
+        "packages/server/src/__tests__/outcome-attribution.test.ts"
+      ],
+      "subject": "fix(outcome): a maker whose only failed checks timed out is infra_failed, not regressed (#1337)"
+    },
+    {
+      "id": "5daf5e32b38a",
+      "set": "holdout",
+      "commit": "5daf5e32b38a35eb7310f54eb667c70314a331be",
+      "parent": "96c0fba7b1efb9be2d62e3d1bb8fe1eabd6c74fd",
+      "source": "packages/server/src/services/usage-accounts.ts",
+      "tests": [
+        "packages/server/src/__tests__/usage-accounts.test.ts"
+      ],
+      "subject": "fix(usage): map default-model opencode leases to Ollama, headline fresh tokens, mark stale snapshots (#1246)"
+    },
+    {
+      "id": "b7f5050fe892",
+      "set": "holdout",
+      "commit": "b7f5050fe892fffc3eb1e3119613cf3d7302bb2b",
+      "parent": "50adfe41deafc0ec67c533c36e3a64d549d26a46",
+      "source": "packages/server/src/services/evidence-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/observability-metrics-truth.test.ts",
+        "packages/server/src/__tests__/opencode-executor.test.ts"
+      ],
+      "subject": "fix: suppress resolved verification policy noise (#1369)"
+    },
+    {
+      "id": "829f676cc008",
+      "set": "holdout",
+      "commit": "829f676cc00806fbf0fc09b7d0a6f061b3c37a9b",
+      "parent": "62b1a06353b213cfbc979216c33c958e88bb7486",
+      "source": "packages/server/src/services/content-safety.ts",
+      "tests": [
+        "packages/server/src/__tests__/content-safety.test.ts"
+      ],
+      "subject": "fix(content-safety): also parse the Llama Guard answer shape (#1111)"
+    },
+    {
+      "id": "b73eb834cabb",
+      "set": "holdout",
+      "commit": "b73eb834cabb8d5ddc0e9e115336db66240441f6",
+      "parent": "833417e922c61cc749c8320cb32b55422cdb438d",
+      "source": "packages/server/src/services/fleet-commands.ts",
+      "tests": [
+        "packages/server/src/__tests__/fleet-commands.test.ts"
+      ],
+      "subject": "fix(fleet): defence in depth for fleet shell commands (#1101)"
+    },
+    {
+      "id": "5985d865cef2",
+      "set": "holdout",
+      "commit": "5985d865cef2cb80933e4df200e3e35ef49b47d0",
+      "parent": "18891656e0dcffb27a6b4da2186c15d326a841e3",
+      "source": "packages/server/src/services/improvement-funnel-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/improvement-funnel.test.ts"
+      ],
+      "subject": "fix(funnel): count completed Commons proposal reviews as their own arm (#1327)"
+    },
+    {
+      "id": "c0428b38613f",
+      "set": "holdout",
+      "commit": "c0428b38613fa6073785fe362a7900f0004bdf22",
+      "parent": "6db55fd2fd7f695657e863a7265531088b3e5dca",
+      "source": "packages/server/src/services/improvement-funnel-service.ts",
+      "tests": [
+        "packages/server/src/__tests__/improvement-funnel-truth.test.ts"
+      ],
+      "subject": "feat(funnel): split the regressed count into checker rejections and makers that never delivered (#1339)"
+    }
+  ],
+  "digest": "4495e64be83ea66f2158a99a41da28141d3be1f9526c57d154070398716221e1"
+}
