@@ -1994,6 +1994,25 @@ async function apiError(response: Response, prefix: string): Promise<ApiError> {
   });
 }
 
+export interface ProjectRoomSummary { id: string; objective: string; status: string; updated_at: string; plan_version: number | null; runs: number }
+export interface ProjectRoomLease { id: string; role: string; runtime: string; status: string; superseded: boolean; task: { id: string; status: string | null } | null;
+  /** delivered = the plan block's receipt is on the lease; loaded = the prompt sent contained the plan digest (null = not measured) */
+  plan: { plan_id: string; version: number; delivered: boolean; loaded: boolean | null } | null;
+  checks: Array<{ name: string; status: string }> | null; verdict: string | null; maker_lease_id: string | null }
+export interface ProjectRoomDossier {
+  mode: string; selected: boolean; variant: string;
+  goal: { id: string; objective: string; constraints: string[]; acceptance_criteria: string[]; status: string; budget: Record<string, unknown>; proposal_id: string | null;
+    source: { slug: string; base_commit: string; local_changes_digest: string | null } | null; tokens_used_by_room: number; max_tokens: number | null };
+  review: { version: number; claims: Array<{ id: string; claim: string; refs: Array<{ path: string; symbol?: string }>; refs_resolved: boolean }>; open_questions: string[]; assumptions: string[]; proposal: string } | null;
+  plan: { plan_id: string; version: number; digest: string; versions: Array<{ version: number; digest: string; created_at: string }>; decisions: string[]; open_questions: string[]; uncertainties: string[];
+    findings_review: Array<{ claim_id: string; status: string; note: string }>;
+    steps: Array<{ id: string; title: string; depends_on: string[]; scope: string[]; expected_artifacts: string[]; verification: string[] }> } | null;
+  calls: Array<{ profile: string; status: string; runtime: string | null; tokens: number | null; error: string | null }>;
+  execution: Array<{ run_id: string; status: string; leases: ProjectRoomLease[]; pr_url: string | null; outcome_verified: boolean | null; survival: string }>;
+  candidates: Array<{ id: string; lesson: string; status: string }>;
+  gaps: Array<{ what: string; reason: string; next_action: string }>;
+}
+
 class ApiClient {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await authenticatedFetch(endpoint, options);
@@ -2772,6 +2791,10 @@ class ApiClient {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
   }
+
+  /** Engineering project room (COMMONS_PROJECT_ROOM_MODE): goals that use it, and one goal's dossier. */
+  async getProjectRooms(): Promise<{ mode: string; rooms: ProjectRoomSummary[] }> { return this.request('/swarm-v2/project-rooms'); }
+  async getProjectRoom(goalId: string): Promise<ProjectRoomDossier> { return this.request(`/swarm-v2/project-rooms/${encodeURIComponent(goalId)}`); }
 
   async getSocialCommons(limit = 50, options: { kind?: CommonsThreadKind; offset?: number } = {}): Promise<SocialCommons> {
     const query = new URLSearchParams({ limit: String(limit) });

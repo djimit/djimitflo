@@ -2,6 +2,7 @@ import { TabbedPage } from '../components/TabbedPage';
 import { AgentCommonsPage } from './AgentCommonsPage';
 import { InteractionBoardPage } from './InteractionBoardPage';
 import { CommonsSignals } from './agent-commons/Signals';
+import { CommonsProjectRoom } from './agent-commons/ProjectRoom';
 
 /** Nav cut (UX-30): the Lab's Interaction Board is the full interaction ledger behind the Commons conversations. */
 export function AgentCommonsHubPage() {
@@ -9,5 +10,6 @@ export function AgentCommonsHubPage() {
     { id: 'commons', label: 'Commons', element: <AgentCommonsPage /> },
     { id: 'interactions', label: 'Interaction board', element: <InteractionBoardPage /> },
     { id: 'signals', label: 'Signals', element: <CommonsSignals /> },
+    { id: 'project-room', label: 'Project room', element: <CommonsProjectRoom /> },
   ]} />;
 }
