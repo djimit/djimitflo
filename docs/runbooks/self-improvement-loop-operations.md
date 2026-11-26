@@ -490,6 +490,31 @@ as `data/`; `AUTO_DEPLOY_STAGE_DIR`) and renamed in. `python3` must be on the ho
   unknown record, a record for another commit than the running one, or one older than 20 minutes (`FLEET_DRIFT_MAX_AGE_MIN`) —
   which is not the same as no drift.
 
+## Engineering project room (`COMMONS_PROJECT_ROOM_MODE`)
+
+A goal opts in with `metadata.task_profile = "project_room"` (optionally `metadata.project_room.variant = "single"` for one
+planner call instead of reviewer + planner). Every other goal keeps the direct route in every mode.
+
+- **Activate (development or experiment environment only):** set `COMMONS_PROJECT_ROOM_MODE=on`, keep
+  `RUNTIME_ALLOW_SKIP_PERMISSIONS` unset, and make sure `PROJECT_ROOM_RUNTIME` (default `codex`) is logged in. Any other
+  runtime is refused for the profiles (`PROJECT_ROOM_RUNTIME_NOT_READ_ONLY`): only codex has a runtime-enforced read-only
+  sandbox in its adapter. Limits: `PROJECT_ROOM_MAX_REVISIONS` (default 1), `PROJECT_ROOM_MAX_CALLS` per goal (default 6),
+  `PROJECT_ROOM_TIMEOUT_MS` (default 600 000). Profile tokens count against the goal's `budget.max_tokens`.
+- **Observe:** `/agent-commons?tab=project-room` (dossier per goal: source revision, findings, plan versions, leases with
+  delivered / loaded, checks, verdicts, outcome, what is missing and why). Loop events `project_room_plan_delivered`,
+  `project_room_plan_loaded`, `project_room_shadow`; tables `project_room_artifacts` (immutable) and `project_room_calls`.
+  Delivered = the plan block is in the maker's assignment and its receipt is on the lease. Loaded = the prompt that was sent
+  contained the plan digest. Neither says the plan was used or that it helped; that is what PR-ABC-001 measures.
+- **Blocked goal:** the reason is on the dossier and in the daemon's failure for that goal (`PROJECT_ROOM_PLAN_REQUIRED`,
+  `_PLAN_STALE`, `_PLAN_INVALID`, `_BUDGET_EXHAUSTED`, `_CALL_LIMIT`, `_READ_ONLY_VIOLATED`, `_DIRTY_SOURCE`). A stale plan
+  needs a new version: the next room run makes one. To send one goal down the direct route, remove its `task_profile`.
+- **Deactivate / roll back:** set the mode to `shadow` or `off` and restart. Nothing else is needed: prepared and running
+  leases keep the packet they were given, new assignments carry no plan, the plan requirement no longer applies, and the
+  tables stay as a record (they are never read in mode off except by the dossier page).
+- **Production:** stays `off`. `shadow` is safe there (one loop event per assignment of an opted-in goal, no model call, no
+  change to any maker text). `on` in production waits for the operator and the PR-ABC-001 result
+  (`docs/research/project-room/`).
+
 ## Operator push (Telegram) — UX-12 / UX-13
 
 Both are off by default; enabling is the operator's decision. The canonical channel is the webhook bot
