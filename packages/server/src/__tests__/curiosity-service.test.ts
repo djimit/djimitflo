@@ -145,6 +145,22 @@ describe('G41: Curiosity Service', () => {
     const report = await curiosity.scanForGaps();
     const confGap = report.gaps.find(g => g.type === 'confidence');
     expect(confGap).toBeDefined();
+    expect(confGap?.severity).toBeCloseTo(0.7, 5); // 1 - avg_conf(0.3)
+    expect(confGap?.description).toContain("0.30");
+    // coverage metadata must only be attached to coverage gaps, never confidence gaps
+    const confClaim = db.prepare("SELECT metadata FROM swarm_claims WHERE created_from = 'curiosity-service' AND json_extract(metadata, '$.gap_type') = 'confidence'").get() as { metadata: string };
+    expect(JSON.parse(confClaim.metadata)).not.toHaveProperty('detection_method');
+    expect(JSON.parse(confClaim.metadata)).not.toHaveProperty('coverage_status');
+  });
+
+  it('does not flag confidence for claims created within the 30-day window', async () => {
+    const oneDayAgo = new Date(Date.now() - 1 * 86400000).toISOString();
+    db.prepare(`
+      INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, created_at, updated_at)
+      VALUES ('recent', 'test', 'memory', 'fresh', 'has_property', 'supported', 0.1, '[]', 'test', ?, ?)
+    `).run(oneDayAgo, oneDayAgo);
+    const report = await curiosity.scanForGaps();
+    expect(report.gaps.find(g => g.type === 'confidence' && g.domain === 'fresh')).toBeUndefined();
   });
 
   it('detects contradiction gaps', async () => {
@@ -184,6 +200,151 @@ describe('G41: Curiosity Service', () => {
     curiosity.start();
     curiosity.stop();
     expect(true).toBe(true);
+  });
+
+  describe('competence gap detection', () => {
+    const now = () => new Date().toISOString();
+    function seedLoop(loopId: string) {
+      const t = now();
+      db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(loopId, 'comp', 'closed', 'running', '[]', '{}', '[]', '[]', '{}', t, t);
+    }
+    function seedCapability(id: string, status: string) {
+      const t = now();
+      db.prepare(`INSERT INTO swarm_capabilities (id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref, removal_strategy, metadata, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, 'skill', 'okf', '1.0.0', status, 'low', 'schema://in', 'schema://out', 'remove', '{}', t, t);
+    }
+    function seedLease(id: string, loopId: string, capId: string, leaseStatus: 'completed' | 'failed') {
+      const t = now();
+      db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, capability_id, metadata, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(id, loopId, 'maker', 'mock', leaseStatus, capId, '{}', t, t);
+    }
+
+    it('flags a validated capability with >= 3 runs and < 0.5 completion rate', async () => {
+      seedLoop('loop-comp');
+      seedCapability('cap-low', 'validated');
+      // 1 completed, 3 failed -> success_rate 0.25, n_runs 4
+      seedLease('l1', 'loop-comp', 'cap-low', 'completed');
+      for (const id of ['l2', 'l3', 'l4']) seedLease(id, 'loop-comp', 'cap-low', 'failed');
+      const report = await curiosity.scanForGaps();
+      const compGap = report.gaps.find(g => g.type === 'competence' && g.domain === 'cap-low');
+      expect(compGap).toBeDefined();
+      expect(compGap?.severity).toBeCloseTo(0.75, 5); // 1 - 0.25
+      expect(compGap?.description).toBe("Low lease completion rate (25%) for capability 'cap-low'");
+    });
+
+    it('does not flag competence when runs < 3 or completion rate >= 0.5', async () => {
+      seedLoop('loop-comp2');
+      // cap-few: 2 runs, 0 completed (below the n_runs threshold)
+      seedCapability('cap-few', 'validated');
+      seedLease('f1', 'loop-comp2', 'cap-few', 'failed');
+      seedLease('f2', 'loop-comp2', 'cap-few', 'failed');
+      // cap-half: 4 runs, 2 completed -> success_rate exactly 0.5 (at the boundary)
+      seedCapability('cap-half', 'validated');
+      seedLease('h1', 'loop-comp2', 'cap-half', 'completed');
+      seedLease('h2', 'loop-comp2', 'cap-half', 'completed');
+      seedLease('h3', 'loop-comp2', 'cap-half', 'failed');
+      seedLease('h4', 'loop-comp2', 'cap-half', 'failed');
+      const report = await curiosity.scanForGaps();
+      expect(report.gaps.find(g => g.type === 'competence' && g.domain === 'cap-few')).toBeUndefined();
+      expect(report.gaps.find(g => g.type === 'competence' && g.domain === 'cap-half')).toBeUndefined();
+    });
+
+    it('ignores non-validated capabilities regardless of completion rate', async () => {
+      seedLoop('loop-comp3');
+      seedCapability('cap-draft', 'draft');
+      for (const id of ['d1', 'd2', 'd3']) seedLease(id, 'loop-comp3', 'cap-draft', 'failed');
+      const report = await curiosity.scanForGaps();
+      expect(report.gaps.find(g => g.type === 'competence' && g.domain === 'cap-draft')).toBeUndefined();
+    });
+  });
+
+  describe('timer configuration', () => {
+    it('uses the explicit intervalMs option over env and default', () => {
+      const spy = vi.spyOn(globalThis, 'setInterval');
+      try {
+        const c = new CuriosityService(db, intelligence, { intervalMs: 12345 });
+        c.start();
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][1]).toBe(12345);
+        c.stop();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('falls back to CURIOUSITY_SCAN_INTERVAL_MS when no option is given', () => {
+      vi.stubEnv('CURIOSITY_SCAN_INTERVAL_MS', '7000');
+      const spy = vi.spyOn(globalThis, 'setInterval');
+      try {
+        const c = new CuriosityService(db, intelligence);
+        c.start();
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][1]).toBe(7000);
+        c.stop();
+      } finally {
+        spy.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('falls back to the 6h default when neither option nor env is set', () => {
+      vi.stubEnv('CURIOSITY_SCAN_INTERVAL_MS', '');
+      const spy = vi.spyOn(globalThis, 'setInterval');
+      try {
+        const c = new CuriosityService(db, intelligence);
+        c.start();
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][1]).toBe(6 * 3600_000);
+        c.stop();
+      } finally {
+        spy.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('does not register a second timer when start is called twice', () => {
+      const spy = vi.spyOn(globalThis, 'setInterval');
+      try {
+        curiosity.start();
+        curiosity.start();
+        expect(spy).toHaveBeenCalledTimes(1);
+      } finally {
+        spy.mockRestore();
+        curiosity.stop();
+      }
+    });
+
+    it('stop clears the active interval so a fresh timer can be registered', () => {
+      const intervalSpy = vi.spyOn(globalThis, 'setInterval');
+      const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+      try {
+        curiosity.start();
+        curiosity.stop();
+        expect(clearSpy).toHaveBeenCalledTimes(1);
+        curiosity.start();
+        expect(intervalSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        intervalSpy.mockRestore();
+        clearSpy.mockRestore();
+        curiosity.stop();
+      }
+    });
+
+    it('the periodic timer triggers a gap scan on each tick', () => {
+      vi.useFakeTimers();
+      const scanSpy = vi.spyOn(curiosity, 'scanForGaps').mockResolvedValue({ gapsFound: 0, published: 0, gaps: [] });
+      try {
+        curiosity.start();
+        scanSpy.mockClear();
+        vi.advanceTimersByTime(6 * 3600_000);
+        expect(scanSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        scanSpy.mockRestore();
+        curiosity.stop();
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('feeding detected gaps into the reviewed self-improvement pipeline', () => {
