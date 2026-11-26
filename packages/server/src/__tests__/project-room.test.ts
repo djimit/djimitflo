@@ -8,7 +8,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
 import { artifactDigest, canonicalJson, planContextLines, PLAN_CONTEXT_MAX_CHARS, validatePlanDraft, validateReviewDraft, type PlanArtifact, type PlanDraft } from '../services/plan-artifact';
-import { engineProfileRunner, issueArtifact, latestArtifact, planFreshness, planLoaded, profileRuntimeGate, projectDossier, proposeRoomCandidates, repoSnapshot, runProjectRoom, type ProfileRunner } from '../services/project-room';
+import { engineProfileRunner, finalMessage, issueArtifact, latestArtifact, planFreshness, planLoaded, profileRuntimeGate, projectDossier, proposeRoomCandidates, repoSnapshot, runProjectRoom, type ProfileRunner } from '../services/project-room';
 
 const draft = (over: Partial<PlanDraft> = {}): PlanDraft => ({ sources: [{ path: 'sum.js', symbol: 'function sum' }], decisions: ['change the operator, keep the signature'], assumptions: [], uncertainties: [], open_questions: [],
   findings_review: [{ claim_id: 'c1', status: 'confirmed', note: 'sum.js subtracts' }, { claim_id: 'c2', status: 'rejected', note: 'there is no cache module in this repository' }],
@@ -287,6 +287,14 @@ describe('project room: goal → review → plan → existing maker and checker 
     await expect(engineProfileRunner(db, engine((cwd) => { fs.writeFileSync(path.join(cwd, 'sum.js'), 'changed'); }), {})(request)).rejects.toThrow(/PROJECT_ROOM_READ_ONLY_VIOLATED/);
     const event = (taskId: string, kind: string) => db.prepare(`INSERT INTO execution_events (id, task_id, event_type, timestamp, message, level, metadata, created_at, updated_at) VALUES (?, ?, 'log', ?, 'attempt', 'info', ?, ?, ?)`)
       .run(`e-${Math.random()}`, taskId, 'now', JSON.stringify({ executorKind: kind }), 'now', 'now');
+    // the real engine writes two executor-tagged events per attempt (admitted, started) and codex answers in NDJSON
+    const attempt = (id: string) => { for (const m of [{ phase: 'admitted', executorKind: 'codex' }, { attempt: 1, executorKind: 'codex' }]) db.prepare(`INSERT INTO execution_events (id, task_id, event_type, timestamp, message, level, metadata, created_at, updated_at) VALUES (?, ?, 'log', 'now', 'attempt', 'info', ?, 'now', 'now')`).run(`e-${Math.random()}`, id, JSON.stringify(m)); };
+    const ndjson = [{ type: 'thread.started' }, { type: 'item.completed', item: { type: 'agent_message', text: 'thinking' } }, { type: 'item.completed', item: { type: 'command_execution', command: 'ls' } },
+      { type: 'item.completed', item: { type: 'agent_message', text: '```json\n{"a": "b"}\n```' } }, { type: 'turn.completed', usage: {} }].map((e) => JSON.stringify(e)).join('\n');
+    const real = await engineProfileRunner(db, engine((_cwd, id) => { attempt(id); return { status: 'running', completion: Promise.resolve({ status: 'completed', message: 'ok', stdout: ndjson, metrics: { executionTimeMs: 1 } }) }; }), {})(request);
+    expect(real).toMatchObject({ stdout: '```json\n{"a": "b"}\n```', tokens: null });
+    expect(finalMessage('plain answer')).toBe('plain answer');
+    await expect(engineProfileRunner(db, engine((_cwd, id) => { attempt(id); attempt(id); }), {})(request)).rejects.toThrow(/PROJECT_ROOM_READ_ONLY_UNPROVEN: the engine used codex in 2 attempts/);
     await expect(engineProfileRunner(db, engine((_cwd, id) => { event(id, 'opencode'); }), {})(request)).rejects.toThrow(/PROJECT_ROOM_READ_ONLY_UNPROVEN: the engine used opencode/);
     await expect(engineProfileRunner(db, engine(() => ({ status: 'awaiting_approval' })), {})(request)).rejects.toThrow(/PROJECT_ROOM_CALL_NOT_STARTED/);
     expect(db.prepare("SELECT status FROM tasks ORDER BY rowid DESC LIMIT 1").get()).toEqual({ status: 'cancelled' }); // it cannot be approved into a deleted worktree

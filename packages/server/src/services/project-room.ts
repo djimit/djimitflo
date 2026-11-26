@@ -137,6 +137,19 @@ export function profileRuntimeGate(runtime: string, env: NodeJS.ProcessEnv = pro
 }
 
 /**
+ * `codex exec --json` prints NDJSON events; the answer is the text of the last completed agent message. Output that is not
+ * such a stream (plain text mode, a test adapter) is returned unchanged.
+ */
+export function finalMessage(stdout: string): string {
+  let last: string | null = null;
+  for (const line of stdout.split('\n')) {
+    if (!line.startsWith('{')) continue;
+    try { const e = JSON.parse(line) as { type?: string; item?: { type?: string; text?: unknown } }; if (e.type === 'item.completed' && e.item?.type === 'agent_message' && typeof e.item.text === 'string') last = e.item.text; } catch { /* not an event line */ }
+  }
+  return last ?? stdout;
+}
+
+/**
  * The production runner: one task through the existing ExecutionEngine (same admission, approvals, model routing and
  * credentials as any worker) in a throwaway detached worktree at the pinned commit, with codexSandbox 'read-only' and no
  * permission bypass. Afterwards the tree must be untouched; a dirty tree fails the call.
@@ -163,13 +176,15 @@ export function engineProfileRunner(db: Database, engine?: ExecutionEngine, env:
       const done = await execution.completion;
       // a fallback or retry switches the executor, and only codex honours the read-only sandbox: any attempt on another
       // executor (or a second attempt, whose process may still be using this worktree) voids the call
-      const attempts = (db.prepare("SELECT metadata FROM execution_events WHERE task_id = ? AND json_extract(metadata, '$.executorKind') IS NOT NULL").all(taskId) as Array<{ metadata: string }>).map((e) => String(json(e.metadata).executorKind));
-      if (attempts.length > 1 || attempts.some((k) => k !== runtime)) throw new Error(`PROJECT_ROOM_READ_ONLY_UNPROVEN: the engine used ${attempts.join(' then ')} for a ${runtime} read-only call`);
+      // the engine writes one 'admitted' event per attempt (and a second, 'started', event that also names the executor)
+      const events = (db.prepare("SELECT metadata FROM execution_events WHERE task_id = ? AND json_extract(metadata, '$.executorKind') IS NOT NULL").all(taskId) as Array<{ metadata: string }>).map((e) => json(e.metadata));
+      const kinds = events.map((e) => String(e.executorKind));
+      if (events.filter((e) => e.phase === 'admitted').length > 1 || kinds.some((k) => k !== runtime)) throw new Error(`PROJECT_ROOM_READ_ONLY_UNPROVEN: the engine used ${[...new Set(kinds)].join(' then ')} in ${events.filter((e) => e.phase === 'admitted').length} attempts for a ${runtime} read-only call`);
       if (done.status !== 'completed') throw new Error(`PROJECT_ROOM_CALL_FAILED: ${(done.error || done.message || done.status).slice(0, 200)}`);
       const clean = git(worktree, ['status', '--porcelain']).trim() === '';
       if (!clean) throw new Error('PROJECT_ROOM_READ_ONLY_VIOLATED: the profile changed its working tree');
       const model = (db.prepare('SELECT metadata FROM tasks WHERE id = ?').get(taskId) as { metadata: string } | undefined)?.metadata;
-      return { stdout: done.stdout ?? '', runtime, model: typeof json(model).model === 'string' ? String(json(model).model) : null, tokens: typeof done.metrics?.tokenUsage === 'number' ? done.metrics.tokenUsage : null,
+      return { stdout: finalMessage(done.stdout ?? ''), runtime, model: typeof json(model).model === 'string' ? String(json(model).model) : null, tokens: typeof done.metrics?.tokenUsage === 'number' ? done.metrics.tokenUsage : null,
         harness: `execution-engine/${runtime}`, read_only: { enforced_by: gate.enforced_by ?? 'none', tree_clean: clean } };
     } finally {
       try { git(request.repoRoot, ['worktree', 'remove', '--force', worktree]); } catch { fs.rmSync(worktree, { recursive: true, force: true }); }
@@ -182,6 +197,11 @@ const calls = (db: Database, goalId: string) => db.prepare('SELECT * FROM projec
 /** Tokens the room's calls reported for this goal (unreported calls count as 0 and are listed as unknown in the dossier). */
 export function roomTokens(db: Database, goalId: string): number {
   try { return (db.prepare('SELECT COALESCE(SUM(tokens), 0) AS t FROM project_room_calls WHERE goal_id = ?').get(goalId) as { t: number }).t; } catch { return 0; }
+}
+/** The same sum, or null when a call that ran did not report its tokens: an unmeasured cost is unknown, not zero. */
+export function roomTokensKnown(db: Database, goalId: string): number | null {
+  const unknown = (db.prepare("SELECT COUNT(*) AS n FROM project_room_calls WHERE goal_id = ? AND status != 'refused' AND tokens IS NULL").get(goalId) as { n: number }).n;
+  return unknown ? null : roomTokens(db, goalId);
 }
 function goalTokensUsed(db: Database, goalId: string): number {
   const leases = db.prepare('SELECT l.metadata FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id WHERE r.goal_id = ?').all(goalId) as Array<{ metadata: string }>;

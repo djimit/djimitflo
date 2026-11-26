@@ -25,7 +25,7 @@ const mine = () => [{ commit: solution, source: 'sum.js', tests: ['sum.test.js']
 const plan = { sources: [{ path: 'sum.js' }], decisions: ['add'], assumptions: [], uncertainties: [], open_questions: [], findings_review: [], steps: [{ id: 's1', title: 'add', depends_on: [], scope: ['sum.js'], expected_artifacts: [], verification: ['test:changed'] }], stop_conditions: [], recovery: 'revert' };
 const review = { reusable_components: [], claims: [{ id: 'c1', claim: 'sum subtracts', refs: [{ path: 'sum.js' }] }], interfaces: [], invariants: [], failure_modes: [], assumptions: [], open_questions: [], proposal: 'change the operator' };
 /** scripted adapters: the "maker" fixes the file only when its prompt carries a plan — so the arms differ by construction */
-const deps = (seen: string[]): AbcDeps => ({
+const deps = (seen: string[], silent = false): AbcDeps => ({
   runtime: 'codex',
   prepare: (loops: LoopService) => { vi.spyOn(loops, 'getRuntimeContract').mockReturnValue({ available: true, status: 'ok' } as ReturnType<LoopService['getRuntimeContract']>); },
   profileRunner: () => async (req) => { seen.push(req.profile);
@@ -34,7 +34,8 @@ const deps = (seen: string[]): AbcDeps => ({
   engine: (db: Database.Database) => ({ executeTask: async (taskId: string) => {
     const t = db.prepare('SELECT description, metadata FROM tasks WHERE id = ?').get(taskId) as { description: string; metadata: string };
     if (t.description.includes('Engineering plan (project room)')) fs.writeFileSync(path.join(JSON.parse(t.metadata).workingDirectory, 'sum.js'), FIX);
-    return { status: 'running', completion: Promise.resolve({ status: 'completed', message: 'ok', stdout: '', stderr: '' }) };
+    return { status: 'running', completion: Promise.resolve({ status: 'completed', message: 'ok', stderr: '',
+      stdout: silent ? '' : JSON.stringify({ type: 'step_finish', part: { tokens: { total: 70, input: 50, output: 20 } } }) }) };
   } }),
 });
 
@@ -54,10 +55,12 @@ it('runs each arm in its own workspace without the solution, with the same maker
   const rows: AbcRow[] = [];
   for (const arm of armOrder(m.tasks[0].id)) rows.push(await runArm(m, m.tasks[0], arm, repo, deps(seen), path.join(root, 'work')));
   const by = Object.fromEntries(rows.map((r) => [r.arm, r]));
-  expect(by.A).toMatchObject({ observation: 'FAIL', reason: 'hidden check exit 1', plan_version: null, tokens: 0 });
-  expect(by.B).toMatchObject({ observation: 'PASS', plan_version: 1, tokens: 500 });   // one planner call
-  expect(by.C).toMatchObject({ observation: 'PASS', plan_version: 1, tokens: 1000 });  // reviewer + planner, same budget
+  expect(by.A).toMatchObject({ observation: 'FAIL', reason: 'hidden check exit 1', plan_version: null, tokens: 70 });
+  expect(by.B).toMatchObject({ observation: 'PASS', plan_version: 1, tokens: 570 });   // one planner call
+  expect(by.C).toMatchObject({ observation: 'PASS', plan_version: 1, tokens: 1070 });  // reviewer + planner, same budget
   expect(seen.sort()).toEqual(['architecture-reviewer', 'implementation-planner', 'single-planner']);
+  // a maker that reports no usage makes the arm's cost unknown, never 0 or the planner's share alone
+  expect((await runArm(m, m.tasks[0], 'B', repo, deps([], true), path.join(root, 'work-silent'))).tokens).toBeNull();
   for (const arm of ['A', 'B', 'C']) {
     const clone = path.join(root, 'work', `${m.tasks[0].id}-${arm}`, 'repo');
     expect(() => execFileSync('git', ['-C', clone, 'cat-file', '-e', `${solution}^{commit}`], { stdio: 'ignore' })).toThrow(); // the solution is not in the workspace

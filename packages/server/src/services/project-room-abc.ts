@@ -25,7 +25,7 @@ import { LoopService } from './loop-service';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { mcnemarExact, newcombePaired, shuffle } from './asg/harness/stats';
 import { artifactDigest, PLAN_FORBIDDEN_SCOPE } from './plan-artifact';
-import { roomTokens, runProjectRoom, type ProfileRunner } from './project-room';
+import { roomTokensKnown, runProjectRoom, type ProfileRunner } from './project-room';
 
 export type Arm = 'A' | 'B' | 'C';
 export const ARMS: Arm[] = ['A', 'B', 'C'];
@@ -90,7 +90,7 @@ export async function runArm(manifest: AbcManifest, task: AbcTask, arm: Arm, rep
     let planVersion: number | null = null;
     if (arm !== 'A') {
       const room = await runProjectRoom(db, goalId, clone, deps.profileRunner(db));
-      if (room.status === 'blocked') return row(INFRA.test(room.reason) ? 'EVALUATION_ERROR' : 'FAIL', room.reason, { tokens: roomTokens(db, goalId) }); // no usable plan = this workflow did not solve the task
+      if (room.status === 'blocked') return row(INFRA.test(room.reason) ? 'EVALUATION_ERROR' : 'FAIL', room.reason, { tokens: roomTokensKnown(db, goalId) }); // no usable plan = this workflow did not solve the task
       planVersion = room.plan.version;
     }
     const run = loops.startDocDriftAndSmallFixLoop({ repository_path: clone, goal_id: goalId, target_finding: { file_path: task.source, description: task.subject, category: 'bug' } });
@@ -98,7 +98,8 @@ export async function runArm(manifest: AbcManifest, task: AbcTask, arm: Arm, rep
     if (!maker) return row('EVALUATION_ERROR', 'no maker lease was prepared');
     await loops.executeWorker(run.id, { lease_id: maker.id, timeout_ms: Math.min(600_000, manifest.budget.max_runtime_ms) });
     const lease = loops.getWorkerLease(maker.id);
-    const tokens = roomTokens(db, goalId) + (Number((lease.metadata.runtime_usage as { total_tokens?: unknown } | undefined)?.total_tokens) || 0);
+    const made = (lease.metadata.runtime_usage as { total_tokens?: unknown } | undefined)?.total_tokens; const planned = roomTokensKnown(db, goalId);
+    const tokens = typeof made === 'number' && planned !== null ? planned + made : null; // any unreported session makes the arm's cost unknown
     if (lease.status !== 'completed') return row('EVALUATION_ERROR', `maker ${lease.status}: ${String(lease.metadata.failure_reason ?? 'no reason recorded').slice(0, 160)}`, { tokens, plan_version: planVersion });
     // hidden acceptance check: the solution commit's tests, placed only now
     const wt = lease.worktree_path!;
