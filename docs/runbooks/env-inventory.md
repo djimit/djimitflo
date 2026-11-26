@@ -89,7 +89,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `COMMONS_FALSIFIER_MODE` | yes | yes | `services/commons-falsifier.ts` |
 | `COMMONS_GROUNDING_APPLY` | yes | yes | `services/commons-grounding.ts` |
 | `COMMONS_INVESTIGATION_MODE` | yes | yes | `services/commons-falsifier.ts`, `services/commons-investigation.ts` |
-| `COMMONS_PROJECT_ROOM_MODE` | yes | yes | `services/project-room.ts` |
+| `COMMONS_PROJECT_ROOM_MODE` | yes | yes | `services/project-room-abc.ts`, `services/project-room.ts` |
 | `COMMONS_PROPOSAL_REVIEW_ENABLED` | no | no | `services/commons-proposal-review-service.ts`, `services/self-improvement-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_INTERVAL_MS` | no | no | `services/commons-proposal-review-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_MAX_OPEN` | no | no | `services/commons-proposal-review-service.ts` |
@@ -420,7 +420,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `LOOP_SKILL_CARDS_ENABLED` | yes | yes | `services/assignment-context.ts` |
 | `LOOP_STOP_CONDITIONS_MODE` | yes | yes | `services/loop-stop-conditions.ts` |
 | `LOOP_WORKTREE_MAX_AGE_HOURS` | no | no | `services/worktree-manager.ts` |
-| `LOOP_WORKTREE_ROOT` | no | no | `scripts/nested-swarm-demo.ts`, `services/loop-service.ts` +1 |
+| `LOOP_WORKTREE_ROOT` | no | no | `scripts/nested-swarm-demo.ts`, `services/loop-service.ts` +2 |
 | `MAKER_DEPS_001_MODE` | no | no | `services/maker-deps-001.ts` |
 | `MAKER_DIFF_CAPTURE` | yes | yes | `services/maker-diff-capture.ts` |
 | `MAKER_FORECAST_MODE` | yes | yes | `services/maker-forecast.ts` |
@@ -537,7 +537,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `PROCEDURE_SELECTOR_MODE` | yes | yes | `services/procedure-selector.ts` |
 | `PROJECT_ROOM_MAX_CALLS` | no | no | `services/project-room.ts` |
 | `PROJECT_ROOM_MAX_REVISIONS` | no | no | `services/project-room.ts` |
-| `PROJECT_ROOM_RUNTIME` | no | no | `services/project-room.ts` |
+| `PROJECT_ROOM_RUNTIME` | no | no | `scripts/project-room-abc.ts`, `services/project-room.ts` |
 | `PROJECT_ROOM_TIMEOUT_MS` | no | no | `services/project-room.ts` |
 | `PROMPT_INTEL_PENDING` | no | no | `bootstrap/operator-services.ts` |
 | `PROOF_RUN_MEMORY_FLYWHEEL` | no | no | `services/memory-candidate-service.ts` |
