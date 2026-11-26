@@ -94,6 +94,7 @@ export function daemonReviewerTimeoutMs(env: NodeJS.ProcessEnv = process.env): n
   const timeout = Number(env.LOOP_REVIEWER_TIMEOUT_MS);
   return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 900_000) : 300_000;
 }
+import { engineProfileRunner, projectRoomMode, proposeRoomCandidates, roomSelected, runProjectRoom } from './project-room';
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
 /** A reviewer lease whose runtime gave out (timeout or OPENCODE_MAX_RUN_TOKENS) delivered no verdict at all — retryable.
@@ -602,6 +603,12 @@ export class LoopDaemon {
       const namedRepo = goalRepoSlug(this.db, goal.id);
       if (namedRepo && !goalRepo && namedRepo.toLowerCase() !== primaryRepo().toLowerCase()) throw new Error(`REPO_NOT_REGISTERED: ${namedRepo}`);
       const repositoryPath = goalRepo?.path ?? process.env.LOOP_DAEMON_REPOSITORY_PATH;
+      // Project room (COMMONS_PROJECT_ROOM_MODE=on, goals with metadata.task_profile = 'project_room' only): the read-only review
+      // and plan are made before the run starts; a blocked room stops this goal's dispatch with its reason. off / shadow: no call.
+      if (!resumeRunId && repositoryPath && projectRoomMode() === 'on' && roomSelected((goal.metadata ?? {}) as Record<string, unknown>)) {
+        const room = await runProjectRoom(this.db, goal.id, repositoryPath, engineProfileRunner(this.db));
+        if (room.status === 'blocked') throw new Error(room.reason);
+      }
       const run = resumeRunId
         ? this.loops.getLoopRun(resumeRunId) // approved: continue the same run, its maker lease is prepared
         : opts.allowObjectiveMode
@@ -1089,6 +1096,8 @@ export class LoopDaemon {
         .run(runStatus, new Date().toISOString(), run.id);
       // PRC-3 (WORK_ITEM_OUTCOME_SYNC): the source work item learns the outcome (done / blocked + pr_url, run_id); never throws
       syncWorkItemOutcome(this.db, goal.id, allGatesPass ? 'completed' : 'failed', run.id);
+      // project room: candidate knowledge only after an independently certified outcome (candidates, never promoted here)
+      if (allGatesPass) { try { proposeRoomCandidates(this.db, goal.id); } catch { /* candidates are best-effort */ } }
       if (runStatus === 'blocked') {
         try { cancelPreparedLeasesOfBlockedRun(this.db, run.id); } catch { /* best-effort: the orphan cleanup still settles them */ }
       }

@@ -6,10 +6,10 @@ Every environment variable read in `packages/server/src` (tests excluded), from 
 Registry = listed in `EVOLUTION_FLAGS` (`packages/server/src/services/evolution-evidence.ts`). Runbook = has a row in a flag table of `docs/runbooks/self-improvement-loop-operations.md`.
 A variable in neither is not wrong, but nothing else in the repository tells an operator that it exists.
 
-- Read by the server: 668
-- In the registry: 186
-- In the runbook: 234
-- In neither: 432
+- Read by the server: 673
+- In the registry: 187
+- In the runbook: 235
+- In neither: 436
 
 | Variable | Registry | Runbook | Read in |
 |---|---|---|---|
@@ -89,6 +89,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `COMMONS_FALSIFIER_MODE` | yes | yes | `services/commons-falsifier.ts` |
 | `COMMONS_GROUNDING_APPLY` | yes | yes | `services/commons-grounding.ts` |
 | `COMMONS_INVESTIGATION_MODE` | yes | yes | `services/commons-falsifier.ts`, `services/commons-investigation.ts` |
+| `COMMONS_PROJECT_ROOM_MODE` | yes | yes | `services/project-room.ts` |
 | `COMMONS_PROPOSAL_REVIEW_ENABLED` | no | no | `services/commons-proposal-review-service.ts`, `services/self-improvement-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_INTERVAL_MS` | no | no | `services/commons-proposal-review-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_MAX_OPEN` | no | no | `services/commons-proposal-review-service.ts` |
@@ -393,7 +394,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `LOOP_DAEMON_CHECK_SCRIPTS` | no | no | `services/gym-gate-policy.ts`, `services/loop-daemon.ts` |
 | `LOOP_DAEMON_CHECK_TIMEOUT_MS` | no | no | `services/gym-gate-policy.ts`, `services/loop-daemon.ts` |
 | `LOOP_DAEMON_MAKER_RUNTIME` | no | no | `services/evolution-gym-service.ts`, `services/loop-daemon.ts` |
-| `LOOP_DAEMON_REPOSITORY_PATH` | no | no | `services/advisory-exposure.ts`, `services/capability-factory.ts` +15 |
+| `LOOP_DAEMON_REPOSITORY_PATH` | no | no | `routes/swarm-orchestration.ts`, `services/advisory-exposure.ts` +16 |
 | `LOOP_DRAFT_PR_BASE` | no | no | `services/dependency-lane.ts`, `services/loop-auto-merge.ts` +3 |
 | `LOOP_DRAFT_PR_MAX_OPEN` | no | yes | `services/loop-draft-pr-service.ts` |
 | `LOOP_DRAFT_PR_REMOTE` | no | no | `services/loop-draft-pr-service.ts` |
@@ -534,6 +535,10 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `POLICY_VIOLATION_LOG` | yes | yes | `services/policy-violations.ts` |
 | `PORT` | no | no | `config/env.ts`, `index.ts` +4 |
 | `PROCEDURE_SELECTOR_MODE` | yes | yes | `services/procedure-selector.ts` |
+| `PROJECT_ROOM_MAX_CALLS` | no | no | `services/project-room.ts` |
+| `PROJECT_ROOM_MAX_REVISIONS` | no | no | `services/project-room.ts` |
+| `PROJECT_ROOM_RUNTIME` | no | no | `services/project-room.ts` |
+| `PROJECT_ROOM_TIMEOUT_MS` | no | no | `services/project-room.ts` |
 | `PROMPT_INTEL_PENDING` | no | no | `bootstrap/operator-services.ts` |
 | `PROOF_RUN_MEMORY_FLYWHEEL` | no | no | `services/memory-candidate-service.ts` |
 | `PROOF_RUN_REPOSITORY_PATH` | no | no | `services/proof-run-service.ts` |
@@ -571,7 +576,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `REVIEW_EVIDENCE_REPO_PATH` | no | no | `services/self-improvement-agent-review-service.ts` |
 | `ROBOREV_PENDING_PATH` | no | no | `services/roborev-findings-service.ts` |
 | `RUNTIME_ADMISSION_MODE` | no | no | `execution/execution-engine.ts` |
-| `RUNTIME_ALLOW_SKIP_PERMISSIONS` | no | no | `execution/execution-engine.ts`, `scripts/swarm-demo-proof.ts` +3 |
+| `RUNTIME_ALLOW_SKIP_PERMISSIONS` | no | no | `execution/execution-engine.ts`, `scripts/swarm-demo-proof.ts` +4 |
 | `RUNTIME_ENV_PASSTHROUGH` | no | no | `execution/executors/executor-env.ts`, `services/env-flags.ts` +1 |
 | `RUNTIME_MAX_CONCURRENCY` | no | no | `services/concurrency-semaphore.ts`, `services/loop-budget-service.ts` |
 | `RUNTIME_PROCESS_GROUP_KILL` | yes | yes | `execution/executors/runtime-process.ts` |

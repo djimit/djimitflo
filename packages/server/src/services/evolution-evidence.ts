@@ -140,7 +140,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'ASG_MODE', acting: true },
   { name: 'SETTLEMENT_EXECUTION_MODE', acting: true },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
-  { name: 'DREAM_EVIDENCE_SOURCES', acting: false }, { name: 'DREAM_KNOWLEDGE_SEED_MODE', acting: true },
+  { name: 'DREAM_EVIDENCE_SOURCES', acting: false }, { name: 'DREAM_KNOWLEDGE_SEED_MODE', acting: true }, { name: 'COMMONS_PROJECT_ROOM_MODE', acting: true },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
   { name: 'WEB_RESEARCH_MODE', acting: true },
   { name: 'TRAINING_DATASET_EXPORT', acting: false },

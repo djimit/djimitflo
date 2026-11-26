@@ -6,6 +6,7 @@
  * checker roles. Real runtimes dispatch through ExecutionEngine.
  */
 
+import { planLoaded } from './project-room';
 import { FORECAST_REQUEST, makerForecastMode, parseForecast } from './maker-forecast';
 import fs from 'fs';
 import path from 'path';
@@ -773,6 +774,12 @@ export class LoopWorkerExecutorService {
       ...(lease.metadata.capability_intent !== undefined ? { capability_intent: lease.metadata.capability_intent } : {}),
     } : {});
     prompt = selected.description;
+    // project room LOADED: the text this task is created with contains the lease's plan digest (inclusion, not use)
+    const loaded = lease.role === 'maker' ? planLoaded(lease.metadata, prompt) : null;
+    if (loaded) {
+      this.loopService.patchWorkerLeaseMetadata(lease.id, { plan_loaded: { ...loaded, at: new Date().toISOString() } });
+      this.loopService.recordLoopEvent(run.id, 'project_room_plan_loaded', 'info', `Maker prompt contains plan ${loaded.plan_id} version ${loaded.version}`, { lease_id: lease.id, ...loaded });
+    }
     riskAssessmentText += selected.metadata.skill_package_receipts ? `\n${prompt}` : '';
     this.db.prepare(`
       INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at, owner_user_id)
