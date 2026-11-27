@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { api, type ProjectRoomDossier, type ProjectRoomSummary } from '../../lib/api';
 
 /**
@@ -19,6 +20,7 @@ const Row = ({ label, value }: { label: string; value: ReactNode }) => (
   <div className="flex justify-between gap-4"><span className="text-foreground-secondary">{label}</span><span className="text-right">{value}</span></div>
 );
 const Empty = ({ children }: { children: ReactNode }) => <p className="text-foreground-secondary">{children}</p>;
+const count = (n: number | null, word: string) => (n === null ? `${word}s not recorded` : `${n} ${word}${n === 1 ? '' : 's'}`);
 const yesNo = (v: boolean | null) => (v === null ? 'not measured' : v ? 'yes' : 'no');
 
 export function ProjectRoomBody({ dossier }: { dossier: ProjectRoomDossier }) {
@@ -80,6 +82,35 @@ export function ProjectRoomBody({ dossier }: { dossier: ProjectRoomDossier }) {
           </div>
         ))}
       </Card>
+      <Card title="Agents, skills and traces" state="read from existing records">
+        {leases.length === 0 && dossier.call_tasks.length === 0 ? <Empty>No agent has worked on this goal yet.</Empty> : (
+          <>
+            {dossier.call_tasks.map((t) => (
+              <div key={t.id} className="border-t border-border pt-2 first:border-t-0 first:pt-0">
+                <Row label={`${t.profile ?? 'room call'} · ${t.agent?.name ?? 'agent not recorded'}`} value={<Link className="underline" to={`/tasks/${t.id}`}>{count(t.trace.events, 'event')}</Link>} />
+              </div>
+            ))}
+            {leases.map((l) => (
+              <div key={l.id} className="border-t border-border pt-2 first:border-t-0 first:pt-0">
+                <Row label={`${l.role} · ${l.agent ? l.agent.name : 'agent not recorded'}`} value={l.identity.model ?? 'model not recorded'} />
+                {l.agent && l.agent.capabilities.length > 0 && <Row label="Agent capabilities" value={l.agent.capabilities.join(', ')} />}
+                <Row label="Delivered with the assignment" value={l.context.length ? l.context.map((c) => `${c.name.replace('_', ' ')} (${c.ids.length})`).join(' · ') : 'nothing recorded'} />
+                <Row label="Skill" value={l.skill ? `${l.skill.capability_id}${l.skill.version ? `@${l.skill.version}` : ''} · run by the maker: ${yesNo(l.skill.invoked)}` : 'no skill route recorded'} />
+                <Row label="Runner decision" value={l.capability.runner_decision ? `${l.capability.runner_decision.action}${l.capability.runner_decision.blocked_reasons.length ? ` · blocked: ${l.capability.runner_decision.blocked_reasons.join(', ')}` : ''}` : 'not recorded'} />
+                <Row label="Trace" value={<>
+                  {l.trace.spans > 0 ? `${l.trace.spans} steps, ${l.trace.span_errors} failed or blocked` : 'no trace steps recorded'}
+                  {l.trace.task && <> · <Link className="underline" to={`/tasks/${l.trace.task.task_id}`}>{count(l.trace.task.events, 'event')}</Link></>}
+                </>} />
+                {l.trace.task?.admission && <p className="text-foreground-secondary">Admission: {l.trace.task.admission}</p>}
+              </div>
+            ))}
+            <p className="text-foreground-secondary">
+              Authority decisions for this goal: {dossier.authority_events ?? 'not recorded'}
+              {dossier.commons_review && ` · Commons review ${dossier.commons_review.status} (${dossier.commons_review.reply_count} replies)`}
+            </p>
+          </>
+        )}
+      </Card>
       <Card title="Checks and verdicts">
         {leases.every((l) => !l.checks && !l.verdict) ? <Empty>No check or verdict recorded yet.</Empty> : leases.filter((l) => l.checks || l.verdict).map((l) => (
           <div key={l.id}>
@@ -106,16 +137,39 @@ export function CommonsProjectRoom() {
   const [mode, setMode] = useState('off');
   const [selected, setSelected] = useState<string | null>(null);
   const [dossier, setDossier] = useState<ProjectRoomDossier | null>(null);
+  const [candidates, setCandidates] = useState<Array<{ id: string; objective: string; status: string }>>([]);
+  const [pick, setPick] = useState(''); const [variant, setVariant] = useState<'two_stage' | 'single'>('two_stage');
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
-  useEffect(() => { api.getProjectRooms().then((r) => { setRooms(r.rooms); setMode(r.mode); setSelected((s) => s ?? r.rooms[0]?.id ?? null); }).catch(fail); }, []);
+  const load = () => api.getProjectRooms().then((r) => { setRooms(r.rooms); setMode(r.mode); setCandidates(r.candidates ?? []); setSelected((s) => s ?? r.rooms[0]?.id ?? null); }).catch(fail);
+  useEffect(() => { void load(); }, []);
+  const add = () => { if (pick) api.selectProjectRoom(pick, variant).then(() => { setSelected(pick); setPick(''); return load(); }).catch(fail); };
+  const picker = candidates.length > 0 && (
+    <form className="flex flex-wrap items-center gap-2 text-sm text-foreground-secondary" onSubmit={(e) => { e.preventDefault(); add(); }}>
+      <label>Route a goal through the room{' '}
+        <select className="ml-2 max-w-md rounded border border-border bg-background px-2 py-1 text-foreground" value={pick} onChange={(e) => setPick(e.target.value)}>
+          <option value="">Choose a goal…</option>
+          {candidates.map((g) => <option key={g.id} value={g.id}>{g.objective.slice(0, 80)} — {g.status}</option>)}
+        </select>
+      </label>
+      <label>Route{' '}
+        <select className="ml-2 rounded border border-border bg-background px-2 py-1 text-foreground" value={variant} onChange={(e) => setVariant(e.target.value as 'two_stage' | 'single')}>
+          <option value="two_stage">Review, then plan</option>
+          <option value="single">Plan only</option>
+        </select>
+      </label>
+      <button type="submit" disabled={!pick} className="rounded border border-border px-3 py-1 text-foreground disabled:opacity-50">Add goal</button>
+      {mode !== 'on' && <span>Mode is {mode}: {mode === 'shadow' ? 'the room only records what it would have delivered.' : 'the goal is marked, and nothing runs until an operator turns the mode on.'}</span>}
+    </form>
+  );
   useEffect(() => { if (!selected) return; setDossier(null); api.getProjectRoom(selected).then(setDossier).catch(fail); }, [selected]);
   if (error) return <p role="alert" className="p-8 text-sm text-status-error">Project room unavailable: {error}</p>;
   if (!rooms) return <p className="p-8 text-sm text-foreground-secondary">Loading project rooms…</p>;
   if (rooms.length === 0) return (
-    <p className="p-8 text-sm text-foreground-secondary">
-      No goal uses the project room yet (mode {mode}). A goal selects it with <code>metadata.task_profile = &quot;project_room&quot;</code>; every other goal keeps the direct route.
-    </p>
+    <div className="space-y-4 p-8">
+      <p className="text-sm text-foreground-secondary">No goal uses the project room yet (mode {mode}). Every goal keeps the direct route until you add it here.</p>
+      {picker || <p className="text-sm text-foreground-secondary">There is no open goal to add.</p>}
+    </div>
   );
   return (
     <div className="space-y-4 p-8">
@@ -124,6 +178,7 @@ export function CommonsProjectRoom() {
           {rooms.map((r) => <option key={r.id} value={r.id}>{r.objective.slice(0, 80)} — {r.status}{r.plan_version ? ` · plan v${r.plan_version}` : ' · no plan'}</option>)}
         </select>
       </label>
+      {picker}
       {dossier ? <ProjectRoomBody dossier={dossier} /> : <p className="text-sm text-foreground-secondary">Loading dossier…</p>}
     </div>
   );

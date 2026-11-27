@@ -1998,7 +1998,16 @@ export interface ProjectRoomSummary { id: string; objective: string; status: str
 export interface ProjectRoomLease { id: string; role: string; runtime: string; status: string; superseded: boolean; task: { id: string; status: string | null } | null;
   /** delivered = the plan block's receipt is on the lease; loaded = the prompt sent contained the plan digest (null = not measured) */
   plan: { plan_id: string; version: number; delivered: boolean; loaded: boolean | null } | null;
-  checks: Array<{ name: string; status: string }> | null; verdict: string | null; maker_lease_id: string | null }
+  checks: Array<{ name: string; status: string }> | null; verdict: string | null; maker_lease_id: string | null;
+  /** wiring, all read from existing records; null or [] = nothing recorded (never a pass, never a zero) */
+  agent: ProjectRoomAgent | null;
+  identity: { model: string | null; provider: string | null; model_family: string | null; genome_id: string | null };
+  context: Array<{ name: string; ids: string[] }>;
+  skill: { capability_id: string; version: string | null; state: string | null; invoked: boolean | null } | null;
+  capability: { credited_id: string | null; runner_decision: { action: string; blocked_reasons: string[] } | null };
+  trace: { id: string; spans: number; span_errors: number; steps: Array<{ span_type: string; name: string; status: string }>; task: ProjectRoomTaskTrace | null } }
+export interface ProjectRoomAgent { id: string; name: string; capabilities: string[] }
+export interface ProjectRoomTaskTrace { task_id: string; events: number | null; errors: number | null; admission: string | null }
 export interface ProjectRoomDossier {
   mode: string; selected: boolean; variant: string;
   goal: { id: string; objective: string; constraints: string[]; acceptance_criteria: string[]; status: string; budget: Record<string, unknown>; proposal_id: string | null;
@@ -2008,7 +2017,10 @@ export interface ProjectRoomDossier {
     findings_review: Array<{ claim_id: string; status: string; note: string }>;
     steps: Array<{ id: string; title: string; depends_on: string[]; scope: string[]; expected_artifacts: string[]; verification: string[] }> } | null;
   calls: Array<{ profile: string; status: string; runtime: string | null; tokens: number | null; error: string | null }>;
-  execution: Array<{ run_id: string; status: string; leases: ProjectRoomLease[]; pr_url: string | null; outcome_verified: boolean | null; survival: string }>;
+  call_tasks: Array<{ id: string; status: string; profile: string | null; agent: ProjectRoomAgent | null; trace: ProjectRoomTaskTrace }>;
+  authority_events: number | null;
+  commons_review: { thread_id: string; status: string; reply_count: number } | null;
+  execution: Array<{ run_id: string; status: string; leases: ProjectRoomLease[]; pr_url: string | null; outcome_verified: boolean | null; survival: string; events: Array<{ type: string; n: number }> }>;
   candidates: Array<{ id: string; lesson: string; status: string }>;
   gaps: Array<{ what: string; reason: string; next_action: string }>;
 }
@@ -2793,7 +2805,10 @@ class ApiClient {
   }
 
   /** Engineering project room (COMMONS_PROJECT_ROOM_MODE): goals that use it, and one goal's dossier. */
-  async getProjectRooms(): Promise<{ mode: string; rooms: ProjectRoomSummary[] }> { return this.request('/swarm-v2/project-rooms'); }
+  async getProjectRooms(): Promise<{ mode: string; rooms: ProjectRoomSummary[]; candidates: Array<{ id: string; objective: string; status: string }> }> { return this.request('/swarm-v2/project-rooms'); }
+  async selectProjectRoom(goalId: string, variant: 'single' | 'two_stage'): Promise<ProjectRoomDossier> {
+    return this.request(`/swarm-v2/project-rooms/${encodeURIComponent(goalId)}/select`, { method: 'POST', body: JSON.stringify({ selected: true, variant }) });
+  }
   async getProjectRoom(goalId: string): Promise<ProjectRoomDossier> { return this.request(`/swarm-v2/project-rooms/${encodeURIComponent(goalId)}`); }
 
   async getSocialCommons(limit = 50, options: { kind?: CommonsThreadKind; offset?: number } = {}): Promise<SocialCommons> {
