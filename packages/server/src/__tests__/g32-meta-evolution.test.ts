@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -34,6 +34,17 @@ describe('G32: Meta-evolution loop', () => {
     const report = meta.evaluate();
     expect(report.maker_lease_completion_rate).toBe(0.5);
     expect(report).not.toHaveProperty('planner_accuracy');
+  });
+
+  it('does not prune a repair skill while the skill route cannot credit it (shadow/off), and does once the route is on', () => {
+    insertCapability('cap-skill', 'validated');
+    db.prepare("UPDATE swarm_capabilities SET metadata = '{\"source\":\"skill_from_repair\"}' WHERE id = 'cap-skill'").run();
+    const status = () => (db.prepare("SELECT status FROM swarm_capabilities WHERE id = 'cap-skill'").get() as { status: string }).status;
+    for (const mode of ['shadow', 'off']) { vi.stubEnv('SKILL_ROUTE_MODE', mode); expect(meta.evaluate().pruned).toBe(0); expect(status()).toBe('validated'); }
+    vi.stubEnv('SKILL_ROUTE_MODE', 'on');
+    expect(meta.evaluate().pruned).toBe(1);
+    expect(status()).toBe('deprecated');
+    vi.unstubAllEnvs();
   });
 
   it('prunes dormant capabilities (0 runs in 30 days)', () => {
