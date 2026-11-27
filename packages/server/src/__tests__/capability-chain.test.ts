@@ -10,6 +10,7 @@ import { DreamStateService } from '../services/dream-state-service';
 import { CAPABILITY_SPECS, capabilityChain, classifyCapability, classifyObservations, isAnomaly, observeCapability, type CapabilityObservation, type CapabilitySpec, type ObserveOptions } from '../services/capability-chain';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { markRun, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
+import { AgentCommunicationService } from '../services/agent-communication-service';
 
 const prodFacts = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/capability-chain-prod-20261014.json'), 'utf8')) as { collected_at: string; observations: CapabilityObservation[] };
 const NOW = Date.parse('2026-10-14T21:00:00Z');
@@ -174,6 +175,32 @@ describe('expected inactivity is IDLE_EXPECTED, never STALLED; missing evidence 
     expect(verdict('frontier_experts', { FRONTIER_EXPERTS_SCHEDULER_ENABLED: 'true' }).state).toBe('UNKNOWN');
     expect(verdict('frontier_experts', { FRONTIER_EXPERTS_SCHEDULER_ENABLED: 'true' }, { ...base, schedulers: [executing('frontier_experts')] }).state).toBe('HEALTHY');
   });
+  it('cross-organ edges: produced rows that nothing consumes are STALLED, a consumed or switched-off edge is not', () => {
+    expect(verdict('evidence_room_replies', { COMMONS_EVIDENCE_ROOM_MODE: 'on' }).state).toBe('UNKNOWN'); // the table is created lazily: absent is unknown, not stalled
+    new AgentCommunicationService(db);
+    const msg = (id: string, from: string, to: string, h: number) => db.prepare("INSERT INTO agent_messages (id, from_agent, to_agent, type, priority, payload_json, timestamp, status) VALUES (?, ?, ?, 'question', 'normal', '{}', ?, 'pending')").run(id, from, to, at(h));
+    // evidence room: questions posted, no reply ever (prod 2026-11-27: 765 expired, 0 replies)
+    db.prepare("INSERT INTO agent_messages (id, from_agent, to_agent, type, priority, payload_json, timestamp, status) VALUES ('q-now', 'djimitflo:evidence-room', 'commons', 'question', 'normal', '{}', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'pending')").run();
+    expect(verdict('evidence_room_replies', {}).state).toBe('IDLE_EXPECTED'); // flag off
+    const room = verdict('evidence_room_replies', { COMMONS_EVIDENCE_ROOM_MODE: 'on' });
+    expect([room.state, room.link]).toEqual(['STALLED', 'OUTCOME_PERSISTED']);
+    msg('r1', 'codex-macbook', 'djimitflo:evidence-room', 2);
+    expect(verdict('evidence_room_replies', { COMMONS_EVIDENCE_ROOM_MODE: 'on' }).state).toBe('HEALTHY');
+    // reflection candidates: stored and never touched again
+    expect(verdict('reflection_candidates', {}).state).toBe('IDLE_EXPECTED'); // none waiting
+    db.prepare("INSERT INTO reflection_candidates (id, source_type, source_ref, lesson, status, sensitivity, created_at, updated_at) VALUES ('rc1', 'trace', 't', 'l', 'candidate', 'normal', ?, ?), ('rc2', 'trace', 't2', 'l', 'candidate', 'normal', ?, ?)").run(at(100), at(100), at(90), at(90));
+    expect(verdict('reflection_candidates', {}).state).toBe('STALLED');
+    db.prepare("UPDATE reflection_candidates SET status = 'rejected', updated_at = ? WHERE id = 'rc1'").run(at(1));
+    expect(verdict('reflection_candidates', {}).state).toBe('HEALTHY'); // one is still waiting, and something reviewed one
+    // memory rules and the skill route: off is idle by configuration, on without an outcome is stalled
+    expect(verdict('memory_rule_delivery', { LOOP_MEMORY_RULES_ENABLED: 'false' }).state).toBe('IDLE_EXPECTED');
+    expect(verdict('memory_rule_delivery', { LOOP_MEMORY_RULES_ENABLED: 'true' }).state).toBe('STALLED');
+    expect(verdict('skill_route', { SKILL_ROUTE_MODE: 'off' }).state).toBe('IDLE_EXPECTED');
+    expect(verdict('skill_route', { SKILL_ROUTE_MODE: 'shadow' }).state).toBe('STALLED');
+    db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status) VALUES ('run-sr', 't', 'closed', 'completed')").run();
+    db.prepare("INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES ('ev-sr', 'run-sr', 'assignment_context', 'info', 'm', '{\"skill_route\":{\"arm\":\"shadow\"}}', ?)").run(at(3));
+    expect(verdict('skill_route', { SKILL_ROUTE_MODE: 'shadow' }).state).toBe('HEALTHY');
+  });
   it('a capability anomaly a legacy detector already raised is not raised twice', () => {
     const r = detectStallsWithHealth(db, NOW, { EVOLUTION_ESTIMATORS_ENABLED: 'true', DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename, DJIMITFLO_SKILLS_DIR: os.tmpdir() });
     expect(r.stalls.map((s) => s.subsystem)).toEqual(['estimates']);
@@ -184,7 +211,9 @@ describe('expected inactivity is IDLE_EXPECTED, never STALLED; missing evidence 
 describe('prod replay (read-only fact probe of djimitflo-live, 2026-10-14)', () => {
   const verdicts = classifyObservations(prodFacts.observations, Date.parse(prodFacts.collected_at));
   it('classifies every watched capability', () => {
-    expect(verdicts.map((v) => v.component).sort()).toEqual(CAPABILITY_SPECS.map((s) => s.name).sort());
+    // the probe predates the cross-organ edge specs (2026-11-27): it covers every capability watched on its own date
+    const later = ['evidence_room_replies', 'reflection_candidates', 'memory_rule_delivery', 'skill_route'];
+    expect(verdicts.map((v) => v.component).sort()).toEqual(CAPABILITY_SPECS.map((s) => s.name).filter((n) => !later.includes(n)).sort());
     expect(Object.fromEntries(verdicts.map((v) => [v.component, v.state]))).toEqual({
       dream_state: 'BLOCKED',
       evolution_estimates: 'HEALTHY',

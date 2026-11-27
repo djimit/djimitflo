@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { realRunIdSql } from './synthetic-runs';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { swarmEventBus } from './swarm-event-bus';
+import { isSkillCapability, skillRouteMode } from './skill-route';
 
 /**
  * G32: MetaEvolutionService — periodic self-evaluation of the swarm's performance.
@@ -68,7 +69,11 @@ export class MetaEvolutionService {
 
     for (const cap of caps) {
       const recentRuns = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE capability_id = ? AND created_at > ?').get(cap.id, thirtyDaysAgo) as { c: number };
-      if (recentRuns.c === 0 && cap.status === 'validated') {
+      // A capability that cannot earn a run is not dormant: a repair skill is credited to a lease only with the skill route on
+      // (skill-route.ts skillRouteCreditable). In shadow or off its count stays 0, so every validated skill was deprecated at
+      // the next hourly tick and the router never had one to select (prod 2026-11-15).
+      const unprovable = isSkillCapability(JSON.stringify(cap.metadata ?? {})) && skillRouteMode() !== 'on';
+      if (recentRuns.c === 0 && cap.status === 'validated' && !unprovable) {
         dormantCount++;
         // Prune: deprecate dormant validated capabilities.
         this.db.prepare('UPDATE swarm_capabilities SET status = ?, updated_at = ? WHERE id = ?')
