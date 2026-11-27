@@ -301,6 +301,9 @@ describe('project room: goal → review → plan → existing maker and checker 
       capability: { credited_id: 'cap-1', runner_decision: { action: 'start', blocked_reasons: ['none'] } },
       trace: { id: `loop-${run}-worker-${lease.id}`, spans: 2, span_errors: 1, task: { task_id: 't1', events: 2, errors: 1, admission: 'admitted by the ledger' } } });
     expect(wired.events.length).toBeGreaterThan(0);
+    // a transcript that could not be read records invoked:false by default: that is unknown, not "the maker did not run it"
+    db.prepare("UPDATE worker_leases SET metadata = json_set(metadata, '$.skill_route', json(?)) WHERE id = ?").run(JSON.stringify({ capability_id: 'cap-1', version: 3, state: 'unobservable', observable: false, invoked: false }), lease.id);
+    expect(projectDossier(db, 'gw')!.execution[0].leases.find((l) => l.id === lease.id)!.skill).toMatchObject({ state: 'unobservable', invoked: null });
     expect(selectRoom(db, 'gw', false)).toBe(true);
     expect(projectDossier(db, 'gw')!.selected).toBe(false);
   });

@@ -356,7 +356,7 @@ function leaseWiring(db: Database, runId: string, l: { id: string; role: string;
     // what the assignment carried, per block (delivery receipts: proof of delivery, not of use); the plan block is shown above
     context: Object.entries(blocks).filter(([name]) => name !== 'plan').map(([name, b]) => ({ name, ids: Array.isArray(obj(b).ids) ? (obj(b).ids as unknown[]).map(String) : [] })),
     // the skill the assignment routed to, and whether the transcript shows the maker ran it (null = no route recorded)
-    skill: str(route.capability_id) ? { capability_id: String(route.capability_id), version: route.version == null ? null : String(route.version), state: str(route.state), invoked: typeof route.invoked === 'boolean' ? route.invoked : null } : null,
+    skill: str(route.capability_id) ? { capability_id: String(route.capability_id), version: route.version == null ? null : String(route.version), state: str(route.state), invoked: route.state === 'unobservable' || route.observable === false || typeof route.invoked !== 'boolean' ? null : route.invoked } : null, // no readable transcript = not measured, not "no"
     capability: { credited_id: l.capability_id, runner_decision: manifest ? { action: manifest.action, blocked_reasons: blocked } : null },
     trace: { id: traceId, spans: spans.length, span_errors: spans.filter((x) => x.status === 'error' || x.status === 'blocked').length, steps: spans.slice(0, 40), task: taskId ? taskTrace(db, taskId) : null },
   };
