@@ -325,6 +325,43 @@ export function planLoaded(leaseMetadata: Json, prompt: string): { plan_id: stri
 
 // ── dossier: a projection of durable records ────────────────────────────────────────────────────────────────────────────
 export interface DossierGap { what: string; reason: string; next_action: string }
+// ── wiring: who ran, with what, allowed by what, traced where ───────────────────────────────────────────────────────────
+// Every reader tolerates a table that is missing or empty: an absent record is null or [], never a pass and never a zero.
+function all<T>(db: Database, sql: string, ...args: unknown[]): T[] { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } }
+function one<T>(db: Database, sql: string, ...args: unknown[]): T | undefined { try { return db.prepare(sql).get(...args) as T | undefined; } catch { return undefined; } }
+const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? v as Json : {});
+const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+function agentOf(db: Database, agentId: string | null | undefined) {
+  const a = agentId ? one<{ id: string; name: string; capabilities: string | null }>(db, 'SELECT id, name, capabilities FROM agents WHERE id = ?', agentId) : undefined;
+  if (!a) return null;
+  let capabilities: string[] = []; try { const c = JSON.parse(a.capabilities ?? '[]') as unknown; if (Array.isArray(c)) capabilities = c.map(String); } catch { /* unreadable = none listed */ }
+  return { id: a.id, name: a.name, capabilities };
+}
+/** The engine's own event log for one task: how many events, how many errors, and the runtime-admission decision if recorded. */
+function taskTrace(db: Database, taskId: string) {
+  const c = one<{ n: number; errors: number }>(db, "SELECT COUNT(*) AS n, COALESCE(SUM(level = 'error'), 0) AS errors FROM execution_events WHERE task_id = ?", taskId);
+  const admission = one<{ message: string }>(db, "SELECT message FROM execution_events WHERE task_id = ? AND json_valid(metadata) AND json_extract(metadata, '$.source') = 'runtime-admission' ORDER BY rowid DESC LIMIT 1", taskId);
+  return { task_id: taskId, events: c?.n ?? null, errors: c?.errors ?? null, admission: admission?.message ?? null };
+}
+function leaseWiring(db: Database, runId: string, l: { id: string; role: string; capability_id: string | null }, m: Json, taskId: string | null) {
+  const task = taskId ? one<{ agent_id: string | null }>(db, 'SELECT agent_id FROM tasks WHERE id = ?', taskId) : undefined;
+  const blocks = obj(obj(m.assignment_receipt).blocks); const route = obj(m.skill_route); const genome = obj(m.genome);
+  const traceId = str(m.trace_id) ?? `loop-${runId}-${l.role === 'maker' ? 'worker' : 'checker'}-${l.id}`;
+  const spans = all<{ span_type: string; name: string; status: string }>(db, 'SELECT span_type, name, status FROM agent_trace_spans WHERE trace_id = ? ORDER BY created_at, rowid', traceId);
+  const manifest = one<{ action: string; blocked_reasons_json: string }>(db, 'SELECT action, blocked_reasons_json FROM swarm_runner_manifests WHERE lease_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1', l.id);
+  let blocked: string[] = []; try { const b = JSON.parse(manifest?.blocked_reasons_json ?? '[]') as unknown; if (Array.isArray(b)) blocked = b.map(String); } catch { /* unreadable = none listed */ }
+  return {
+    agent: agentOf(db, task?.agent_id),
+    identity: { model: str(m.model_id) ?? str(m.model), provider: str(m.provider), model_family: str(m.model_family), genome_id: str(genome.genome_id) ?? str(genome.id) },
+    // what the assignment carried, per block (delivery receipts: proof of delivery, not of use); the plan block is shown above
+    context: Object.entries(blocks).filter(([name]) => name !== 'plan').map(([name, b]) => ({ name, ids: Array.isArray(obj(b).ids) ? (obj(b).ids as unknown[]).map(String) : [] })),
+    // the skill the assignment routed to, and whether the transcript shows the maker ran it (null = no route recorded)
+    skill: str(route.capability_id) ? { capability_id: String(route.capability_id), version: route.version == null ? null : String(route.version), state: str(route.state), invoked: typeof route.invoked === 'boolean' ? route.invoked : null } : null,
+    capability: { credited_id: l.capability_id, runner_decision: manifest ? { action: manifest.action, blocked_reasons: blocked } : null },
+    trace: { id: traceId, spans: spans.length, span_errors: spans.filter((x) => x.status === 'error' || x.status === 'blocked').length, steps: spans.slice(0, 40), task: taskId ? taskTrace(db, taskId) : null },
+  };
+}
+
 export function projectDossier(db: Database, goalId: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
   const goal = goalRow(db, goalId);
   if (!goal) return null;
@@ -333,7 +370,7 @@ export function projectDossier(db: Database, goalId: string, env: NodeJS.Process
   const runs = db.prepare('SELECT id, status, metadata, created_at FROM loop_runs WHERE goal_id = ? ORDER BY created_at').all(goalId) as Array<{ id: string; status: string; metadata: string; created_at: string }>;
   const gaps: DossierGap[] = [];
   const execution = runs.map((r) => {
-    const leases = (db.prepare('SELECT id, role, runtime, status, metadata, created_at FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at').all(r.id) as Array<{ id: string; role: string; runtime: string; status: string; metadata: string; created_at: string }>).map((l) => {
+    const leases = (db.prepare('SELECT id, role, runtime, status, capability_id, metadata, created_at FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at').all(r.id) as Array<{ id: string; role: string; runtime: string; status: string; capability_id: string | null; metadata: string; created_at: string }>).map((l) => {
       const m = json(l.metadata); const ref = m.plan_ref as PlanRef | undefined;
       const receipt = json(JSON.stringify((json(JSON.stringify(m.assignment_receipt ?? {})).blocks as Json | undefined)?.plan ?? {}));
       const taskId = typeof m.execution_task_id === 'string' ? m.execution_task_id : null;
@@ -344,11 +381,12 @@ export function projectDossier(db: Database, goalId: string, env: NodeJS.Process
         task: taskId ? { id: taskId, status: task?.status ?? null } : null,
         plan: ref ? { plan_id: ref.plan_id, version: ref.version, delivered: Array.isArray(receipt.ids) && typeof receipt.sha256 === 'string', loaded: m.plan_loaded ? true : null } : null,
         checks, verdict: typeof m.verdict === 'string' ? m.verdict : typeof json(JSON.stringify(m.checker_verdict ?? {})).verdict === 'string' ? String(json(JSON.stringify(m.checker_verdict)).verdict) : null,
-        maker_lease_id: typeof m.maker_lease_id === 'string' ? m.maker_lease_id : null };
+        maker_lease_id: typeof m.maker_lease_id === 'string' ? m.maker_lease_id : null,
+        ...leaseWiring(db, r.id, l, m, taskId) };
     });
     const meta = json(r.metadata); const pr = typeof meta.pr_url === 'string' ? meta.pr_url : null;
     const settled = pr ? settlementState(r.created_at, parseOutcome(meta.pr_outcome === undefined ? null : JSON.stringify(meta.pr_outcome)), now).state : null;
-    return { run_id: r.id, status: r.status, leases, pr_url: pr,
+    return { run_id: r.id, status: r.status, leases, pr_url: pr, events: all<{ type: string; n: number }>(db, 'SELECT event_type AS type, COUNT(*) AS n FROM loop_events WHERE loop_run_id = ? GROUP BY event_type ORDER BY n DESC, event_type', r.id),
       // the run's own terminal status after its gates: certified, not certified, or not settled yet (null, never false)
       outcome_verified: ['completed', 'ready_for_human_merge'].includes(r.status) ? true : ['failed', 'blocked', 'escalated', 'cancelled'].includes(r.status) ? false : null,
       // immediate verification and later survival are different facts: PENDING until settled, UNKNOWN without a PR to observe
@@ -371,10 +409,32 @@ export function projectDossier(db: Database, goalId: string, env: NodeJS.Process
     plan: plan ? { plan_id: plan.plan_id, version: plan.version, digest: plan.digest, versions, decisions: plan.decisions, assumptions: plan.assumptions, uncertainties: plan.uncertainties, open_questions: plan.open_questions,
       findings_review: plan.findings_review, steps: plan.steps, stop_conditions: plan.stop_conditions, recovery: plan.recovery, sources: plan.sources, provenance: plan.provenance } : null,
     calls: calls(db, goalId).map((c) => ({ profile: c.profile, status: c.status, runtime: c.runtime, tokens: c.tokens, error: c.error, started_at: c.started_at, finished_at: c.finished_at })),
+    // the engine tasks behind the room's own calls: each has its execution events (the trace of that planner or reviewer call)
+    call_tasks: all<{ id: string; status: string; agent_id: string | null; profile: string | null }>(db, `SELECT id, status, agent_id, json_extract(metadata, '$.project_room.profile') AS profile FROM tasks
+      WHERE id LIKE 'project-room-%' AND json_valid(metadata) AND json_extract(metadata, '$.project_room.goal_id') = ? ORDER BY created_at`, goalId).map((t) => ({ ...t, agent: agentOf(db, t.agent_id), trace: taskTrace(db, t.id) })),
+    // decisions the authority gate recorded for this goal, and the Commons thread that reviewed its proposal (null = none recorded)
+    authority_events: one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM authority_events WHERE correlation_id = ?', goalId)?.n ?? null,
+    commons_review: goal.improvement_id ? one<{ thread_id: string; status: string; reply_count: number }>(db, 'SELECT thread_id, status, reply_count FROM commons_proposal_reviews WHERE improvement_id = ?', goal.improvement_id) ?? null : null,
     execution,
     candidates: (db.prepare("SELECT id, lesson, status FROM reflection_candidates WHERE source_ref LIKE ? ORDER BY created_at").all(`project-room:${goalId}:%`) as Array<{ id: string; lesson: string; status: string }>),
     gaps,
   };
+}
+/** Goals an operator can still route through the room: open, not selected yet. */
+export function roomCandidates(db: Database, limit = 50) {
+  return db.prepare(`SELECT id, objective, status FROM goals WHERE status NOT IN ('completed', 'failed', 'cancelled', 'archived')
+    AND COALESCE(CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.task_profile') END, '') != 'project_room' ORDER BY updated_at DESC LIMIT ?`).all(Math.min(200, Math.max(1, limit))) as Array<{ id: string; objective: string; status: string }>;
+}
+/**
+ * Operator choice: route one goal through the room, or back to the direct route. Only the goal's own metadata changes; what
+ * happens next is decided by COMMONS_PROJECT_ROOM_MODE (off: nothing, shadow: a record, on: review and plan before the maker).
+ */
+export function selectRoom(db: Database, goalId: string, selected: boolean, variant: 'single' | 'two_stage' = 'two_stage'): boolean {
+  const now = new Date().toISOString();
+  const sql = selected
+    ? "UPDATE goals SET metadata = json_set(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.task_profile', 'project_room', '$.project_room.variant', ?), updated_at = ? WHERE id = ?"
+    : "UPDATE goals SET metadata = json_remove(metadata, '$.task_profile'), updated_at = ? WHERE id = ? AND json_valid(metadata)";
+  return (selected ? db.prepare(sql).run(variant, now, goalId) : db.prepare(sql).run(now, goalId)).changes > 0;
 }
 export function listRooms(db: Database, limit = 50) {
   return db.prepare(`SELECT g.id, g.objective, g.status, g.updated_at,

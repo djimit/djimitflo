@@ -8,7 +8,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
 import { artifactDigest, canonicalJson, planContextLines, PLAN_CONTEXT_MAX_CHARS, validatePlanDraft, validateReviewDraft, type PlanArtifact, type PlanDraft } from '../services/plan-artifact';
-import { engineProfileRunner, finalMessage, issueArtifact, latestArtifact, planFreshness, planLoaded, profileRuntimeGate, projectDossier, proposeRoomCandidates, repoSnapshot, runProjectRoom, type ProfileRunner } from '../services/project-room';
+import { engineProfileRunner, finalMessage, issueArtifact, latestArtifact, planFreshness, planLoaded, profileRuntimeGate, projectDossier, proposeRoomCandidates, roomCandidates, selectRoom, repoSnapshot, runProjectRoom, type ProfileRunner } from '../services/project-room';
 
 const draft = (over: Partial<PlanDraft> = {}): PlanDraft => ({ sources: [{ path: 'sum.js', symbol: 'function sum' }], decisions: ['change the operator, keep the signature'], assumptions: [], uncertainties: [], open_questions: [],
   findings_review: [{ claim_id: 'c1', status: 'confirmed', note: 'sum.js subtracts' }, { claim_id: 'c2', status: 'rejected', note: 'there is no cache module in this repository' }],
@@ -269,6 +269,40 @@ describe('project room: goal → review → plan → existing maker and checker 
     const dirty: ProfileRunner = async () => ({ stdout: fenced(review), runtime: 'x', model: null, tokens: 1, harness: 'vitest', read_only: { enforced_by: 'none', tree_clean: false } });
     expect(await runProjectRoom(db, 'g6', repo, dirty)).toMatchObject({ status: 'blocked', reason: expect.stringMatching(/PROJECT_ROOM_READ_ONLY_VIOLATED/) });
     expect(latestArtifact(db, 'g6', 'architecture_review')).toBeNull();
+  });
+
+  it('wiring: a lease shows its agent, delivered context, skill route, runner decision and trace; an absent record is null, never zero', () => {
+    goal('gw', {});
+    // an operator routes an open goal through the room, and back
+    expect(roomCandidates(db).map((g) => g.id)).toContain('gw');
+    expect(selectRoom(db, 'gw', true, 'single')).toBe(true);
+    expect(projectDossier(db, 'gw')).toMatchObject({ selected: true, variant: 'single' });
+    expect(roomCandidates(db).map((g) => g.id)).not.toContain('gw');
+    expect(selectRoom(db, 'missing', true)).toBe(false);
+    const lease = prepare(start('gw').id);
+    const bare = projectDossier(db, 'gw')!.execution[0].leases.find((l) => l.id === lease.id)!;
+    expect(bare).toMatchObject({ agent: null, skill: null, capability: { credited_id: null }, trace: { spans: 0, task: null } });
+    expect(projectDossier(db, 'gw')).toMatchObject({ call_tasks: [], commons_review: null });
+
+    const now = new Date().toISOString(); const run = lease.loop_run_id;
+    db.prepare("INSERT INTO agents (id, name, description, status, capabilities, created_at, updated_at) VALUES ('a1', 'codex-maker', 'd', 'idle', '[\"codex\",\"maker\"]', ?, ?)").run(now, now);
+    db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at) VALUES ('t1', 't', 'd', 'completed', 'medium', 'low', 'local', 'a1', '[]', '{}', ?, ?)").run(now, now);
+    const event = (level: string, metadata: object) => db.prepare("INSERT INTO execution_events (id, task_id, event_type, timestamp, message, level, metadata, created_at, updated_at) VALUES (?, 't1', 'log', ?, 'admitted by the ledger', ?, ?, ?, ?)").run(`e-${Math.random()}`, now, level, JSON.stringify(metadata), now, now);
+    event('info', { source: 'runtime-admission' }); event('error', {});
+    db.prepare("INSERT INTO agent_trace_spans (id, trace_id, loop_run_id, span_type, name, status) VALUES ('s1', ?, ?, 'worker', 'maker run', 'ok'), ('s2', ?, ?, 'tool', 'npm test', 'error')").run(`loop-${run}-worker-${lease.id}`, run, `loop-${run}-worker-${lease.id}`, run);
+    db.prepare("INSERT INTO swarm_runner_manifests (id, decision_id, lease_id, loop_run_id, action, policy_version, blocked_reasons_json) VALUES ('m1', 'd1', ?, ?, 'start', 'v1', '[\"none\"]')").run(lease.id, run);
+    db.prepare("UPDATE worker_leases SET capability_id = 'cap-1', metadata = json_patch(metadata, ?) WHERE id = ?").run(JSON.stringify({ execution_task_id: 't1', model_id: 'gpt-x', provider: 'openai',
+      skill_route: { capability_id: 'cap-1', version: 3, state: 'invoked_ok', invoked: true }, assignment_receipt: { blocks: { memory_rules: { ids: ['r1', 'r2'], sha256: 'x' }, plan: { ids: ['p'], sha256: 'y' } } } }), lease.id);
+    const wired = projectDossier(db, 'gw')!.execution[0];
+    expect(wired.leases.find((l) => l.id === lease.id)).toMatchObject({
+      agent: { id: 'a1', name: 'codex-maker', capabilities: ['codex', 'maker'] }, identity: { model: 'gpt-x', provider: 'openai' },
+      context: [{ name: 'memory_rules', ids: ['r1', 'r2'] }], // the plan block has its own row
+      skill: { capability_id: 'cap-1', version: '3', invoked: true },
+      capability: { credited_id: 'cap-1', runner_decision: { action: 'start', blocked_reasons: ['none'] } },
+      trace: { id: `loop-${run}-worker-${lease.id}`, spans: 2, span_errors: 1, task: { task_id: 't1', events: 2, errors: 1, admission: 'admitted by the ledger' } } });
+    expect(wired.events.length).toBeGreaterThan(0);
+    expect(selectRoom(db, 'gw', false)).toBe(true);
+    expect(projectDossier(db, 'gw')!.selected).toBe(false);
   });
 
   it('the engine runner: one read-only task at the pinned commit; a touched tree, another executor or an unstarted task voids the call', async () => {

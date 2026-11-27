@@ -19,7 +19,7 @@ import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 import { replyToEvidenceRoom } from '../services/commons-evidence-room';
-import { engineProfileRunner, listRooms, projectDossier, projectRoomMode, runProjectRoom } from '../services/project-room';
+import { engineProfileRunner, listRooms, projectDossier, projectRoomMode, roomCandidates, runProjectRoom, selectRoom } from '../services/project-room';
 import { param } from './params';
 
 function boundedLimit(value: unknown): number {
@@ -204,7 +204,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
 
   // GET /api/swarm-v2/project-rooms — goals that use the engineering project room (COMMONS_PROJECT_ROOM_MODE), newest first
   router.get('/project-rooms', requirePermission('read:evidence'), (req, res) => {
-    res.json({ mode: projectRoomMode(), rooms: listRooms(db, Math.trunc(Number(req.query.limit)) || 50) });
+    res.json({ mode: projectRoomMode(), rooms: listRooms(db, Math.trunc(Number(req.query.limit)) || 50), candidates: roomCandidates(db) });
   });
 
   // GET /api/swarm-v2/project-rooms/:goalId — the dossier: a projection of goal, review, plan versions, leases, checks and outcome
@@ -212,6 +212,15 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     const dossier = projectDossier(db, String(req.params.goalId));
     if (!dossier) { res.status(404).json({ error: 'PROJECT_ROOM_GOAL_NOT_FOUND' }); return; }
     res.json(dossier);
+  });
+
+  // POST /api/swarm-v2/project-rooms/:goalId/select — operator only: route this goal through the room ({selected, variant})
+  // or back to the direct route. Changes the goal's metadata only; the flag decides what a selected goal then gets.
+  router.post('/project-rooms/:goalId/select', requirePermission('write:swarm_action'), (req: any, res) => {
+    if (!req.user?.sub || req.user.agent_id) { res.status(403).json({ error: 'OPERATOR_ONLY' }); return; }
+    const variant = req.body?.variant === 'single' ? 'single' : 'two_stage';
+    if (!selectRoom(db, String(req.params.goalId), req.body?.selected !== false, variant)) { res.status(404).json({ error: 'PROJECT_ROOM_GOAL_NOT_FOUND' }); return; }
+    res.json(projectDossier(db, String(req.params.goalId)));
   });
 
   // POST /api/swarm-v2/project-rooms/:goalId/run — operator only: make the review and plan now (mode on, selected goal). The
