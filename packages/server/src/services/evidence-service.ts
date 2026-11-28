@@ -319,9 +319,27 @@ export class EvidenceService {
     const approvalOutcomes = { approved: 0, denied: 0, expired: 0 };
     for (const row of approvalRows) approvalOutcomes[row.status as keyof typeof approvalOutcomes] = row.count;
 
-    // identical messages grouped: task_id is the latest occurrence's (SQLite takes bare columns from the MAX() row)
+    // Keep a policy denial until it is superseded by the same verification passing.
+    // The execution event remains the audit record; this only removes resolved noise from the dashboard.
+    const hasEventMetadata = (this.db.prepare('PRAGMA table_info(execution_events)').all() as Array<{ name: string }>)
+      .some((column) => column.name === 'metadata');
+    const resolvedPolicyFilter = hasEventMetadata ? `
+      AND NOT (
+        json_valid(execution_events.metadata)
+        AND json_extract(execution_events.metadata, '$.verification_policy_blocked') = 1
+        AND EXISTS (
+          SELECT 1 FROM execution_events AS success
+          WHERE success.task_id = execution_events.task_id
+            AND (success.created_at > execution_events.created_at
+              OR (success.created_at = execution_events.created_at AND success.rowid > execution_events.rowid))
+            AND json_valid(success.metadata)
+            AND json_extract(success.metadata, '$.verification_name') = json_extract(execution_events.metadata, '$.verification_name')
+            AND json_extract(success.metadata, '$.verification_failed') = 0
+        )
+      )` : '';
     const recentErrors = this.db.prepare(`SELECT task_id, message, MAX(created_at) as timestamp, COUNT(*) as count FROM execution_events
-      WHERE level IN ('error', 'critical')${taskWindow} GROUP BY message ORDER BY timestamp DESC LIMIT 10`).all(...taskParams) as any[];
+      WHERE level IN ('error', 'critical')${taskWindow}${resolvedPolicyFilter}
+      GROUP BY message ORDER BY timestamp DESC LIMIT 10`).all(...taskParams) as any[];
 
     return {
       total_tasks: totalTasks,

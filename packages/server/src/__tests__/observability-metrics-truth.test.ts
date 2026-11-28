@@ -72,6 +72,23 @@ it('groups identical recent errors with a count instead of repeating them', asyn
   expect(body.recent_errors[1]).toMatchObject({ message: 'Different failure', count: 1 });
 });
 
+it('omits a resolved permission denial but keeps an unresolved one', async () => {
+  const insert = db.prepare(`INSERT INTO execution_events (id, task_id, event_type, message, level, metadata, created_at)
+    VALUES (?, ?, 'error', ?, 'error', ?, ?)`);
+  const success = db.prepare(`INSERT INTO execution_events (id, task_id, event_type, message, level, metadata, created_at)
+    VALUES (?, ?, 'tool.call', 'vitest passed', 'info', ?, ?)`);
+  const denial = JSON.stringify({ verification_name: 'vitest', verification_policy_blocked: true, verification_failed: true });
+  const pass = JSON.stringify({ verification_name: 'vitest', verification_policy_blocked: false, verification_failed: false });
+  insert.run('resolved-denial', 't-new', 'vitest verification blocked by the runtime permission policy', denial, ago(1));
+  success.run('resolved-pass', 't-new', pass, ago(0.9));
+  insert.run('unresolved-denial', 't-run', 'eslint verification blocked by the runtime permission policy', JSON.stringify({ ...JSON.parse(denial), verification_name: 'eslint' }), ago(0.8));
+
+  const { body } = await request(app()).get('/observability/metrics');
+  expect(body.recent_errors).toHaveLength(3);
+  expect(body.recent_errors.some((error: any) => error.message.startsWith('vitest verification blocked'))).toBe(false);
+  expect(body.recent_errors.some((error: any) => error.message.startsWith('eslint verification blocked'))).toBe(true);
+});
+
 it('keeps the all-time projection for callers that pass no window (summary export)', () => {
   const metrics = new EvidenceService(db).getObservabilityMetrics();
   expect(metrics.window_days).toBeNull();

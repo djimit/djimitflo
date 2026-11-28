@@ -124,7 +124,9 @@ function resolveRepo(repo: string | undefined, env: NodeJS.ProcessEnv): string {
 /** Repo-relative, inside the checkout (symlinks resolved), and either existing or a new file under packages/<pkg>/src. */
 export function checkRepoPath(root: string, rel: string, what: string, allowNew: boolean): boolean {
   if (!REL_PATH.test(rel) || rel.split('/').some((seg) => seg === '..' || seg === '.')) throw new CapabilityRequestError('INVALID_PATH', `${what} must be a repo-relative path`);
-  const abs = path.join(root, rel);
+  const safeRoot = path.resolve(root);
+  const abs = path.resolve(safeRoot, rel);
+  if (abs !== safeRoot && !abs.startsWith(safeRoot + path.sep)) throw new CapabilityRequestError('INVALID_PATH', `${what} must remain inside the repository`);
   if (!fs.existsSync(abs)) {
     if (allowNew && NEW_FILE_ROOT.test(rel)) return false;
     throw new CapabilityRequestError('PATH_NOT_FOUND', `${what} ${rel} does not exist${allowNew ? ' and is not a new file under packages/*/src' : ''}`);

@@ -1521,6 +1521,22 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_improvement_id ON goals(improvement_id) WHERE improvement_id IS NOT NULL');
 }
 
+/**
+ * Project room (COMMONS_PROJECT_ROOM_MODE): immutable plan / review versions and the read-only profile calls that made them.
+ * A version is never changed: the triggers refuse UPDATE and DELETE, so a revision can only be a new row.
+ */
+function createProjectRoomTables(db: BetterSqlite3Database) {
+  db.exec(`CREATE TABLE IF NOT EXISTS project_room_artifacts (
+    id TEXT PRIMARY KEY, goal_id TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('architecture_review','plan')), version INTEGER NOT NULL,
+    digest TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(goal_id, kind, version));
+  CREATE TRIGGER IF NOT EXISTS project_room_artifacts_no_update BEFORE UPDATE ON project_room_artifacts BEGIN SELECT RAISE(ABORT, 'PROJECT_ROOM_ARTIFACT_IMMUTABLE'); END;
+  CREATE TRIGGER IF NOT EXISTS project_room_artifacts_no_delete BEFORE DELETE ON project_room_artifacts BEGIN SELECT RAISE(ABORT, 'PROJECT_ROOM_ARTIFACT_IMMUTABLE'); END;
+  CREATE TABLE IF NOT EXISTS project_room_calls (
+    id TEXT PRIMARY KEY, goal_id TEXT NOT NULL, profile TEXT NOT NULL, status TEXT NOT NULL, runtime TEXT, tokens INTEGER, error TEXT,
+    read_only_json TEXT, started_at TEXT NOT NULL, finished_at TEXT);
+  CREATE INDEX IF NOT EXISTS idx_project_room_calls_goal ON project_room_calls(goal_id, started_at);`);
+}
+
 function createRuntimeContractProbeTables(db: BetterSqlite3Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_contract_probes (
@@ -2015,6 +2031,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createSelfImprovementTables(db);
   createNestedSpawnTables(db);
   createRuntimeContractProbeTables(db);
+  createProjectRoomTables(db);
   addMissingColumns(db, 'swarm_claims', swarmClaimColumns);
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);

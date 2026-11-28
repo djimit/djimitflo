@@ -6,10 +6,10 @@ Every environment variable read in `packages/server/src` (tests excluded), from 
 Registry = listed in `EVOLUTION_FLAGS` (`packages/server/src/services/evolution-evidence.ts`). Runbook = has a row in a flag table of `docs/runbooks/self-improvement-loop-operations.md`.
 A variable in neither is not wrong, but nothing else in the repository tells an operator that it exists.
 
-- Read by the server: 666
-- In the registry: 184
-- In the runbook: 232
-- In neither: 432
+- Read by the server: 673
+- In the registry: 187
+- In the runbook: 235
+- In neither: 436
 
 | Variable | Registry | Runbook | Read in |
 |---|---|---|---|
@@ -89,6 +89,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `COMMONS_FALSIFIER_MODE` | yes | yes | `services/commons-falsifier.ts` |
 | `COMMONS_GROUNDING_APPLY` | yes | yes | `services/commons-grounding.ts` |
 | `COMMONS_INVESTIGATION_MODE` | yes | yes | `services/commons-falsifier.ts`, `services/commons-investigation.ts` |
+| `COMMONS_PROJECT_ROOM_MODE` | yes | yes | `services/project-room-abc.ts`, `services/project-room.ts` |
 | `COMMONS_PROPOSAL_REVIEW_ENABLED` | no | no | `services/commons-proposal-review-service.ts`, `services/self-improvement-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_INTERVAL_MS` | no | no | `services/commons-proposal-review-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_MAX_OPEN` | no | no | `services/commons-proposal-review-service.ts` |
@@ -236,6 +237,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `DREAM_EVOLUTION_MODEL` | no | no | `services/dream-evolution.ts` |
 | `DREAM_EVOLUTION_SPECIES` | no | no | `services/benchmark-runner.ts`, `services/dream-evolution.ts` +2 |
 | `DREAM_HOLDOUT_REUSE_LIMIT` | no | no | `services/genome-promotion.ts` |
+| `DREAM_KNOWLEDGE_SEED_MODE` | yes | yes | `services/dream-evidence-sources.ts` |
 | `DREAM_PLAYBOOK_GENE` | yes | yes | `services/lane-playbook.ts` |
 | `DREAM_PROMOTION_ALPHA` | yes | yes | `services/dream-evolution.ts` |
 | `DREAM_PROMOTION_RULE` | yes | yes | `services/dream-evolution.ts` |
@@ -392,7 +394,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `LOOP_DAEMON_CHECK_SCRIPTS` | no | no | `services/gym-gate-policy.ts`, `services/loop-daemon.ts` |
 | `LOOP_DAEMON_CHECK_TIMEOUT_MS` | no | no | `services/gym-gate-policy.ts`, `services/loop-daemon.ts` |
 | `LOOP_DAEMON_MAKER_RUNTIME` | no | no | `services/evolution-gym-service.ts`, `services/loop-daemon.ts` |
-| `LOOP_DAEMON_REPOSITORY_PATH` | no | no | `services/advisory-exposure.ts`, `services/capability-factory.ts` +15 |
+| `LOOP_DAEMON_REPOSITORY_PATH` | no | no | `routes/swarm-orchestration.ts`, `services/advisory-exposure.ts` +16 |
 | `LOOP_DRAFT_PR_BASE` | no | no | `services/dependency-lane.ts`, `services/loop-auto-merge.ts` +3 |
 | `LOOP_DRAFT_PR_MAX_OPEN` | no | yes | `services/loop-draft-pr-service.ts` |
 | `LOOP_DRAFT_PR_REMOTE` | no | no | `services/loop-draft-pr-service.ts` |
@@ -418,9 +420,10 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `LOOP_SKILL_CARDS_ENABLED` | yes | yes | `services/assignment-context.ts` |
 | `LOOP_STOP_CONDITIONS_MODE` | yes | yes | `services/loop-stop-conditions.ts` |
 | `LOOP_WORKTREE_MAX_AGE_HOURS` | no | no | `services/worktree-manager.ts` |
-| `LOOP_WORKTREE_ROOT` | no | no | `scripts/nested-swarm-demo.ts`, `services/loop-service.ts` +1 |
+| `LOOP_WORKTREE_ROOT` | no | no | `scripts/nested-swarm-demo.ts`, `services/loop-service.ts` +2 |
 | `MAKER_DEPS_001_MODE` | no | no | `services/maker-deps-001.ts` |
 | `MAKER_DIFF_CAPTURE` | yes | yes | `services/maker-diff-capture.ts` |
+| `MAKER_FORECAST_MODE` | yes | yes | `services/maker-forecast.ts` |
 | `MAKER_SCOPE_REPAIR` | yes | yes | `services/maker-scope-repair.ts` |
 | `MAKER_UID_SEPARATION` | yes | yes | `execution/executors/maker-uid-separation.ts` |
 | `MAKER_WARM_DEPS` | yes | yes | `services/maker-warm-deps.ts` |
@@ -532,6 +535,10 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `POLICY_VIOLATION_LOG` | yes | yes | `services/policy-violations.ts` |
 | `PORT` | no | no | `config/env.ts`, `index.ts` +4 |
 | `PROCEDURE_SELECTOR_MODE` | yes | yes | `services/procedure-selector.ts` |
+| `PROJECT_ROOM_MAX_CALLS` | no | no | `services/project-room.ts` |
+| `PROJECT_ROOM_MAX_REVISIONS` | no | no | `services/project-room.ts` |
+| `PROJECT_ROOM_RUNTIME` | no | no | `scripts/project-room-abc.ts`, `services/project-room.ts` |
+| `PROJECT_ROOM_TIMEOUT_MS` | no | no | `services/project-room.ts` |
 | `PROMPT_INTEL_PENDING` | no | no | `bootstrap/operator-services.ts` |
 | `PROOF_RUN_MEMORY_FLYWHEEL` | no | no | `services/memory-candidate-service.ts` |
 | `PROOF_RUN_REPOSITORY_PATH` | no | no | `services/proof-run-service.ts` |

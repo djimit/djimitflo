@@ -84,7 +84,7 @@
       "conditions": "99 proposals with a jev proposal_prescreen verdict and a resolved outcome (17 verified); identical state + 4 questions; MacBook M4 Pro.",
       "result": "AUC jev 0.779 / Clef 0.758; Brier 0.378 / 0.255, both worse than the per-source base rate 0.124; per-question agreement 87-99 %; equivalent, not better.",
       "why": "No measured advantage; n = 99 with 17 positives; jev stays the only System One backend (operator decision 2026-09-30).",
-      "evidence": ["operator plan Phase X (Clef Flash replay, 2026-10-03)"],
+      "evidence": ["operator plan Phase X (Clef Flash replay, 2026-10-03)", "GLD-001 (docs/research/gld-001/RESULTS.md, 2026-11-24, n = 297, 168 verified): a second local System One model, GLiDE-0.4B, against the stored jev-1.13.0 answers on newer labelled prescreen states. INCONCLUSIVE on the AUC difference (-0.070, 95 % interval [-0.168, +0.028]); jev AUC 0.653 / Brier 0.293, GLiDE 0.583 / 0.300, both worse than the per-source base rate 0.225. Supports this entry's finding that no System One model beats the base rate here; it is not negative evidence about GLiDE."],
       "allowed_follow_up": "Clef Flash as a local fallback only if jev outages matter (operator decision).",
       "forbidden_reuse": ["switching the System One backend without a new outcome-labelled comparison"],
       "forbidden_code_patterns": [],
