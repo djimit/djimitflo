@@ -67,7 +67,7 @@ export interface ExecutionReceipt {
   trace: Trace;
   verification: {
     run_status: string | null;
-    checks: Array<{ name: string | null; exit_status: number | null }> | null;
+    checks: Array<{ name: string | null; status: string | null; exit_status: number | null }> | null;
     checker_lease_id: string | null; checker_verdict: string | null;
     /** the checker is another lease than the maker and names this maker; null when there is no checker lease */
     independent: boolean | null;
@@ -91,10 +91,11 @@ export function executionReceipt(db: Database, leaseId: string, now = Date.now()
   const skill = latestSkillRoute(db, lease.loop_run_id);
   const trace = taskTrace(db, str(meta.execution_task_id), now);
   const checks = Array.isArray(meta.deterministic_checks)
-    ? meta.deterministic_checks.map((c) => { const o = json(JSON.stringify(c)); return { name: str(o.name), exit_status: typeof o.exit_status === 'number' ? o.exit_status : null }; })
+    ? meta.deterministic_checks.map((c) => { const o = json(JSON.stringify(c)); return { name: str(o.name), status: str(o.status), exit_status: typeof o.exit_status === 'number' ? o.exit_status : null }; })
     : null;
   const checkerMeta = json(checker?.metadata);
-  const independent = checker ? checker.id !== lease.id && (str(checkerMeta.maker_lease_id) ?? lease.id) === lease.id : null;
+  // independent = another lease that says which maker it reviewed; a checker without that link proves nothing about this maker
+  const independent = checker ? checker.id !== lease.id && str(checkerMeta.maker_lease_id) === lease.id : null;
   const verdictOf = str(checkerMeta.verdict);
 
   const failed: string[] = []; const missing: string[] = [];
@@ -104,7 +105,7 @@ export function executionReceipt(db: Database, leaseId: string, now = Date.now()
   else if (trace.state !== 'completed') missing.push(`trace is ${trace.state}${trace.reason ? ` (${trace.reason})` : ''}`);
   if (!trace.admitted_event_runtime) missing.push('no observed runtime: the engine recorded no admission for this lease');
   if (!checks?.length) missing.push('no deterministic check result recorded');
-  else if (checks.some((c) => c.exit_status !== null && c.exit_status !== 0)) failed.push('a deterministic check failed');
+  else if (checks.some((c) => c.status === 'fail' || (c.exit_status !== null && c.exit_status !== 0))) failed.push('a deterministic check failed'); // a timed-out check is `fail` with exit 0
   else if (checks.some((c) => c.exit_status === null)) missing.push('a deterministic check has no exit status');
   if (!checker) missing.push('no checker lease');
   else if (!independent) missing.push('the checker is not independent of this maker');

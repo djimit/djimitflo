@@ -5,6 +5,7 @@ import { SENSITIVE } from './commons-grounding';
 import { runReceipt, staleRunningMs, type ExecutionReceipt } from './execution-receipt';
 import { MemoryCandidateService } from './memory-candidate-service';
 import { guardTick, markRun, noteScheduler } from './scheduler-registry';
+import { redactSecrets } from './secret-patterns';
 
 /**
  * Commons signal-to-goal bridge. COMMONS_SIGNAL_BRIDGE_MODE = off (default) | shadow | on.
@@ -45,13 +46,19 @@ export const SIGNAL_MIN_COUNT = 2;
 const MAX_REFS = 5;
 const DAY = 86_400_000;
 /** Protected paths of AGENTS.md that decide outcomes: a signal goal never targets them (on top of commons-grounding SENSITIVE). */
-const OWN_CRITERIA = /(loop-verification-service|authority-gate|governance-gate-service|objective-loop-gate|skill-training-promotion-gate|genome-promotion|loop-auto-merge|runtime-admission|authorization-service|auth-service|commons-signal-bridge|execution-receipt|specialist-panel|judgments\/|checker|merge-train|NEGATIVE_EVIDENCE|core-invariants|SOUL\.md|USER\.md|AGENTS\.md|Dockerfile|docker-entrypoint|scripts\/systemd)/i;
+const OWN_CRITERIA = /(loop-verification-service|authority-gate|governance-gate-service|objective-loop-gate|skill-training-promotion-gate|genome-promotion|loop-auto-merge|runtime-admission|authorization-service|auth-service|commons-signal-bridge|execution-receipt|specialist-panel|judgments\/|checker|merge-train|deploy|runtime\.env|\.env|\.github|packages\/shared\/src\/|LOOP_WORK|NEGATIVE_EVIDENCE|core-invariants|SOUL\.md|USER\.md|AGENTS\.md|TOOLS\.md|HEARTBEAT\.md|Dockerfile|docker-entrypoint|scripts\/systemd)/i;
 
 type Json = Record<string, unknown>;
 const json = (text: unknown): Json => { try { const v = JSON.parse(String(text ?? '')) as unknown; return v && typeof v === 'object' && !Array.isArray(v) ? v as Json : {}; } catch { return {}; } };
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
-/** identifiers and enum values only: anything else in a key is replaced, so a card cannot carry prose or a secret */
-const token = (v: unknown, max = 60): string => String(v ?? 'unknown').replace(/[^A-Za-z0-9_.:+-]/g, '_').slice(0, max) || 'unknown';
+/**
+ * A card key is made of identifiers and enum values. Whatever a record holds instead is reduced to that shape: known secret
+ * formats are redacted first (secret-patterns.ts), every other character becomes `_`, the result is cut at `max`, and a run of
+ * 20 or more characters without a separator (the shape of a key or a hash, not of a name) is replaced.
+ */
+const token = (v: unknown, max = 60): string => redactSecrets(String(v ?? 'unknown')).redacted.replace(/[^A-Za-z0-9_.:+-]/g, '_').slice(0, max).replace(/[A-Za-z0-9]{20,}/g, 'redacted') || 'unknown';
+// SQLite datetime('now') has no zone; both forms are UTC. NaN when it is not a timestamp.
+const ms = (t: string) => Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(t) ? t : `${t.replace(' ', 'T')}Z`);
 const rows = <T>(db: Database, sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } }; // a table missing on this schema is no signal, not an error
 
 export type SignalSource = 'trace' | 'loop' | 'skill' | 'memory' | 'project_room' | 'commons';
@@ -82,30 +89,31 @@ interface Hit { source: SignalSource; kind: string; title: string; ref: string; 
 export function collectSignals(db: Database, now = Date.now()): SignalCard[] {
   const since = new Date(now - SIGNAL_WINDOW_DAYS * DAY).toISOString();
   const hits: Hit[] = [];
-  // traces: how leases ended (lease-failure.ts writes one structured `failure` on every failed or cancelled lease)
-  for (const r of rows<{ id: string; role: string; runtime: string; metadata: string; updated_at: string }>(db, "SELECT id, role, runtime, metadata, updated_at FROM worker_leases WHERE status = 'failed' AND updated_at >= ? ORDER BY updated_at DESC LIMIT 500", since)) {
+  // traces: how leases failed (lease-failure.ts writes one structured `failure` on every failed lease). Timestamps are ISO or
+  // SQLite datetime text depending on the writer, so every window compares datetime() to datetime().
+  for (const r of rows<{ id: string; role: string; runtime: string; metadata: string; updated_at: string }>(db, "SELECT id, role, runtime, metadata, updated_at FROM worker_leases WHERE status = 'failed' AND datetime(updated_at) >= datetime(?) ORDER BY updated_at DESC LIMIT 500", since)) {
     const f = json(JSON.stringify(json(r.metadata).failure ?? {}));
     const kind = [r.role, r.runtime, f.stage, f.timed_out === true ? 'timeout' : f.stderr_class].map((v) => token(v)).join('|');
     hits.push({ source: 'trace', kind, title: `${token(r.role)} leases on ${token(r.runtime)} fail at ${token(f.stage)} (${token(f.timed_out === true ? 'timeout' : f.stderr_class)})`, ref: `lease:${r.id}`, at: r.updated_at });
   }
   // loop runs: the dream state's failure causes, by the failure agenda's own signature
   for (const r of rows<{ run_id: string; reason: string | null; created_at: string; loop_name: string; gates_json: string | null }>(db, `SELECT j.subject_id AS run_id, j.reason, j.created_at, r.loop_name, r.gates_json
-      FROM judgments j JOIN loop_runs r ON r.id = j.subject_id WHERE j.judgment = 'failure_cause' AND j.subject_type = 'loop_run' AND j.created_at >= ? ORDER BY j.created_at DESC LIMIT 500`, since)) {
+      FROM judgments j JOIN loop_runs r ON r.id = j.subject_id WHERE j.judgment = 'failure_cause' AND j.subject_type = 'loop_run' AND datetime(j.created_at) >= datetime(?) ORDER BY j.created_at DESC LIMIT 500`, since)) {
     const sig = failureSignature(r.loop_name, r.gates_json, r.reason);
     hits.push({ source: 'loop', kind: token(sig, 160), title: `${token(r.loop_name)} runs fail with ${token(sig.split('|').slice(1).join(' / '), 120)}`, ref: `run:${r.run_id}`, at: r.created_at, failure_signature: sig });
   }
-  for (const r of rows<{ id: string; skill_id: string; created_at: string }>(db, 'SELECT id, skill_id, created_at FROM skill_outcomes WHERE success = 0 AND created_at >= ? ORDER BY created_at DESC LIMIT 500', since)) {
+  for (const r of rows<{ id: string; skill_id: string; created_at: string }>(db, 'SELECT id, skill_id, created_at FROM skill_outcomes WHERE success = 0 AND datetime(created_at) >= datetime(?) ORDER BY created_at DESC LIMIT 500', since)) {
     hits.push({ source: 'skill', kind: token(r.skill_id), title: `skill ${token(r.skill_id)} does not succeed`, ref: `skill_outcome:${r.id}`, at: r.created_at });
   }
-  for (const r of rows<{ id: string; memory_type: string; store: string; updated_at: string }>(db, "SELECT id, memory_type, store, updated_at FROM memory_candidates WHERE status = 'rejected' AND updated_at >= ? ORDER BY updated_at DESC LIMIT 500", since)) {
+  for (const r of rows<{ id: string; memory_type: string; store: string; updated_at: string }>(db, "SELECT id, memory_type, store, updated_at FROM memory_candidates WHERE status = 'rejected' AND datetime(updated_at) >= datetime(?) ORDER BY updated_at DESC LIMIT 500", since)) {
     hits.push({ source: 'memory', kind: `${token(r.memory_type)}|${token(r.store)}`, title: `${token(r.memory_type)} memory candidates (${token(r.store)}) are rejected in review`, ref: `memory_candidate:${r.id}`, at: r.updated_at });
   }
-  for (const r of rows<{ id: string; profile: string; status: string; error: string | null; started_at: string }>(db, "SELECT id, profile, status, error, started_at FROM project_room_calls WHERE status IN ('failed', 'unknown', 'refused') AND started_at >= ? ORDER BY started_at DESC LIMIT 500", since)) {
+  for (const r of rows<{ id: string; profile: string; status: string; error: string | null; started_at: string }>(db, "SELECT id, profile, status, error, started_at FROM project_room_calls WHERE status IN ('failed', 'unknown', 'refused') AND datetime(started_at) >= datetime(?) ORDER BY started_at DESC LIMIT 500", since)) {
     const code = /^[A-Z][A-Z0-9_]{3,}/.exec(r.error ?? '')?.[0] ?? 'no_code';
     hits.push({ source: 'project_room', kind: `${token(r.profile)}|${token(r.status)}|${token(code)}`, title: `project room ${token(r.profile)} calls end ${token(r.status)} (${token(code)})`, ref: `project_room_call:${r.id}`, at: r.started_at });
   }
   // Commons / interaction board: questions nobody answered before they expired
-  for (const r of rows<{ id: string; to_agent: string; timestamp: string }>(db, "SELECT id, to_agent, timestamp FROM agent_messages WHERE status = 'expired' AND json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ? ORDER BY timestamp DESC LIMIT 500", since)) {
+  for (const r of rows<{ id: string; to_agent: string; timestamp: string }>(db, "SELECT id, to_agent, timestamp FROM agent_messages WHERE status = 'expired' AND json_extract(payload_json, '$.action') = 'social.question' AND datetime(timestamp) >= datetime(?) ORDER BY timestamp DESC LIMIT 500", since)) {
     hits.push({ source: 'commons', kind: `unanswered|${token(r.to_agent)}`, title: `Commons questions to ${token(r.to_agent)} expire unanswered`, ref: `message:${r.id}`, at: r.timestamp });
   }
 
@@ -115,7 +123,7 @@ export function collectSignals(db: Database, now = Date.now()): SignalCard[] {
   for (const group of groups.values()) {
     if (group.length < SIGNAL_MIN_COUNT) continue;
     const [first] = group;
-    const times = group.map((h) => h.at).sort();
+    const times = group.map((h) => h.at).sort((a, b) => ms(a) - ms(b));
     const evidence = [...new Set(group.map((h) => h.ref))].filter((ref) => resolveRef(db, ref)).slice(0, MAX_REFS);
     cards.push({
       version: 1, signature: signalSignature(first.source, first.kind), source: first.source, kind: first.kind, title: first.title,
@@ -245,8 +253,9 @@ export interface SignalOutcome { goal_id: string; signature: string; decision: '
 /**
  * A signal goal ended. The claim (`completed` / `failed`) is the caller's; what is learned follows the receipt:
  *   verified → one how-to candidate (engineering_rule, procedural: the skill candidate; always review_required)
- *   failed   → one operational memory candidate with the observed reasons
- *   unknown  → nothing is learned, and a `completed` claim without an independent verification is recorded as refused.
+ *   failed   → one operational memory candidate with the observed reasons (the receipt saw a failed check, lease or verdict)
+ *   unknown  → nothing is learned: a `completed` claim without an independent verification is recorded as refused, and a
+ *              `failed` claim without an observed failure (expired approval, no run) is not a lesson about the change.
  * Once per goal. shadow records the decision and creates no candidate.
  */
 export function recordSignalOutcome(db: Database, goalId: string, runId: string | null, claimed: 'completed' | 'failed', env: NodeJS.ProcessEnv = process.env, now = Date.now(), memory: Pick<MemoryCandidateService, 'create'> = new MemoryCandidateService(db)): SignalOutcome | null {
@@ -256,7 +265,9 @@ export function recordSignalOutcome(db: Database, goalId: string, runId: string 
   const origin = json(JSON.stringify(json(goal?.metadata).commons_signal ?? {})) as unknown as Partial<SignalOrigin>;
   if (!goal || !origin.signature || judged(db, 'commons_signal_outcome', goalId)) return null;
   const receipt = runId ? runReceipt(db, runId, now) : null;
-  const decision: SignalOutcome['decision'] = receipt?.verdict === 'verified' && claimed === 'completed' ? 'verified' : receipt?.verdict === 'failed' || claimed === 'failed' ? 'failed' : 'unknown';
+  // `failed` is an observed failure on the receipt. A goal that ended without one (an expired approval, a crash before any run)
+  // says nothing about the change: unknown, and nothing is learned from it.
+  const decision: SignalOutcome['decision'] = receipt?.verdict === 'verified' && claimed === 'completed' ? 'verified' : receipt?.verdict === 'failed' ? 'failed' : 'unknown';
   const why = decision === 'verified' ? 'independent checker and deterministic checks passed' : (receipt?.reasons.join('; ') || 'no execution receipt for this goal');
   const facts = receipt ? `capability=${receipt.capability_id ?? 'unknown'} revision=${receipt.source_revision ?? 'unknown'} skill_hash=${receipt.skill_hash ?? 'unknown'} lease=${receipt.lease_id} runtime=${receipt.runtime_observed ?? 'unknown'} model=${receipt.model ?? 'unknown'} trace=${receipt.trace.state}` : 'no receipt';
   let candidateId: string | null = null;
@@ -275,32 +286,35 @@ export function recordSignalOutcome(db: Database, goalId: string, runId: string 
 }
 
 /**
- * Execution tasks still 'running' with no execution event inside the stale threshold and no live lease behind them. The lease
- * cleanup (background-worker-service) already failed their lease; the task row kept saying 'running'. shadow records them. on
- * holds them exactly like the engine's restart recovery does (paused, outcome unknown, no replay) — never completed.
- * ponytail: the engine's in-memory session is not consulted; a task with a prepared or running lease is never touched, which
- * is the same liveness rule the lease cleanup uses. Add an engine-side check if direct (lease-less) tasks ever run for hours.
+ * Execution tasks still 'running' although the lease that started them already ended (failed or cancelled, e.g. by the lease
+ * cleanup's stale_timeout) and no lease on them is live, with no execution event inside the stale threshold. shadow records
+ * them. on holds them the way the engine's restart recovery does (paused, outcome unknown, no replay) — never completed.
+ * A running task that no lease ever referenced (a direct task, a project-room profile call) is recorded and never held: its
+ * only owner is the engine's in-memory session, which this sweep cannot see. A timestamp that does not parse is not stale.
  */
 export function sweepStaleTraces(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now()): { mode: BridgeMode; stale: number; held: number } {
   const mode = signalBridgeMode(env);
   const out = { mode, stale: 0, held: 0 };
   if (mode === 'off') return out;
-  const cutoff = new Date(now - staleRunningMs(env)).toISOString();
-  for (const task of rows<{ id: string; last_at: string | null }>(db, `SELECT t.id, COALESCE((SELECT MAX(e.timestamp) FROM execution_events e WHERE e.task_id = t.id), t.updated_at) AS last_at FROM tasks t
-      WHERE t.status = 'running' AND NOT EXISTS (SELECT 1 FROM worker_leases l WHERE l.status IN ('prepared', 'running') AND json_valid(l.metadata) AND json_extract(l.metadata, '$.execution_task_id') = t.id) LIMIT 200`)) {
-    if (!task.last_at || Date.parse(/[zZ]$/.test(task.last_at) ? task.last_at : `${task.last_at.replace(' ', 'T')}Z`) > Date.parse(cutoff)) continue;
-    out.stale += 1;
-    if (mode === 'on') {
+  const cutoff = now - staleRunningMs(env);
+  const leaseOn = (statuses: string) => `EXISTS (SELECT 1 FROM worker_leases l WHERE l.status IN (${statuses}) AND json_valid(l.metadata) AND json_extract(l.metadata, '$.execution_task_id') = t.id)`;
+  for (const task of rows<{ id: string; last_at: string | null; lease_ended: number }>(db, `SELECT t.id, COALESCE((SELECT MAX(e.timestamp) FROM execution_events e WHERE e.task_id = t.id), t.updated_at) AS last_at,
+      ${leaseOn("'failed', 'cancelled'")} AS lease_ended FROM tasks t WHERE t.status = 'running' AND NOT ${leaseOn("'prepared', 'running'")} LIMIT 200`)) {
+    const last = task.last_at ? ms(task.last_at) : NaN;
+    if (!(last <= cutoff)) continue; // fresh, or not a timestamp
+    const fresh = !judged(db, 'commons_signal_stale_trace', task.id);
+    if (fresh) out.stale += 1;
+    if (mode === 'on' && task.lease_ended) {
       const iso = new Date(now).toISOString();
       out.held += db.transaction(() => {
         const changed = db.prepare(`UPDATE tasks SET status = 'paused', updated_at = ?, metadata = json_set(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END,
           '$.execution_recovery_hold', json('true'), '$.execution_recovery_reason', 'stale_running', '$.execution_recovery_outcome', 'unknown', '$.execution_recovery_reconciled_at', ?) WHERE id = ? AND status = 'running'`).run(iso, iso, task.id).changes;
         if (changed) db.prepare("INSERT INTO execution_events (id, task_id, event_type, timestamp, message, level, metadata) VALUES (?, ?, 'task.paused', ?, ?, 'warning', ?)")
-          .run(randomUUID(), task.id, iso, 'No execution event within the stale threshold and no live lease; outcome unknown, not replayed.', JSON.stringify({ source: 'commons-signal-bridge', outcome: 'unknown' }));
+          .run(randomUUID(), task.id, iso, 'The lease of this task ended and no execution event arrived within the stale threshold; outcome unknown, not replayed.', JSON.stringify({ source: 'commons-signal-bridge', outcome: 'unknown' }));
         return changed;
       })();
     }
-    if (!judged(db, 'commons_signal_stale_trace', task.id)) judge(db, 'commons_signal_stale_trace', 'task', task.id, task.last_at, mode, 'unknown', `running with no execution event since ${task.last_at}`, { last_event_at: task.last_at }, now);
+    if (fresh) judge(db, 'commons_signal_stale_trace', 'task', task.id, task.last_at ?? '', mode, 'unknown', `running with no execution event since ${task.last_at}${task.lease_ended ? '; its lease ended' : '; no lease ever referenced it (recorded only)'}`, { last_event_at: task.last_at, lease_ended: Boolean(task.lease_ended) }, now);
   }
   return out;
 }

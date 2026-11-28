@@ -83,8 +83,10 @@ Both are in `EVOLUTION_FLAGS`, `fitness-contracts.ts`, the runbook flag table an
 - A card: `{version, signature, source, kind, title, count, first_seen, last_seen, evidence_refs, status: 'hypothesis',
   disposition}`. `signature = sha256(source, kind)`; a kind needs at least 2 records in 7 days.
 - `kind` and `title` are built from identifiers and enum values (role, runtime, failure stage, stderr class, skill id,
-  memory type, profile, error code); every other character is replaced. Free text and secrets from a failing process or an
-  agent cannot reach a card or a prompt.
+  memory type, profile, error code). Each value is reduced to that shape: known secret formats are redacted
+  (`secret-patterns.ts`), every character outside `[A-Za-z0-9_.:+-]` becomes `_`, the value is cut at 60 characters and a
+  run of 20 or more characters without a separator is replaced. A sentence survives only as underscored words inside a
+  card title; it is not passed on as text.
 - An evidence ref is `<prefix>:<id>` with a prefix from a fixed table (`lease`, `run`, `skill_outcome`, `memory_candidate`,
   `project_room_call`, `message`, `task`) and must resolve to a row. Refs that do not resolve are dropped.
 - Dispositions: `card` (may be discussed in `on`), `insufficient_evidence` (never discussed), `operator_only` (auth,
@@ -105,8 +107,12 @@ checker_lease_id, checker_verdict, independent}, verdict, reasons`.
   no task, a running task without an admission, a running task with no event inside the stale threshold, and a restart or
   stale hold whose external outcome nobody observed.
 - `verified` requires all of: lease completed, trace completed, observed runtime, at least one check and every check
-  exit 0, a completed checker lease other than the maker that names this maker with verdict `accepted`, and a run in
-  `completed` or `ready_for_human_merge`. An observed failure is `failed`. Everything else is `unknown`.
+  exit 0 and not `fail`, a completed checker lease other than the maker that names this maker (`maker_lease_id`) with
+  verdict `accepted`, and a run in `completed` or `ready_for_human_merge`. An observed failure is `failed`. Everything
+  else is `unknown`.
+- Outcome of a signal goal: `verified` → how-to candidate; `failed` (observed on the receipt) → operational memory;
+  `unknown` → nothing, including a `completed` claim without independent verification and a goal that ended without an
+  observed failure (expired approval, no run).
 
 ## Use
 
@@ -132,7 +138,7 @@ checker_lease_id, checker_verdict, independent}, verdict, reasons`.
 | Level | State on 2026-11-28 |
 |---|---|
 | source | branch `feat/commons-signal-bridge`, PR #1379 |
-| tests | `commons-signal-bridge.test.ts`: fails on `origin/main` (`Cannot find module '../services/execution-receipt'`), passes on the branch |
+| tests | `commons-signal-bridge.test.ts` (26 tests): fails on `origin/main` (`Cannot find module '../services/execution-receipt'`), passes on the branch |
 | CI | green on the PR head, Node 22 and 24 |
 | local | server booted on a temporary database in `shadow`: health 200, endpoint 401 without and 200 with a session; three seeded failed leases gave one card on the first tick, none on the second, and no goal, message or candidate |
 | deployed | no |
@@ -145,7 +151,11 @@ checker_lease_id, checker_verdict, independent}, verdict, reasons`.
 - `metadata.source` stays `self-improvement` because `objective-loop-gate.ts` reads it; the signal source is
   `metadata.commons_signal.source = 'commons_signal'`.
 - A signature is discussed once. A kind that recurs after its goal settled gets a new card and no second thread.
-- The stale sweep does not consult the engine's in-memory session. A task without a lease that is silent for longer than
-  the threshold would be held in `on`. Measure the shadow records before switching on.
+- The stale sweep does not consult the engine's in-memory session. In `on` it holds only a task whose lease already ended;
+  a running task no lease ever referenced is recorded and left alone. The hold writes an execution event, not the audit
+  and evidence records the engine's restart recovery writes.
+- In shadow no signal thread exists, so `commons_signal_goal` and `commons_signal_outcome` rows only appear in `on`. Shadow
+  measures cards and stale traces.
+- An independent review of the diff (2026-11-28) found no blocker; its five should-fix items are addressed in the PR.
 - The shadow pilot ran on seeded local data, not on production records.
 - No dashboard tab and no OpenSpec change.

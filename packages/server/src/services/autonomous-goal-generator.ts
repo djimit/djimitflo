@@ -48,12 +48,6 @@ export class AutonomousGoalGenerator {
       return 0;
     }
 
-    // A retry after a failed/cancelled goal: that goal still holds improvement_id (UNIQUE), so the insert below would throw.
-    // Prod 2026-09-25: a requeued proposal crash-looped the server at boot. Keep the old goal, record the link in metadata.
-    this.db.prepare(`UPDATE goals SET improvement_id = NULL,
-        metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.requeued_improvement_id', improvement_id), updated_at = datetime('now')
-      WHERE improvement_id = ? AND status IN ('failed', 'cancelled')`).run(id);
-
     // COMMONS_SIGNAL_BRIDGE_MODE: null when off or when the proposal did not come from a signal (the direct route, unchanged).
     // on: a signal proposal without a grounded, non-protected target and test gets no goal and is parked; shadow only records.
     const signal = signalGoalDecision(this.db, id);
@@ -62,6 +56,12 @@ export class AutonomousGoalGenerator {
       this.db.prepare("UPDATE self_improvements SET status = 'needs_more_evidence', updated_at = ? WHERE id = ? AND status = 'scheduled'").run(new Date().toISOString(), id);
       return 0;
     }
+
+    // A retry after a failed/cancelled goal: that goal still holds improvement_id (UNIQUE), so the insert below would throw.
+    // Prod 2026-09-25: a requeued proposal crash-looped the server at boot. Keep the old goal, record the link in metadata.
+    this.db.prepare(`UPDATE goals SET improvement_id = NULL,
+        metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.requeued_improvement_id', improvement_id), updated_at = datetime('now')
+      WHERE improvement_id = ? AND status IN ('failed', 'cancelled')`).run(id);
 
     const goalId = randomUUID();
     this.db.prepare(`
