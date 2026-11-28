@@ -43,6 +43,7 @@ import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
 import { startEvidenceRoom } from '../services/commons-evidence-room';
 import { startInvestigationOutcomes } from '../services/commons-investigation';
+import { startSignalBridge } from '../services/commons-signal-bridge';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
 import { startDateBombLane } from '../services/date-bomb-source';
@@ -290,6 +291,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopInvestigationOutcomes) { lifecycleManager.register({ serviceName: 'CommonsInvestigationOutcomes', stop: stopInvestigationOutcomes }); console.log('🔁 Commons investigation outcomes on (15 min sweep).'); }
   } catch (error) {
     console.warn('⚠️  Commons investigation outcomes failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Commons signal-to-goal bridge: recurring records → deduplicated signal cards (judgments) and stale-trace records.
+  // COMMONS_SIGNAL_BRIDGE_MODE=shadow|on.
+  try {
+    const stopSignalBridge = startSignalBridge(db);
+    if (stopSignalBridge) { lifecycleManager.register({ serviceName: 'CommonsSignalBridge', stop: stopSignalBridge }); console.log('📡 Commons signal bridge on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons signal bridge failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // AR5 Commons falsifier niche (shadow): evidence-room tests run red at base → green on a later main; ≤ 5 runs / 24 h. COMMONS_FALSIFIER_MODE=shadow.

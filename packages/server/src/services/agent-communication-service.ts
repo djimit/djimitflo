@@ -21,6 +21,7 @@ import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, typ
 import { failureRecurrence, failureSignature, type FailureRecurrence } from './commons-failure-recurrence';
 import { REFLECTION_PROPOSAL_DISPOSITION, reflectionProposalPolicy, SelfImprovementService, type ReflectionProposalDecision, type ReflectionProposalPolicy, type ReflectionProposalReason } from './self-improvement-service';
 import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
+import { pickSignalTopic } from './commons-signal-bridge';
 import { buildInvestigationEvidence, classifyInvestigationReply, investigationArtefactRef, investigationBrief, investigationMode, investigationReplyParams, recordInvestigationEvidence, recordInvestigationReply, type InvestigationEvidence } from './commons-investigation';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
@@ -344,7 +345,8 @@ export class AgentCommunicationService {
     const groundingTopic = () => (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
     const lastWasFailure = String((this.db.prepare(`SELECT json_extract(payload_json, '$.params.topic_ref') AS r FROM agent_messages
       WHERE json_extract(payload_json, '$.action') = 'social.question' AND from_agent NOT IN ('djimitflo:evolution-digest', 'djimitflo:evidence-room') ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { r: string | null } | undefined)?.r ?? '').startsWith('run:');
-    const failure = lastWasFailure ? (groundingTopic() ?? failureTopic()) : (failureTopic() ?? groundingTopic());
+    // COMMONS_SIGNAL_BRIDGE_MODE=on: a recorded signal card is a third work topic, after the two above (null in off/shadow)
+    const failure = (lastWasFailure ? (groundingTopic() ?? failureTopic()) : (failureTopic() ?? groundingTopic())) ?? pickSignalTopic(this.db);
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
     const interest = failure ? undefined : this.db.prepare(`
       SELECT m.id, m.payload_json FROM agent_messages m
@@ -380,7 +382,7 @@ export class AgentCommunicationService {
     const question = (from: string, to: string, context: string) => this.send({
       from, to, type: 'question', action: 'social.question', context, evidence: questionEvidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context, ...(deliver ?? {}) },
+      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ...(picked && 'signalSignature' in picked ? { signal_signature: (picked as { signalSignature: string }).signalSignature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context, ...(deliver ?? {}) },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });

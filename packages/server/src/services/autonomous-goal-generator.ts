@@ -3,6 +3,7 @@ import { enqueueRequiredEvent } from './event-outbox-service';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
+import { signalGoalDecision } from './commons-signal-bridge';
 
 export class AutonomousGoalGenerator {
   constructor(private db: Database) {
@@ -47,6 +48,15 @@ export class AutonomousGoalGenerator {
       return 0;
     }
 
+    // COMMONS_SIGNAL_BRIDGE_MODE: null when off or when the proposal did not come from a signal (the direct route, unchanged).
+    // on: a signal proposal without a grounded, non-protected target and test gets no goal and is parked; shadow only records.
+    const signal = signalGoalDecision(this.db, id);
+    const bridged = signal?.mode === 'on' ? signal : null;
+    if (bridged && !bridged.allowed) {
+      this.db.prepare("UPDATE self_improvements SET status = 'needs_more_evidence', updated_at = ? WHERE id = ? AND status = 'scheduled'").run(new Date().toISOString(), id);
+      return 0;
+    }
+
     // A retry after a failed/cancelled goal: that goal still holds improvement_id (UNIQUE), so the insert below would throw.
     // Prod 2026-09-25: a requeued proposal crash-looped the server at boot. Keep the old goal, record the link in metadata.
     this.db.prepare(`UPDATE goals SET improvement_id = NULL,
@@ -66,7 +76,7 @@ export class AutonomousGoalGenerator {
       improvement.type === 'security' ? 'high' : 'low',
       JSON.stringify(['Tests pass', 'No regressions', 'Checker evidence accepted']),
       improvement.id,
-      JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false })
+      JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false, ...(bridged?.metadata ?? {}) })
     );
     this.db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
     // The panel authorised this goal: record it as the PLAN_APPROVED ALLOW the (optional) authority gate looks for.

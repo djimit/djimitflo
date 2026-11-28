@@ -19,6 +19,7 @@ import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 import { replyToEvidenceRoom } from '../services/commons-evidence-room';
+import { signalBridgeView } from '../services/commons-signal-bridge';
 import { engineProfileRunner, listRooms, projectDossier, projectRoomMode, roomCandidates, runProjectRoom, selectRoom } from '../services/project-room';
 import { param } from './params';
 
@@ -200,6 +201,11 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     // AC-02: ?kind=discussion|record filters before the limit; ?offset= pages (bounded in the service). No kind = all (compatible).
     const kind = req.query.kind === 'discussion' || req.query.kind === 'record' ? req.query.kind : 'all';
     res.json(comms.listSocialCommons(Math.min(200, Math.max(1, Math.trunc(Number(req.query.limit)) || 50)), { kind, offset: Number(req.query.offset) || 0 }));
+  });
+
+  // GET /api/swarm-v2/commons-signals — read-only: recorded signal cards and what became of them (COMMONS_SIGNAL_BRIDGE_MODE)
+  router.get('/commons-signals', requirePermission('read:evidence'), (_req, res) => {
+    res.json(signalBridgeView(db));
   });
 
   // GET /api/swarm-v2/project-rooms — goals that use the engineering project room (COMMONS_PROJECT_ROOM_MODE), newest first

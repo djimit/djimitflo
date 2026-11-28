@@ -23,7 +23,7 @@ export function repoRoot(env: NodeJS.ProcessEnv = process.env): string {
 const STOP = new Set(['about', 'after', 'agent', 'agents', 'before', 'being', 'change', 'could', 'djimitflo', 'every', 'evidence', 'first', 'improve', 'improvement', 'means', 'other', 'peer', 'proposal', 'should', 'system', 'their', 'there', 'these', 'thing', 'through', 'unverified', 'where', 'which', 'while', 'would']);
 // Never ground into these: the same boundary as the evolve-loop design (no security/auth/deploy changes by the loop).
 const MAX_TARGET_LINES = 800;
-const SENSITIVE = /(^|\/)(auth|secrets?|deploy|\.env|\.github)(\/|\.|$)|middleware\/auth|spawn-token/i;
+export const SENSITIVE = /(^|\/)(auth|secrets?|deploy|\.env|\.github)(\/|\.|$)|middleware\/auth|spawn-token/i;
 
 /** Distinctive words of a proposal: identifiers first (camelCase, kebab, snake), then long words. */
 export function keywords(text: string, max = 6): string[] {

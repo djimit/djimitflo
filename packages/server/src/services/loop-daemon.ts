@@ -18,6 +18,7 @@ import { LoopEventService } from './loop-event-service';
 import { blockOnUnmetDependencies, settleDependencyBlockedGoals } from './goal-dependency-gate';
 import { inheritableApproval } from './approval-inheritance';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
+import { recordSignalOutcome } from './commons-signal-bridge';
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { syncWorkItemOutcome } from './work-item-outcome-sync';
@@ -521,6 +522,7 @@ export class LoopDaemon {
       const reason = `approval ${approval.status}`;
       try { new LoopEventService(this.db).recordEvent(waiting.run_id, 'goal_failed', 'error', reason, { goal_id: row.id, approval_id: waiting.approval_id }); } catch { /* best-effort */ }
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
+      try { recordSignalOutcome(this.db, row.id, waiting.run_id, 'failed'); } catch { /* best-effort learning */ }
       swarmEventBus.emit('loop_completed', { loopRunId: waiting.run_id, goalId: row.id, goalType: 'doc-drift-and-small-fix-loop', mode: 'closed', status: 'failed', durationMs: 0, strategy: 'objective', startedAt: now, completedAt: now });
     }
   }
@@ -1082,6 +1084,8 @@ export class LoopDaemon {
       // 9b. Record the certified outcome; hand verified work to a human.
       if (allGatesPass) {
         try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'completed', `run ${run.id} certified`); } catch { /* best-effort learning */ }
+        // COMMONS_SIGNAL_BRIDGE_MODE: the claim is 'completed'; what is learned follows the execution receipt (no-op off / non-signal goals)
+        try { recordSignalOutcome(this.db, goal.id, run.id, 'completed'); } catch { /* best-effort learning */ }
         // G4: hand verified work to a human as a draft PR (default off; records draft_pr_failed on any problem).
         try { await new LoopDraftPrService(this.db).openForRun(run.id); } catch { /* never fail the daemon over a PR */ }
         // M1 (29-10): the loop-learning closure (vacuous eval + unconsumed work items) is retired; stored closures stay readable.
@@ -1136,6 +1140,7 @@ export class LoopDaemon {
         } catch { /* best-effort: never mask the original failure */ }
       }
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'failed', failureMessage); } catch { /* best-effort learning */ }
+      try { recordSignalOutcome(this.db, goal.id, runId ?? null, 'failed'); } catch { /* best-effort learning */ }
       if (runId) {
         swarmEventBus.emit('loop_completed', {
           loopRunId: runId, goalId: goal.id, goalType: loopName, mode: 'closed', status: 'failed',
