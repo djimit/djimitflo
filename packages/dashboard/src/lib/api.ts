@@ -233,6 +233,11 @@ export interface EvolutionEvidence {
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
+  /** MAKER_FORECAST_MODE (shadow): the makers' own pass forecasts scored against checks + reviewer verdict; nulls at n = 0 */
+  maker_forecast?: { window_days: number; n: number; positives: number; unresolved: number; brier: number | null; base_rate: number | null; baseline_brier: number | null; skill: number | null; note: string };
+  /** forecasts scored on P(verified | goal), written before the proposal resolved (services/forecast-post-goal.ts); metrics null below min_n */
+  forecasts_post_goal?: { window_days: number; min_n: number; written_after_resolution: number; note: string;
+    forecasters: Array<{ forecaster: string; n: number; positives: number; base_rate: number | null; brier: number | null; baseline_brier: number | null; skill: number | null; auc: number | null }> };
   checker_family: CheckerFamilyVersionEvidence & {
     /** CHECKER_FAMILY_VERSION (default v1): the top level is this version only */
     version: string;
@@ -813,6 +818,13 @@ export type AgentGovernanceScore = GovernanceScoreCohort & {
   totalCases: number;
   lastEvalAt: string;
   trend: 'improving' | 'stable' | 'declining';
+  uncertaintyInterval?: {
+    low: number;
+    high: number;
+    level: 0.95;
+    sampleSize: number;
+    method: 'normal-approximation';
+  };
 };
 
 export type GovernanceOtherCohort = Required<GovernanceScoreCohort> & {
@@ -1982,6 +1994,37 @@ async function apiError(response: Response, prefix: string): Promise<ApiError> {
   });
 }
 
+export interface ProjectRoomSummary { id: string; objective: string; status: string; updated_at: string; plan_version: number | null; runs: number }
+export interface ProjectRoomLease { id: string; role: string; runtime: string; status: string; superseded: boolean; task: { id: string; status: string | null } | null;
+  /** delivered = the plan block's receipt is on the lease; loaded = the prompt sent contained the plan digest (null = not measured) */
+  plan: { plan_id: string; version: number; delivered: boolean; loaded: boolean | null } | null;
+  checks: Array<{ name: string; status: string }> | null; verdict: string | null; maker_lease_id: string | null;
+  /** wiring, all read from existing records; null or [] = nothing recorded (never a pass, never a zero) */
+  agent: ProjectRoomAgent | null;
+  identity: { model: string | null; provider: string | null; model_family: string | null; genome_id: string | null };
+  context: Array<{ name: string; ids: string[] }>;
+  skill: { capability_id: string; version: string | null; state: string | null; invoked: boolean | null } | null;
+  capability: { credited_id: string | null; runner_decision: { action: string; blocked_reasons: string[] } | null };
+  trace: { id: string; spans: number; span_errors: number; steps: Array<{ span_type: string; name: string; status: string }>; task: ProjectRoomTaskTrace | null } }
+export interface ProjectRoomAgent { id: string; name: string; capabilities: string[] }
+export interface ProjectRoomTaskTrace { task_id: string; events: number | null; errors: number | null; admission: string | null }
+export interface ProjectRoomDossier {
+  mode: string; selected: boolean; variant: string;
+  goal: { id: string; objective: string; constraints: string[]; acceptance_criteria: string[]; status: string; budget: Record<string, unknown>; proposal_id: string | null;
+    source: { slug: string; base_commit: string; local_changes_digest: string | null } | null; tokens_used_by_room: number; max_tokens: number | null };
+  review: { version: number; claims: Array<{ id: string; claim: string; refs: Array<{ path: string; symbol?: string }>; refs_resolved: boolean }>; open_questions: string[]; assumptions: string[]; proposal: string } | null;
+  plan: { plan_id: string; version: number; digest: string; versions: Array<{ version: number; digest: string; created_at: string }>; decisions: string[]; open_questions: string[]; uncertainties: string[];
+    findings_review: Array<{ claim_id: string; status: string; note: string }>;
+    steps: Array<{ id: string; title: string; depends_on: string[]; scope: string[]; expected_artifacts: string[]; verification: string[] }> } | null;
+  calls: Array<{ profile: string; status: string; runtime: string | null; tokens: number | null; error: string | null }>;
+  call_tasks: Array<{ id: string; status: string; profile: string | null; agent: ProjectRoomAgent | null; trace: ProjectRoomTaskTrace }>;
+  authority_events: number | null;
+  commons_review: { thread_id: string; status: string; reply_count: number } | null;
+  execution: Array<{ run_id: string; status: string; leases: ProjectRoomLease[]; pr_url: string | null; outcome_verified: boolean | null; survival: string; events: Array<{ type: string; n: number }> }>;
+  candidates: Array<{ id: string; lesson: string; status: string }>;
+  gaps: Array<{ what: string; reason: string; next_action: string }>;
+}
+
 class ApiClient {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await authenticatedFetch(endpoint, options);
@@ -2760,6 +2803,13 @@ class ApiClient {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
   }
+
+  /** Engineering project room (COMMONS_PROJECT_ROOM_MODE): goals that use it, and one goal's dossier. */
+  async getProjectRooms(): Promise<{ mode: string; rooms: ProjectRoomSummary[]; candidates: Array<{ id: string; objective: string; status: string }> }> { return this.request('/swarm-v2/project-rooms'); }
+  async selectProjectRoom(goalId: string, variant: 'single' | 'two_stage'): Promise<ProjectRoomDossier> {
+    return this.request(`/swarm-v2/project-rooms/${encodeURIComponent(goalId)}/select`, { method: 'POST', body: JSON.stringify({ selected: true, variant }) });
+  }
+  async getProjectRoom(goalId: string): Promise<ProjectRoomDossier> { return this.request(`/swarm-v2/project-rooms/${encodeURIComponent(goalId)}`); }
 
   async getSocialCommons(limit = 50, options: { kind?: CommonsThreadKind; offset?: number } = {}): Promise<SocialCommons> {
     const query = new URLSearchParams({ limit: String(limit) });

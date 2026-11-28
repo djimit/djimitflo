@@ -22,7 +22,7 @@ export function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: Lur
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground"><Magnet className="h-5 w-5" style={{ color: LURE_COLOR }} /> Lure and honeypot</h2>
-          <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">A lure sends every silent agent an invitation on the agent bus with the oldest open knowledge gap as bait, and gives you a one-time runtime token per agent. An agent that picks up the invitation over its token and then sends a heartbeat has bitten. Anyone knocking without a valid key shows up under probes.</p>
+          <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">A lure sends every silent agent an invitation on the agent bus with a parked proposal, or else the newest open knowledge gap, as bait, and gives you a one-time runtime token per agent. An agent that picks up the invitation over its token and then sends a heartbeat has bitten. Anyone knocking without a valid key shows up under probes.</p>
         </div>
       </div>
 

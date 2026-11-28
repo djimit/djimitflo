@@ -7,6 +7,8 @@ import { ace001On, aceArm, aceFallbackReason, aceLane, similarExamples, similarK
 import { ste001On, steArm, STE_TEMPLATE_HASH, type SteContext } from './ste-001';
 import { factoryCapabilityLines } from './capability-factory';
 import { skillRouteFor, type SkillRouteContext } from './skill-route';
+import { planDelivery, planRef, type PlanRef } from './project-room';
+import { planContextLines } from './plan-artifact';
 
 /**
  * WS-K: what a maker gets to see besides its finding.
@@ -30,7 +32,9 @@ export interface AssignmentContext { examples: string[]; rules: Array<{ id: stri
   /** OMEGA slice 1: `<id>@<version>` of each capability line above, for attribution (event metadata only, never maker text) */
   capability_ids?: string[];
   /** L1 skill route (SKILL_ROUTE_MODE shadow|on): the selected skill, its arm and receipt; the block is maker text only when delivered */
-  skill_route?: SkillRouteContext }
+  skill_route?: SkillRouteContext;
+  /** Project room (COMMONS_PROJECT_ROOM_MODE=on, selected goals only): the issued plan's bounded block; shadow carries only `plan_shadow` (event metadata, never maker text) */
+  plan?: { ref: PlanRef; lines: string[] }; plan_shadow?: { would_deliver: PlanRef | null; reason: string | null } }
 
 /**
  * Memory holdout (prod: rules were read in 121 of 122 maker runs — no control group, Fisher p = 1.0). MEMORY_HOLDOUT_RATE
@@ -56,6 +60,10 @@ function lane(db: Database, goalId: string | null): 'test-gap' | 'test-gap-expor
 
 export function assignmentContext(db: Database, run: { id: string; goal_id: string | null }, checkoutPath: string, agentId: string, env: NodeJS.ProcessEnv = process.env, runtime?: string): AssignmentContext {
   const out: AssignmentContext = { examples: [], rules: [] };
+  // project room: its own guard, so a failure here never drops the blocks below (and theirs never drops the plan)
+  const delivery = planDelivery(db, run, checkoutPath, env);
+  if (delivery.state === 'deliver') out.plan = { ref: planRef(delivery.plan), lines: planContextLines(delivery.plan) };
+  else if (delivery.state === 'shadow') out.plan_shadow = { would_deliver: delivery.plan ? planRef(delivery.plan) : null, reason: delivery.reason };
   try {
     if (env.LOOP_SKILL_CARDS_ENABLED === 'true' && lane(db, run.goal_id)) {
       const rows = db.prepare(`SELECT title, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements
@@ -135,7 +143,7 @@ export function ruleIntact(db: Database, rule: { id: string; content: string; co
 }
 
 /** A maker-text block of the assignment context: its name, the ids it carries and its exact lines. */
-export type AssignmentBlockName = 'examples' | 'memory_rules' | 'kb_pages' | 'capabilities' | 'skill_route';
+export type AssignmentBlockName = 'examples' | 'memory_rules' | 'kb_pages' | 'capabilities' | 'skill_route' | 'plan';
 function assignmentContextBlocks(ctx: AssignmentContext): Array<{ block: AssignmentBlockName; ids: string[]; lines: string[] }> {
   const out: Array<{ block: AssignmentBlockName; ids: string[]; lines: string[] }> = [];
   if (ctx.examples.length) out.push({ block: 'examples', ids: ctx.examples.map((e) => e.split(' — ')[0]),
@@ -151,6 +159,7 @@ function assignmentContextBlocks(ctx: AssignmentContext): Array<{ block: Assignm
     'BEGIN_EXTERNAL_CONTENT source=capability_registry trust=untrusted', JSON.stringify({ capabilities: ctx.capabilities }), 'END_EXTERNAL_CONTENT', ''] });
   // L1 skill route: operator-registered, digest-pinned script (SKILL_ROUTE_MODE=on, treatment arm only); its sha is the receipt
   if (ctx.skill_route?.delivered && ctx.skill_route.lines) out.push({ block: 'skill_route', ids: [`${ctx.skill_route.capability_id}@${ctx.skill_route.version}`], lines: [...ctx.skill_route.lines, ''] });
+  if (ctx.plan) out.push({ block: 'plan', ids: [`${ctx.plan.ref.plan_id}@${ctx.plan.ref.version}#${ctx.plan.ref.digest}`], lines: ctx.plan.lines });
   return out;
 }
 

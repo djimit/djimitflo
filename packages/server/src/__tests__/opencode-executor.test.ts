@@ -313,9 +313,10 @@ describe('OpenCodeExecutor', () => {
         event_type: 'error',
         level: 'error',
         tool_name: 'bash',
-        metadata: { verification_failed: true },
+        metadata: { verification_failed: true, verification_name: 'type-check', verification_policy_blocked: true },
       });
-      expect(result.tool_error).toContain('type-check verification');
+      expect(result.tool_error).toBe('type-check verification blocked by the runtime permission policy; rerun inside the assigned worktree');
+      expect(result.tool_error).not.toContain('The user rejected');
     });
   });
 

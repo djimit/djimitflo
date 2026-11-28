@@ -19,6 +19,7 @@ import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 import { replyToEvidenceRoom } from '../services/commons-evidence-room';
+import { engineProfileRunner, listRooms, projectDossier, projectRoomMode, roomCandidates, runProjectRoom, selectRoom } from '../services/project-room';
 import { param } from './params';
 
 function boundedLimit(value: unknown): number {
@@ -199,6 +200,39 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     // AC-02: ?kind=discussion|record filters before the limit; ?offset= pages (bounded in the service). No kind = all (compatible).
     const kind = req.query.kind === 'discussion' || req.query.kind === 'record' ? req.query.kind : 'all';
     res.json(comms.listSocialCommons(Math.min(200, Math.max(1, Math.trunc(Number(req.query.limit)) || 50)), { kind, offset: Number(req.query.offset) || 0 }));
+  });
+
+  // GET /api/swarm-v2/project-rooms — goals that use the engineering project room (COMMONS_PROJECT_ROOM_MODE), newest first
+  router.get('/project-rooms', requirePermission('read:evidence'), (req, res) => {
+    res.json({ mode: projectRoomMode(), rooms: listRooms(db, Math.trunc(Number(req.query.limit)) || 50), candidates: roomCandidates(db) });
+  });
+
+  // GET /api/swarm-v2/project-rooms/:goalId — the dossier: a projection of goal, review, plan versions, leases, checks and outcome
+  router.get('/project-rooms/:goalId', requirePermission('read:evidence'), (req, res) => {
+    const dossier = projectDossier(db, String(req.params.goalId));
+    if (!dossier) { res.status(404).json({ error: 'PROJECT_ROOM_GOAL_NOT_FOUND' }); return; }
+    res.json(dossier);
+  });
+
+  // POST /api/swarm-v2/project-rooms/:goalId/select — operator only: route this goal through the room ({selected, variant})
+  // or back to the direct route. Changes the goal's metadata only; the flag decides what a selected goal then gets.
+  router.post('/project-rooms/:goalId/select', requirePermission('write:swarm_action'), (req: any, res) => {
+    if (!req.user?.sub || req.user.agent_id) { res.status(403).json({ error: 'OPERATOR_ONLY' }); return; }
+    const variant = req.body?.variant === 'single' ? 'single' : 'two_stage';
+    if (!selectRoom(db, String(req.params.goalId), req.body?.selected !== false, variant)) { res.status(404).json({ error: 'PROJECT_ROOM_GOAL_NOT_FOUND' }); return; }
+    res.json(projectDossier(db, String(req.params.goalId)));
+  });
+
+  // POST /api/swarm-v2/project-rooms/:goalId/run — operator only: make the review and plan now (mode on, selected goal). The
+  // daemon does the same before the goal's run starts; this starts no maker. A blocked room answers 409 with its reason.
+  router.post('/project-rooms/:goalId/run', requirePermission('write:swarm_action'), async (req: any, res) => {
+    try {
+      if (!req.user?.sub || req.user.agent_id) { res.status(403).json({ error: 'OPERATOR_ONLY' }); return; }
+      const repo = process.env.LOOP_DAEMON_REPOSITORY_PATH;
+      if (!repo) { res.status(409).json({ status: 'blocked', reason: 'PROJECT_ROOM_REPOSITORY_NOT_CONFIGURED: LOOP_DAEMON_REPOSITORY_PATH is not set' }); return; }
+      const result = await runProjectRoom(db, String(req.params.goalId), repo, engineProfileRunner(db));
+      res.status(result.status === 'blocked' ? 409 : 200).json(result.status === 'blocked' ? result : { status: result.status, plan_id: result.plan.plan_id, version: result.plan.version });
+    } catch (error) { res.status(500).json({ error: error instanceof Error ? error.message.slice(0, 200) : 'PROJECT_ROOM_FAILED' }); }
   });
 
   // POST /api/swarm-v2/social/evidence-room/:threadId/replies — operator reply on an evidence-room thread (COMMONS_EVIDENCE_ROOM_MODE=on).
