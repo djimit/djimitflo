@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -7,6 +7,7 @@ import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SelfImprovementAgentReviewService } from '../services/self-improvement-agent-review-service';
 import { SelfImprovementService } from '../services/self-improvement-service';
 import { MemoryCandidateReviewScheduler } from '../services/memory-candidate-review-scheduler';
+import { resetSchedulers } from '../services/scheduler-registry';
 
 function supportResponse() {
   return JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['ok'], evidence_refs: ['context:content'] });
@@ -40,6 +41,7 @@ describe('MemoryCandidateReviewScheduler', () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    resetSchedulers();
   });
 
   function scheduler(callModel: () => Promise<string>) {
@@ -129,5 +131,87 @@ describe('MemoryCandidateReviewScheduler', () => {
     expect(s.intervalMinutes()).toBe(15);
     process.env.MEMORY_CANDIDATE_REVIEW_INTERVAL_MINUTES = '-5';
     expect(s.intervalMinutes()).toBe(15);
+  });
+
+  it('uses a custom interval when configured with a positive number', () => {
+    const s = scheduler(async () => supportResponse());
+    process.env.MEMORY_CANDIDATE_REVIEW_INTERVAL_MINUTES = '7';
+    expect(s.intervalMinutes()).toBe(7);
+  });
+
+  it('falls back to 15 for a zero interval', () => {
+    const s = scheduler(async () => supportResponse());
+    process.env.MEMORY_CANDIDATE_REVIEW_INTERVAL_MINUTES = '0';
+    expect(s.intervalMinutes()).toBe(15);
+  });
+
+  it('arms and starts the interval when enabled, and stop() clears the timer', () => {
+    process.env.MEMORY_CANDIDATE_REVIEW_ENABLED = 'true';
+    process.env.MEMORY_CANDIDATE_REVIEW_INTERVAL_MINUTES = '7';
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    const s = scheduler(async () => supportResponse());
+    expect(s.start()).toBe(true);
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    const delay = setIntervalSpy.mock.calls[0][1];
+    expect(delay).toBe(7 * 60 * 1000);
+    s.stop();
+    expect(clearIntervalSpy).toHaveBeenCalled();
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
+  });
+
+  it('reports all-empty results and does not log when there is nothing to review', async () => {
+    const s = scheduler(async () => supportResponse());
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await s.tick();
+    expect(result.reviewed).toEqual([]);
+    expect(result.promoted).toEqual([]);
+    expect(result.parked).toEqual([]);
+    expect(result.failed).toEqual([]);
+    expect(result.evolutionProposalGenerated).toBe(false);
+    expect(logSpy).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it('logs a summary line and reports clean fields when a candidate is promoted', async () => {
+    const candidate = operationalCandidate('Run summary log');
+    const s = scheduler(async () => supportResponse());
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await s.tick();
+    expect(result.reviewed).toEqual([candidate.id]);
+    expect(result.promoted).toEqual([candidate.id]);
+    expect(result.failed).toEqual([]);
+    expect(result.evolutionProposalGenerated).toBe(false);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0][0]).toContain('memory-candidate review tick');
+    logSpy.mockRestore();
+  });
+
+  it('records a failed review in result.failed and still logs', async () => {
+    const candidate = operationalCandidate('Run summary fail');
+    candidates.setReviewPanel(candidate.id, 'nonexistent-panel-id');
+    const s = scheduler(async () => supportResponse());
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await s.tick();
+    expect(result.reviewed).toEqual([]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe(candidate.id);
+    expect(result.failed[0].error).toContain('SPECIALIST_PANEL_NOT_FOUND');
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it('reuses the existing review panel on a second tick without creating a duplicate', async () => {
+    const candidate = operationalCandidate('Run summary reuse');
+    const s = scheduler(async () => needsEvidenceResponse('insufficient'));
+    await s.tick();
+    expect(candidates.get(candidate.id).promotion_status).toBe('blocked_pending_review');
+    db.prepare("UPDATE memory_candidates SET promotion_status = 'proposed' WHERE id = ?").run(candidate.id);
+    const countBefore = (db.prepare("SELECT COUNT(*) AS n FROM specialist_panels WHERE json_extract(metadata, '$.memory_candidate_id') = ?").get(candidate.id) as { n: number }).n;
+    expect(countBefore).toBe(1);
+    await s.tick();
+    const countAfter = (db.prepare("SELECT COUNT(*) AS n FROM specialist_panels WHERE json_extract(metadata, '$.memory_candidate_id') = ?").get(candidate.id) as { n: number }).n;
+    expect(countAfter).toBe(1);
   });
 });
