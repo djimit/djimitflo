@@ -40,6 +40,8 @@ const READERS: Record<string, Reader> = {
     why: 'threadGated: the last two (shadow) commons_contribution verdicts gate a thread' },
   'services/agent-communication-service.ts': { policy: 'gate_read', judgments: ['failure_cause'], flags: ['COMMONS_AGENDA_FROM_FAILURES'],
     why: 'pickFailureTopic: jev failure_cause rows (shadow) choose the Commons agenda topic; dispositions / grounding stats are display' },
+  'services/commons-signal-bridge.ts': { policy: 'gate_read', judgments: ['failure_cause'], flags: ['COMMONS_SIGNAL_BRIDGE_MODE'],
+    why: "collectSignals: failure_cause rows (shadow) recurring ≥ 2× become a loop signal card, a Commons topic in mode on; its own commons_signal rows are acted on only when written in mode 'on' (per-mode dedupe), the rest is own dedupe and the board view" },
   'services/commons-evidence-pack.ts': { policy: 'gate_read', judgments: ['failure_cause'], flags: ['FRONTIER_UNITS_REQUIRE_RELEVANCE', 'COMMONS_EVIDENCE_PACK_ENABLED'],
     why: 'failure_cause counts become the evidence pack in the discovery_relevance prompt (unit creation) and Commons questions' },
   'services/commons-grounding.ts': { policy: 'gate_read', judgments: ['reflection_triage'], flags: ['COMMONS_AGENDA_GROUNDING'],

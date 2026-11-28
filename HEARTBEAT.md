@@ -13,6 +13,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | committee_evolution | `COMMITTEE_SWARM_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | commons_falsifier | `COMMONS_FALSIFIER_MODE` | 1 h | `packages/server/src/services/commons-falsifier.ts` |
 | commons_investigation_outcomes | `COMMONS_INVESTIGATION_MODE` | 15 min | `packages/server/src/services/commons-investigation.ts` |
+| commons_signal_bridge | `COMMONS_SIGNAL_BRIDGE_MODE` | `intervalMs` | `packages/server/src/services/commons-signal-bridge.ts` |
 | compliance_report | `COMPLIANCE_REPORT_SCHEDULER_ENABLED` | `complianceReportSched.intervalHours()` h | `packages/server/src/index.ts` |
 | content_drafts | `CONTENT_DRAFTS_MODE` | 6 h | `packages/server/src/index.ts` |
 | content_safety_retry | `CONTENT_SAFETY_RATE_LIMIT` | 5 min | `packages/server/src/index.ts` |

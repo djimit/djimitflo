@@ -3,6 +3,7 @@ import { enqueueRequiredEvent } from './event-outbox-service';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
+import { signalGoalDecision } from './commons-signal-bridge';
 
 export class AutonomousGoalGenerator {
   constructor(private db: Database) {
@@ -53,6 +54,15 @@ export class AutonomousGoalGenerator {
         metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.requeued_improvement_id', improvement_id), updated_at = datetime('now')
       WHERE improvement_id = ? AND status IN ('failed', 'cancelled')`).run(id);
 
+    // COMMONS_SIGNAL_BRIDGE_MODE: null when off or when the proposal did not come from a signal (the direct route, unchanged).
+    // on: a signal proposal without a grounded, non-protected target and test gets no goal and is parked; shadow only records.
+    const signal = signalGoalDecision(this.db, id);
+    const bridged = signal?.mode === 'on' ? signal : null;
+    if (bridged && !bridged.allowed) {
+      this.db.prepare("UPDATE self_improvements SET status = 'needs_more_evidence', updated_at = ? WHERE id = ? AND status = 'scheduled'").run(new Date().toISOString(), id);
+      return 0;
+    }
+
     const goalId = randomUUID();
     this.db.prepare(`
       INSERT INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, improvement_id, metadata, created_at, updated_at)
@@ -66,7 +76,7 @@ export class AutonomousGoalGenerator {
       improvement.type === 'security' ? 'high' : 'low',
       JSON.stringify(['Tests pass', 'No regressions', 'Checker evidence accepted']),
       improvement.id,
-      JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false })
+      JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false, ...(bridged?.metadata ?? {}) })
     );
     this.db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
     // The panel authorised this goal: record it as the PLAN_APPROVED ALLOW the (optional) authority gate looks for.

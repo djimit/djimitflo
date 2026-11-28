@@ -6,9 +6,9 @@ Every environment variable read in `packages/server/src` (tests excluded), from 
 Registry = listed in `EVOLUTION_FLAGS` (`packages/server/src/services/evolution-evidence.ts`). Runbook = has a row in a flag table of `docs/runbooks/self-improvement-loop-operations.md`.
 A variable in neither is not wrong, but nothing else in the repository tells an operator that it exists.
 
-- Read by the server: 673
-- In the registry: 187
-- In the runbook: 235
+- Read by the server: 675
+- In the registry: 189
+- In the runbook: 237
 - In neither: 436
 
 | Variable | Registry | Runbook | Read in |
@@ -89,11 +89,13 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `COMMONS_FALSIFIER_MODE` | yes | yes | `services/commons-falsifier.ts` |
 | `COMMONS_GROUNDING_APPLY` | yes | yes | `services/commons-grounding.ts` |
 | `COMMONS_INVESTIGATION_MODE` | yes | yes | `services/commons-falsifier.ts`, `services/commons-investigation.ts` |
-| `COMMONS_PROJECT_ROOM_MODE` | yes | yes | `services/project-room-abc.ts`, `services/project-room.ts` |
+| `COMMONS_PROJECT_ROOM_MODE` | yes | yes | `services/commons-signal-bridge.ts`, `services/project-room-abc.ts` +1 |
 | `COMMONS_PROPOSAL_REVIEW_ENABLED` | no | no | `services/commons-proposal-review-service.ts`, `services/self-improvement-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_INTERVAL_MS` | no | no | `services/commons-proposal-review-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_MAX_OPEN` | no | no | `services/commons-proposal-review-service.ts` |
 | `COMMONS_PROPOSAL_REVIEW_TIMEOUT_MS` | no | no | `services/commons-proposal-review-service.ts` |
+| `COMMONS_SIGNAL_BRIDGE_MODE` | yes | yes | `services/commons-signal-bridge.ts` |
+| `COMMONS_SIGNAL_PROJECT_ROOM` | yes | yes | `services/commons-signal-bridge.ts` |
 | `COMMONS_THREAD_GATE_ENABLED` | yes | yes | `services/agent-social-autopilot-service.ts`, `services/value-allocator.ts` |
 | `COMPLIANCE_REPORT_INTERVAL_HOURS` | no | no | `services/compliance-report-scheduler.ts` |
 | `COMPLIANCE_REPORT_SCHEDULER_ENABLED` | no | no | `services/compliance-report-scheduler.ts` |
@@ -142,7 +144,7 @@ A variable in neither is not wrong, but nothing else in the repository tells an 
 | `DISK_GUARD_WARN_PCT` | no | no | `services/disk-guard-service.ts` |
 | `DJIMFLO_PLUGINS_DIR` | no | no | `services/plugin-registry-service.ts` |
 | `DJIMFLO_STALE_PREPARED_THRESHOLD_HOURS` | no | no | `services/background-worker-service.ts` |
-| `DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS` | no | no | `services/background-worker-service.ts` |
+| `DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS` | no | no | `services/background-worker-service.ts`, `services/execution-receipt.ts` |
 | `DJIMITFLO_ASK_GROUNDING_THRESHOLD` | no | no | `services/explainer-ask-service.ts` |
 | `DJIMITFLO_ASK_LLM_MODEL` | no | no | `services/explainer-ask-service.ts` |
 | `DJIMITFLO_ASK_LLM_URL` | no | no | `services/explainer-ask-service.ts` |
