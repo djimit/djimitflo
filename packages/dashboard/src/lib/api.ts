@@ -233,6 +233,11 @@ export interface EvolutionEvidence {
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
+  /** MAKER_FORECAST_MODE (shadow): the makers' own pass forecasts scored against checks + reviewer verdict; nulls at n = 0 */
+  maker_forecast?: { window_days: number; n: number; positives: number; unresolved: number; brier: number | null; base_rate: number | null; baseline_brier: number | null; skill: number | null; note: string };
+  /** forecasts scored on P(verified | goal), written before the proposal resolved (services/forecast-post-goal.ts); metrics null below min_n */
+  forecasts_post_goal?: { window_days: number; min_n: number; written_after_resolution: number; note: string;
+    forecasters: Array<{ forecaster: string; n: number; positives: number; base_rate: number | null; brier: number | null; baseline_brier: number | null; skill: number | null; auc: number | null }> };
   checker_family: CheckerFamilyVersionEvidence & {
     /** CHECKER_FAMILY_VERSION (default v1): the top level is this version only */
     version: string;
@@ -772,13 +777,22 @@ export type ImprovementFunnel = {
    * verified/regressed: current status with updated_at in windowDays (not first verifications). The median has its own window
    * (medianHoursWindowDays, n = medianHoursN): created_at → current updated_at, not first-verification latency.
    */
-  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
+  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; regressedBreakdown?: { rejected: number; makerDidNotDeliver: Record<string, number>; unknown: number } | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null;
+    /** J6: maker-run cost in the same seven-day window; absent on older servers. */
+    runs?: number; runSuccessRate?: number | null; tokensPerVerified?: number | null };
   /** null = unavailable (reason in `unavailable`), never a healthy 0 */
   hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null;
     /** in-flight work items not updated for more than agedWorkItemsDays (absent on older servers) */
     agedWorkItems?: number | null; agedWorkItemsByStatus?: Record<string, number>; agedWorkItemsOldest?: string | null; agedWorkItemsDays?: number };
   /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
   queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /**
+   * Agent Commons contribution (absent on older servers). inflow.state disabled = cap 0. evidenceEffect is descriptive, not
+   * causal: proposals that never reached a goal themselves, by arm (commons_review = a completed Commons review fed the refinement, investigated = a Commons thread only); decidedRate is null
+   * below effectMinN per arm.
+   */
+  commons?: { inflow: { cap: number | null; state: string } | null; proposals: number | null; verified: number | null; effectMinN: number;
+    evidenceEffect: Array<{ arm: 'commons_review' | 'investigated' | 'not_investigated'; stuck: number; refined: number; decided: number; verified: number; regressed: number; decidedRate: number | null }> | null };
   /** metric → `missing_schema: …` | `query_failed: …` */
   unavailable?: Record<string, string>;
 };
@@ -804,6 +818,13 @@ export type AgentGovernanceScore = GovernanceScoreCohort & {
   totalCases: number;
   lastEvalAt: string;
   trend: 'improving' | 'stable' | 'declining';
+  uncertaintyInterval?: {
+    low: number;
+    high: number;
+    level: 0.95;
+    sampleSize: number;
+    method: 'normal-approximation';
+  };
 };
 
 export type GovernanceOtherCohort = Required<GovernanceScoreCohort> & {
@@ -1646,10 +1667,12 @@ export type CommonsThreadKind = 'discussion' | 'record';
 
 /** Derived server-side from heartbeats, own runtime replies and lapsed delivery leases; the runtime itself reports no errors. */
 export type CommonsRuntimeReadiness = {
-  state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
+  state: 'ready' | 'scheduled' | 'degraded' | 'offline' | 'unknown'; reason: string;
   last_heartbeat_at: string | null; last_successful_reply_at: string | null;
   last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
-  runtime_failures_reported: false;
+  /** the poller's own report: fixed stage and category only (absent on older servers) */
+  last_reported_failure?: { at: string; stage: string; code: string } | null;
+  runtime_failures_reported: boolean;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
@@ -1665,7 +1688,11 @@ export type CommonsChildOutcomes = {
   grounded_proposals: number; no_refinement: number; children: number; legacy_fallback_reviews: number; note: string;
   outcomes: Record<'technical_failure' | 'needs_evidence' | 'blocked' | 'backlog' | 'goal' | 'pending', number>;
 };
-export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+/** Failure kinds by whether the Commons discussed them, and whether they came back within windowDays; rate null below minN. */
+export type FailureRecurrence = { windowDays: number; lookbackDays: number; minN: number;
+  arms: Array<{ arm: 'discussed' | 'not_discussed'; kinds: number; recurred: number; unsettled: number; rate: number | null }> };
+
+export type CommonsStats = { proposals_latest_at?: string | null; failure_recurrence?: FailureRecurrence | null; threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
   proposals_by_status?: Record<string, number>;
   /** where validly grounded proposals stopped (furthest stage of their refinement); null = could not be read */
   grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null;
@@ -1965,6 +1992,37 @@ async function apiError(response: Response, prefix: string): Promise<ApiError> {
     code: typeof code === 'string' ? code : undefined,
     request_id: response.headers?.get?.('X-Request-ID') ?? undefined,
   });
+}
+
+export interface ProjectRoomSummary { id: string; objective: string; status: string; updated_at: string; plan_version: number | null; runs: number }
+export interface ProjectRoomLease { id: string; role: string; runtime: string; status: string; superseded: boolean; task: { id: string; status: string | null } | null;
+  /** delivered = the plan block's receipt is on the lease; loaded = the prompt sent contained the plan digest (null = not measured) */
+  plan: { plan_id: string; version: number; delivered: boolean; loaded: boolean | null } | null;
+  checks: Array<{ name: string; status: string }> | null; verdict: string | null; maker_lease_id: string | null;
+  /** wiring, all read from existing records; null or [] = nothing recorded (never a pass, never a zero) */
+  agent: ProjectRoomAgent | null;
+  identity: { model: string | null; provider: string | null; model_family: string | null; genome_id: string | null };
+  context: Array<{ name: string; ids: string[] }>;
+  skill: { capability_id: string; version: string | null; state: string | null; invoked: boolean | null } | null;
+  capability: { credited_id: string | null; runner_decision: { action: string; blocked_reasons: string[] } | null };
+  trace: { id: string; spans: number; span_errors: number; steps: Array<{ span_type: string; name: string; status: string }>; task: ProjectRoomTaskTrace | null } }
+export interface ProjectRoomAgent { id: string; name: string; capabilities: string[] }
+export interface ProjectRoomTaskTrace { task_id: string; events: number | null; errors: number | null; admission: string | null }
+export interface ProjectRoomDossier {
+  mode: string; selected: boolean; variant: string;
+  goal: { id: string; objective: string; constraints: string[]; acceptance_criteria: string[]; status: string; budget: Record<string, unknown>; proposal_id: string | null;
+    source: { slug: string; base_commit: string; local_changes_digest: string | null } | null; tokens_used_by_room: number; max_tokens: number | null };
+  review: { version: number; claims: Array<{ id: string; claim: string; refs: Array<{ path: string; symbol?: string }>; refs_resolved: boolean }>; open_questions: string[]; assumptions: string[]; proposal: string } | null;
+  plan: { plan_id: string; version: number; digest: string; versions: Array<{ version: number; digest: string; created_at: string }>; decisions: string[]; open_questions: string[]; uncertainties: string[];
+    findings_review: Array<{ claim_id: string; status: string; note: string }>;
+    steps: Array<{ id: string; title: string; depends_on: string[]; scope: string[]; expected_artifacts: string[]; verification: string[] }> } | null;
+  calls: Array<{ profile: string; status: string; runtime: string | null; tokens: number | null; error: string | null }>;
+  call_tasks: Array<{ id: string; status: string; profile: string | null; agent: ProjectRoomAgent | null; trace: ProjectRoomTaskTrace }>;
+  authority_events: number | null;
+  commons_review: { thread_id: string; status: string; reply_count: number } | null;
+  execution: Array<{ run_id: string; status: string; leases: ProjectRoomLease[]; pr_url: string | null; outcome_verified: boolean | null; survival: string; events: Array<{ type: string; n: number }> }>;
+  candidates: Array<{ id: string; lesson: string; status: string }>;
+  gaps: Array<{ what: string; reason: string; next_action: string }>;
 }
 
 class ApiClient {
@@ -2745,6 +2803,13 @@ class ApiClient {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
   }
+
+  /** Engineering project room (COMMONS_PROJECT_ROOM_MODE): goals that use it, and one goal's dossier. */
+  async getProjectRooms(): Promise<{ mode: string; rooms: ProjectRoomSummary[]; candidates: Array<{ id: string; objective: string; status: string }> }> { return this.request('/swarm-v2/project-rooms'); }
+  async selectProjectRoom(goalId: string, variant: 'single' | 'two_stage'): Promise<ProjectRoomDossier> {
+    return this.request(`/swarm-v2/project-rooms/${encodeURIComponent(goalId)}/select`, { method: 'POST', body: JSON.stringify({ selected: true, variant }) });
+  }
+  async getProjectRoom(goalId: string): Promise<ProjectRoomDossier> { return this.request(`/swarm-v2/project-rooms/${encodeURIComponent(goalId)}`); }
 
   async getSocialCommons(limit = 50, options: { kind?: CommonsThreadKind; offset?: number } = {}): Promise<SocialCommons> {
     const query = new URLSearchParams({ limit: String(limit) });

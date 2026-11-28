@@ -12,7 +12,7 @@ services:
       LIVE_AGENTS_FILE: /app/registry/live_agents.json
       REGISTRY_STATE_FILE: /app/registry/registry_state.json
       # off | log | enforce. Override in /srv/agent-registry/.env.
-      AUTH_MODE: ${AUTH_MODE:-log}
+      AUTH_MODE: ${AUTH_MODE:-enforce}  # fail closed on a fresh install; prod runs enforce
       FLEET_TOKENS_FILE: /run/fleet/tokens
     env_file: /etc/djimit-agents/agents.env
     restart: unless-stopped

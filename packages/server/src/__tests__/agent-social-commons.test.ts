@@ -301,6 +301,20 @@ describe('agent commons runtime readiness (AC-01)', () => {
     expect(db.prepare("SELECT COUNT(*) AS n FROM agent_messages WHERE from_agent = 'agent-b' AND json_extract(payload_json, '$.action') = 'social.response'").get()).toEqual({ n: 1 });
   });
 
+  it('dead-letter: after SOCIAL_MAX_DELIVERY_ATTEMPTS lapsed leases the question is expired, not handed out again', () => {
+    process.env.SOCIAL_MAX_DELIVERY_ATTEMPTS = '3';
+    try {
+      comms.socialize(0);
+      const [question] = comms.receiveSocial('agent-b');
+      const lapse = () => db.prepare('UPDATE agent_messages SET delivery_lease_until = ? WHERE id = ?').run(Date.now() - 60_000, question.id);
+      for (let attempt = 2; attempt <= 3; attempt++) { lapse(); expect(comms.receiveSocial('agent-b').map((m) => m.id)).toContain(question.id); }
+      lapse();
+      expect(comms.receiveSocial('agent-b').map((m) => m.id)).not.toContain(question.id);
+      expect(db.prepare('SELECT status, delivery_attempts AS attempts FROM agent_messages WHERE id = ?').get(question.id)).toEqual({ status: 'expired', attempts: 3 });
+      expect(() => comms.respondSocial('agent-b', question.id, { ...reply, delivery_lease_token: question.deliveryLeaseToken })).toThrow('SOCIAL_MESSAGE_EXPIRED');
+    } finally { delete process.env.SOCIAL_MAX_DELIVERY_ATTEMPTS; }
+  });
+
   it('a lapse after the last successful reply degrades again; an older lapse does not', () => {
     comms.socialize(0);
     const [first] = comms.receiveSocial('agent-b');

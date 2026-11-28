@@ -94,6 +94,7 @@ export function daemonReviewerTimeoutMs(env: NodeJS.ProcessEnv = process.env): n
   const timeout = Number(env.LOOP_REVIEWER_TIMEOUT_MS);
   return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 900_000) : 300_000;
 }
+import { engineProfileRunner, projectRoomMode, proposeRoomCandidates, ROOM_WAIT, roomSelected, runProjectRoom } from './project-room';
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
 /** A reviewer lease whose runtime gave out (timeout or OPENCODE_MAX_RUN_TOKENS) delivered no verdict at all — retryable.
@@ -602,6 +603,12 @@ export class LoopDaemon {
       const namedRepo = goalRepoSlug(this.db, goal.id);
       if (namedRepo && !goalRepo && namedRepo.toLowerCase() !== primaryRepo().toLowerCase()) throw new Error(`REPO_NOT_REGISTERED: ${namedRepo}`);
       const repositoryPath = goalRepo?.path ?? process.env.LOOP_DAEMON_REPOSITORY_PATH;
+      // Project room (COMMONS_PROJECT_ROOM_MODE=on, goals with metadata.task_profile = 'project_room' only): the read-only review
+      // and plan are made before the run starts; a blocked room stops this goal's dispatch with its reason. off / shadow: no call.
+      if (!resumeRunId && repositoryPath && projectRoomMode() === 'on' && roomSelected((goal.metadata ?? {}) as Record<string, unknown>)) {
+        const room = await runProjectRoom(this.db, goal.id, repositoryPath, engineProfileRunner(this.db));
+        if (room.status === 'blocked') throw new Error(room.reason);
+      }
       const run = resumeRunId
         ? this.loops.getLoopRun(resumeRunId) // approved: continue the same run, its maker lease is prepared
         : opts.allowObjectiveMode
@@ -750,7 +757,7 @@ export class LoopDaemon {
       // 7. Run deterministic checks (test, lint, type-check).
       let activeMakerLease = makerLease;
       try {
-        const checks = this.loops.runDeterministicChecks(run.id, {
+        const checks = await this.loops.runDeterministicChecks(run.id, {
           lease_id: makerLease.id,
           ...daemonCheckOptions(process.env, goalRepo),
         });
@@ -777,7 +784,7 @@ export class LoopDaemon {
               await this.loops.awaitWorkerExecution(retryMaker.id);
               await this.loops.executeWorker(run.id, retryInput);
             }
-            this.loops.runDeterministicChecks(run.id, {
+            await this.loops.runDeterministicChecks(run.id, {
               lease_id: retryMaker.id,
               ...daemonCheckOptions(process.env, goalRepo),
             });
@@ -833,7 +840,7 @@ export class LoopDaemon {
                 }
               }
             }
-            this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions(process.env, goalRepo) });
+            await this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions(process.env, goalRepo) });
           } catch (error) {
             // Y0b (prod 2026-09-30 16:17/18:29): a sibling that still needs a human approval is not a failed sibling — the
             // run used to conclude 'no winner' at once and the approval arrived after the proposal was labelled regressed.
@@ -1089,6 +1096,8 @@ export class LoopDaemon {
         .run(runStatus, new Date().toISOString(), run.id);
       // PRC-3 (WORK_ITEM_OUTCOME_SYNC): the source work item learns the outcome (done / blocked + pr_url, run_id); never throws
       syncWorkItemOutcome(this.db, goal.id, allGatesPass ? 'completed' : 'failed', run.id);
+      // project room: candidate knowledge only after an independently certified outcome (candidates, never promoted here)
+      if (allGatesPass) { try { proposeRoomCandidates(this.db, goal.id); } catch { /* candidates are best-effort */ } }
       if (runStatus === 'blocked') {
         try { cancelPreparedLeasesOfBlockedRun(this.db, run.id); } catch { /* best-effort: the orphan cleanup still settles them */ }
       }
@@ -1106,6 +1115,9 @@ export class LoopDaemon {
       if (runId && error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, runId)) return;
       // A dependency that became unmet after the pre-dispatch check (decompose/startLoop assert it again) is a wait, not a failure.
       if (error instanceof Error && error.message.startsWith('GOAL_DEPENDENCY_') && this.dependencyBlocked(goal.id)) return;
+      // Project room: a call in flight, tracked local changes, a call the engine did not start or no read-only runtime is a wait
+      // (the goal stays queued and is tried again next tick; no model call is made while the cause stands), not a failed goal.
+      if (!runId && error instanceof Error && ROOM_WAIT.test(error.message)) { console.warn(`[loop-daemon] goal ${goal.id} waits for its project room: ${error.message}`); return; }
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);

@@ -128,6 +128,7 @@ export function AgentCommonsPage() {
   useEffect(() => { if (!selectedThread && threads[0] && (!page || page.kind === view)) setSelectedThread(threads[0].id); }, [selectedThread, threads, page, view]);
   const chooseView = (next: CommonsThreadKind) => { setView(next); setOffset(0); setSelectedThread(null); };
   const present = commons.agents.filter((agent) => agent.present).length;
+  const scheduled = commons.agents.filter((agent) => agent.readiness?.state === 'scheduled').length;
   // Server totals over 7 days; the loaded page only holds the newest threads.
   const stats = commons.stats;
   // C0: lessons = threads that ended with a lesson (learnings_7d counts lesson messages, about two per thread)
@@ -144,7 +145,7 @@ export function AgentCommonsPage() {
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-foreground-secondary"><input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} /> live · 8s</label>
-          <button type="button" onClick={() => void castLure()} disabled={casting} title="Invite every silent agent, using the oldest open knowledge gap as bait" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-background-elevated disabled:opacity-40" style={{ borderColor: LURE_COLOR, color: LURE_COLOR }}><Magnet className={`h-4 w-4 ${casting ? 'animate-pulse' : ''}`} /> Cast lure</button>
+          <button type="button" onClick={() => void castLure()} disabled={casting} title="Invite every silent agent, using a parked proposal or the newest open knowledge gap as bait" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-background-elevated disabled:opacity-40" style={{ borderColor: LURE_COLOR, color: LURE_COLOR }}><Magnet className={`h-4 w-4 ${casting ? 'animate-pulse' : ''}`} /> Cast lure</button>
           <button type="button" onClick={() => void startRound()} disabled={starting || present < 2} title={present < 2 ? 'Needs at least 2 agents present' : 'Open a new peer exchange'} className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white shadow-[0_0_24px_rgb(60_120_255/0.35)] hover:brightness-110 disabled:opacity-40 disabled:shadow-none"><Zap className={`h-4 w-4 ${starting ? 'animate-pulse' : ''}`} /> New round</button>
           <button type="button" onClick={() => void refresh()} disabled={loading} aria-label="Refresh agent commons" className="rounded-lg border border-border p-2 hover:bg-background-elevated disabled:opacity-50"><RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /></button>
         </div>
@@ -154,7 +155,7 @@ export function AgentCommonsPage() {
       {notice && <div className="rounded-lg border border-accent/30 bg-accent/10 p-3 text-sm text-foreground">{notice}</div>}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <Metric label="Agents present" value={present} hint={`${commons.agents.length} registered`} color={STAGE.learned.color} />
+        <Metric label="Agents present" value={present} hint={`${scheduled ? `${scheduled} more replied in 24 h on a timer · ` : ''}${commons.agents.length} registered`} color={STAGE.learned.color} />
         <Metric label="Conversations" value={counts?.discussion ?? commons.total_threads ?? commons.threads.length} hint={counts ? `discussions, all time · plus ${counts.record} record-only evidence rooms` : 'all social threads'} color={STAGE.asked.color} />
         <Metric label="Open questions" value={open} hint={stats ? `of ${stats.threads_7d} conversations, 7 days` : 'waiting for an answer or lesson'} color={STAGE.responding.color} />
         <Metric label="Lessons" value={learnings} hint={stats ? 'threads that ended with a lesson, 7 days' : 'effect not yet shown'} color={STAGE.learned.color} />
@@ -173,7 +174,7 @@ export function AgentCommonsPage() {
       {stats && (
         <section className="rounded-xl border border-border bg-background-secondary p-4" aria-label="Yield for Djimitflo">
           <h2 className="text-sm font-semibold text-foreground">Yield for Djimitflo</h2>
-          <p className="mt-1 text-xs text-foreground-secondary">What the Commons ideas became: proposals → with a valid grounding (target file + test) → verified by the loop.</p>
+          <p className="mt-1 text-xs text-foreground-secondary">What the Commons ideas became: proposals → with a valid grounding (target file + test) → verified by the loop. All time{stats.proposals_latest_at ? `; the newest of these proposals was created ${stats.proposals_latest_at.slice(0, 10)}` : ''}.</p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals}</strong> proposals</span><span aria-hidden>→</span>
             <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_grounded}</strong> validly grounded</span><span aria-hidden>→</span>
@@ -191,6 +192,13 @@ export function AgentCommonsPage() {
             </div>
           )}
           {stats.child_outcomes && <GroundedChildOutcomes outcomes={stats.child_outcomes} />}
+          {stats.failure_recurrence && ((recurrence) => (
+            <div className="mt-3 text-xs text-foreground-secondary" aria-label="Failure recurrence">
+              <p className="font-medium text-foreground">Do discussed failures come back?</p>
+              <p>Failure kinds (loop + failed gates + cause) of the last {recurrence.lookbackDays} d, and whether the kind failed again within {recurrence.windowDays} d. Descriptive, not causal: the agenda picks the newest failure, not a random one.</p>
+              <ul className="mt-1">{recurrence.arms.map((a) => <li key={a.arm}>{a.arm === 'discussed' ? 'Discussed in the Commons' : 'Not discussed'}: {a.recurred} of {a.kinds} came back ({a.rate === null ? `insufficient, n < ${recurrence.minN}` : `${Math.round(a.rate * 100)}%`}){a.unsettled ? ` · ${a.unsettled} too recent to judge` : ''}</li>)}</ul>
+            </div>
+          ))(stats.failure_recurrence)}
           {!!stats.guild?.length && (
             <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
               <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Valid</th><th>Verified</th></tr></thead>

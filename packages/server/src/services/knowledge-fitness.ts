@@ -9,6 +9,7 @@ import { wilson } from './evolution-estimators';
  * Use edges (item → loop run), each read from a concrete field:
  *   - self_improvements.evidence_refs_json knowledge refs (kb:/expert_unit:/expert_claim:/okf: …) → the proposal's runs
  *   - kb_retrieval judgments on a specialist_panel → self_improvements.panel_id → the proposal's runs
+ *   - assignment_context events with ace_001.kb_paths (ACE-001 arm R put those KB pages in the maker's assignment) → that run
  *   - memory_access_log reads (agent_id 'loop-maker:<run>', assignment-context.ts) → that run
  *   - maker_genomes.knowledge_refs_json (#727; typed refs from DREAM_EVIDENCE_SOURCES) → runs whose maker lease ran that genome (metadata.genome_id)
  *   - outcome_credits kind knowledge (#707) → that run (kind memory_rule rows were delivery, not use: skipped — M0 H5 D1)
@@ -108,6 +109,11 @@ export function knowledgeFitness(db: Database, now = Date.now(), topN = 20): Kno
       WHERE j.judgment = 'kb_retrieval' AND j.subject_type = 'specialist_panel'`)) {
     const pages = (k.reason ?? '').split(' ').map((h) => h.replace(/@[\d.]+$/, '')).filter(Boolean);
     for (const runId of runsByProposal.get(k.pid) ?? []) for (const page of pages) use('kb_page', page, runId);
+  }
+  // ACE-001 arm R: KB pages put into a maker's assignment (assignment_context event, ace_001.kb_paths) — a delivery to that run
+  for (const e of all<{ run: string; paths: string | null }>(`SELECT loop_run_id AS run, json_extract(metadata, '$.ace_001.kb_paths') AS paths FROM loop_events
+      WHERE event_type = 'assignment_context' AND created_at >= ?`, since)) {
+    for (const page of parseList(e.paths)) if (typeof page === 'string') use('kb_page', page, e.run);
   }
   for (const a of all<{ cid: string; agent: string }>("SELECT candidate_id AS cid, agent_id AS agent FROM memory_access_log WHERE agent_id LIKE 'loop-maker:%' AND accessed_at >= ?", since)) {
     use('memory_rule', a.cid, a.agent.slice('loop-maker:'.length));

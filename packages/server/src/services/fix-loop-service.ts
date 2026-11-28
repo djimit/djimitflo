@@ -62,7 +62,7 @@ export class FixLoopService {
       const runtime = request.runtime || 'mock';
       const prepared = this.loops.continueLoopRun(run.id, { runtime, max_assignments: 1 });
       const maker = await this.loops.executeMaker(run.id, { lease_id: prepared.leases.find(lease => lease.role === 'maker')?.id });
-      const checks = this.loops.runDeterministicChecks(run.id, { lease_id: maker.lease.id });
+      const checks = await this.loops.runDeterministicChecks(run.id, { lease_id: maker.lease.id });
       const checkerResult = await this.loops.executeChecker(run.id, { runtime, lease_id: prepared.leases.find(lease => lease.role === 'checker')?.id });
       const securityCheckerLease = prepared.leases.find(lease => lease.role === 'security_checker');
       if (securityCheckerLease) {

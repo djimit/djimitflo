@@ -155,4 +155,110 @@ describe('buildRepoEvidencePacket', () => {
     writeFileSync(join(tmpDir, 'README.md'), headings);
     expect(build().readme_fragments.length).toBeLessThanOrEqual(6);
   });
+
+  it('tolerates an absent scan object: every optional chain short-circuits to empty defaults', () => {
+    const p = buildRepoEvidencePacket({
+      repositoryFullName: 'djimit/bare', localPath: tmpDir, scan: undefined as any, graph: baseGraph(),
+    });
+    expect(p.facts).toEqual([]);
+    expect(p.stack).toEqual([]);
+    expect(p.health).toEqual({ score: null, drivers: [], findings: [] });
+    expect(p.license).toBeNull();
+    expect(p.package_manager).toBeNull();
+  });
+
+  it('uses the empty-array fallback when scan omits stack/healthFindings (no synthetic "Stryker was here" facts)', () => {
+    const p = build({ scan: { scanSummary: {} } as any });
+    expect(p.stack).toEqual([]);
+    expect(p.facts.some((f) => f.claim.includes('uses '))).toBe(false);
+    expect(p.facts.some((f) => f.source_ref.startsWith('scan:health:'))).toBe(false);
+  });
+
+  it('assigns sequential fact ids starting at fact-1', () => {
+    const p = build({ scan: baseScan({ stack: { detectedStacks: ['TypeScript'] } }) });
+    expect(p.facts[0].id).toBe('fact-1');
+    expect(p.facts.map((f) => f.id)).toEqual(['fact-1']);
+  });
+
+  it('caps detected stacks at 8 facts', () => {
+    const stacks = Array.from({ length: 10 }, (_, i) => `s${i}`);
+    const p = build({ scan: baseScan({ stack: { detectedStacks: stacks } }) });
+    const stackFacts = p.facts.filter((f) => f.source_ref.startsWith('scan:detected_stacks:'));
+    expect(stackFacts).toHaveLength(8);
+    expect(p.stack).toHaveLength(10);
+  });
+
+  it('caps communities at 10, hubs/bridges/flows at 5 facts each', () => {
+    const mk = <T>(n: number, fn: (i: number) => T) => Array.from({ length: n }, (_, i) => fn(i));
+    const graph = baseGraph({
+      communities: mk(12, (i) => ({ name: `c${i}`, size: 2, cohesion: 0.1, language: 'TS' })),
+      hub_nodes: mk(7, (i) => ({ name: `h${i}`, file: `f${i}.ts`, total_degree: 3 })),
+      bridge_nodes: mk(7, (i) => ({ name: `b${i}`, file: `f${i}.ts`, betweenness: 0.1 })),
+      top_flows: mk(7, (i) => ({ name: `fl${i}`, criticality: 0.5, depth: 2, node_count: 4 })),
+    });
+    const facts = build({ graph }).facts;
+    expect(facts.filter((f) => f.source_ref.startsWith('graph:community:'))).toHaveLength(10);
+    expect(facts.filter((f) => f.source_ref.startsWith('graph:hub:'))).toHaveLength(5);
+    expect(facts.filter((f) => f.source_ref.startsWith('graph:bridge:'))).toHaveLength(5);
+    expect(facts.filter((f) => f.source_ref.startsWith('graph:flow:'))).toHaveLength(5);
+  });
+
+  it('uses the empty-array fallback when graph array fields are undefined', () => {
+    const p = buildRepoEvidencePacket({
+      repositoryFullName: 'djimit/g', localPath: tmpDir, scan: baseScan(),
+      graph: { total_nodes: 0, total_edges: 0, total_files: 0, risk_score: null } as GraphSummary,
+    });
+    expect(p.facts).toEqual([]);
+    expect(p.graph.communities).toBeUndefined();
+  });
+
+  it('emits exactly 15 health facts (the addFact loop cap, not the output slice) for 20 findings', () => {
+    const findings = Array.from({ length: 20 }, (_, i) => ({
+      severity: i === 5 ? 'critical' : 'low', title: `f-${i}`, description: 'desc',
+    }));
+    const facts = build({ scan: baseScan({ healthFindings: findings }) }).facts;
+    expect(facts.filter((f) => f.source_ref.startsWith('scan:health:'))).toHaveLength(15);
+  });
+
+  it('ranks unknown severities after known ones via the ?? 9 fallback', () => {
+    const findings = [
+      { severity: 'info', title: 'ti', description: 'd' },
+      { severity: 'high', title: 'th', description: 'd' },
+      { severity: 'critical', title: 'tc', description: 'd' },
+    ];
+    const p = build({ scan: baseScan({ healthFindings: findings }) });
+    expect(p.health.findings.map((f) => f.title)).toEqual(['tc', 'th', 'ti']);
+  });
+
+  it('joins README body lines with single spaces and resets the buffer between headings', () => {
+    writeFileSync(join(tmpDir, 'README.md'), '# A\n\nalpha\nbeta\n\n# B\n\ngamma\n');
+    const p = build();
+    const a = p.readme_fragments.find((f) => f.heading === 'A');
+    const b = p.readme_fragments.find((f) => f.heading === 'B');
+    expect(a?.excerpt).toBe('alpha beta');
+    expect(b?.excerpt).toBe('gamma');
+  });
+
+  it('only treats lines starting with 1-3 hashes as headings and strips the leading hashes exactly', () => {
+    writeFileSync(join(tmpDir, 'README.md'), '# Title\n\nsee # more detail below\n');
+    const p = build();
+    expect(p.readme_fragments).toHaveLength(1);
+    expect(p.readme_fragments[0].heading).toBe('Title');
+    expect(p.readme_fragments[0].excerpt).toBe('see # more detail below');
+    writeFileSync(join(tmpDir, 'README.md'), '## Two\n\nbody\n');
+    expect(build().readme_fragments[0].heading).toBe('Two');
+  });
+
+  it('caps README-derived facts at 6 even when more fragments are parsed', () => {
+    const headings = Array.from({ length: 10 }, (_, i) => `# H${i}\n\nBody ${i}.\n`).join('\n');
+    writeFileSync(join(tmpDir, 'README.md'), headings);
+    const readmeFacts = build().facts.filter((f) => f.source_type === 'readme_heading');
+    expect(readmeFacts).toHaveLength(6);
+  });
+
+  it('truncates the AGENTS.md summary to 2000 characters', () => {
+    writeFileSync(join(tmpDir, 'AGENTS.md'), `${'# Agents\n\n'}${'A'.repeat(2500)}\n`);
+    const p = build();
+    expect(p.agents_md_summary?.length).toBe(2000);
+  });
 });

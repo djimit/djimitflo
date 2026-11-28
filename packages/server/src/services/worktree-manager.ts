@@ -87,6 +87,8 @@ export class WorktreeManager {
     const sourceHead = this.git(repositoryPath, ['rev-parse', 'HEAD']).trim();
     const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees');
     const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
+    // '.' / '..' survive the sanitizer and would resolve to the run directory or the root holding every other worktree
+    if (/^\.*$/.test(sanitizedFindingId)) throw new Error(`WORKTREE_FINDING_ID_INVALID: ${JSON.stringify(findingId)}`);
     const worktreePath = path.join(worktreeRoot, runId, sanitizedFindingId);
     mkdirSync(path.dirname(worktreePath), { recursive: true });
     if (existsSync(worktreePath)) {

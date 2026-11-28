@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
@@ -9,6 +12,7 @@ import {
   capabilityFactoryMode,
   keywords,
   searchRegistry,
+  checkRepoPath,
 } from '../services/capability-factory';
 
 let db: Database.Database;
@@ -46,6 +50,25 @@ describe('CapabilityRequestError', () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.code).toBe('REPO_NOT_REGISTERED');
     expect(err.message).toBe('nope');
+  });
+});
+
+describe('checkRepoPath', () => {
+  it('normalizes and contains existing paths, including symlink escapes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'djimitflo-cap-path-'));
+    const outside = mkdtempSync(join(tmpdir(), 'djimitflo-cap-outside-'));
+    try {
+      mkdirSync(join(root, 'packages', 'server', 'src'), { recursive: true });
+      writeFileSync(join(root, 'packages', 'server', 'src', 'safe.ts'), 'export {}\n');
+      writeFileSync(join(outside, 'secret.ts'), 'secret\n');
+      symlinkSync(outside, join(root, 'packages', 'server', 'src', 'linked'));
+      expect(checkRepoPath(root, 'packages/server/src/safe.ts', 'target_file', false)).toBe(true);
+      expect(() => checkRepoPath(root, 'packages/server/src/../package.json', 'target_file', false)).toThrow(/repo-relative path/);
+      expect(() => checkRepoPath(root, 'packages/server/src/linked/secret.ts', 'target_file', false)).toThrow(/file inside the repository/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 

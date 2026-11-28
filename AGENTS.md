@@ -23,7 +23,7 @@ Node `>=22 <25`, npm `>=9`. CI (`.github/workflows/ci.yml`, Node 22 and 24) runs
 
 ```bash
 npm ci                    # install (locally `npm install --legacy-peer-deps` if peer resolution fails)
-npm run type-check        # builds shared/agent-catalog/mcp-server/ransomware-module, then tsc --noEmit per workspace
+npm run type-check        # builds shared/agent-catalog/mcp-server, then tsc --noEmit per workspace
 npm run lint              # eslint per workspace
 npm run build             # all workspaces
 npm run test -- --reporter=verbose   # shell selftests, script tests, workspace docs check, vitest per workspace
@@ -50,7 +50,6 @@ packages/shared/            # @djimitflo/shared — types, roles, auth helpers
 packages/mcp-server/        # MCP server (stdio + HTTP); pinned to zod v3 for the MCP SDK
 packages/telegram/          # Telegram gateway
 packages/agent-catalog/     # agent profile import/evaluate/activate
-packages/ransomware-module/ # defensive anti-ransomware detection
 scripts/                    # deploy, merge train, gym worker, evidence and doc generators
 openspec/                   # specs (capabilities) and changes
 ```
@@ -101,8 +100,13 @@ A change is complete when all of these hold, with the output read, not assumed:
 
 ## Review and approval
 
-- Agents open PRs; agents never merge. Merging is the operator's, through `scripts/merge-train.sh` with a pinned head.
-  The only exception is the earned, capped test-only auto-merge class (core-invariants FR-004), which the operator arms.
+- Agents may merge a PR only when the operator has explicitly authorized autonomous merging for the current task or plan,
+  and only through `scripts/merge-train.sh` with the exact PR head pinned. The merge-train must independently re-read the
+  live PR and base state, require every required check to be green on that exact head, re-check mergeability and policy,
+  and record the merge outcome. Agents must not bypass branch protection, use a direct GitHub merge call, merge a stale
+  head, or merge protected/deploy/auth changes without separate explicit operator authorization. The default remains
+  propose-only when no such authorization is present. The earned, capped test-only auto-merge class (core-invariants
+  FR-004) remains a separate operator-armed path.
 - Maker and checker are separate leases; a checker never reviews its own maker's work.
 - Ask first, always: money, security boundaries, data deletion, a new external service or host.
 - Production is read-only for agents: no branch code in the prod container, no writes to the prod DB.

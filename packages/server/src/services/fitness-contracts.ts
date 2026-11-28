@@ -406,6 +406,10 @@ export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
   LOOP_AUTO_APPROVE_MUTATION_GAP: 'approval routing for the mutation-gap lane (who approves), not a scored component',
   ORACLE_LANES_AUTO_APPROVE: 'approval routing for the oracle lanes (who approves), not a scored component',
   FINDING_FIX_AUTO_APPROVE: 'approval routing for the finding-fix lane (who approves), not a scored component',
+  LOOP_CHECK_DIRECT_TESTS_MODE: 'which tests a maker check runs locally (CI still runs all on the PR head), not a scored component',
+  MAKER_FORECAST_MODE: 'one line asking the maker for a self-forecast that is only recorded and scored (evolution-evidence maker_forecast), not a scored component',
+  COMMONS_PROJECT_ROOM_MODE: 'which plan block a goal that selected the project room hands to its maker; the run is scored by the existing gates, and the route itself by the registered A/B/C comparison (docs/research/project-room/)',
+  DREAM_KNOWLEDGE_SEED_MODE: 'which titles a dream mutation prompt may cite; the genome it writes is scored by the existing trial and K1, not a scored component itself',
   APPROVAL_INHERIT_ENABLED: 'approval plumbing: a re-run inherits the original approval within a TTL',
   LOOP_REVIEWER_APPROVAL_INHERIT: 'approval plumbing: reviewers inherit the run\'s one human approval',
   PROPOSAL_GROUNDING_REQUIRED: 'intake rule: ungrounded reflection proposals are parked before the panel',
@@ -422,6 +426,7 @@ export const FITNESS_EXEMPT_FLAGS: Readonly<Record<string, string>> = {
   OPENCODE_BRAKE_CACHE_READ_WEIGHT: 'token brake accounting for opencode makers (cost guard); a treatment variable of the oracle experiments',
   MAKER_UID_SEPARATION: 'sandbox isolation of maker processes (security)',
   FLEET_EVENT_SIGNATURES: 'signature verification of fleet events (security)',
+  EVE_V_TENDER_INTAKE: 'intake plumbing: Eve-V tender events become candidate work items; never selects a learner',
   FLEET_SHELL_ENABLED: 'kill switch for fleet shell commands (security)',
   MEMORY_DELIVERY_RECEIPTS: 'delivery receipts for the memory-sync fan-out (plumbing)',
 };

@@ -44,6 +44,7 @@ export class LoopLifecycleService {
     const run = this.assertContinuable(id);
     this.loopService.assertWallClockBudgetAvailable(run);
     this.loopService.assertTokenBudgetAvailable(run);
+    this.loopService.requireProjectRoomPlan(run); // project room (mode on, selected goal): no valid fresh plan, no hand-over
     this.loopService.assertNoFailedGates(run);
     if (!run.repository_path) throw new Error('LOOP_REPOSITORY_REQUIRED');
     if (run.findings.length === 0) throw new Error('LOOP_NO_FINDINGS_TO_ASSIGN');
@@ -188,6 +189,7 @@ export class LoopLifecycleService {
     const run = this.assertContinuable(id, true);
     this.loopService.assertWallClockBudgetAvailable(run);
     this.loopService.assertTokenBudgetAvailable(run);
+    this.loopService.requireProjectRoomPlan(run); // project room (mode on, selected goal): no valid fresh plan, no hand-over
     if (!run.repository_path) throw new Error('LOOP_REPOSITORY_REQUIRED');
     const leases = this.loopService.listWorkerLeases(run.id);
     const checkerLeases = leases.filter((l) => l.role === 'checker');

@@ -14,6 +14,10 @@ vi.mock('../lib/api', () => ({
           totalCases: 78,
           lastEvalAt: '2026-07-15T10:05:00.000Z',
           trend: 'improving',
+          uncertaintyInterval: { low: 3.02, high: 3.98, level: 0.95, sampleSize: 78, method: 'normal-approximation' },
+          benchmark: 'openmythos-governance',
+          scale: '0-5',
+          cohort: 'openmythos-governance:0-5',
         },
       ],
     }),
@@ -31,6 +35,9 @@ vi.mock('../lib/api', () => ({
           judgeCases: 0,
           startedAt: '2026-07-15T10:00:00.000Z',
           finishedAt: '2026-07-15T10:05:00.000Z',
+          benchmark: 'openmythos-governance',
+          scale: '0-5',
+          cohort: 'openmythos-governance:0-5',
         },
       ],
     }),
@@ -47,6 +54,8 @@ describe('GovernanceScorecardPage', () => {
     expect(screen.getByLabelText('improving')).toBeTruthy();
     expect(screen.getByText('injection 4.0')).toBeTruthy();
     expect(screen.getByText('hallucination 2.1')).toBeTruthy();
+    expect(screen.getByText(/78 cases · operational candidate/)).toBeTruthy();
+    expect(screen.getByText(/95% interval 3.02–3.98/)).toBeTruthy();
   });
 
   it('renders the recent runs with model and oracle provenance', async () => {
@@ -63,6 +72,7 @@ describe('GovernanceScorecardPage', () => {
       leaderboard: [
         { agentId: 'explainer-critic', overallScore: 93, categoryScores: {}, totalCases: 6, lastEvalAt: '2026-07-16T10:00:00.000Z', trend: 'stable' },
         { agentId: 'agent-model', overallScore: 4.2, categoryScores: {}, totalCases: 78, lastEvalAt: '2026-07-15T10:05:00.000Z', trend: 'stable', scale: '0-5', benchmark: 'openmythos-governance', cohort: 'openmythos-governance:0-5' },
+        { agentId: 'legacy-model', overallScore: 4.1, categoryScores: {}, totalCases: 78, lastEvalAt: '2026-07-17T10:05:00.000Z', trend: 'stable', scale: '0-5', benchmark: 'openmythos-governance' },
       ],
     } as any);
     render(<GovernanceScorecardPage />);
@@ -71,6 +81,7 @@ describe('GovernanceScorecardPage', () => {
     expect(ranking.textContent).toContain('#1');
     expect(ranking.textContent).toContain('agent-model');
     expect(ranking.textContent).not.toContain('explainer-critic');
+    expect(ranking.textContent).not.toContain('legacy-model');
     expect(ranking.textContent).not.toContain('93');
     const other = screen.getByRole('list', { name: 'Other score scales' });
     expect(other.textContent).toContain('explainer-critic');

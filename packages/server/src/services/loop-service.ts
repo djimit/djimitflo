@@ -10,6 +10,7 @@ import os from 'os';
 import path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
+import { spawnAsync } from './spawn-async';
 import { LOOP_CATALOG } from '@djimitflo/shared';
 import { createError } from '../middleware/error-handler';
 
@@ -38,6 +39,7 @@ import { SelfImprovementService } from './self-improvement-service';
 import { MAKER_TEMPLATE_RULES_STE, steRulesFor } from './ste-001';
 import { extraRepoByPath, extraRepoChecks } from './repo-registry';
 import { assignmentContext, assignmentContextMarkdown, assignmentReceipt, type AssignmentContext, type AssignmentReceipt } from './assignment-context';
+import { planDelivery, planRef, requirePlanForRun, roomTokens, type PlanRef } from './project-room';
 import { skillRouteEventMeta } from './skill-route';
 import { firstJsonObject } from './model-json';
 import { isHighRiskPath } from './diff-capture';
@@ -68,6 +70,7 @@ import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandid
 import { captureReadSet, freshnessMode, type ReadSet } from './evidence-freshness';
 import { provisionWarmDeps, type WarmDepsResult } from './maker-warm-deps';
 import { checksFailureHint } from './lease-failure';
+import { pstackInterrogatePolicy } from './pstack-interrogate';
 
 export type {
   LoopName,
@@ -397,6 +400,11 @@ function recordedAttestation(input: CheckerVerdictInput, actor?: VerdictActor): 
   const { reviewer, reviewer_type } = input.manual_attestation;
   return { reviewer, reason, ...(reviewer_type === 'heuristic' ? { reviewer_type } : {}) };
 }
+
+const DIRECT_TESTS_SCRIPT = 'test:changed:direct';
+/** LOOP_CHECK_DIRECT_TESTS_MODE = off | shadow | on (default off) */
+export const directTestsMode = (env: NodeJS.ProcessEnv = process.env): 'off' | 'shadow' | 'on' =>
+  env.LOOP_CHECK_DIRECT_TESTS_MODE === 'on' ? 'on' : env.LOOP_CHECK_DIRECT_TESTS_MODE === 'shadow' ? 'shadow' : 'off';
 
 export class LoopService {
 
@@ -1126,7 +1134,7 @@ export class LoopService {
     };
   }
 
-  runDeterministicChecks(id: string, input: RunChecksInput = {}): { run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> } {
+  async runDeterministicChecks(id: string, input: RunChecksInput = {}): Promise<{ run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> }> {
     const run = this.getLoopRun(id);
     const leases = this.listWorkerLeases(run.id);
     const makerLease = input.lease_id
@@ -1159,9 +1167,11 @@ export class LoopService {
     // Each deploy mounts a fresh clone without node_modules, so the worktree manager has nothing to link: checks ran without
     // vitest/eslint (exit 127) unless the maker happened to run `npm ci` itself (prod 2026-09-28: 3 test-gap runs regressed).
     // Install like the gym does when the worktree has a lockfile but no dependencies.
-    const installFailure = this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
+    const installFailure = await this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
 
-    const checks: Array<Record<string, unknown>> = scripts.map((scriptName) => {
+    // Sequential and awaited (event-loop-freeze plan 2026-11-18): the server keeps serving while a check runs.
+    const checks: Array<Record<string, unknown>> = [];
+    for (const scriptName of scripts) checks.push(await (async () => {
       const stdoutPath = path.join(outputDir, `${scriptName}.stdout.log`);
       const stderrPath = path.join(outputDir, `${scriptName}.stderr.log`);
       if (!packageScripts.has(scriptName)) {
@@ -1179,9 +1189,14 @@ export class LoopService {
         };
       }
 
-      const result = spawnSync('npm', ['run', scriptName], {
+      // LOOP_CHECK_DIRECT_TESTS_MODE (off | shadow | on, default off): on runs test:changed:direct in place of test:changed —
+      // the changed tests plus the tests importing a changed source file directly, the full suite staying CI's on the PR head.
+      // prod 2026-11-22: 13 of 18 failed lint-fix makers timed out in test:changed (~575 of 897 files on 2 cores).
+      const direct = scriptName === 'test:changed' && packageScripts.has(DIRECT_TESTS_SCRIPT) ? directTestsMode() : 'off';
+      const ranScript = direct === 'on' ? DIRECT_TESTS_SCRIPT : scriptName;
+      const startedAt = Date.now();
+      const result = await spawnAsync('npm', ['run', ranScript], {
         cwd: makerLease.worktree_path!,
-        encoding: 'utf8',
         timeout: timeoutMs,
         env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id), ...findingFixCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
@@ -1195,10 +1210,19 @@ export class LoopService {
         status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
         exit_status: exitStatus,
         timed_out: timedOut,
+        duration_ms: Date.now() - startedAt, // prod 2026-11-21: 18 of 144 makers hit the test:changed cap and nothing said how close the others came
         stdout_path: stdoutPath,
         stderr_path: stderrPath,
+        ...(direct === 'on' ? { ran_script: ranScript } : {}),
+        // shadow: what the direct selection would have said, next to the unchanged verdict of test:changed
+        ...(direct === 'shadow' ? { direct_shadow: await (async () => {
+          const t = Date.now();
+          const r = await spawnAsync('npm', ['run', DIRECT_TESTS_SCRIPT], { cwd: makerLease.worktree_path!, timeout: timeoutMs, env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024 });
+          const to = Boolean(r.error && r.error.message.includes('ETIMEDOUT'));
+          return { status: r.status === 0 && !to ? 'pass' : 'fail', exit_status: typeof r.status === 'number' ? r.status : null, timed_out: to, duration_ms: Date.now() - t };
+        })() } : {}),
       };
-    });
+    })());
 
     if (installFailure) checks.unshift(installFailure);
     // F1 (09-10): deterministic assertion strength of a test-writing maker's changed test files (WEAK_ASSERTION_CHECK_MODE)
@@ -1554,7 +1578,8 @@ export class LoopService {
     if (!budget.maxTokens) {
       return;
     }
-    const used = this.sumRuntimeTokens(this.listWorkerLeases(run.id));
+    // the room's profile calls spend the same goal budget as its workers (0 when the goal has no room)
+    const used = this.sumRuntimeTokens(this.listWorkerLeases(run.id)) + (run.goal_id ? roomTokens(this.db, run.goal_id) : 0);
     if (used >= budget.maxTokens) {
       throw new Error('LOOP_TOKEN_BUDGET_EXHAUSTED');
     }
@@ -2115,10 +2140,10 @@ export class LoopService {
   }
 
   /** `npm ci` in a worktree that has a lockfile but no node_modules; returns a failed 'install' check, or null. */
-  private installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Record<string, unknown> | null {
+  private async installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
     if (!fs.existsSync(path.join(worktree, 'package-lock.json')) || fs.existsSync(path.join(worktree, 'node_modules'))) return null;
-    const result = spawnSync('npm', [...LoopService.WORKTREE_INSTALL_ARGS], {
-      cwd: worktree, encoding: 'utf8', timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
+    const result = await spawnAsync('npm', [...LoopService.WORKTREE_INSTALL_ARGS], {
+      cwd: worktree, timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
     });
     if (result.status === 0) return null;
     const stdoutPath = path.join(outputDir, 'install.stdout.log');
@@ -2493,6 +2518,9 @@ export class LoopService {
     // multi-repo: an extra repo's maker is told that repo's check scripts (EXTRA_REPOS_ENABLED=on); djimitflo's text is unchanged
     const repo = extraRepoByPath(run.repository_path);
     const content = renderWorkAssignment(run, finding, runtime, advisoryContext.text, extra, { nestedSpawnControl: options.nestedSpawnControl, ...(repo ? { checkScripts: extraRepoChecks(repo.slug) } : {}) });
+    // project room: DELIVERED is the plan block in this file (its receipt goes on the lease); shadow records what would have been carried
+    if (extra.plan) this.recordLoopEvent(run.id, 'project_room_plan_delivered', 'info', `Maker assignment carries plan ${extra.plan.ref.plan_id} version ${extra.plan.ref.version}`, { ...extra.plan.ref });
+    if (extra.plan_shadow) this.recordLoopEvent(run.id, 'project_room_shadow', 'info', `Project room (shadow): ${extra.plan_shadow.would_deliver ? `would carry plan version ${extra.plan_shadow.would_deliver.version}` : `no plan would be carried (${extra.plan_shadow.reason})`}`, { ...extra.plan_shadow });
     if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste || extra.capabilities || extra.skill_route) {
       this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}${extra.skill_route ? ` (skill route ${extra.skill_route.mode}: ${extra.skill_route.capability_id} ${extra.skill_route.arm}, delivered=${extra.skill_route.delivered})` : ''}.`,
         { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}), ...(extra.capabilities ? { capabilities: extra.capabilities } : {}), ...(extra.capability_ids ? { capability_ids: extra.capability_ids } : {}),
@@ -2556,6 +2584,7 @@ export class LoopService {
         gates: run.gates,
         next_actions: run.next_actions,
         plan: run.plan,
+        ...this.projectRoomPacketContext(run, worktreePath),
       },
       advisory_context: advisoryContext,
       allowed_actions: ['read_repo', 'edit_files', 'run_tests', 'write_artifacts'],
@@ -2588,6 +2617,7 @@ export class LoopService {
       '',
       ...CHECKER_INSTRUCTIONS.common,
       checker.role === 'security_checker' ? CHECKER_INSTRUCTIONS.security : CHECKER_INSTRUCTIONS.checker,
+      ...pstackInterrogatePolicy(),
       ...CHECKER_INSTRUCTIONS.tail,
       '{"verdict":"accepted|needs_revision|rejected|insufficient_evidence","notes":"...","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
       '',
@@ -2767,7 +2797,35 @@ export class LoopService {
   }
 
   public insertWorkerLease(input: Parameters<WorkerLeaseRepo['insert']>[0]): void {
-    this.workerLeases.insert(this.withAssignmentReceipt(this.withAssignmentPacketProvenance(input)));
+    this.workerLeases.insert(this.withPlanBinding(this.withAssignmentReceipt(this.withAssignmentPacketProvenance(input))));
+  }
+
+  /** Project room (mode on, selected goal): without a valid, fresh plan no maker is prepared. off / shadow / other goals: no-op. */
+  public requireProjectRoomPlan(run: LoopRunRecord): void { requirePlanForRun(this.db, run); }
+
+  /** Project room (mode on, selected goal): the issued plan in the packet — the checker reads it next to the unchanged finding. */
+  private projectRoomPacketContext(run: LoopRunRecord, worktreePath: string): Record<string, unknown> {
+    const delivery = planDelivery(this.db, run, worktreePath);
+    if (delivery.state === 'blocked') throw new Error(delivery.reason);
+    if (delivery.state !== 'deliver') return {};
+    const plan = delivery.plan;
+    return { plan_artifact: { ...planRef(plan), acceptance_criteria: plan.acceptance_criteria, decisions: plan.decisions, steps: plan.steps, stop_conditions: plan.stop_conditions } };
+  }
+
+  /**
+   * Project room: bind the lease to the plan its packet carries (`plan_ref`: id, version, digest, base commit). The packet's
+   * sha256 already covers that reference, so plan, packet and lease are tied together. A lease whose assignment file and
+   * packet name different plans is not created; a plan in the packet without its block receipt is not created either.
+   */
+  private withPlanBinding(input: Parameters<WorkerLeaseRepo['insert']>[0]): Parameters<WorkerLeaseRepo['insert']>[0] {
+    const file = input.metadata.assignment_packet_file;
+    if (typeof file !== 'string' || input.metadata.plan_ref !== undefined || !fs.existsSync(file)) return input;
+    let ref: PlanRef | undefined;
+    try { ref = (JSON.parse(fs.readFileSync(file, 'utf8')) as { context?: { plan_artifact?: PlanRef } }).context?.plan_artifact; } catch { return input; }
+    if (!ref || typeof ref.digest !== 'string') return input;
+    const receipt = (input.metadata.assignment_receipt as AssignmentReceipt | undefined)?.blocks.plan;
+    if (!receipt || receipt.ids[0] !== `${ref.plan_id}@${ref.version}#${ref.digest}`) throw new Error('PROJECT_ROOM_PLAN_BINDING_MISMATCH');
+    return { ...input, metadata: { ...input.metadata, plan_ref: { plan_id: ref.plan_id, version: ref.version, digest: ref.digest, base_commit: ref.base_commit } } };
   }
 
   /**

@@ -55,6 +55,18 @@ interface OpenCodeToolUse {
   sessionID: string;
 }
 
+const PERMISSION_POLICY_DENIAL = /The user (?:has specified a rule which prevents you from using this specific tool call|rejected permission to use this specific tool call)\.?/i;
+
+function verificationFailureReason(name: string, detail: string): { reason: string; policyBlocked: boolean } {
+  if (PERMISSION_POLICY_DENIAL.test(detail)) {
+    return {
+      reason: `${name} verification blocked by the runtime permission policy; rerun inside the assigned worktree`,
+      policyBlocked: true,
+    };
+  }
+  return { reason: `${name} verification: ${detail}`, policyBlocked: false };
+}
+
 interface OpenCodeText {
   type: 'text';
   text: string;
@@ -162,7 +174,7 @@ export function stepOutcome(reason: string): OpenCodeStepOutcome {
 }
 
 interface OpenCodeRunOutcome {
-  verificationFailures: Array<{ tool: string; reason: string; name?: string }>;
+  verificationFailures: Array<{ tool: string; reason: string; name?: string; policyBlocked?: boolean }>;
 }
 
 // ── Executor ────────────────────────────────────────────────────────────────
@@ -383,12 +395,12 @@ export class OpenCodeExecutor implements TaskExecutor {
     }
   }
 
-  private getVerificationFailure(event: OpenCodeEvent): { tool: string; reason: string } | null {
+  private getVerificationFailure(event: OpenCodeEvent): { tool: string; reason: string; policyBlocked?: boolean } | null {
     return this.classifyVerification(event)?.failure ?? null;
   }
 
   /** null = not a verification call; failure null = it ran and reported no failure; a refused call (isolation rule) is a failure until a later run of the same check passes */
-  private classifyVerification(event: OpenCodeEvent): { name: string; failure: { tool: string; reason: string } | null } | null {
+  private classifyVerification(event: OpenCodeEvent): { name: string; failure: { tool: string; reason: string; policyBlocked?: boolean } | null } | null {
     if (event.type !== 'tool_use') return null;
 
     const part = (event.part || event) as Partial<OpenCodeToolUse>;
@@ -403,7 +415,8 @@ export class OpenCodeExecutor implements TaskExecutor {
 
     if (/^(error|failed|rejected|cancelled)$/.test(part.state.status)) {
       const detail = part.state.error || `tool status: ${part.state.status}`;
-      return { name: verificationName, failure: { tool: part.tool, reason: `${verificationName} verification: ${detail}` } };
+      const failure = verificationFailureReason(verificationName, detail);
+      return { name: verificationName, failure: { tool: part.tool, ...failure } };
     }
     // only a finished call counts as a run without failure (pending / running prove nothing)
     if (part.state.status !== 'completed') return null;
@@ -457,6 +470,7 @@ export class OpenCodeExecutor implements TaskExecutor {
           };
         }
         const verificationFailure = this.getVerificationFailure(event);
+        const verification = this.classifyVerification(event);
         return {
           task_id: taskId,
           event_type: verificationFailure ? ExecutionEventType.ERROR : ExecutionEventType.TOOL_CALL,
@@ -473,6 +487,10 @@ export class OpenCodeExecutor implements TaskExecutor {
             status: toolPart.state?.status,
             input: toolPart.state?.input,
             verification_failed: Boolean(verificationFailure),
+            ...(verification ? {
+              verification_name: verification.name,
+              verification_policy_blocked: Boolean(verificationFailure?.policyBlocked),
+            } : {}),
           },
         };
       }
