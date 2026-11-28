@@ -27,10 +27,15 @@ describe('maker forecast (MAKER_FORECAST_MODE)', () => {
     expect(parseForecast('FORECAST: 1.5')).toBeNull();
     expect(parseForecast('FORECAST: 85%')).toBeNull();
     expect(parseForecast('FORECAST: <number between 0 and 1>')).toBeNull(); // the request line echoed back
+    expect(parseForecast('FORECAST:0.5')).toBe(0.5); // no space after colon
+    expect(parseForecast('FORECAST: 0.0')).toBe(0); // zero with decimal
+    expect(parseForecast('FORECAST: 1.0')).toBe(1); // one with decimal
+    expect(parseForecast('FORECAST: 0.123')).toBe(0.123); // multi-digit decimal
   });
 
   it('scores stored forecasts against checks and reviewer verdict; unresolved makers are not scored and n = 0 gives null', () => {
-    expect(makerForecastScore(db)).toMatchObject({ n: 0, unresolved: 0, brier: null, base_rate: null, skill: null });
+    expect(makerForecastScore(db)).toMatchObject({ n: 0, unresolved: 0, brier: null, base_rate: null, baseline_brier: null, skill: null });
+    expect(makerForecastScore(db, 30).window_days).toBe(30);
     db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
       VALUES ('r', 'lint-fix', 'closed', 'running', '[]', '{}', '[]', '[]', '{}', ?, ?)`).run(now, now);
     const lease = (id: string, role: string, status: string, metadata: Record<string, unknown>) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
@@ -48,6 +53,18 @@ describe('maker forecast (MAKER_FORECAST_MODE)', () => {
     const s = makerForecastScore(db);
     expect(s).toMatchObject({ n: 3, positives: 1, unresolved: 3, base_rate: 0.3333 });
     expect(s.brier).toBeCloseTo((0.1 ** 2 + 0.8 ** 2 + 0.6 ** 2) / 3, 3);
+    expect(s.baseline_brier).toBeCloseTo(((1 / 3 - 1) ** 2 + (1 / 3 - 0) ** 2 + (1 / 3 - 0) ** 2) / 3, 3);
     expect(s.skill).toBeLessThan(0); // overconfident: worse than quoting the pass rate
+  });
+
+  it('skill is null when all forecasts are perfect (brier 0, baseline 0)', () => {
+    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES ('r', 'lint-fix', 'closed', 'running', '[]', '{}', '[]', '[]', '{}', ?, ?)`).run(now, now);
+    const lease = (id: string, role: string, status: string, metadata: Record<string, unknown>) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES (?, 'r', ?, 'opencode', ?, ?, ?, ?)`).run(id, role, status, JSON.stringify(metadata), now, now);
+    lease('m1', 'maker', 'completed', { self_forecast: 1, deterministic_checks: [{ name: 'lint', status: 'pass' }] });
+    lease('c1', 'checker', 'completed', { maker_lease_id: 'm1', verdict: 'accepted' });
+    const s = makerForecastScore(db);
+    expect(s).toMatchObject({ n: 1, positives: 1, brier: 0, baseline_brier: 0, skill: null });
   });
 });
