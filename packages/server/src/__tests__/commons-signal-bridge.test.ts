@@ -217,6 +217,14 @@ describe('grounding gate and goal creation', () => {
     }
     expect(goals()).toEqual([]);
   });
+  it('the bridge never replaces the panel and approval: a signal proposal that is not yet authorised gets no goal in any mode', () => {
+    for (const status of ['proposed', 'needs_grounding', 'needs_more_evidence', 'rejected']) proposal(`p-${status}`, { status });
+    discussedSignal('p-proposed'); mode('on');
+    for (const status of ['proposed', 'needs_grounding', 'needs_more_evidence', 'rejected']) expect(new AutonomousGoalGenerator(db).generateImprovement(`p-${status}`), status).toBe(0);
+    expect(new AutonomousGoalGenerator(db).generateFromSelfImprovements()).toBe(0);
+    expect(goals()).toEqual([]);
+    expect(judgments('commons_signal_goal')).toEqual([]); // the gate is not even consulted before the existing approval
+  });
   it('shadow: the goal is created exactly as on the direct route; the gate verdict is only recorded', () => {
     proposal('p-shadow', { grounding: null }); discussedSignal('p-shadow'); mode('shadow');
     expect(new AutonomousGoalGenerator(db).generateImprovement('p-shadow')).toBe(1);
